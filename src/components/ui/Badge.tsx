@@ -58,6 +58,7 @@ export const statusBadge = (status: string) => {
     draft: 'gray',
     prepared: 'blue',
     verified: 'orange',
+    payment_pending: 'yellow',
     paid: 'green',
     payslip_generated: 'purple',
     failed: 'red'

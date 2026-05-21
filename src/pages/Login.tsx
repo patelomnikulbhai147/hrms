@@ -10,10 +10,11 @@ export interface UserAccount {
   email: string;
   username: string; // login ID
   passwordStr: string;
-  role: 'Super Admin' | 'Company Head' | 'HR';
+  role: 'Super Admin' | 'Company Head' | 'HR' | 'Employee';
   companyId: string;
   status: 'Active' | 'Disabled';
   avatar: string;
+  employeeId?: string;
 }
 
 interface LoginProps {

@@ -23,10 +23,10 @@ const navItems: NavItem[] = [
   { id: 'billing', label: 'SaaS Subscriptions', icon: <CreditCard size={16} />, roles: ['Super Admin'] },
   { id: 'employees', label: 'Employees', icon: <Users size={16} />, roles: ['Company Head', 'HR'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={16} />, roles: ['Company Head', 'HR'] },
-  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={16} />, roles: ['Company Head', 'HR'] },
+  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={16} />, roles: ['Company Head', 'HR', 'Employee'] },
   { id: 'documents', label: 'Documents', icon: <FileText size={16} />, roles: ['Company Head', 'HR'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={16} />, roles: ['Company Head', 'HR'] },
-  { id: 'settings', label: 'Settings', icon: <Settings size={16} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'settings', label: 'Settings', icon: <Settings size={16} />, roles: ['Super Admin', 'Company Head', 'HR', 'Employee'] },
 ];
 
 interface SidebarProps {
@@ -101,7 +101,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           >
             <span className="flex-shrink-0">{item.icon}</span>
-            {!collapsed && <span className="flex-1 text-left text-xs font-medium">{item.label}</span>}
+            {!collapsed && (
+              <span className="flex-1 text-left text-xs font-medium">
+                {item.id === 'payroll' && role === 'Employee' ? 'My Payslips' : item.label}
+              </span>
+            )}
             {!collapsed && currentPage === item.id && <ChevronRight size={12} className="text-blue-300" />}
           </button>
         ))}

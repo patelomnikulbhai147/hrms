@@ -16,6 +16,11 @@ export const payrollStatusConfig = {
     badgeVariant: 'orange' as const,
     description: 'Payroll audited and verified by management for payment release.'
   },
+  payment_pending: {
+    label: 'Payment Pending',
+    badgeVariant: 'yellow' as const,
+    description: 'Payroll verified and awaiting payment confirmation from finance.'
+  },
   paid: {
     label: 'Paid',
     badgeVariant: 'green' as const,

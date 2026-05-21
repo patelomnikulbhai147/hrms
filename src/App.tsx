@@ -47,6 +47,8 @@ const defaultUsers: UserAccount[] = [
   { id: 'u3', name: 'Priya Sharma', email: 'priya.sharma@technova.in', username: 'priya', passwordStr: 'hr123', role: 'HR', companyId: 'c1', status: 'Active', avatar: 'PS' },
   { id: 'u4', name: 'Sneha Patel', email: 'sneha.patel@quantumdatalabs.ai', username: 'sneha', passwordStr: 'head123', role: 'Company Head', companyId: 'c2', status: 'Active', avatar: 'SP' },
   { id: 'u5', name: 'Sunita Joshi', email: 'sunita.joshi@healthfirst.in', username: 'sunita', passwordStr: 'hr123', role: 'HR', companyId: 'c3', status: 'Active', avatar: 'SJ' },
+  { id: 'u6', name: 'Rajesh Kumar', email: 'rajesh.kumar@technova.in', username: 'rajesh', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'RK', employeeId: 'e1' },
+  { id: 'u7', name: 'Kavita Rao', email: 'kavita.rao@technova.in', username: 'kavita', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'KR', employeeId: 'emp-c1-2' }
 ];
 
 const defaultPlans: SubscriptionPlan[] = [
@@ -312,9 +314,51 @@ export default function App() {
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
-    const next = typeof updater === 'function' ? updater(employees) : updater;
-    setEmployees(next);
-    localStorage.setItem('hrms_employees', JSON.stringify(next));
+    const nextEmployees = typeof updater === 'function' ? updater(employees) : updater;
+    setEmployees(nextEmployees);
+    localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
+
+    // Reactive sync to Payroll: If employee salary changed, recalculate
+    setPayroll(prevPayroll => {
+      let changed = false;
+      const nextPayroll = prevPayroll.map(p => {
+        const emp = nextEmployees.find(e => e.id === p.employeeId);
+        if (emp && emp.salary !== p.salary) {
+          const comp = companies.find(c => c.id === emp.companyId) || defaultCompanies[0];
+          const basicPercent = comp.basicPercent || 50;
+          const ctcMonthly = Math.round(emp.salary / 12);
+          const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
+          const hra = Math.round(basicSalary * 0.4);
+          const special = Math.max(0, ctcMonthly - basicSalary - hra);
+          const allowances = hra + special;
+          const pfRate = comp.pfRate || 12;
+          const esicRate = comp.esicRate || 0.75;
+          const profTax = comp.profTaxRate || 200;
+          const pfDeduction = Math.round(basicSalary * (pfRate / 100));
+          const esicDeduction = Math.round(basicSalary * (esicRate / 100));
+          const deductions = pfDeduction + esicDeduction + profTax;
+          
+          const bonus = p.bonus || 0;
+          const tax = p.tax || 0;
+          const netSalary = basicSalary + allowances + bonus - deductions - tax;
+
+          changed = true;
+          return {
+            ...p,
+            salary: emp.salary,
+            basicSalary,
+            allowances,
+            deductions,
+            netSalary
+          };
+        }
+        return p;
+      });
+      if (changed) {
+        localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
+      }
+      return nextPayroll;
+    });
   };
 
   const handleUpdateAttendance = (updater: AttendanceRecord[] | ((prev: AttendanceRecord[]) => AttendanceRecord[])) => {
@@ -330,9 +374,32 @@ export default function App() {
   };
 
   const handleUpdatePayroll = (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => {
-    const next = typeof updater === 'function' ? updater(payroll) : updater;
-    setPayroll(next);
-    localStorage.setItem('hrms_payroll', JSON.stringify(next));
+    const nextPayroll = typeof updater === 'function' ? updater(payroll) : updater;
+    setPayroll(nextPayroll);
+    localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
+
+    // Reactive sync to Employees: Update employee profiles with new derived salary
+    setEmployees(prevEmployees => {
+      let changed = false;
+      const nextEmployees = prevEmployees.map(emp => {
+        const pay = nextPayroll.find(p => p.employeeId === emp.id && p.month === 'June');
+        if (pay) {
+          const derivedAnnualSalary = (pay.basicSalary + pay.allowances) * 12;
+          if (emp.salary !== derivedAnnualSalary) {
+            changed = true;
+            return {
+              ...emp,
+              salary: derivedAnnualSalary
+            };
+          }
+        }
+        return emp;
+      });
+      if (changed) {
+        localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
+      }
+      return nextEmployees;
+    });
   };
 
   const handleUpdateDocuments = (updater: Document[] | ((prev: Document[]) => Document[])) => {
@@ -555,6 +622,9 @@ export default function App() {
     } else if ((resolvedRole === 'Company Head' || resolvedRole === 'HR') && ['companies', 'billing'].includes(currentPage)) {
       setCurrentPage('dashboard');
       localStorage.setItem('hrms_current_page', 'dashboard');
+    } else if (resolvedRole === 'Employee' && currentPage !== 'payroll') {
+      setCurrentPage('payroll');
+      localStorage.setItem('hrms_current_page', 'payroll');
     }
   }, [resolvedRole, currentPage]);
 
@@ -638,6 +708,7 @@ export default function App() {
             payroll={payroll}
             onUpdatePayroll={handleUpdatePayroll}
             employees={employees}
+            authProfile={authProfile}
           />
         );
       case 'documents':

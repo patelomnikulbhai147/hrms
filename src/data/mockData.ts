@@ -1,11 +1,11 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type Role = 'Super Admin' | 'Company Head' | 'HR';
+export type Role = 'Super Admin' | 'Company Head' | 'HR' | 'Employee';
 
 export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated';
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
-export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'paid' | 'payslip_generated' | 'failed';
+export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
 
 export interface Company {
@@ -130,6 +130,11 @@ export interface PayrollRecord {
   dueDate?: string;
   paymentMethod?: string;
   paidBy?: string;
+
+  // Custom Interactive Extensions
+  bonus?: number;
+  tax?: number;
+  notes?: string;
 }
 
 export interface Document {

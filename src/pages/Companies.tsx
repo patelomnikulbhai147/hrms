@@ -454,7 +454,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                       
                       <button
                         onClick={() => handleToggleStatus(c.id, c.status)}
-                        className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-650 text-red-655' : 'text-emerald-600'}`}
+                        className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
                       >
                         {c.status === 'Active' ? 'Suspend' : 'Activate'}
                       </button>

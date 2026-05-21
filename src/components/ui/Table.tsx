@@ -12,8 +12,8 @@ export const Table: React.FC<TableProps> = ({ children, className }) => (
   </div>
 );
 
-export const Thead: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <thead className="bg-gray-50 border-b border-gray-200">{children}</thead>
+export const Thead: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className }) => (
+  <thead className={cn('bg-gray-50 border-b border-gray-200', className)}>{children}</thead>
 );
 
 export const Tbody: React.FC<{ children: React.ReactNode }> = ({ children }) => (
