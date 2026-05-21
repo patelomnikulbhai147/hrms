@@ -1,0 +1,827 @@
+import React, { useState } from 'react';
+import {
+  Building2, Plus, Search, ShieldAlert, KeyRound, Lock, Trash2,
+  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar
+} from 'lucide-react';
+import { type Company, type Role, type SubscriptionPlan } from '../data/mockData';
+import { Card, StatCard } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { Input, Select } from '../components/ui/Input';
+import { PhoneInput } from '../components/ui/PhoneInput';
+import {
+  validatePhone,
+  validateName,
+  validateEmail,
+  validateCompanyName,
+  validatePercentage
+} from '../utils/validation';
+import { Modal } from '../components/ui/Modal';
+import { Badge, statusBadge } from '../components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
+import { type UserAccount } from './Login';
+
+interface CompaniesProps {
+  role: Role;
+  companies: Company[];
+  onUpdateCompanies: (companies: Company[]) => void;
+  userAccounts: UserAccount[];
+  onUpdateAccounts: (accounts: UserAccount[]) => void;
+  onStartMasquerade: (companyId: string) => void;
+  plans: SubscriptionPlan[];
+}
+
+export const Companies: React.FC<CompaniesProps> = ({
+  role,
+  companies,
+  onUpdateCompanies,
+  userAccounts,
+  onUpdateAccounts,
+  onStartMasquerade,
+  plans
+}) => {
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [planFilter, setPlanFilter] = useState('');
+  
+  // Modals state
+  const [addOpen, setAddOpen] = useState(false);
+  const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
+  const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
+  const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
+  
+  // Dynamic Onboarding state
+  const [newCompany, setNewCompany] = useState({
+    name: '',
+    email: '',
+    countryCode: '+91',
+    mobileNumber: '',
+    address: '',
+    adminName: '',
+    adminEmail: '',
+    industry: 'Technology',
+    plan: 'Starter' as 'Starter' | 'Professional' | 'Enterprise',
+    pfRate: '12',
+    esicRate: '3.25',
+    logo: '',
+    primaryColor: '#3b82f6',
+  });
+
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [officerErrors, setOfficerErrors] = useState<Record<string, string>>({});
+
+  const handlePhoneChange = (val: string) => {
+    const clean = val.replace(/[^\d]/g, '');
+    setNewCompany(prev => {
+      const next = { ...prev, mobileNumber: clean };
+      const err = validatePhone(clean, next.countryCode).error;
+      setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
+      return next;
+    });
+  };
+
+  const handleCountryCodeChange = (code: string) => {
+    setNewCompany(prev => {
+      const next = { ...prev, countryCode: code };
+      const err = validatePhone(next.mobileNumber, code).error;
+      setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
+      return next;
+    });
+  };
+
+  const [officerForm, setOfficerForm] = useState({
+    name: '',
+    email: '',
+    username: '',
+    password: '',
+    role: 'Company Head' as 'Company Head' | 'HR',
+  });
+
+  const handleCreateCompany = () => {
+    // Require validation
+    if (errors.mobileNumber || !newCompany.name || !newCompany.email || !newCompany.mobileNumber || !newCompany.address) {
+      alert('Error: Please resolve validation errors before saving.');
+      return;
+    }
+
+    const compId = `c${Date.now()}`;
+    const generatedLogo = newCompany.logo || newCompany.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+    // Calculate trial plan price and 30-day trial renewal date (relative to mock 2026-05-20)
+    const planObj = plans.find(p => p.name === newCompany.plan);
+    const price = planObj ? planObj.priceMonthly : (newCompany.plan === 'Enterprise' ? 12999 : (newCompany.plan === 'Professional' ? 4999 : 1999));
+    const trialDate = new Date('2026-05-20');
+    trialDate.setDate(trialDate.getDate() + 30);
+    const yyyy = trialDate.getFullYear();
+    const mm = String(trialDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(trialDate.getDate()).padStart(2, '0');
+    const renDate = `${yyyy}-${mm}-${dd}`;
+
+    const fresh: Company = {
+      id: compId,
+      name: newCompany.name,
+      domain: `${newCompany.name.toLowerCase().replace(/\s+/g, '')}.in`,
+      adminName: newCompany.adminName,
+      adminEmail: newCompany.adminEmail,
+      phone: `${newCompany.countryCode} ${newCompany.mobileNumber}`,
+      industry: newCompany.industry,
+      status: 'Active', 
+      employeeCount: 0,
+      joinDate: new Date().toISOString().split('T')[0],
+      plan: newCompany.plan === 'Professional' ? 'Professional' : (newCompany.plan === 'Enterprise' ? 'Enterprise' : 'Starter'),
+      logo: generatedLogo,
+      pfRate: parseFloat(newCompany.pfRate) || 12,
+      esicRate: parseFloat(newCompany.esicRate) || 3.25,
+      basicPercent: 50,
+      overtimeRate: 1.5,
+      profTaxRate: 200,
+      
+      // Auto-generated branding parameters matching input specifications
+      address: newCompany.address,
+      email: newCompany.email,
+      primaryColor: newCompany.primaryColor,
+      headerText: `${newCompany.name.toUpperCase()} PRIVATE LIMITED`,
+      footerText: `${newCompany.name} · Confidential Document · Contact: ${newCompany.countryCode} ${newCompany.mobileNumber}`,
+      signatureText: `${newCompany.adminName}, Operations Director`,
+      themeStyle: 'Modern',
+
+      // SaaS billing parameters initialized
+      paymentStatus: 'Trial Active',
+      renewalDate: renDate,
+      gstNumber: '',
+      billingAddress: newCompany.address,
+      subscriptionPrice: price,
+      billingCycle: 'Monthly',
+      accountStatus: 'Active'
+    };
+    
+    // Auto-create a Company Head user account for this new company!
+    const newHead: UserAccount = {
+      id: `u${Date.now()}`,
+      name: newCompany.adminName,
+      email: newCompany.adminEmail,
+      username: newCompany.adminEmail.split('@')[0],
+      passwordStr: 'head123',
+      role: 'Company Head',
+      companyId: compId,
+      status: 'Active',
+      avatar: newCompany.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    };
+
+    onUpdateAccounts([...userAccounts, newHead]);
+    onUpdateCompanies([fresh, ...companies]);
+    setAddOpen(false);
+    
+    // Reset state
+    setNewCompany({
+      name: '',
+      email: '',
+      countryCode: '+91',
+      mobileNumber: '',
+      address: '',
+      adminName: '',
+      adminEmail: '',
+      industry: 'Technology',
+      plan: 'Starter',
+      pfRate: '12',
+      esicRate: '3.25',
+      logo: '',
+      primaryColor: '#3b82f6',
+    });
+    setErrors({});
+
+    alert(`Company registered successfully.\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`);
+  };
+
+  const handleToggleStatus = (id: string, current: 'Active' | 'Pending' | 'Inactive') => {
+    const nextStatus = current === 'Active' ? 'Inactive' : 'Active';
+    onUpdateCompanies(companies.map(c => c.id === id ? { ...c, status: nextStatus } : c));
+  };
+
+  const handleSavePlan = () => {
+    if (!editPlanModal) return;
+    onUpdateCompanies(companies.map(c => c.id === editPlanModal.id ? { ...c, plan: newPlan } : c));
+    setEditPlanModal(null);
+  };
+
+  // Manage Accounts triggers
+  const companyUsers = manageAccountsModal
+    ? userAccounts.filter(u => u.companyId === manageAccountsModal.id)
+    : [];
+
+  const handleCreateOfficer = () => {
+    if (!manageAccountsModal) return;
+    const nameErr = validateName(officerForm.name).error;
+    const emailErr = validateEmail(officerForm.email).error;
+    if (nameErr || emailErr) {
+      alert('Error: Please resolve validation errors before saving.');
+      return;
+    }
+    const exists = userAccounts.some(u => u.username.toLowerCase() === officerForm.username.toLowerCase());
+    if (exists) {
+      alert('Error: This Login ID is already taken.');
+      return;
+    }
+
+    const newUser: UserAccount = {
+      id: `u${Date.now()}`,
+      name: officerForm.name,
+      email: officerForm.email,
+      username: officerForm.username.trim(),
+      passwordStr: officerForm.password || 'welcome123',
+      role: officerForm.role,
+      companyId: manageAccountsModal.id,
+      status: 'Active',
+      avatar: officerForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    };
+
+    onUpdateAccounts([...userAccounts, newUser]);
+    setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
+    setOfficerErrors({});
+    alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
+  };
+
+  const handleToggleUserActivation = (userId: string) => {
+    const updated = userAccounts.map(u => {
+      if (u.id === userId) {
+        const nextStatus = u.status === 'Active' ? 'Disabled' : 'Active';
+        return { ...u, status: nextStatus as 'Active' | 'Disabled' };
+      }
+      return u;
+    });
+    onUpdateAccounts(updated);
+    alert('User status toggled successfully.');
+  };
+
+  const handleResetUserPassword = (userId: string) => {
+    const newPass = prompt('Enter new access password:');
+    if (!newPass) return;
+    const updated = userAccounts.map(u => {
+      if (u.id === userId) {
+        return { ...u, passwordStr: newPass };
+      }
+      return u;
+    });
+    onUpdateAccounts(updated);
+    alert('Password updated successfully.');
+  };
+
+  const handleRevokeUser = (userId: string) => {
+    if (!confirm('Are you sure you want to revoke this user access?')) return;
+    const updated = userAccounts.filter(u => u.id !== userId);
+    onUpdateAccounts(updated);
+    alert('Access revoked successfully.');
+  };
+
+  // Filter accounts
+  const filtered = companies.filter(c => {
+    const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.domain.toLowerCase().includes(search.toLowerCase());
+    const matchStatus = !statusFilter || c.status === statusFilter;
+    const matchPlan = !planFilter || c.plan === planFilter;
+    return matchSearch && matchStatus && matchPlan;
+  });
+
+  const activeCount = companies.filter(c => c.status === 'Active').length;
+  const suspendedCount = companies.filter(c => c.status === 'Inactive').length;
+
+  // Determine if save button should be disabled
+  const isSaveDisabled =
+    !newCompany.name ||
+    !newCompany.email ||
+    !newCompany.mobileNumber ||
+    !newCompany.address ||
+    !newCompany.adminName ||
+    !newCompany.adminEmail ||
+    !newCompany.pfRate ||
+    !newCompany.esicRate ||
+    Object.values(errors).some(err => !!err);
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">SaaS Company Management</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
+        </div>
+        <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+          Create Company
+        </Button>
+      </div>
+
+      {/* KPI stats */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <StatCard label="Active Companies" value={activeCount} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" sub="Access allowed to portal" />
+        <StatCard label="Suspended Accounts" value={suspendedCount} icon={<XCircle size={16} className="text-red-500" />} color="bg-red-50" sub="Portal entry blocked" />
+        <StatCard label="Total Scoped Tenants" value={companies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
+      </div>
+
+      {/* Filters bar */}
+      <Card>
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-48">
+            <Input
+              placeholder="Search companies by name or domain..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              icon={<Search size={14} />}
+            />
+          </div>
+          <div className="w-40">
+            <Select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Statuses' },
+                { value: 'Active', label: 'Active' },
+                { value: 'Inactive', label: 'Suspended' }
+              ]}
+            />
+          </div>
+          <div className="w-40">
+            <Select
+              value={planFilter}
+              onChange={e => setPlanFilter(e.target.value)}
+              options={[
+                { value: '', label: 'All Plans' },
+                { value: 'Starter', label: 'Starter' },
+                { value: 'Professional', label: 'Professional' },
+                { value: 'Enterprise', label: 'Enterprise' }
+              ]}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Grid directory */}
+      <Card padding={false}>
+        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant Directory</span>
+          <span className="text-xs text-gray-400 font-medium">{filtered.length} clients registered</span>
+        </div>
+        <Table>
+          <Thead>
+            <tr>
+              <Th>Company Profile</Th>
+              <Th>SaaS Admin Info</Th>
+              <Th>Details</Th>
+              <Th>Tier Plan</Th>
+              <Th>Status</Th>
+              <Th>Actions</Th>
+            </tr>
+          </Thead>
+          <Tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="text-center py-8 text-sm text-gray-400">
+                  No company records found matching search queries
+                </td>
+              </tr>
+            ) : (
+              filtered.map(c => (
+                <Tr key={c.id}>
+                  {/* Company Profile */}
+                  <Td>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6' }}>
+                        {c.logo}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-900">{c.name}</h4>
+                        <span className="text-[10px] text-gray-405 hover:underline cursor-pointer">{c.domain}</span>
+                      </div>
+                    </div>
+                  </Td>
+
+                  {/* SaaS Admin Info */}
+                  <Td>
+                    <div className="space-y-0.5">
+                      <p className="text-xs font-semibold text-gray-700">{c.adminName}</p>
+                      <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
+                        <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
+                        <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
+                      </div>
+                    </div>
+                  </Td>
+
+                  {/* Details */}
+                  <Td>
+                    <div className="text-[10px] text-gray-505 space-y-0.5">
+                      <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
+                      <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
+                      <p>Employees: <span className="font-bold text-blue-700">{c.employeeCount}</span></p>
+                    </div>
+                  </Td>
+
+                  {/* Plan */}
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={c.plan === 'Enterprise' ? 'purple' : (c.plan === 'Professional' ? 'blue' : 'gray')}>{c.plan}</Badge>
+                      <button
+                        onClick={() => { setEditPlanModal(c); setNewPlan(c.plan); }}
+                        className="p-1 hover:bg-gray-150 rounded text-gray-400 hover:text-gray-700"
+                        title="Edit Plan"
+                      >
+                        <Edit size={11} />
+                      </button>
+                    </div>
+                  </Td>
+
+                  {/* Status */}
+                  <Td>
+                    <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
+                  </Td>
+
+                  {/* SaaS action toggles */}
+                  <Td>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => onStartMasquerade(c.id)}
+                        className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm"
+                        style={{ backgroundColor: c.primaryColor || '#3b82f6' }}
+                      >
+                        Manage <ArrowRight size={10} />
+                      </button>
+                      
+                      <button
+                        onClick={() => setManageAccountsModal(c)}
+                        className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
+                        title="Manage Company Head / HR Credentials"
+                      >
+                        <KeyRound size={13} />
+                      </button>
+                      
+                      <button
+                        onClick={() => handleToggleStatus(c.id, c.status)}
+                        className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-650 text-red-655' : 'text-emerald-600'}`}
+                      >
+                        {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                      </button>
+                    </div>
+                  </Td>
+                </Tr>
+              ))
+            )}
+          </Tbody>
+        </Table>
+      </Card>
+
+      {/* Add Company Modal with Strict Onboarding Fields */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Add SaaS Client Tenant"
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateCompany} disabled={isSaveDisabled}>
+              Register Company
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
+          <p className="text-xs text-gray-400">All fields are strictly required. Provisions tenant database and default Company Head credentials.</p>
+          
+          <div className="grid grid-cols-2 gap-3 text-left">
+            <Input
+              label="Company Name *"
+              placeholder="e.g. Acme Tech"
+              value={newCompany.name}
+              onChange={e => {
+                const clean = e.target.value.replace(/[^a-zA-Z0-9\s&.]/g, '');
+                setNewCompany({ ...newCompany, name: clean });
+                setErrors(prev => ({ ...prev, name: validateCompanyName(clean).error }));
+              }}
+              error={errors.name}
+              success={newCompany.name !== '' && !errors.name}
+            />
+            <Input
+              label="Company Official Email *"
+              placeholder="e.g. contact@acme.com"
+              type="email"
+              value={newCompany.email}
+              onChange={e => {
+                const val = e.target.value;
+                setNewCompany({ ...newCompany, email: val });
+                setErrors(prev => ({ ...prev, email: validateEmail(val).error }));
+              }}
+              error={errors.email}
+              success={newCompany.email !== '' && !errors.email}
+            />
+          </div>
+
+          {/* Validated Phone Number Field using custom PhoneInput */}
+          <PhoneInput
+            label="Company Mobile Number *"
+            countryCode={newCompany.countryCode}
+            mobileNumber={newCompany.mobileNumber}
+            onChangeCountry={handleCountryCodeChange}
+            onChangeNumber={handlePhoneChange}
+            error={errors.mobileNumber}
+            success={newCompany.mobileNumber !== '' && !errors.mobileNumber}
+          />
+
+          <Input
+            label="Corporate HQ Full Address *"
+            placeholder="Street, City, State, ZIP..."
+            value={newCompany.address}
+            onChange={e => setNewCompany({ ...newCompany, address: e.target.value })}
+          />
+
+          <div className="grid grid-cols-2 gap-3 text-left">
+            <Select
+              label="Industry Sector *"
+              value={newCompany.industry}
+              onChange={e => setNewCompany({ ...newCompany, industry: e.target.value })}
+              options={[
+                { value: 'Technology', label: 'Technology / Software' },
+                { value: 'Finance', label: 'Finance & Banking' },
+                { value: 'Healthcare', label: 'Healthcare' },
+                { value: 'Construction', label: 'Construction' },
+                { value: 'Automotive', label: 'Automotive' }
+              ]}
+            />
+            <Input
+              label="Company Logo Text (Emblem) *"
+              placeholder="e.g. TN"
+              value={newCompany.logo}
+              onChange={e => setNewCompany({ ...newCompany, logo: e.target.value.toUpperCase().slice(0, 3) })}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 text-left">
+            <Input
+              label="PF Contribution Percentage (%) *"
+              value={newCompany.pfRate}
+              onChange={e => {
+                const clean = e.target.value.replace(/[^\d.]/g, '');
+                setNewCompany({ ...newCompany, pfRate: clean });
+                setErrors(prev => ({ ...prev, pfRate: validatePercentage(clean).error }));
+              }}
+              error={errors.pfRate}
+              success={newCompany.pfRate !== '' && !errors.pfRate}
+            />
+            <Input
+              label="ESIC Contribution Percentage (%) *"
+              value={newCompany.esicRate}
+              onChange={e => {
+                const clean = e.target.value.replace(/[^\d.]/g, '');
+                setNewCompany({ ...newCompany, esicRate: clean });
+                setErrors(prev => ({ ...prev, esicRate: validatePercentage(clean).error }));
+              }}
+              error={errors.esicRate}
+              success={newCompany.esicRate !== '' && !errors.esicRate}
+            />
+          </div>
+
+          <div className="border-t border-gray-150 pt-3 space-y-3 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Default Company Head Account</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Admin Full Name *"
+                placeholder="e.g. Vikram Singh"
+                value={newCompany.adminName}
+                onChange={e => {
+                  const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                  setNewCompany({ ...newCompany, adminName: clean });
+                  setErrors(prev => ({ ...prev, adminName: validateName(clean).error }));
+                }}
+                error={errors.adminName}
+                success={newCompany.adminName !== '' && !errors.adminName}
+              />
+              <Input
+                label="Admin Login Email *"
+                placeholder="e.g. head@acme.com"
+                type="email"
+                value={newCompany.adminEmail}
+                onChange={e => {
+                  const val = e.target.value;
+                  setNewCompany({ ...newCompany, adminEmail: val });
+                  setErrors(prev => ({ ...prev, adminEmail: validateEmail(val).error }));
+                }}
+                error={errors.adminEmail}
+                success={newCompany.adminEmail !== '' && !errors.adminEmail}
+              />
+            </div>
+            <p className="text-[10px] text-gray-400">
+              Note: Login ID will be derived from email username (e.g. head). Default password is <strong>head123</strong>.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 border-t border-gray-150 pt-3">
+            <Select
+              label="Pricing Plan"
+              value={newCompany.plan}
+              onChange={e => setNewCompany({ ...newCompany, plan: e.target.value as any })}
+              options={[
+                { value: 'Starter', label: 'Starter' },
+                { value: 'Professional', label: 'Professional' },
+                { value: 'Enterprise', label: 'Enterprise' }
+              ]}
+            />
+            <Select
+              label="Brand Primary Color Theme"
+              value={newCompany.primaryColor}
+              onChange={e => setNewCompany({ ...newCompany, primaryColor: e.target.value })}
+              options={[
+                { value: '#3b82f6', label: 'Vibrant Blue' },
+                { value: '#0f766e', label: 'Deep Teal' },
+                { value: '#65a30d', label: 'Fresh Lime' },
+                { value: '#ea580c', label: 'Construct Orange' },
+                { value: '#e11d48', label: 'Rose Red' }
+              ]}
+            />
+          </div>
+
+        </div>
+      </Modal>
+
+      {/* Interactive Account Manager Modal */}
+      <Modal
+        open={!!manageAccountsModal}
+        onClose={() => setManageAccountsModal(null)}
+        title={`Credentials & Access: ${manageAccountsModal?.name}`}
+        size="lg"
+      >
+        {manageAccountsModal && (
+          <div className="space-y-6">
+            
+            {/* Table of active logins */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Authorized Logins & Status</h4>
+              <Card padding={false}>
+                <Table>
+                  <Thead>
+                    <tr>
+                      <Th>User Profile</Th>
+                      <Th>Role</Th>
+                      <Th>Login ID</Th>
+                      <Th>Status</Th>
+                      <Th>Actions</Th>
+                    </tr>
+                  </Thead>
+                  <Tbody>
+                    {companyUsers.length === 0 ? (
+                      <tr><td colSpan={5} className="text-center py-6 text-sm text-gray-400">No login credentials provisioned</td></tr>
+                    ) : (
+                      companyUsers.map(u => (
+                        <Tr key={u.id}>
+                          <Td>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-900">{u.name}</p>
+                              <p className="text-[10px] text-gray-400">{u.email}</p>
+                            </div>
+                          </Td>
+                          <Td>
+                            <Badge variant={u.role === 'Company Head' ? 'danger' : 'blue'}>{u.role}</Badge>
+                          </Td>
+                          <Td><span className="text-xs font-mono font-bold text-gray-800">{u.username}</span></Td>
+                          <Td>
+                            <Badge variant={u.status === 'Active' ? 'success' : 'danger'}>{u.status}</Badge>
+                          </Td>
+                          <Td>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleResetUserPassword(u.id)}
+                                className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
+                                title="Reset Password"
+                              >
+                                <Lock size={12} />
+                              </button>
+                              <button
+                                onClick={() => handleToggleUserActivation(u.id)}
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${
+                                  u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                                }`}
+                              >
+                                {u.status === 'Active' ? 'Disable' : 'Enable'}
+                              </button>
+                              <button
+                                onClick={() => handleRevokeUser(u.id)}
+                                className="p-1 text-red-600 hover:text-red-750 hover:bg-red-50 rounded"
+                                title="Delete Login Profile"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </Td>
+                        </Tr>
+                      ))
+                    )}
+                  </Tbody>
+                </Table>
+              </Card>
+            </div>
+
+            {/* Create Officer Form */}
+            <div className="border-t border-gray-150 pt-4 space-y-3">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Provision New Corporate Officer</h4>
+              
+              <div className="grid grid-cols-2 gap-3 text-left">
+                <Input
+                  label="Officer Name *"
+                  placeholder="e.g. Ramesh Kumar"
+                  value={officerForm.name}
+                  onChange={e => {
+                    const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
+                    setOfficerForm({ ...officerForm, name: clean });
+                    setOfficerErrors(prev => ({ ...prev, name: validateName(clean).error }));
+                  }}
+                  error={officerErrors.name}
+                  success={officerForm.name !== '' && !officerErrors.name}
+                />
+                <Input
+                  label="Officer Email *"
+                  placeholder="e.g. ramesh@technova.in"
+                  type="email"
+                  value={officerForm.email}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setOfficerForm({ ...officerForm, email: val });
+                    setOfficerErrors(prev => ({ ...prev, email: validateEmail(val).error }));
+                  }}
+                  error={officerErrors.email}
+                  success={officerForm.email !== '' && !officerErrors.email}
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 items-end text-left">
+                <Input
+                  label="Generated Login ID *"
+                  placeholder="e.g. ramesh"
+                  value={officerForm.username}
+                  onChange={e => setOfficerForm({ ...officerForm, username: e.target.value })}
+                />
+                <Input
+                  label="Temporary Password *"
+                  placeholder="Default: welcome123"
+                  type="password"
+                  value={officerForm.password}
+                  onChange={e => setOfficerForm({ ...officerForm, password: e.target.value })}
+                />
+                <Select
+                  label="System Role *"
+                  value={officerForm.role}
+                  onChange={e => setOfficerForm({ ...officerForm, role: e.target.value as any })}
+                  options={[
+                    { value: 'Company Head', label: 'Company Head' },
+                    { value: 'HR', label: 'HR Officer' }
+                  ]}
+                />
+              </div>
+
+              <div className="pt-2 text-left">
+                <Button 
+                  onClick={handleCreateOfficer} 
+                  disabled={
+                    !officerForm.name || 
+                    !officerForm.email || 
+                    !officerForm.username ||
+                    !!officerErrors.name ||
+                    !!officerErrors.email
+                  }
+                >
+                  Add Officer Account
+                </Button>
+              </div>
+            </div>
+
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit Plan Modal */}
+      <Modal
+        open={!!editPlanModal}
+        onClose={() => setEditPlanModal(null)}
+        title="Modify Subscription Tier"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditPlanModal(null)}>Cancel</Button>
+            <Button onClick={handleSavePlan}>Update Subscription</Button>
+          </>
+        }
+      >
+        {editPlanModal && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-655">
+              Update billing details and operational boundaries for <strong>{editPlanModal.name}</strong>.
+            </p>
+            <Select
+              label="Select Subscription Plan"
+              value={newPlan}
+              onChange={e => setNewPlan(e.target.value as 'Starter' | 'Professional' | 'Enterprise')}
+              options={[
+                { value: 'Starter', label: 'Starter (₹1,999 / mo)' },
+                { value: 'Professional', label: 'Professional (₹4,999 / mo)' },
+                { value: 'Enterprise', label: 'Enterprise (₹12,999 / mo)' }
+              ]}
+            />
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
