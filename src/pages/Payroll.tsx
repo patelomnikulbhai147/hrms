@@ -4,7 +4,10 @@ import {
   Activity,
   CheckCircle2,
   XCircle,
-  DollarSign
+  DollarSign,
+  Eye,
+  EyeOff,
+  Building2
 } from 'lucide-react';
 import {
   type Employee,
@@ -20,10 +23,7 @@ import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { PayrollWorkflowTable } from '../components/payroll/PayrollWorkflowTable';
 import {
-  getStatusBadgeVariant,
-  dbToUiStatus,
-  calculatePayrollStats,
-  payrollStatusConfig
+  calculatePayrollStats
 } from '../utils/PayrollWorkflowEngine';
 import { type UserAccount } from './Login';
 
@@ -63,6 +63,27 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [paymentRemarks, setPaymentRemarks] = useState('');
   const [confirmPaymentRecord, setConfirmPaymentRecord] = useState<PayrollRecord | null>(null);
   const [auditLogs, setAuditLogs] = useState<Record<string, AuditLog[]>>({});
+  const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
+
+  const toggleFieldMask = (empId: string, fieldName: string) => {
+    const key = `${empId}-${fieldName}`;
+    setUnmaskedField(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const getMaskedValue = (val: string | undefined, fieldName: string, empId: string) => {
+    if (!val) return '—';
+    const key = `${empId}-${fieldName}`;
+    const show = unmaskedField[key];
+    if (show) return val;
+    if (fieldName === 'aadhaar') return `•••• •••• ${val.slice(-4)}`;
+    if (fieldName === 'pan') return `••••••${val.slice(-4)}`;
+    if (fieldName === 'accountNumber') return `••••••••${val.slice(-4)}`;
+    return `••••${val.slice(-3)}`;
+  };
+
+  const getFullEmployee = (empId: string) => {
+    return employees.find(e => e.employeeId === empId || e.id === empId);
+  };
 
   // Dynamic Edit Form State
   const [editForm, setEditForm] = useState({
@@ -295,66 +316,122 @@ export const Payroll: React.FC<PayrollProps> = ({
           size="md"
           footer={<Button onClick={() => setViewPayslip(null)}>Close</Button>}
         >
-          {viewPayslip && (
-            <div className="space-y-4 text-sm text-left">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <h4 className="text-base font-bold text-slate-900">{viewPayslip.employeeName}</h4>
-                  <p className="text-xs text-slate-500">{viewPayslip.department} — ID: {viewPayslip.employeeId}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs uppercase tracking-[0.1em] text-slate-400 font-semibold">Active Cycle</p>
-                  <p className="text-sm font-bold text-blue-600">{viewPayslip.month} {viewPayslip.year}</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Basic Salary</p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">₹{viewPayslip.basicSalary.toLocaleString('en-IN')}</p>
+          {viewPayslip && (() => {
+            const emp = getFullEmployee(viewPayslip.employeeId);
+            return (
+              <div className="space-y-4 text-xs text-left font-sans">
+                {/* Header branding block */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
+                  <div className="w-10 h-10 bg-cyan-100 text-cyan-800 font-black rounded-lg flex items-center justify-center text-sm ring-1 ring-cyan-200">
+                    <Building2 size={20} />
                   </div>
-                  <div className="rounded-2xl bg-emerald-50/50 p-4 border border-emerald-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-800 font-bold">Net Salary (Payout)</p>
-                    <p className="mt-1 text-lg font-bold text-emerald-900">₹{viewPayslip.netSalary.toLocaleString('en-IN')}</p>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">GUJARAT CANCER & RESEARCH INSTITUTE</h4>
+                    <p className="text-sm font-bold text-slate-800">{viewPayslip.employeeName}</p>
+                    <p className="text-[10px] text-gray-500 font-medium">Branch: {emp?.branchLocation || 'Ahmedabad'} · Service Book: {emp?.serviceBookNo || '—'} · Code: {viewPayslip.employeeId}</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className="text-[10px] uppercase text-gray-400 font-bold">Active Cycle</p>
+                    <p className="text-sm font-extrabold text-blue-600">{viewPayslip.month} {viewPayslip.year}</p>
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Allowances</p>
-                    <p className="mt-1 font-semibold text-slate-800">₹{viewPayslip.allowances.toLocaleString('en-IN')}</p>
+                {/* Grid for compliance parameters */}
+                <div className="bg-slate-50/50 border border-slate-200 rounded-lg p-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div><p className="text-[10px] text-gray-400">Category Class</p><p className="font-semibold text-slate-800 mt-0.5">{emp?.category || 'Skilled'}</p></div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Permanent Account No (PAN)</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(emp?.pan, 'pan', viewPayslip.employeeId)}</span>
+                      {emp?.pan && (
+                        <button onClick={() => toggleFieldMask(viewPayslip.employeeId, 'pan')} className="text-slate-400 p-0.5 hover:bg-slate-100 rounded">
+                          {unmaskedField[`${viewPayslip.employeeId}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Deductions</p>
-                    <p className="mt-1 font-semibold text-slate-800">₹{viewPayslip.deductions.toLocaleString('en-IN')}</p>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Aadhaar Card No</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(emp?.aadhaar, 'aadhaar', viewPayslip.employeeId)}</span>
+                      {emp?.aadhaar && (
+                        <button onClick={() => toggleFieldMask(viewPayslip.employeeId, 'aadhaar')} className="text-slate-400 p-0.5 hover:bg-slate-100 rounded">
+                          {unmaskedField[`${viewPayslip.employeeId}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">One-time Bonus</p>
-                    <p className="mt-1 font-semibold text-slate-800">₹{(viewPayslip.bonus || 0).toLocaleString('en-IN')}</p>
-                  </div>
+                  <div><p className="text-[10px] text-gray-400">Provident Fund (PF) No</p><p className="font-semibold text-slate-700 mt-0.5">{emp?.pfNumber || '—'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Universal Account No (UAN)</p><p className="font-semibold text-slate-700 mt-0.5">{emp?.uan || '—'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">ESIC IP Number</p><p className="font-semibold text-slate-700 mt-0.5">{emp?.esic || '—'}</p></div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Tax Deductions</p>
-                    <p className="mt-1 font-semibold text-slate-800">₹{(viewPayslip.tax || 0).toLocaleString('en-IN')}</p>
+                {/* Banking specifics */}
+                <div className="bg-slate-50/50 border border-slate-200 rounded-lg p-3 grid grid-cols-3 gap-3">
+                  <div><p className="text-[10px] text-gray-400">Bank Name</p><p className="font-bold text-slate-800 mt-0.5">{emp?.bankName || '—'}</p></div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Bank Account Number</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(emp?.accountNumber, 'accountNumber', viewPayslip.employeeId)}</span>
+                      {emp?.accountNumber && (
+                        <button onClick={() => toggleFieldMask(viewPayslip.employeeId, 'accountNumber')} className="text-slate-400 p-0.5 hover:bg-slate-100 rounded">
+                          {unmaskedField[`${viewPayslip.employeeId}-accountNumber`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Payment Status</p>
-                    <p className="mt-1 font-bold text-slate-800 capitalize">{viewPayslip.paymentStatus}</p>
+                  <div><p className="text-[10px] text-gray-400">IFSC Code</p><p className="font-semibold text-slate-800 mt-0.5">{emp?.ifsc || '—'}</p></div>
+                </div>
+
+                {/* Salary breakdown math */}
+                <div className="space-y-2">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Basic Monthly Salary</p>
+                      <p className="mt-1 text-base font-bold text-slate-900">₹{viewPayslip.basicSalary.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50/50 p-3 border border-emerald-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-emerald-800 font-bold">Net Payout (Credited)</p>
+                      <p className="mt-1 text-base font-bold text-emerald-950 font-mono">₹{viewPayslip.netSalary.toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 grid-cols-3">
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Allowances</p>
+                      <p className="mt-1 font-semibold text-slate-800 text-[11px]">+₹{viewPayslip.allowances.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Deductions</p>
+                      <p className="mt-1 font-semibold text-slate-800 text-[11px]">-₹{viewPayslip.deductions.toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Bonus Portion</p>
+                      <p className="mt-1 font-semibold text-slate-800 text-[11px]">+₹{(viewPayslip.bonus || 0).toLocaleString('en-IN')}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 grid-cols-2">
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Tax Deducted (TDS)</p>
+                      <p className="mt-1 font-semibold text-slate-800 text-[11px]">-₹{(viewPayslip.tax || 0).toLocaleString('en-IN')}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Payment Status</p>
+                      <Badge variant={viewPayslip.paymentStatus === 'paid' ? 'green' : 'amber'}>{viewPayslip.paymentStatus.toUpperCase()}</Badge>
+                    </div>
                   </div>
                 </div>
 
                 {viewPayslip.notes && (
-                  <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Verification Notes</p>
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-200 text-left">
+                    <p className="text-[10px] uppercase tracking-[0.12em] text-slate-500 font-bold">Auditor Verification Note</p>
                     <p className="mt-1 text-slate-700 italic">"{viewPayslip.notes}"</p>
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </Modal>
       </div>
     );

@@ -1,13 +1,13 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 import {
-  LayoutDashboard, Users, Clock, CalendarDays, DollarSign,
+  LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard
 } from 'lucide-react';
 import type { Role } from '../../data/mockData';
 
 export type PageId =
-  | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll'
+  | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
   | 'documents' | 'reports' | 'settings' | 'billing';
 
 interface NavItem {
@@ -18,15 +18,15 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'] },
   { id: 'companies', label: 'Companies', icon: <Building2 size={16} />, roles: ['Super Admin'] },
   { id: 'billing', label: 'SaaS Subscriptions', icon: <CreditCard size={16} />, roles: ['Super Admin'] },
-  { id: 'employees', label: 'Employees', icon: <Users size={16} />, roles: ['Company Head', 'HR'] },
+  { id: 'employees', label: 'Employees', icon: <Users size={16} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={16} />, roles: ['Company Head', 'HR'] },
-  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={16} />, roles: ['Company Head', 'HR', 'Employee'] },
-  { id: 'documents', label: 'Documents', icon: <FileText size={16} />, roles: ['Company Head', 'HR'] },
-  { id: 'reports', label: 'Reports', icon: <BarChart3 size={16} />, roles: ['Company Head', 'HR'] },
-  { id: 'settings', label: 'Settings', icon: <Settings size={16} />, roles: ['Super Admin', 'Company Head', 'HR', 'Employee'] },
+  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={16} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
+  { id: 'documents', label: 'Documents', icon: <FileText size={16} />, roles: ['Company Head', 'HR', 'Finance'] },
+  { id: 'reports', label: 'Reports', icon: <BarChart3 size={16} />, roles: ['Company Head', 'HR', 'Finance'] },
+  { id: 'settings', label: 'Settings', icon: <Settings size={16} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
 ];
 
 interface SidebarProps {

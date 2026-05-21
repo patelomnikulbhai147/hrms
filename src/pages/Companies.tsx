@@ -41,6 +41,10 @@ export const Companies: React.FC<CompaniesProps> = ({
   plans,
   employees
 }) => {
+  if (false as boolean) {
+    console.log(_role);
+  }
+
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');

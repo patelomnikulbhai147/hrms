@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Lock, User, Sparkles, Building2 } from 'lucide-react';
-import { Button } from '../components/ui/Button';
 
 import { Company } from '../data/mockData';
 
@@ -10,7 +9,7 @@ export interface UserAccount {
   email: string;
   username: string; // login ID
   passwordStr: string;
-  role: 'Super Admin' | 'Company Head' | 'HR' | 'Employee';
+  role: 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee';
   companyId: string;
   status: 'Active' | 'Disabled';
   avatar: string;

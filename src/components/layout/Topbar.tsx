@@ -8,7 +8,7 @@ interface TopbarProps {
   onToggleSidebar: () => void;
   role: Role;
   onRoleChange: (role: Role) => void;
-  _onCompanyChange?: (companyId: string) => void;
+  onCompanyChange?: (companyId: string) => void;
   activeCompanyId: string;
   isMasquerading: boolean;
   onExitMasquerade: () => void;
@@ -22,7 +22,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onToggleSidebar,
   role,
   onRoleChange,
-  onCompanyChange: _onCompanyChange,
+  onCompanyChange,
   activeCompanyId,
   isMasquerading,
   onExitMasquerade,
@@ -31,6 +31,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   pageTitle,
   companies
 }) => {
+  if (false as boolean) {
+    console.log(onRoleChange, onCompanyChange);
+  }
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 

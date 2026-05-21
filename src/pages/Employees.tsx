@@ -1,21 +1,26 @@
-import React, { useState } from 'react';
-import { Plus, Search, Eye, Edit2, Trash2, Mail, Phone, MapPin, Briefcase, KeyRound, Lock, Trash } from 'lucide-react';
-import { departments, designations, type Employee, type EmployeeStatus, type Role } from '../data/mockData';
+import React, { useState, useMemo, useRef } from 'react';
+import { 
+  Plus, Search, Eye, Edit2, Trash2, 
+  EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, 
+  Users, UserCheck, LogOut, ChevronRight
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { 
+  type Employee, type EmployeeStatus, type Role,
+  departments, designations
+} from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { Card } from '../components/ui/Card';
+import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input, Select } from '../components/ui/Input';
-import { PhoneInput } from '../components/ui/PhoneInput';
-import {
-  validatePhone,
-  validateName,
-  validateEmail,
-  validateSalary,
-  validateEmployeeId
+import { 
+  validatePhone, validateName, validateEmail, 
+  validateSalary, validateEmployeeId 
 } from '../utils/validation';
 import { type UserAccount } from './Login';
+import { allExcelParsedEmployees } from '../data/excelSeededData';
 
 interface EmployeesProps {
   role: Role;
@@ -26,96 +31,189 @@ interface EmployeesProps {
   onUpdateEmployees: (employees: Employee[]) => void;
 }
 
+const capitalize = (str: string) => {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+};
+
 const statusOptions: EmployeeStatus[] = ['Active', 'Inactive', 'On Leave', 'Terminated'];
+const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
+const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
+const branchOptions = ['AHMEDABAD', 'BHAVNAGAR', 'RAJKOT', 'SIDDHPUR'];
 
 export const Employees: React.FC<EmployeesProps> = ({
   role,
   activeCompanyId,
-  userAccounts,
-  onUpdateAccounts,
+  userAccounts: _userAccounts,
+  onUpdateAccounts: _onUpdateAccounts,
   employees,
   onUpdateEmployees
 }) => {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
+  
+  // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteEmp, setDeleteEmp] = useState<Employee | null>(null);
+  
+  // Excel Importer states
+  const [importOpen, setImportOpen] = useState(false);
+  const [importedRows, setImportedRows] = useState<any[]>([]);
+  const [importLogs, setImportLogs] = useState<string[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Tabs in drawer
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'address'>('personal');
+  
+  // Unmasking state for sensitive fields
+  const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
 
-  // Validation errors state
+  // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [hrErrors, setHrErrors] = useState<Record<string, string>>({});
-
-  // HR Manage State
-  const [hrManagerOpen, setHrManagerOpen] = useState(false);
-  const [newHrForm, setNewHrForm] = useState({
-    name: '',
-    email: '',
-    username: '',
-    password: '',
-  });
 
   const [form, setForm] = useState({
     name: '',
     email: '',
     countryCode: '+91',
     mobileNumber: '',
-    department: 'Engineering',
-    designation: 'Software Developer',
+    department: 'Nursing',
+    designation: 'Staff Nurse',
     role: 'Staff' as Role | 'Staff',
     status: 'Active' as EmployeeStatus,
-    location: '',
-    salary: '',
-    joinDate: '',
-    manager: '',
+    location: 'Ahmedabad, Gujarat',
+    salary: '32000',
+    joinDate: '2026-05-20',
+    manager: 'Dr. Suresh Babu',
     employeeId: '',
+    
+    // Expanded master fields
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    aadhaarName: '',
+    gender: 'Female',
+    dob: '1998-08-10',
+    maritalStatus: 'UNMARRIED',
+    nationality: 'INDIAN',
+    fatherSpouseName: '',
+    relationType: 'FATHER',
+    emergencyContact: '',
+    category: 'Skilled',
+    employmentType: 'CONTRACTUAL',
+    exitDate: '',
+    exitReason: '',
+    serviceBookNo: '',
+    branchLocation: 'AHMEDABAD',
+    aadhaar: '',
+    pan: '',
+    pfNumber: '',
+    uan: '',
+    esic: '',
+    bankName: '',
+    accountNumber: '',
+    ifsc: '',
+    presentAddress: '',
+    permanentAddress: '',
   });
 
   const [editCountryCode, setEditCountryCode] = useState('+91');
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
-  const parsePhone = (phoneStr: string) => {
-    const cleanStr = (phoneStr || '').trim();
-    if (cleanStr.startsWith('+91')) {
-      return { countryCode: '+91', mobileNumber: cleanStr.replace('+91', '').trim().replace(/\s+/g, '') };
-    } else if (cleanStr.startsWith('+1')) {
-      return { countryCode: '+1', mobileNumber: cleanStr.replace('+1', '').trim().replace(/\s+/g, '') };
-    } else if (cleanStr.startsWith('+44')) {
-      return { countryCode: '+44', mobileNumber: cleanStr.replace('+44', '').trim().replace(/\s+/g, '') };
-    }
-    return { countryCode: '+91', mobileNumber: cleanStr.replace(/\s+/g, '') };
+  // Auto-generate employee code on add open
+  const handleStartAdd = () => {
+    const nextCodeNum = companyEmployees.length + 1;
+    setForm({
+      name: '', email: '', countryCode: '+91', mobileNumber: '',
+      department: 'Nursing', designation: 'Staff Nurse', role: 'Staff',
+      status: 'Active', location: 'Ahmedabad, Gujarat', salary: '32000',
+      joinDate: '2026-05-20', manager: 'Dr. Suresh Babu',
+      employeeId: `VE${String(1000 + nextCodeNum)}`,
+      firstName: '', middleName: '', lastName: '', aadhaarName: '',
+      gender: 'Female', dob: '1998-08-10', maritalStatus: 'UNMARRIED',
+      nationality: 'INDIAN', fatherSpouseName: '', relationType: 'FATHER',
+      emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
+      exitDate: '', exitReason: '', serviceBookNo: '', branchLocation: 'AHMEDABAD',
+      aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
+      bankName: '', accountNumber: '', ifsc: '', presentAddress: '', permanentAddress: '',
+    });
+    setErrors({});
+    setActiveTab('personal');
+    setAddOpen(true);
   };
 
-  const companyEmployees = employees.filter(e => e.companyId === activeCompanyId);
+  const handleStartEdit = (emp: Employee) => {
+    setEditEmp(emp);
+    const parts = (emp.phone || '').split(' ');
+    if (parts.length > 1) {
+      setEditCountryCode(parts[0]);
+      setEditMobileNumber(parts.slice(1).join(''));
+    } else {
+      setEditCountryCode('+91');
+      setEditMobileNumber(emp.phone || '');
+    }
+    setActiveTab('personal');
+    setErrors({});
+  };
 
-  const filtered = companyEmployees.filter(e => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || e.name.toLowerCase().includes(q) || e.email.toLowerCase().includes(q) || e.employeeId.toLowerCase().includes(q) || e.department.toLowerCase().includes(q);
-    const matchDept = !deptFilter || e.department === deptFilter;
-    const matchStatus = !statusFilter || e.status === statusFilter;
-    return matchSearch && matchDept && matchStatus;
-  });
+  // central company scope filtering
+  const companyEmployees = useMemo(() => {
+    return employees.filter(e => e.companyId === activeCompanyId);
+  }, [employees, activeCompanyId]);
 
-  const handleAdd = () => {
-    // Validate all fields
+  // Table Filters
+  const filtered = useMemo(() => {
+    return companyEmployees.filter(e => {
+      const q = search.toLowerCase();
+      const matchSearch = !q || 
+        e.name.toLowerCase().includes(q) || 
+        e.email.toLowerCase().includes(q) || 
+        e.employeeId.toLowerCase().includes(q) || 
+        (e.designation || '').toLowerCase().includes(q);
+      const matchDept = !deptFilter || e.department === deptFilter;
+      const matchStatus = !statusFilter || e.status === statusFilter;
+      const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
+      return matchSearch && matchDept && matchStatus && matchBranch;
+    });
+  }, [companyEmployees, search, deptFilter, statusFilter, branchFilter]);
+
+  // Master Statistics Calculations
+  const stats = useMemo(() => {
+    const total = companyEmployees.length;
+    const active = companyEmployees.filter(e => e.status === 'Active').length;
+    const verifiedPayroll = companyEmployees.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
+    const pendingExits = companyEmployees.filter(e => e.exitDate && !e.exitReason).length;
+    return { total, active, verifiedPayroll, pendingExits };
+  }, [companyEmployees]);
+
+  // Add Validation & Execution
+  const handleAddSubmit = () => {
     const nameErr = validateName(form.name).error;
     const emailErr = validateEmail(form.email).error;
     const phoneErr = validatePhone(form.mobileNumber).error;
     const empIdErr = validateEmployeeId(form.employeeId, companyEmployees).error;
     const salaryErr = validateSalary(form.salary).error;
-    const managerErr = form.manager ? validateName(form.manager).error : '';
 
-    if (nameErr || emailErr || phoneErr || empIdErr || salaryErr || managerErr) {
-      alert('Error: Please resolve validation errors before registering.');
+    if (nameErr || emailErr || phoneErr || empIdErr || salaryErr) {
+      alert('Error: Please resolve validation errors across all sections before submitting.');
+      setErrors({
+        name: nameErr,
+        email: emailErr,
+        phone: phoneErr,
+        employeeId: empIdErr,
+        salary: salaryErr
+      });
       return;
     }
 
     const newEmp: Employee = {
-      id: `e${Date.now()}`,
+      id: `emp-gcri-${form.employeeId}`,
       employeeId: form.employeeId.trim(),
-      companyId: activeCompanyId, // Strict tenancy stamp
+      companyId: activeCompanyId,
       name: form.name,
       email: form.email,
       phone: `${form.countryCode} ${form.mobileNumber}`,
@@ -123,275 +221,394 @@ export const Employees: React.FC<EmployeesProps> = ({
       designation: form.designation,
       role: form.role as any,
       status: form.status,
-      joinDate: form.joinDate || new Date().toISOString().split('T')[0],
-      salary: parseInt(form.salary) || 0,
-      manager: form.manager || 'N/A',
-      location: form.location || 'Remote',
+      joinDate: form.joinDate || '2026-05-20',
+      location: `${capitalize(form.branchLocation)}, Gujarat`,
       avatar: form.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
+      salary: parseInt(form.salary) || 0,
+      manager: form.manager || 'Dr. Suresh Babu',
+      
+      // Master compliance columns
+      firstName: form.firstName,
+      middleName: form.middleName,
+      lastName: form.lastName,
+      aadhaarName: form.aadhaarName,
+      gender: form.gender,
+      dob: form.dob,
+      maritalStatus: form.maritalStatus,
+      nationality: form.nationality,
+      fatherSpouseName: form.fatherSpouseName,
+      relationType: form.relationType,
+      emergencyContact: form.emergencyContact,
+      category: form.category,
+      employmentType: form.employmentType,
+      exitDate: form.exitDate,
+      exitReason: form.exitReason,
+      serviceBookNo: form.serviceBookNo,
+      branchLocation: form.branchLocation,
+      aadhaar: form.aadhaar,
+      pan: form.pan,
+      pfNumber: form.pfNumber,
+      uan: form.uan,
+      esic: form.esic,
+      bankName: form.bankName,
+      accountNumber: form.accountNumber,
+      ifsc: form.ifsc,
+      presentAddress: form.presentAddress,
+      permanentAddress: form.permanentAddress,
     };
+
     onUpdateEmployees([newEmp, ...employees]);
     setAddOpen(false);
-    setForm({
-      name: '',
-      email: '',
-      countryCode: '+91',
-      mobileNumber: '',
-      department: 'Engineering',
-      designation: 'Software Developer',
-      role: 'Staff',
-      status: 'Active',
-      location: '',
-      salary: '',
-      joinDate: '',
-      manager: '',
-      employeeId: '',
-    });
-    setErrors({});
+    alert(`Absence/Employee profile for ${form.name} logged successfully.`);
   };
 
-  const handleEdit = () => {
+  // Edit Submission
+  const handleEditSubmit = () => {
     if (!editEmp) return;
-
+    
     const nameErr = validateName(editEmp.name).error;
     const emailErr = validateEmail(editEmp.email).error;
     const phoneErr = validatePhone(editMobileNumber).error;
-    const empIdErr = validateEmployeeId(editEmp.employeeId, companyEmployees, editEmp.id).error;
-    const salaryErr = validateSalary(editEmp.salary).error;
-    const managerErr = editEmp.manager ? validateName(editEmp.manager).error : '';
 
-    if (nameErr || emailErr || phoneErr || empIdErr || salaryErr || managerErr) {
-      alert('Error: Please resolve validation errors before saving.');
+    if (nameErr || emailErr || phoneErr) {
+      alert('Error: Please correct name, email or phone errors.');
       return;
     }
 
-    const updatedEmp: Employee = {
+    const updated: Employee = {
       ...editEmp,
       phone: `${editCountryCode} ${editMobileNumber}`,
-      salary: parseInt(String(editEmp.salary)) || 0,
+      location: `${capitalize(editEmp.branchLocation || 'Ahmedabad')}, Gujarat`,
     };
 
-    onUpdateEmployees(employees.map(e => e.id === editEmp.id ? updatedEmp : e));
+    onUpdateEmployees(employees.map(e => e.id === editEmp.id ? updated : e));
     setEditEmp(null);
-    setErrors({});
-  };
-
-  const handleStartAdd = () => {
-    setForm({
-      name: '',
-      email: '',
-      countryCode: '+91',
-      mobileNumber: '',
-      department: 'Engineering',
-      designation: 'Software Developer',
-      role: 'Staff',
-      status: 'Active',
-      location: '',
-      salary: '',
-      joinDate: '',
-      manager: '',
-      employeeId: `EMP${String(companyEmployees.length + 1).padStart(3, '0')}`,
-    });
-    setErrors({});
-    setAddOpen(true);
-  };
-
-  const handleStartEdit = (emp: Employee) => {
-    const parsed = parsePhone(emp.phone);
-    setEditCountryCode(parsed.countryCode);
-    setEditMobileNumber(parsed.mobileNumber);
-    setEditEmp(emp);
-    setErrors({});
+    alert('Employee profile saved successfully.');
   };
 
   const handleDelete = () => {
     if (!deleteEmp) return;
     onUpdateEmployees(employees.filter(e => e.id !== deleteEmp.id));
     setDeleteEmp(null);
+    alert('Employee record removed successfully.');
   };
 
-  // Scoped HR logins in this company
-  const scopedHRLogins = userAccounts.filter(
-    u => u.companyId === activeCompanyId && u.role === 'HR'
-  );
+  // Toggling secure field values
+  const toggleFieldMask = (empId: string, fieldName: string) => {
+    const key = `${empId}-${fieldName}`;
+    setUnmaskedField(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
-  const handleCreateHRLogins = () => {
-    const nameErr = validateName(newHrForm.name).error;
-    const emailErr = validateEmail(newHrForm.email).error;
+  const getMaskedValue = (val: string | undefined, fieldName: string, empId: string) => {
+    if (!val) return '—';
+    const key = `${empId}-${fieldName}`;
+    const show = unmaskedField[key];
+    if (show) return val;
 
-    if (nameErr || emailErr) {
-      alert('Error: Please resolve validation errors before saving.');
-      return;
+    // Standard security masking models
+    if (fieldName === 'aadhaar') {
+      return `•••• •••• ${val.slice(-4)}`;
     }
-
-    const exists = userAccounts.some(u => u.username.toLowerCase() === newHrForm.username.toLowerCase());
-    if (exists) {
-      alert('Error: This Login ID is already in use.');
-      return;
+    if (fieldName === 'pan') {
+      return `••••••${val.slice(-4)}`;
     }
+    if (fieldName === 'accountNumber') {
+      return `••••••••${val.slice(-4)}`;
+    }
+    return `••••${val.slice(-3)}`;
+  };
 
-    const newHR: UserAccount = {
-      id: `u${Date.now()}`,
-      name: newHrForm.name,
-      email: newHrForm.email,
-      username: newHrForm.username.trim(),
-      passwordStr: newHrForm.password || 'hrwelcome123',
-      role: 'HR',
-      companyId: activeCompanyId,
-      status: 'Active',
-      avatar: newHrForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+  // Client-Side Excel File Parser
+  const handleExcelDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      parseExcelFile(files[0]);
+    }
+  };
+
+  const handleExcelSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      parseExcelFile(files[0]);
+    }
+  };
+
+  const parseExcelFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        
+        const logs: string[] = [];
+        const allRows: any[] = [];
+        logs.push(`Successfully loaded file: ${file.name}`);
+        logs.push(`Detected branch sheets: ${workbook.SheetNames.filter(n => n !== 'Sheet1').join(', ')}`);
+
+        workbook.SheetNames.forEach(sheetName => {
+          if (sheetName === 'Sheet1') return;
+          const worksheet = workbook.Sheets[sheetName];
+          const json: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+          if (json.length < 2) return;
+          
+          let validCount = 0;
+          let dupCount = 0;
+
+          for (let i = 2; i < json.length; i++) {
+            const row = json[i];
+            if (!row || row.length === 0) continue;
+            
+            const empCode = String(row[1] || '').trim();
+            const fullName = String(row[2] || '').trim();
+            
+            if (!empCode || empCode === 'nan' || !fullName || fullName === 'nan') continue;
+
+            // Check duplicate
+            const isDup = companyEmployees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
+            if (isDup) {
+              dupCount++;
+              continue;
+            }
+
+            // Standard parsing
+            const firstName = String(row[5] || '').trim();
+            const surname = String(row[4] || '').trim();
+            const gender = String(row[6] || '').trim();
+            const designation = String(row[14] || 'Staff Nurse').trim();
+            const category = String(row[15] || 'Skilled').trim();
+
+            let baseSalary = 18000;
+            if (designation.toLowerCase().includes('nurse') || designation.toLowerCase().includes('sister')) {
+              baseSalary = 38000;
+            } else if (category.toLowerCase() === 'skilled') {
+              baseSalary = 32000;
+            } else if (category.toLowerCase() === 'semi-skilled') {
+              baseSalary = 24000;
+            } else if (category.toLowerCase() === 'highly skilled') {
+              baseSalary = 48000;
+            }
+
+            const parsedEmp = {
+              id: `emp-gcri-${empCode}`,
+              employeeId: empCode,
+              companyId: activeCompanyId,
+              name: fullName,
+              email: String(row[36] || `${firstName.toLowerCase()}@${sheetName.toLowerCase()}.gcri.in`),
+              phone: String(row[17] || '+91 99999 88888'),
+              department: designation.toLowerCase().includes('nurse') ? 'Nursing' : 'Clinical',
+              designation: designation,
+              role: 'Staff' as Role,
+              status: row[29] ? 'Inactive' : 'Active' as EmployeeStatus,
+              joinDate: String(row[13] || '2022-11-01'),
+              location: `${capitalize(sheetName)}, Gujarat`,
+              avatar: firstName ? firstName.slice(0, 2).toUpperCase() : 'EM',
+              salary: baseSalary,
+              manager: 'Dr. Suresh Babu',
+              
+              firstName,
+              middleName: surname,
+              lastName: surname,
+              aadhaarName: String(row[3] || ''),
+              gender: gender.toUpperCase() === 'F' ? 'Female' : 'Male',
+              dob: String(row[9] || ''),
+              maritalStatus: String(row[10] || 'UNMARRIED'),
+              nationality: String(row[11] || 'INDIAN'),
+              fatherSpouseName: String(row[7] || ''),
+              relationType: String(row[8] || 'FATHER'),
+              category: category,
+              employmentType: String(row[16] || 'CONTRACTUAL'),
+              exitDate: String(row[29] || ''),
+              exitReason: String(row[30] || ''),
+              serviceBookNo: String(row[28] || ''),
+              branchLocation: sheetName,
+              aadhaar: String(row[22] || ''),
+              pan: String(row[20] || ''),
+              pfNumber: String(row[18] || ''),
+              uan: String(row[19] || ''),
+              esic: String(row[21] || ''),
+              bankName: String(row[24] || ''),
+              accountNumber: String(row[23] || ''),
+              ifsc: String(row[25] || ''),
+              presentAddress: String(row[26] || ''),
+              permanentAddress: String(row[27] || ''),
+            };
+
+            allRows.push(parsedEmp);
+            validCount++;
+          }
+          logs.push(`Sheet [${sheetName}]: successfully parsed ${validCount} valid employees. Skipped ${dupCount} duplicates.`);
+        });
+
+        setImportedRows(allRows);
+        setImportLogs(logs);
+      } catch (err) {
+        alert('Error parsing Excel file. Please ensure it matches standard branch templates.');
+      }
     };
-
-    onUpdateAccounts([...userAccounts, newHR]);
-    setNewHrForm({ name: '', email: '', username: '', password: '' });
-    setHrErrors({});
-    alert(`Successfully generated HR credentials:\nID: ${newHR.username}\nPassword: ${newHR.passwordStr}`);
+    reader.readAsArrayBuffer(file);
   };
 
-  const handleToggleHRStatus = (hrId: string) => {
-    const updated = userAccounts.map(u => {
-      if (u.id === hrId) {
-        const nextStatus = u.status === 'Active' ? 'Disabled' : 'Active';
-        return { ...u, status: nextStatus as 'Active' | 'Disabled' };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    alert('HR account active status toggled.');
+  const handleBulkCommit = () => {
+    if (importedRows.length === 0) return;
+    onUpdateEmployees([...importedRows, ...employees]);
+    setImportedRows([]);
+    setImportLogs([]);
+    setImportOpen(false);
+    alert(`Bulk synchronized ${importedRows.length} employees from Excel to local HRMS successfully.`);
   };
 
-  const handleResetHRPassword = (hrId: string) => {
-    const newPass = prompt('Enter new access password for HR:');
-    if (!newPass) return;
-    const updated = userAccounts.map(u => {
-      if (u.id === hrId) {
-        return { ...u, passwordStr: newPass };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    alert('HR Password reset successfully.');
+  const loadSeededMockExcel = () => {
+    // Quick load all parsed Excel records from static storage for seamless testing
+    const count = allExcelParsedEmployees.length;
+    onUpdateEmployees([...allExcelParsedEmployees, ...employees]);
+    alert(`Instantly populated database with ALL ${count} real employee profiles from the Excel master!`);
+    setImportOpen(false);
   };
 
-  const handleRevokeHRAccess = (hrId: string) => {
-    if (!confirm('Are you sure you want to delete this HR operational credential?')) return;
-    const updated = userAccounts.filter(u => u.id !== hrId);
-    onUpdateAccounts(updated);
-    alert('HR credential revoked.');
-  };
-
-  const canEdit = role === 'Company Head' || role === 'HR';
-  const canAdd = role === 'Company Head' || role === 'HR';
-  const canDelete = role === 'Company Head' || role === 'HR';
-  const isCompanyHead = role === 'Company Head';
+  const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+    <div className="space-y-4 font-sans text-left">
+      {/* Top action header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Employee Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5">{filtered.length} of {companyEmployees.length} company employees</p>
+          <h2 className="text-base font-semibold text-gray-900">Synchronized Employee Workspace</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Real enterprise roster synced across banking, government compliance and payroll modules
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          {isCompanyHead && (
-            <button
-              onClick={() => setHrManagerOpen(true)}
-              className="px-3 py-1.5 border border-gray-250 bg-white hover:bg-gray-50 rounded text-xs font-semibold text-gray-700 flex items-center gap-1.5"
-            >
-              <KeyRound size={13} className="text-blue-600" />
-              <span>Manage HR Logins</span>
-            </button>
-          )}
-          {canAdd && (
-            <Button icon={<Plus size={14} />} onClick={handleStartAdd}>Add Employee</Button>
-          )}
-        </div>
+        {isHR && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
+              Bulk Excel Importer
+            </Button>
+            <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
+              Register Employee
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatCard label="Total Staff Strength" value={stats.total} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" />
+        <StatCard label="Active Roster" value={stats.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
+        <StatCard label="Verified Payroll Compliance" value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-cyan-600" />} color="bg-cyan-50" />
+        <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
 
       {/* Filters */}
       <Card>
-        <div className="flex flex-wrap gap-3 items-end">
+        <div className="flex flex-wrap gap-3">
           <div className="flex-1 min-w-48">
-            <Input placeholder="Search by name, ID or department..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
+            <Input placeholder="Search code, name, designation..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
           </div>
-          <div className="w-40">
-            <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              options={[{ value: '', label: 'All Departments' }, ...departments.map(d => ({ value: d, label: d }))]}
+          <div className="w-36">
+            <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+              options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))] }
             />
           </div>
-          <div className="w-40">
+          <div className="w-36">
+            <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+              options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))] }
+            />
+          </div>
+          <div className="w-36">
             <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              options={[{ value: '', label: 'All Statuses' }, ...statusOptions.map(s => ({ value: s, label: s }))]}
+              options={[{ value: '', label: 'All Status' }, ...statusOptions.map(s => ({ value: s, label: s }))] }
             />
           </div>
         </div>
       </Card>
 
-      {/* Table list */}
+      {/* Main Table */}
       <Card padding={false}>
         <Table>
           <Thead>
             <tr>
-              <Th>Employee ID</Th>
-              <Th>Employee Name</Th>
-              <Th>Dept / Designation</Th>
-              <Th>Role / Level</Th>
+              <Th>Emp Code</Th>
+              <Th>Name</Th>
+              <Th>Branch / Dept</Th>
+              <Th>Designation / Category</Th>
+              <Th>Govt Compliance</Th>
+              <Th>Bank Account</Th>
               <Th>Status</Th>
-              <Th>Salary (CTC)</Th>
               <Th>Actions</Th>
             </tr>
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="text-center py-8 text-sm text-gray-400">
-                  No employee profiles registered for this company
-                </td>
-              </tr>
+              <tr><td colSpan={8} className="text-center py-10 text-sm text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
-              filtered.map(e => (
-                <Tr key={e.id} className="hover:bg-gray-50/50">
-                  <Td><span className="text-xs font-bold text-gray-700">{e.employeeId}</span></Td>
+              filtered.map(emp => (
+                <Tr key={emp.id} className="hover:bg-slate-50/50">
+                  <Td><span className="text-xs font-bold text-slate-800">{emp.employeeId}</span></Td>
                   <Td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xs font-sans">
-                        {e.avatar}
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setViewEmp(emp)}>
+                      <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[10px] text-slate-600 ring-1 ring-slate-200">
+                        {emp.avatar || 'EM'}
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-gray-900">{e.name}</p>
-                        <p className="text-[10px] text-gray-400">{e.email}</p>
+                        <p className="text-xs font-semibold text-slate-900 hover:text-blue-600">{emp.name}</p>
+                        <p className="text-[10px] text-gray-400">{emp.email}</p>
                       </div>
                     </div>
                   </Td>
                   <Td>
-                    <div>
-                      <p className="text-xs text-gray-700 font-medium">{e.designation}</p>
-                      <p className="text-[10px] text-gray-400">{e.department}</p>
+                    <p className="text-xs font-semibold text-slate-800">{emp.branchLocation || emp.location.split(',')[0] || 'Ahmedabad'}</p>
+                    <p className="text-[10px] text-gray-400">{emp.department}</p>
+                  </Td>
+                  <Td>
+                    <p className="text-xs font-medium text-slate-800">{emp.designation}</p>
+                    <p className="text-[10px] text-gray-400">Category: {emp.category || 'Skilled'}</p>
+                  </Td>
+                  <Td>
+                    <div className="space-y-0.5 text-[10px]">
+                      <div className="flex items-center gap-1.5 justify-between w-28">
+                        <span className="text-gray-400">AAD:</span>
+                        <span className="font-semibold text-slate-700">{getMaskedValue(emp.aadhaar, 'aadhaar', emp.id)}</span>
+                        {emp.aadhaar && (
+                          <button onClick={() => toggleFieldMask(emp.id, 'aadhaar')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
+                            {unmaskedField[`${emp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-between w-28">
+                        <span className="text-gray-400">PAN:</span>
+                        <span className="font-semibold text-slate-700">{getMaskedValue(emp.pan, 'pan', emp.id)}</span>
+                        {emp.pan && (
+                          <button onClick={() => toggleFieldMask(emp.id, 'pan')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
+                            {unmaskedField[`${emp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </Td>
                   <Td>
-                    <Badge variant={e.role === 'Company Head' ? 'danger' : e.role === 'HR' ? 'blue' : 'gray'}>
-                      {e.role}
-                    </Badge>
-                  </Td>
-                  <Td>
-                    <Badge variant={statusBadge(e.status)} dot>{e.status}</Badge>
-                  </Td>
-                  <Td><span className="text-xs font-bold text-gray-900">₹{e.salary.toLocaleString()}/yr</span></Td>
-                  <Td>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setViewEmp(e)} className="p-1 hover:bg-gray-100 rounded text-gray-500 hover:text-gray-950" title="View Profile">
-                        <Eye size={13} />
-                      </button>
-                      {canEdit && (
-                        <button onClick={() => handleStartEdit(e)} className="p-1 hover:bg-gray-100 rounded text-blue-600 hover:text-blue-700" title="Edit Profile">
-                          <Edit2 size={13} />
+                    <div className="flex items-center gap-1.5 justify-between w-36">
+                      <div className="text-[10px]">
+                        <p className="font-bold text-slate-700">{emp.bankName || 'N/A'}</p>
+                        <p className="text-gray-400 font-semibold">{getMaskedValue(emp.accountNumber, 'accountNumber', emp.id)}</p>
+                      </div>
+                      {emp.accountNumber && (
+                        <button onClick={() => toggleFieldMask(emp.id, 'accountNumber')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
+                          {unmaskedField[`${emp.id}-accountNumber`] ? <EyeOff size={10} /> : <Eye size={10} />}
                         </button>
                       )}
-                      {canDelete && (
-                        <button onClick={() => setDeleteEmp(e)} className="p-1 hover:bg-gray-100 rounded text-red-650 text-red-600 hover:text-red-700" title="Delete Profile">
-                          <Trash2 size={13} />
-                        </button>
+                    </div>
+                  </Td>
+                  <Td><Badge variant={statusBadge(emp.status)} dot>{emp.status}</Badge></Td>
+                  <Td>
+                    <div className="flex items-center gap-1.5">
+                      <button onClick={() => setViewEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="View Master File"><Eye size={14} /></button>
+                      {isHR && (
+                        <>
+                          <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
+                          <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
+                        </>
                       )}
                     </div>
                   </Td>
@@ -402,473 +619,457 @@ export const Employees: React.FC<EmployeesProps> = ({
         </Table>
       </Card>
 
-      {/* HR Accounts Management Modal */}
-      <Modal
-        open={hrManagerOpen}
-        onClose={() => setHrManagerOpen(false)}
-        title="Manage HR Operations Accounts"
-        size="lg"
-      >
-        <div className="space-y-6">
-          <p className="text-xs text-gray-500">
-            Provision and audit the login credentials for HR personnel inside your company tenant.
-          </p>
+      {/* View Master Drawer/Modal */}
+      <Modal open={!!viewEmp} onClose={() => setViewEmp(null)} title="Enterprise Master Employee Profile" size="md">
+        {viewEmp && (
+          <div className="space-y-4 text-left text-xs font-sans">
+            {/* Upper Badge */}
+            <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-sm ring-2 ring-blue-200">
+                {viewEmp.avatar}
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-900">{viewEmp.name}</p>
+                <p className="text-[10px] text-gray-500 font-medium">{viewEmp.designation} · {viewEmp.department} · {viewEmp.employeeId}</p>
+              </div>
+              <div className="ml-auto">
+                <Badge variant={statusBadge(viewEmp.status)} dot>{viewEmp.status}</Badge>
+              </div>
+            </div>
 
-          {/* List of Scoped HR accounts */}
-          <div className="space-y-2">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Scoped HR Logins</h4>
-            <Card padding={false}>
-              <Table>
-                <Thead>
-                  <tr>
-                    <Th>HR Officer Name</Th>
-                    <Th>Login ID</Th>
-                    <Th>Email</Th>
-                    <Th>Status</Th>
-                    <Th>Actions</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {scopedHRLogins.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-6 text-sm text-gray-450">No HR logins provisioned yet.</td></tr>
-                  ) : (
-                    scopedHRLogins.map(u => (
-                      <Tr key={u.id}>
-                        <Td><span className="text-xs font-semibold text-gray-900">{u.name}</span></Td>
-                        <Td><span className="text-xs font-mono font-bold text-blue-700 bg-blue-50 px-1 py-0.5 rounded">{u.username}</span></Td>
-                        <Td><span className="text-xs text-gray-600">{u.email}</span></Td>
-                        <Td><Badge variant={u.status === 'Active' ? 'success' : 'danger'}>{u.status}</Badge></Td>
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleResetHRPassword(u.id)}
-                              className="p-1 hover:bg-gray-100 rounded text-gray-600 hover:text-black"
-                              title="Reset HR Password"
-                            >
-                              <Lock size={12} />
-                            </button>
-                            <button
-                              onClick={() => handleToggleHRStatus(u.id)}
-                              className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${
-                                u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                              }`}
-                            >
-                              {u.status === 'Active' ? 'Disable' : 'Enable'}
-                            </button>
-                            <button
-                              onClick={() => handleRevokeHRAccess(u.id)}
-                              className="p-1 hover:bg-red-50 rounded text-red-650 text-red-600"
-                              title="Delete HR Access"
-                            >
-                              <Trash size={12} />
-                            </button>
-                          </div>
-                        </Td>
-                      </Tr>
-                    ))
-                  )}
-                </Tbody>
-              </Table>
-            </Card>
+            {/* Sub-Tabs Navigation */}
+            <div className="flex border-b border-gray-200 gap-3 text-xs">
+              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Profile</button>
+              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment details</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance & Bank</button>
+              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Addresses</button>
+            </div>
+
+            {/* Sub-Tabs View Content */}
+            {activeTab === 'personal' && (
+              <div className="grid grid-cols-2 gap-3 p-1">
+                <div><p className="text-[10px] text-gray-400">First Name</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.firstName || viewEmp.name.split(' ')[0]}</p></div>
+                <div><p className="text-[10px] text-gray-400">Last Name / Surname</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.lastName || '—'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Name on Aadhaar</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.aadhaarName || viewEmp.name}</p></div>
+                <div><p className="text-[10px] text-gray-400">Gender</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.gender || 'Female'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.dob || '—'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Marital Status</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.maritalStatus || 'UNMARRIED'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
+              </div>
+            )}
+
+            {activeTab === 'job' && (
+              <div className="grid grid-cols-2 gap-3 p-1">
+                <div><p className="text-[10px] text-gray-400">Branch Location</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.branchLocation || 'AHMEDABAD'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Employment Class</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.category || 'Skilled'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Type of Employment</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.employmentType || 'CONTRACTUAL'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.joinDate}</p></div>
+                <div><p className="text-[10px] text-gray-400">Service Book No</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.serviceBookNo || '—'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Salary (Monthly Basic)</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
+                {viewEmp.exitDate && (
+                  <>
+                    <div><p className="text-[10px] text-gray-400">Exit Date</p><p className="font-semibold text-red-600 mt-0.5">{viewEmp.exitDate}</p></div>
+                    <div><p className="text-[10px] text-gray-400">Exit Reason</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.exitReason || '—'}</p></div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'banking' && (
+              <div className="space-y-2.5 p-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] text-gray-400">Aadhaar Number</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.aadhaar, 'aadhaar', viewEmp.id)}</span>
+                      {viewEmp.aadhaar && (
+                        <button onClick={() => toggleFieldMask(viewEmp.id, 'aadhaar')} className="text-slate-400 p-0.5">
+                          {unmaskedField[`${viewEmp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Permanent Account No (PAN)</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.pan, 'pan', viewEmp.id)}</span>
+                      {viewEmp.pan && (
+                        <button onClick={() => toggleFieldMask(viewEmp.id, 'pan')} className="text-slate-400 p-0.5">
+                          {unmaskedField[`${viewEmp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Provident Fund (PF) No</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.pfNumber || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Universal Account No (UAN)</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.uan || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">ESIC IP Number</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || '—'}</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+                  <div>
+                    <p className="text-[10px] text-gray-400">Bank Name</p>
+                    <p className="font-bold text-slate-800 mt-0.5">{viewEmp.bankName || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Bank Account Number</p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.accountNumber, 'accountNumber', viewEmp.id)}</span>
+                      {viewEmp.accountNumber && (
+                        <button onClick={() => toggleFieldMask(viewEmp.id, 'accountNumber')} className="text-slate-400 p-0.5">
+                          {unmaskedField[`${viewEmp.id}-accountNumber`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">IFSC Code</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.ifsc || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'address' && (
+              <div className="space-y-3 p-1">
+                <div>
+                  <p className="text-[10px] text-gray-400">Present Residential Address</p>
+                  <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.presentAddress || 'No present address recorded.'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Permanent Residential Address</p>
+                  <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.permanentAddress || 'No permanent address recorded.'}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Bulk Excel Import Dialog */}
+      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Enterprise Excel Importer" size="md">
+        <div className="space-y-4 text-left text-xs font-sans">
+          <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg">
+            <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">Excel Master Import Protocol</h4>
+            <p className="mt-1 leading-relaxed">
+              Drop your real employee master dataset (`.xlsx`) to parse all location sheets (AHMEDABAD, BHAVNAGAR, RAJKOT, SIDDHPUR) and synchronise them dynamically.
+            </p>
           </div>
 
-          {/* Provision Form */}
-          <div className="border-t border-gray-150 pt-4 space-y-3">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Generate HR Operator Credential</h4>
-            
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input
-                label="HR Name *"
-                placeholder="Full Name e.g. Priya Sharma"
-                value={newHrForm.name}
-                onChange={e => {
-                  const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                  setNewHrForm({ ...newHrForm, name: clean });
-                  setHrErrors(prev => ({ ...prev, name: validateName(clean).error }));
-                }}
-                error={hrErrors.name}
-                success={newHrForm.name !== '' && !hrErrors.name}
-              />
-              <Input
-                label="HR Email Address *"
-                placeholder="e.g. priya@technova.in"
-                type="email"
-                value={newHrForm.email}
-                onChange={e => {
-                  const val = e.target.value;
-                  setNewHrForm({ ...newHrForm, email: val });
-                  setHrErrors(prev => ({ ...prev, email: validateEmail(val).error }));
-                }}
-                error={hrErrors.email}
-                success={newHrForm.email !== '' && !hrErrors.email}
-              />
+          {/* Quick Mock Trigger */}
+          <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+            <div>
+              <p className="font-bold text-slate-800">Quick-Load Excel Seeding (834 Rows)</p>
+              <p className="text-[10px] text-slate-500">Populates the HRMS dynamically with the full parsed real master roster.</p>
             </div>
-
-            <div className="grid grid-cols-2 gap-3 items-end text-left">
-              <Input
-                label="Assigned Username / Login ID *"
-                placeholder="e.g. priya"
-                value={newHrForm.username}
-                onChange={e => setNewHrForm({ ...newHrForm, username: e.target.value })}
-              />
-              <Input
-                label="Initial Password *"
-                placeholder="Default: hrwelcome123"
-                type="password"
-                value={newHrForm.password}
-                onChange={e => setNewHrForm({ ...newHrForm, password: e.target.value })}
-              />
-            </div>
-
-            <div className="pt-2 text-left">
-              <Button 
-                onClick={handleCreateHRLogins} 
-                disabled={
-                  !newHrForm.name || 
-                  !newHrForm.email || 
-                  !newHrForm.username ||
-                  !!hrErrors.name ||
-                  !!hrErrors.email
-                }
-              >
-                Create HR Login Credentials
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={loadSeededMockExcel}>
+              Load Seeded Dataset
+            </Button>
           </div>
+
+          {/* Drag & Drop File Container */}
+          <div
+            onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleExcelDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${
+              isDragOver ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
+            }`}
+          >
+            <input type="file" ref={fileInputRef} onChange={handleExcelSelect} accept=".xlsx,.xls" className="hidden" />
+            <FileSpreadsheet className="mx-auto text-slate-400 mb-2" size={32} />
+            <p className="font-bold text-slate-700">Drag & Drop Employee Master File Here</p>
+            <p className="text-[10px] text-gray-400 mt-1">Accepts standard .xlsx and .xls sheets up to 10MB</p>
+          </div>
+
+          {/* Execution logs */}
+          {importLogs.length > 0 && (
+            <div className="space-y-2">
+              <p className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">Parser execution logs:</p>
+              <div className="bg-slate-900 text-slate-200 font-mono p-3 rounded text-[10px] max-h-36 overflow-y-auto leading-relaxed">
+                {importLogs.map((log, i) => (
+                  <p key={i} className="flex items-start gap-1"><ChevronRight size={10} className="mt-0.5 text-blue-400 shrink-0" /> {log}</p>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Preview grid */}
+          {importedRows.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">Dataset Preview ({importedRows.length} ready rows):</p>
+                <Badge variant="green" dot>Verified</Badge>
+              </div>
+              <div className="border border-slate-200 rounded max-h-40 overflow-y-auto">
+                <table className="w-full text-[10px] text-slate-700 border-collapse text-left">
+                  <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold">
+                    <tr>
+                      <th className="p-1.5">Code</th>
+                      <th className="p-1.5">Name</th>
+                      <th className="p-1.5">Branch</th>
+                      <th className="p-1.5">Designation</th>
+                      <th className="p-1.5">Bank Name</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importedRows.slice(0, 10).map((row, idx) => (
+                      <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-1.5 font-bold text-slate-800">{row.employeeId}</td>
+                        <td className="p-1.5">{row.name}</td>
+                        <td className="p-1.5 font-semibold">{row.branchLocation}</td>
+                        <td className="p-1.5">{row.designation}</td>
+                        <td className="p-1.5 font-medium">{row.bankName}</td>
+                      </tr>
+                    ))}
+                    {importedRows.length > 10 && (
+                      <tr><td colSpan={5} className="text-center p-1.5 text-slate-400 bg-slate-50">... and {importedRows.length - 10} more rows</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <Button variant="outline" onClick={() => { setImportedRows([]); setImportLogs([]); }}>Reset Importer</Button>
+                <Button icon={<CheckCircle2 size={12} />} onClick={handleBulkCommit}>Commit Bulk Import</Button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
-      {/* Add Employee Modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Register Company Employee" size="md"
+      {/* Add Employee Master Modal */}
+      <Modal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        title="Register Master Employee File"
+        size="md"
         footer={
           <>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={handleAdd} 
-              disabled={
-                !form.name || 
-                !form.email || 
-                !form.mobileNumber || 
-                !form.employeeId || 
-                !form.salary ||
-                Object.values(errors).some(err => !!err)
-              }
-            >
-              Register Profile
-            </Button>
+            <Button onClick={handleAddSubmit}>Save Master File</Button>
           </>
         }
       >
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input 
-              label="Full Name *" 
-              placeholder="e.g. Ramesh Kumar" 
-              value={form.name} 
-              onChange={e => {
-                const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                setForm({ ...form, name: clean });
-                setErrors(prev => ({ ...prev, name: validateName(clean).error }));
-              }} 
-              error={errors.name}
-              success={form.name !== '' && !errors.name}
-            />
-            <Input 
-              label="Email Address *" 
-              type="email" 
-              placeholder="e.g. ramesh@company.com" 
-              value={form.email} 
-              onChange={e => {
-                const val = e.target.value;
-                setForm({ ...form, email: val });
-                setErrors(prev => ({ ...prev, email: validateEmail(val).error }));
-              }} 
-              error={errors.email}
-              success={form.email !== '' && !errors.email}
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input
-              label="Employee ID *"
-              placeholder="e.g. EMP101"
-              value={form.employeeId}
-              onChange={e => {
-                const clean = e.target.value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
-                setForm({ ...form, employeeId: clean });
-                setErrors(prev => ({ ...prev, employeeId: validateEmployeeId(clean, companyEmployees).error }));
-              }}
-              error={errors.employeeId}
-              success={form.employeeId !== '' && !errors.employeeId}
-            />
-            <Input 
-              label="Location" 
-              placeholder="e.g. Bangalore" 
-              value={form.location} 
-              onChange={e => setForm({ ...form, location: e.target.value })} 
-            />
+        <div className="space-y-4 text-left text-xs font-sans">
+          {/* Tabs header in dialog */}
+          <div className="flex border-b border-gray-200 gap-3 text-xs">
+            <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
+            <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
+            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
+            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
           </div>
 
-          <div className="text-left">
-            <PhoneInput
-              label="Phone Contact *"
-              countryCode={form.countryCode}
-              mobileNumber={form.mobileNumber}
-              onChangeCountry={code => {
-                setForm(prev => {
-                  const next = { ...prev, countryCode: code };
-                  const err = validatePhone(next.mobileNumber, code).error;
-                  setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
-                  return next;
-                });
-              }}
-              onChangeNumber={num => {
-                setForm(prev => {
-                  const next = { ...prev, mobileNumber: num };
-                  const err = validatePhone(num, next.countryCode).error;
-                  setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
-                  return next;
-                });
-              }}
-              error={errors.mobileNumber}
-              success={form.mobileNumber !== '' && !errors.mobileNumber}
-            />
-          </div>
+          {activeTab === 'personal' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Employee Code *" value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })} error={errors.employeeId} />
+                <Input label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.name} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
+                <Input label="Middle Name" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} />
+                <Input label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Select label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} />
+                <Input label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} />
+                <Select label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Nationality" value={form.nationality} onChange={e => setForm({ ...form, nationality: e.target.value })} />
+                <Input label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Father/Spouse Name" value={form.fatherSpouseName} onChange={e => setForm({ ...form, fatherSpouseName: e.target.value })} />
+                <Select label="Relation" value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
+                <Input label="Emergency Phone" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
+              </div>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}
-              options={departments.map(d => ({ value: d, label: d }))}
-            />
-            <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })}
-              options={designations.map(d => ({ value: d, label: d }))}
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Select label="Status *" value={form.status} onChange={e => setForm({ ...form, status: e.target.value as EmployeeStatus })}
-              options={statusOptions.map(s => ({ value: s, label: s }))}
-            />
-            <Select label="Role *" value={form.role} onChange={e => setForm({ ...form, role: e.target.value as any })}
-              options={[{ value: 'Staff', label: 'Staff Personnel' }, { value: 'HR', label: 'HR Operator' }]}
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input 
-              label="Joining CTC (INR / year) *" 
-              value={form.salary} 
-              onChange={e => {
-                const clean = e.target.value.replace(/[^\d.]/g, '');
-                setForm({ ...form, salary: clean });
-                setErrors(prev => ({ ...prev, salary: validateSalary(clean).error }));
-              }} 
-              error={errors.salary}
-              success={form.salary !== '' && !errors.salary}
-            />
-            <Input label="Scheduled Join Date" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input 
-              label="Manager / Supervisor Name" 
-              placeholder="e.g. Anand Kumar" 
-              value={form.manager} 
-              onChange={e => {
-                const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                setForm({ ...form, manager: clean });
-                setErrors(prev => ({ ...prev, manager: validateName(clean).error }));
-              }} 
-              error={errors.manager}
-              success={form.manager !== '' && !errors.manager}
-            />
-          </div>
+          {activeTab === 'job' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
+                <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={departments.map(d => ({ value: d, label: d }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />
+                <Select label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Select label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} />
+                <Input label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} />
+                <Input label="Service Book No" value={form.serviceBookNo} onChange={e => setForm({ ...form, serviceBookNo: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
+                <Input label="Manager" value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'banking' && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Input label="Aadhaar Number" placeholder="12-digit number" value={form.aadhaar} onChange={e => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
+                <Input label="PAN Card" placeholder="10-character alphanumeric" value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase().slice(0, 10) })} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} />
+                <Input label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
+                <Input label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} />
+              </div>
+              <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+                <Input label="Bank Name" placeholder="e.g. State Bank of India" value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} />
+                <Input label="Account Number" value={form.accountNumber} onChange={e => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} />
+                <Input label="IFSC Code" placeholder="e.g. SBIN0001234" value={form.ifsc} onChange={e => setForm({ ...form, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'address' && (
+            <div className="space-y-3">
+              <Input label="Present Address" value={form.presentAddress} onChange={e => setForm({ ...form, presentAddress: e.target.value })} />
+              <Input label="Permanent Address" value={form.permanentAddress} onChange={e => setForm({ ...form, permanentAddress: e.target.value })} />
+              <div className="p-2 bg-slate-50 rounded border border-slate-200 flex items-center justify-between text-[11px] font-semibold text-slate-600">
+                <span>Copy Present Address to Permanent?</span>
+                <button type="button" onClick={() => setForm({ ...form, permanentAddress: form.presentAddress })} className="text-blue-600 hover:underline">Copy Address</button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
-      {/* Edit Modal */}
-      <Modal open={!!editEmp} onClose={() => setEditEmp(null)} title="Modify Employee Profile" size="md"
+      {/* Edit Employee Modal */}
+      <Modal
+        open={!!editEmp}
+        onClose={() => setEditEmp(null)}
+        title="Modify Employee Master File"
+        size="md"
         footer={
           <>
             <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            <Button 
-              onClick={handleEdit} 
-              disabled={
-                !editEmp ||
-                !editEmp.name ||
-                !editEmp.email ||
-                !editMobileNumber ||
-                !editEmp.employeeId ||
-                !editEmp.salary ||
-                Object.values(errors).some(err => !!err)
-              }
-            >
-              Save Changes
-            </Button>
+            <Button onClick={handleEditSubmit}>Save Master File</Button>
           </>
         }
       >
         {editEmp && (
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input 
-                label="Full Name *" 
-                value={editEmp.name} 
-                onChange={e => {
-                  const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                  setEditEmp({ ...editEmp, name: clean });
-                  setErrors(prev => ({ ...prev, name: validateName(clean).error }));
-                }} 
-                error={errors.name}
-                success={editEmp.name !== '' && !errors.name}
-              />
-              <Input 
-                label="Email Address *" 
-                value={editEmp.email} 
-                onChange={e => {
-                  const val = e.target.value;
-                  setEditEmp({ ...editEmp, email: val });
-                  setErrors(prev => ({ ...prev, email: validateEmail(val).error }));
-                }} 
-                error={errors.email}
-                success={editEmp.email !== '' && !errors.email}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input 
-                label="Employee ID *" 
-                value={editEmp.employeeId} 
-                onChange={e => {
-                  const clean = e.target.value.replace(/[^a-zA-Z0-9-]/g, '').toUpperCase();
-                  setEditEmp({ ...editEmp, employeeId: clean });
-                  setErrors(prev => ({ ...prev, employeeId: validateEmployeeId(clean, companyEmployees, editEmp.id).error }));
-                }} 
-                error={errors.employeeId}
-                success={editEmp.employeeId !== '' && !errors.employeeId}
-              />
-              <Input label="Location" value={editEmp.location} onChange={e => setEditEmp({ ...editEmp, location: e.target.value })} />
+          <div className="space-y-4 text-left text-xs font-sans">
+            <div className="flex border-b border-gray-200 gap-3 text-xs">
+              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
+              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
+              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
             </div>
 
-            <div className="text-left">
-              <PhoneInput
-                label="Phone Contact *"
-                countryCode={editCountryCode}
-                mobileNumber={editMobileNumber}
-                onChangeCountry={code => {
-                  setEditCountryCode(code);
-                  const err = validatePhone(editMobileNumber, code).error;
-                  setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
-                }}
-                onChangeNumber={num => {
-                  setEditMobileNumber(num);
-                  const err = validatePhone(num, editCountryCode).error;
-                  setErrors(prevErrors => ({ ...prevErrors, mobileNumber: err }));
-                }}
-                error={errors.mobileNumber}
-                success={editMobileNumber !== '' && !errors.mobileNumber}
-              />
-            </div>
+            {activeTab === 'personal' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Employee Code *" value={editEmp.employeeId} disabled />
+                  <Input label="Aadhaar Full Name *" value={editEmp.name} onChange={e => setEditEmp({ ...editEmp, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input label="First Name" value={editEmp.firstName || ''} onChange={e => setEditEmp({ ...editEmp, firstName: e.target.value })} />
+                  <Input label="Middle Name" value={editEmp.middleName || ''} onChange={e => setEditEmp({ ...editEmp, middleName: e.target.value })} />
+                  <Input label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Select label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} />
+                  <Input label="Date of Birth *" type="date" value={editEmp.dob || ''} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} />
+                  <Select label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Nationality" value={editEmp.nationality || 'INDIAN'} onChange={e => setEditEmp({ ...editEmp, nationality: e.target.value })} />
+                  <Input label="Mobile Number *" value={editMobileNumber} onChange={e => setEditMobileNumber(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input label="Father/Spouse Name" value={editEmp.fatherSpouseName || ''} onChange={e => setEditEmp({ ...editEmp, fatherSpouseName: e.target.value })} />
+                  <Select label="Relation" value={editEmp.relationType || 'FATHER'} onChange={e => setEditEmp({ ...editEmp, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
+                  <Input label="Emergency Phone" value={editEmp.emergencyContact || ''} onChange={e => setEditEmp({ ...editEmp, emergencyContact: e.target.value })} />
+                </div>
+              </div>
+            )}
 
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })}
-                options={departments.map(d => ({ value: d, label: d }))}
-              />
-              <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })}
-                options={designations.map(d => ({ value: d, label: d }))}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Select label="Status *" value={editEmp.status} onChange={e => setEditEmp({ ...editEmp, status: e.target.value as EmployeeStatus })}
-                options={statusOptions.map(s => ({ value: s, label: s }))}
-              />
-              <Select label="Role *" value={editEmp.role} onChange={e => setEditEmp({ ...editEmp, role: e.target.value as any })}
-                options={[{ value: 'Staff', label: 'Staff Personnel' }, { value: 'HR', label: 'HR Operator' }]}
-              />
-            </div>
-            
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input 
-                label="Joining CTC (INR / year) *" 
-                value={editEmp.salary.toString()} 
-                onChange={e => {
-                  const clean = e.target.value.replace(/[^\d.]/g, '');
-                  setEditEmp({ ...editEmp, salary: parseInt(clean) || 0 });
-                  setErrors(prev => ({ ...prev, salary: validateSalary(clean).error }));
-                }} 
-                error={errors.salary}
-                success={editEmp.salary !== 0 && !errors.salary}
-              />
-              <Input 
-                label="Manager / Supervisor Name" 
-                value={editEmp.manager} 
-                onChange={e => {
-                  const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-                  setEditEmp({ ...editEmp, manager: clean });
-                  setErrors(prev => ({ ...prev, manager: validateName(clean).error }));
-                }} 
-                error={errors.manager}
-                success={editEmp.manager !== '' && !errors.manager}
-              />
-            </div>
+            {activeTab === 'job' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Select label="Branch Location *" value={editEmp.branchLocation || 'AHMEDABAD'} onChange={e => setEditEmp({ ...editEmp, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
+                  <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={departments.map(d => ({ value: d, label: d }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />
+                  <Select label="Employment Class *" value={editEmp.category || 'Skilled'} onChange={e => setEditEmp({ ...editEmp, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Select label="Employment Type *" value={editEmp.employmentType || 'CONTRACTUAL'} onChange={e => setEditEmp({ ...editEmp, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} />
+                  <Input label="Joining Date *" type="date" value={editEmp.joinDate} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} />
+                  <Input label="Service Book No" value={editEmp.serviceBookNo || ''} onChange={e => setEditEmp({ ...editEmp, serviceBookNo: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} />
+                  <Input label="Manager" value={editEmp.manager} onChange={e => setEditEmp({ ...editEmp, manager: e.target.value })} />
+                </div>
+                <div className="border-t border-slate-150 pt-2 grid grid-cols-2 gap-3">
+                  <Input label="Exit Date" type="date" value={editEmp.exitDate || ''} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} />
+                  <Input label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'banking' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Aadhaar Number" value={editEmp.aadhaar || ''} onChange={e => setEditEmp({ ...editEmp, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
+                  <Input label="PAN Card" value={editEmp.pan || ''} onChange={e => setEditEmp({ ...editEmp, pan: e.target.value.toUpperCase().slice(0, 10) })} />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Input label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} />
+                  <Input label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
+                  <Input label="ESIC IP Number" value={editEmp.esic || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} />
+                </div>
+                <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+                  <Input label="Bank Name" value={editEmp.bankName || ''} onChange={e => setEditEmp({ ...editEmp, bankName: e.target.value })} />
+                  <Input label="Account Number" value={editEmp.accountNumber || ''} onChange={e => setEditEmp({ ...editEmp, accountNumber: e.target.value.replace(/\D/g, '') })} />
+                  <Input label="IFSC Code" value={editEmp.ifsc || ''} onChange={e => setEditEmp({ ...editEmp, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'address' && (
+              <div className="space-y-3">
+                <Input label="Present Address" value={editEmp.presentAddress || ''} onChange={e => setEditEmp({ ...editEmp, presentAddress: e.target.value })} />
+                <Input label="Permanent Address" value={editEmp.permanentAddress || ''} onChange={e => setEditEmp({ ...editEmp, permanentAddress: e.target.value })} />
+              </div>
+            )}
           </div>
         )}
       </Modal>
 
       {/* Delete Confirmation */}
-      <Modal open={!!deleteEmp} onClose={() => setDeleteEmp(null)} title="Terminate Employee Profile" size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setDeleteEmp(null)}>Cancel</Button>
-            <Button variant="danger" onClick={handleDelete}>De-activate Employee</Button>
-          </>
-        }
-      >
+      <Modal open={!!deleteEmp} onClose={() => setDeleteEmp(null)} title="Delete Synchronized Employee File" size="sm">
         {deleteEmp && (
-          <p className="text-xs text-gray-600">
-            Are you sure you want to suspend the profile for <strong>{deleteEmp.name}</strong> ({deleteEmp.employeeId})? This will suspend active attendance and payroll compilation pipelines.
-          </p>
-        )}
-      </Modal>
-
-      {/* View Detail Modal */}
-      <Modal open={!!viewEmp} onClose={() => setViewEmp(null)} title="Employee Dossier File" size="md">
-        {viewEmp && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-3.5 pb-3.5 border-b border-gray-100">
-              <div className="w-11 h-11 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-base font-sans">
-                {viewEmp.avatar}
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-gray-900">{viewEmp.name}</h4>
-                <p className="text-xs text-gray-400">{viewEmp.designation} · {viewEmp.department}</p>
-              </div>
-              <div className="ml-auto text-right">
-                <Badge variant={statusBadge(viewEmp.status)} dot>{viewEmp.status}</Badge>
-                <p className="text-[10px] text-gray-400 mt-1">{viewEmp.employeeId}</p>
-              </div>
+          <div className="space-y-3 text-xs text-left">
+            <p className="leading-relaxed">
+              Are you absolutely sure you want to permanently remove employee <strong className="text-slate-900">{deleteEmp.name}</strong> (`{deleteEmp.employeeId}`) from the roster?
+            </p>
+            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded font-semibold flex items-start gap-1.5">
+              <AlertTriangle className="shrink-0 text-red-600 mt-0.5" size={14} />
+              <span>This will break active payroll history and leave sync. This cannot be undone.</span>
             </div>
-
-            <div className="grid grid-cols-2 gap-y-3.5 gap-x-6 text-xs">
-              <div className="flex items-start gap-2">
-                <Mail size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div><p className="text-[10px] text-gray-400">Email Address</p><p className="font-semibold text-gray-800 mt-0.5">{viewEmp.email}</p></div>
-              </div>
-              <div className="flex items-start gap-2">
-                <Phone size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div><p className="text-[10px] text-gray-400">Contact Number</p><p className="font-semibold text-gray-800 mt-0.5">{viewEmp.phone || 'N/A'}</p></div>
-              </div>
-              <div className="flex items-start gap-2">
-                <Briefcase size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div><p className="text-[10px] text-gray-400">Compensation CTC</p><p className="font-bold text-gray-900 mt-0.5">₹{viewEmp.salary.toLocaleString()} / year</p></div>
-              </div>
-              <div className="flex items-start gap-2">
-                <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
-                <div><p className="text-[10px] text-gray-400">Base Location</p><p className="font-semibold text-gray-800 mt-0.5">{viewEmp.location}</p></div>
-              </div>
-              <div><p className="text-[10px] text-gray-400">Supervisor / Reporter</p><p className="font-semibold mt-0.5">{viewEmp.manager}</p></div>
-              <div><p className="text-[10px] text-gray-400">Joining Date</p><p className="font-semibold mt-0.5">{viewEmp.joinDate}</p></div>
-              <div><p className="text-[10px] text-gray-400">SaaS Privileges Level</p><Badge variant="blue" className="mt-0.5">{viewEmp.role}</Badge></div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDeleteEmp(null)}>Cancel</Button>
+              <Button variant="danger" onClick={handleDelete}>Remove Record</Button>
             </div>
           </div>
         )}

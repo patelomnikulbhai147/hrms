@@ -1,9 +1,10 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
+import { excelSeededEmployees } from './excelSeededData';
 
-export type Role = 'Super Admin' | 'Company Head' | 'HR' | 'Employee';
+export type Role = 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee';
 
 export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated';
-export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected';
+export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
 export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
@@ -64,6 +65,47 @@ export interface Employee {
   avatar: string;
   salary: number;
   manager: string;
+
+  // Real Enterprise Master fields from Excel:
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
+  aadhaarName?: string;
+  gender?: string;
+  dob?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  photo?: string;
+  signature?: string;
+
+  fatherSpouseName?: string;
+  relationType?: string;
+  emergencyContact?: string;
+
+  category?: string; // HS/S/SS/US
+  employmentType?: string;
+  exitDate?: string;
+  exitReason?: string;
+  serviceBookNo?: string;
+  branchLocation?: string;
+
+  aadhaar?: string;
+  pan?: string;
+  pfNumber?: string;
+  uan?: string;
+  esic?: string;
+
+  bankName?: string;
+  accountNumber?: string;
+  ifsc?: string;
+
+  presentAddress?: string;
+  permanentAddress?: string;
+
+  aadhaarUpload?: string;
+  panUpload?: string;
+  photoUpload?: string;
+  signatureUpload?: string;
 }
 
 export interface AttendanceRecord {
@@ -251,7 +293,7 @@ export const companies: Company[] = [
     headerText: 'QUANTUM DATA LABS',
     footerText: 'BKC, Mumbai · Data-driven Intelligence · www.quantumdatalabs.ai',
     signatureText: 'Sneha Patel, Managing Director',
-    themeStyle: 'Futuristic',
+    themeStyle: 'Modern',
     paymentStatus: 'Paid',
     renewalDate: '2026-07-15',
     gstNumber: '27AAAAC5678A1Z5',
@@ -262,35 +304,35 @@ export const companies: Company[] = [
   },
   { 
     id: 'c3', 
-    name: 'HealthFirst Ltd', 
-    domain: 'healthfirst.in', 
+    name: 'Gujarat Cancer & Research Institute (GCRI)', 
+    domain: 'gcri.org.in', 
     adminName: 'Dr. Suresh Babu', 
-    adminEmail: 'suresh@healthfirst.in', 
-    phone: '+91 98001 34567', 
-    industry: 'Healthcare', 
+    adminEmail: 'director@gcri.org.in', 
+    phone: '+91 79226 80000', 
+    industry: 'Healthcare & Research', 
     status: 'Active', 
-    employeeCount: 4, 
+    employeeCount: 64, 
     joinDate: '2025-01-20', 
-    plan: 'Starter', 
-    logo: 'HF', 
-    pfRate: 10, 
+    plan: 'Enterprise', 
+    logo: 'GC', 
+    pfRate: 12, 
     esicRate: 3.25, 
     basicPercent: 50, 
     overtimeRate: 1.5, 
     profTaxRate: 200,
-    address: 'CG Road, Ahmedabad, Gujarat 380009',
-    email: 'info@healthfirst.in',
-    primaryColor: '#65a30d', // Fresh Green
-    headerText: 'HEALTHFIRST MEDICARE LIMITED',
-    footerText: 'Medicare Center, CG Road, Ahmedabad · Health & Care · www.healthfirst.in',
-    signatureText: 'Dr. Suresh Babu, Chief Medical Officer',
-    themeStyle: 'Classic',
-    paymentStatus: 'Overdue',
-    renewalDate: '2026-05-18',
-    gstNumber: '24AAAAH9012H1Z7',
-    billingAddress: 'CG Road, Ahmedabad, Gujarat 380009',
-    subscriptionPrice: 1999,
-    billingCycle: 'Monthly',
+    address: 'Asarwa, Ahmedabad, Gujarat 380016',
+    email: 'info@gcri.org.in',
+    primaryColor: '#0891b2', // Cyan / Medical Teal
+    headerText: 'THE GUJARAT CANCER & RESEARCH INSTITUTE',
+    footerText: 'M.P. Shah Cancer Hospital, Ahmedabad · State Cancer Institute · www.gcri.org.in',
+    signatureText: 'Dr. Suresh Babu, Director & Chief Medical Officer',
+    themeStyle: 'Elegant',
+    paymentStatus: 'Paid',
+    renewalDate: '2026-11-30',
+    gstNumber: '24AAAAG1234G1Z1',
+    billingAddress: 'Asarwa, Ahmedabad, Gujarat 380016',
+    subscriptionPrice: 12999,
+    billingCycle: 'Yearly',
     accountStatus: 'Active'
   },
   { 
@@ -380,7 +422,9 @@ export const employees: Employee[] = [
   { id: 'e9', employeeId: 'EMP009', companyId: 'c3', name: 'Karthik Reddy', email: 'karthik.reddy@healthfirst.in', phone: '+91 98765 43218', department: 'Engineering', designation: 'Software Lead', role: 'Staff', status: 'Active', joinDate: '2021-07-01', salary: 95000, manager: 'Dr. Suresh Babu', location: 'Hyderabad', avatar: 'KR' },
   { id: 'e10', employeeId: 'EMP010', companyId: 'c3', name: 'Sunita Joshi', email: 'sunita.joshi@healthfirst.in', phone: '+91 98765 43219', department: 'HR', designation: 'HR Coordinator', role: 'HR', status: 'Active', joinDate: '2023-03-20', salary: 50000, manager: 'Dr. Suresh Babu', location: 'Mumbai', avatar: 'SJ' },
   { id: 'e11', employeeId: 'EMP011', companyId: 'c3', name: 'Rahul Gupta', email: 'rahul.gupta@healthfirst.in', phone: '+91 98765 43220', department: 'Engineering', designation: 'React Developer', role: 'Staff', status: 'Active', joinDate: '2022-09-01', salary: 68000, manager: 'Karthik Reddy', location: 'Bangalore', avatar: 'RG' },
-  { id: 'e12', employeeId: 'EMP012', companyId: 'c3', name: 'Meera Iyer', email: 'meera.iyer@healthfirst.in', phone: '+91 98765 43221', department: 'Operations', designation: 'Office Coordinator', role: 'Staff', status: 'Inactive', joinDate: '2021-04-15', salary: 45000, manager: 'Dr. Suresh Babu', location: 'Chennai', avatar: 'MI' }
+  { id: 'e12', employeeId: 'EMP012', companyId: 'c3', name: 'Meera Iyer', email: 'meera.iyer@healthfirst.in', phone: '+91 98765 43221', department: 'Operations', designation: 'Office Coordinator', role: 'Staff', status: 'Inactive', joinDate: '2021-04-15', salary: 45000, manager: 'Dr. Suresh Babu', location: 'Chennai', avatar: 'MI' },
+
+  ...excelSeededEmployees
 ];
 
 // ─── Attendance ─────────────────────────────────────────────────────────────────

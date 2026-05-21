@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { Dashboard } from './pages/Dashboard';
 import { Employees } from './pages/Employees';
 import { Leaves } from './pages/Leaves';
+import { Attendance } from './pages/Attendance';
 import { Payroll } from './pages/Payroll';
 import { Companies } from './pages/Companies';
 import { Documents } from './pages/Documents';
@@ -35,6 +36,7 @@ const pageTitles: Record<PageId, string> = {
   employees: 'Employees',
   leaves: 'Leave Management',
   payroll: 'Payroll',
+  attendance: 'Attendance',
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
@@ -48,7 +50,8 @@ const defaultUsers: UserAccount[] = [
   { id: 'u4', name: 'Sneha Patel', email: 'sneha.patel@quantumdatalabs.ai', username: 'sneha', passwordStr: 'head123', role: 'Company Head', companyId: 'c2', status: 'Active', avatar: 'SP' },
   { id: 'u5', name: 'Sunita Joshi', email: 'sunita.joshi@healthfirst.in', username: 'sunita', passwordStr: 'hr123', role: 'HR', companyId: 'c3', status: 'Active', avatar: 'SJ' },
   { id: 'u6', name: 'Rajesh Kumar', email: 'rajesh.kumar@technova.in', username: 'rajesh', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'RK', employeeId: 'e1' },
-  { id: 'u7', name: 'Kavita Rao', email: 'kavita.rao@technova.in', username: 'kavita', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'KR', employeeId: 'emp-c1-2' }
+  { id: 'u7', name: 'Kavita Rao', email: 'kavita.rao@technova.in', username: 'kavita', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'KR', employeeId: 'emp-c1-2' },
+  { id: 'u8', name: 'Finance Lead', email: 'finance@healthfirst.in', username: 'finance', passwordStr: 'finance123', role: 'Finance', companyId: 'c3', status: 'Active', avatar: 'FL' }
 ];
 
 const defaultPlans: SubscriptionPlan[] = [
@@ -334,9 +337,21 @@ export default function App() {
           const pfRate = comp.pfRate || 12;
           const esicRate = comp.esicRate || 0.75;
           const profTax = comp.profTaxRate || 200;
+
+          // Unpaid leaves deduction
+          const empUnpaidLeaves = leaves.filter(l => 
+            l.employeeId === emp.id && 
+            l.status === 'Approved' && 
+            l.leaveType === 'Unpaid' &&
+            l.fromDate.includes('-06-')
+          );
+          const unpaidDays = empUnpaidLeaves.reduce((sum, l) => sum + l.days, 0);
+          const unpaidDeduction = Math.round((ctcMonthly / 30) * unpaidDays);
+
           const pfDeduction = Math.round(basicSalary * (pfRate / 100));
           const esicDeduction = Math.round(basicSalary * (esicRate / 100));
-          const deductions = pfDeduction + esicDeduction + profTax;
+          const baseDeductions = pfDeduction + esicDeduction + profTax;
+          const deductions = baseDeductions + unpaidDeduction;
           
           const bonus = p.bonus || 0;
           const tax = p.tax || 0;
@@ -368,9 +383,61 @@ export default function App() {
   };
 
   const handleUpdateLeaves = (updater: LeaveRequest[] | ((prev: LeaveRequest[]) => LeaveRequest[])) => {
-    const next = typeof updater === 'function' ? updater(leaves) : updater;
-    setLeaves(next);
-    localStorage.setItem('hrms_leaves', JSON.stringify(next));
+    const nextLeaves = typeof updater === 'function' ? updater(leaves) : updater;
+    setLeaves(nextLeaves);
+    localStorage.setItem('hrms_leaves', JSON.stringify(nextLeaves));
+
+    // Reactive sync to Payroll: If leaves updated, recalculate unpaid leave deductions
+    setPayroll(prevPayroll => {
+      let changed = false;
+      const nextPayroll = prevPayroll.map(p => {
+        const emp = employees.find(e => e.id === p.employeeId);
+        if (!emp) return p;
+        const comp = companies.find(c => c.id === emp.companyId) || defaultCompanies[0];
+        const basicPercent = comp.basicPercent || 50;
+        const ctcMonthly = Math.round(emp.salary / 12);
+        const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
+        const hra = Math.round(basicSalary * 0.4);
+        const special = Math.max(0, ctcMonthly - basicSalary - hra);
+        const allowances = hra + special;
+        const pfRate = comp.pfRate || 12;
+        const esicRate = comp.esicRate || 0.75;
+        const profTax = comp.profTaxRate || 200;
+        
+        // Unpaid leave deduction
+        const empUnpaidLeaves = nextLeaves.filter(l => 
+          l.employeeId === emp.id && 
+          l.status === 'Approved' && 
+          l.leaveType === 'Unpaid' &&
+          l.fromDate.includes('-06-')
+        );
+        const unpaidDays = empUnpaidLeaves.reduce((sum, l) => sum + l.days, 0);
+        const unpaidDeduction = Math.round((ctcMonthly / 30) * unpaidDays);
+
+        const pfDeduction = Math.round(basicSalary * (pfRate / 100));
+        const esicDeduction = Math.round(basicSalary * (esicRate / 100));
+        const baseDeductions = pfDeduction + esicDeduction + profTax;
+        const deductions = baseDeductions + unpaidDeduction;
+
+        const bonus = p.bonus || 0;
+        const tax = p.tax || 0;
+        const netSalary = basicSalary + allowances + bonus - deductions - tax;
+
+        if (p.deductions !== deductions || p.netSalary !== netSalary) {
+          changed = true;
+          return {
+            ...p,
+            deductions,
+            netSalary
+          };
+        }
+        return p;
+      });
+      if (changed) {
+        localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
+      }
+      return nextPayroll;
+    });
   };
 
   const handleUpdatePayroll = (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => {
@@ -504,7 +571,7 @@ export default function App() {
     localStorage.setItem('hrms_current_page', 'companies');
   };
 
-  const resolvedRole = isMasquerading ? 'Company Head' : (authProfile?.role || 'Super Admin');
+  const resolvedRole = isMasquerading ? 'Company Head' : role;
 
   const resolvedCompanyId = (authProfile?.role !== 'Super Admin' && !isMasquerading)
     ? (authProfile?.companyId || 'c1')
@@ -563,9 +630,20 @@ export default function App() {
           const esicRate = company.esicRate || 0.75;
           const profTax = company.profTaxRate || 200;
 
+          // Unpaid leaves deduction
+          const empUnpaidLeaves = nextLeaves.filter(l => 
+            l.employeeId === emp.id && 
+            l.status === 'Approved' && 
+            l.leaveType === 'Unpaid' &&
+            l.fromDate.includes('-06-')
+          );
+          const unpaidDays = empUnpaidLeaves.reduce((sum, l) => sum + l.days, 0);
+          const unpaidDeduction = Math.round((ctcMonthly / 30) * unpaidDays);
+
           const pfDeduction = Math.round(basicSalary * (pfRate / 100));
           const esicDeduction = Math.round(basicSalary * (esicRate / 100));
-          const deductions = pfDeduction + esicDeduction + profTax;
+          const baseDeductions = pfDeduction + esicDeduction + profTax;
+          const deductions = baseDeductions + unpaidDeduction;
           const netSalary = ctcMonthly - deductions;
 
           let initialStatus: 'draft' | 'prepared' | 'verified' | 'paid' = 'draft';
@@ -697,6 +775,17 @@ export default function App() {
             leaves={leaves}
             onUpdateLeaves={handleUpdateLeaves}
             _employees={employees}
+            authProfile={authProfile}
+          />
+        );
+      case 'attendance':
+        return (
+          <Attendance
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            attendance={attendance}
+            onUpdateAttendance={handleUpdateAttendance}
+            employees={employees}
           />
         );
       case 'payroll':

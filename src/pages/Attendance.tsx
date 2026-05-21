@@ -31,6 +31,7 @@ export const Attendance: React.FC<AttendanceProps> = ({
   onUpdateAttendance,
   employees
 }) => {
+  const isEmployee = role === 'Employee';
   const [selectedDate, setSelectedDate] = useState(today);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
