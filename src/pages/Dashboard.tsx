@@ -82,7 +82,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Scoped Data for Company Head / HR roles
   const scopedEmployees = employees.filter(e => e.companyId === activeCompanyId);
-  const scopedLeaves = leaves.filter(l => l.companyId === activeCompanyId);
   const scopedAttendance = attendance.filter(a => a.date === todayStr && a.companyId === activeCompanyId);
   const scopedPayroll = payroll.filter(p => p.companyId === activeCompanyId);
   const scopedDocs = documents.filter(d => d.companyId === activeCompanyId);
@@ -98,7 +97,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Super Admin Calculations ───
   const totalCompaniesCount = companies.length;
-  
+
   const activeSubscriptionsCount = companies.filter(
     c => c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')
   ).length;
@@ -181,7 +180,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return { ...c, paymentStatus: 'Paid' as const, renewalDate: next.toISOString().split('T')[0], accountStatus: 'Active' as const, status: 'Active' as const };
     });
     onUpdateCompanies?.(updated);
-    
+
     // Audit payment transaction
     const planObj = plans.find(p => p.name === target.plan);
     const price = planObj ? (target.billingCycle === 'Yearly' ? planObj.priceYearly : planObj.priceMonthly) : (target.subscriptionPrice || 0);
@@ -228,7 +227,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .filter(c => {
         const matchSearch = c.name.toLowerCase().includes(latestSearch.toLowerCase()) || c.adminName.toLowerCase().includes(latestSearch.toLowerCase());
         const isExpired = c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || daysLeft(c.renewalDate) < 0;
-        
+
         if (latestFilter === 'All') return matchSearch;
         if (latestFilter === 'Active') return matchSearch && c.accountStatus === 'Active' && c.paymentStatus === 'Paid';
         if (latestFilter === 'Expired') return matchSearch && isExpired;
@@ -308,7 +307,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   if (role === 'Super Admin') {
     return (
       <div className="space-y-6 relative pb-10">
-        
+
         {/* Dynamic Expiring Notification Toast Banner */}
         {expiringThisWeekCount > 0 && (
           <div className="bg-indigo-600/10 border border-indigo-200 backdrop-blur-md rounded-2xl p-4.5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
@@ -406,10 +405,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Premium Split Layout Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          
+
           {/* LEFT SIDE (Stats, Graphs, Renewal Alerts) */}
           <div className="lg:col-span-8 space-y-5">
-            
+
             {/* Revenue Overview Cards & Graphs */}
             <Card className="rounded-2xl border border-gray-150 shadow-xs p-6 bg-white">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -424,7 +423,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-                
+
                 {/* Bar Chart of Monthly Revenue */}
                 <div className="md:col-span-8">
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-3">MRR by Plan (₹)</span>
@@ -576,7 +575,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           {/* RIGHT SIDE (Latest Companies List, Quick Actions) */}
           <div className="lg:col-span-4 space-y-5">
-            
+
             {/* Latest Companies list */}
             <Card className="rounded-2xl border border-gray-150 shadow-xs p-5 bg-white">
               <div className="mb-4">
@@ -602,11 +601,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <button
                       key={tag}
                       onClick={() => setLatestFilter(tag)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                        latestFilter === tag
-                          ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
-                          : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${latestFilter === tag
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                        : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
+                        }`}
                     >
                       {tag}
                     </button>
@@ -622,7 +620,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   filteredLatestCompanies.map(c => {
                     const isExp = c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || daysLeft(c.renewalDate) < 0;
                     const computedStatusText = c.accountStatus === 'Suspended' ? 'Expired' : (isExp ? 'Expired' : (c.paymentStatus === 'Trial Active' ? 'Trial' : 'Active'));
-                    
+
                     return (
                       <div key={c.id} className="p-3 border border-gray-100 hover:border-gray-200 bg-white rounded-xl shadow-xs hover:shadow-sm transition-all duration-200 flex items-center justify-between gap-3">
                         <div className="grow min-w-0">
@@ -633,7 +631,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1">
                             <span>{c.plan}</span>
                             <span>•</span>
-                            <span className="text-indigo-650 font-semibold">{c.employeeCount} Staff</span>
+                            <span className="text-indigo-650 font-semibold">{employees.filter(e => e.companyId === c.id).length} Staff</span>
                             <span>•</span>
                             <span>Onboard: {c.joinDate}</span>
                           </div>
@@ -658,11 +656,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Global Toast component */}
         {toast && (
-          <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4.5 py-3 rounded-xl shadow-lg border transition-all duration-300 transform translate-y-0 ${
-            toast.type === 'success' ? 'bg-emerald-50 border-emerald-250 text-emerald-800' :
+          <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4.5 py-3 rounded-xl shadow-lg border transition-all duration-300 transform translate-y-0 ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-250 text-emerald-800' :
             toast.type === 'warning' ? 'bg-rose-50 border-rose-250 text-rose-800' :
-            'bg-blue-50 border-blue-250 text-blue-800'
-          }`}>
+              'bg-blue-50 border-blue-250 text-blue-800'
+            }`}>
             {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />}
             {toast.type === 'warning' && <AlertCircle size={16} className="text-rose-500 flex-shrink-0" />}
             {toast.type === 'info' && <Info size={16} className="text-blue-500 flex-shrink-0" />}
@@ -676,11 +673,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Company Head Dashboard (Corporate Operations Control) ───
   if (role === 'Company Head') {
-    const presentToday = scopedAttendance.filter(a => a.status === 'Present').length;
-    const absentToday = scopedAttendance.filter(a => a.status === 'Absent').length;
-    const onLeaveToday = scopedLeaves.filter(
-      l => l.status === 'Approved' && todayStr >= l.fromDate && todayStr <= l.toDate
+    const presentToday = scopedEmployees.filter(e =>
+      e.status === 'Active' &&
+      scopedAttendance.some(a => a.employeeId === e.id && (a.status === 'Present' || a.status === 'Late' || a.status === 'WFH'))
     ).length;
+
+    const absentToday = scopedEmployees.filter(e =>
+      e.status === 'Active' &&
+      (scopedAttendance.some(a => a.employeeId === e.id && a.status === 'Absent') ||
+        !scopedAttendance.some(a => a.employeeId === e.id))
+    ).length;
+
+    const onLeaveToday = scopedEmployees.filter(e => e.status === 'On Leave').length;
 
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';

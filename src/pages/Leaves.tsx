@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, Clock, Filter, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, CheckCircle2 } from 'lucide-react';
 import {
   type Employee,
-  leaveRequests as globalLeaves,
   type LeaveRequest,
   type LeaveType,
   type Role
@@ -20,7 +19,7 @@ interface LeavesProps {
   activeCompanyId: string;
   leaves: LeaveRequest[];
   onUpdateLeaves: (leaves: LeaveRequest[]) => void;
-  employees: Employee[];
+  _employees: Employee[];
 }
 
 const leaveTypes: LeaveType[] = ['Annual', 'Sick', 'Casual', 'Maternity', 'Paternity', 'Unpaid'];
@@ -30,7 +29,7 @@ export const Leaves: React.FC<LeavesProps> = ({
   activeCompanyId,
   leaves,
   onUpdateLeaves,
-  employees
+  _employees
 }) => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');

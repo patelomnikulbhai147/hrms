@@ -45,7 +45,7 @@ const defaultUsers: UserAccount[] = [
   { id: 'u1', name: 'Super Admin', email: 'admin@platform.in', username: 'superadmin', passwordStr: 'admin123', role: 'Super Admin', companyId: '', status: 'Active', avatar: 'SA' },
   { id: 'u2', name: 'Vikram Singh', email: 'vikram.singh@technova.in', username: 'vikram', passwordStr: 'head123', role: 'Company Head', companyId: 'c1', status: 'Active', avatar: 'VS' },
   { id: 'u3', name: 'Priya Sharma', email: 'priya.sharma@technova.in', username: 'priya', passwordStr: 'hr123', role: 'HR', companyId: 'c1', status: 'Active', avatar: 'PS' },
-  { id: 'u4', name: 'Sneha Patel', email: 'sneha.patel@globalfinance.com', username: 'sneha', passwordStr: 'head123', role: 'Company Head', companyId: 'c2', status: 'Active', avatar: 'SP' },
+  { id: 'u4', name: 'Sneha Patel', email: 'sneha.patel@quantumdatalabs.ai', username: 'sneha', passwordStr: 'head123', role: 'Company Head', companyId: 'c2', status: 'Active', avatar: 'SP' },
   { id: 'u5', name: 'Sunita Joshi', email: 'sunita.joshi@healthfirst.in', username: 'sunita', passwordStr: 'hr123', role: 'HR', companyId: 'c3', status: 'Active', avatar: 'SJ' },
 ];
 
@@ -57,7 +57,7 @@ const defaultPlans: SubscriptionPlan[] = [
 
 const defaultPayments: PaymentRecord[] = [
   { id: 'tx1', companyId: 'c1', companyName: 'TechNova Solutions', amount: 4999, paymentDate: '2026-05-10 14:30', invoiceNumber: 'INV-2026-001', planType: 'Professional', paymentMode: 'UPI', transactionStatus: 'Success' },
-  { id: 'tx2', companyId: 'c2', companyName: 'Global Finance Corp', amount: 12999, paymentDate: '2026-05-12 11:15', invoiceNumber: 'INV-2026-002', planType: 'Enterprise', paymentMode: 'Bank Transfer', transactionStatus: 'Success' },
+  { id: 'tx2', companyId: 'c2', companyName: 'Quantum Data Labs', amount: 12999, paymentDate: '2026-05-12 11:15', invoiceNumber: 'INV-2026-002', planType: 'Enterprise', paymentMode: 'Bank Transfer', transactionStatus: 'Success' },
   { id: 'tx3', companyId: 'c3', companyName: 'HealthFirst Ltd', amount: 1999, paymentDate: '2026-04-18 16:45', invoiceNumber: 'INV-2026-003', planType: 'Starter', paymentMode: 'Card', transactionStatus: 'Success' },
   { id: 'tx4', companyId: 'c3', companyName: 'HealthFirst Ltd', amount: 1999, paymentDate: '2026-05-18 09:00', invoiceNumber: 'INV-2026-004', planType: 'Starter', paymentMode: 'Card', transactionStatus: 'Failed' }
 ];
@@ -448,10 +448,12 @@ export default function App() {
     let employeesChanged = false;
     let leavesChanged = false;
     let attendanceChanged = false;
+    let payrollChanged = false;
 
     const nextEmployees = [...employees];
     const nextLeaves = [...leaves];
     const nextAttendance = [...attendance];
+    const nextPayroll = [...payroll];
 
     companies.forEach(company => {
       // If a company has 0 employees, seed full starter pack data for it!
@@ -475,6 +477,57 @@ export default function App() {
           attendanceChanged = true;
         }
       }
+
+      // Automatically generate active payroll records for June 2026 if none exist
+      const hasPayroll = payroll.some(p => p.companyId === company.id && p.month === 'June');
+      if (!hasPayroll) {
+        // Calculate payroll for the employees of this company
+        const compEmps = nextEmployees.filter(e => e.companyId === company.id);
+        compEmps.forEach((emp, index) => {
+          const basicPercent = company.basicPercent || 50;
+          const ctcMonthly = Math.round(emp.salary / 12);
+          const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
+          
+          const hra = Math.round(basicSalary * 0.4);
+          const special = Math.max(0, ctcMonthly - basicSalary - hra);
+          const allowances = hra + special;
+
+          const pfRate = company.pfRate || 12;
+          const esicRate = company.esicRate || 0.75;
+          const profTax = company.profTaxRate || 200;
+
+          const pfDeduction = Math.round(basicSalary * (pfRate / 100));
+          const esicDeduction = Math.round(basicSalary * (esicRate / 100));
+          const deductions = pfDeduction + esicDeduction + profTax;
+          const netSalary = ctcMonthly - deductions;
+
+          let initialStatus: 'draft' | 'prepared' | 'verified' | 'paid' = 'draft';
+          if (index === 0) initialStatus = 'draft';
+          else if (index === 1) initialStatus = 'prepared'; 
+          else if (index === 2) initialStatus = 'verified'; 
+          else if (index === 3) initialStatus = 'paid'; 
+
+          nextPayroll.push({
+            id: `p-init-${company.id}-${emp.id}`,
+            companyId: company.id,
+            employeeId: emp.id,
+            employeeName: emp.name,
+            department: emp.department,
+            month: 'June',
+            year: 2026,
+            basicSalary,
+            allowances,
+            deductions,
+            netSalary,
+            status: initialStatus,
+            salary: netSalary,
+            payrollStatus: initialStatus,
+            paymentStatus: initialStatus === 'paid' ? 'paid' : 'pending',
+            payslipGenerated: false
+          });
+          payrollChanged = true;
+        });
+      }
     });
 
     if (employeesChanged) {
@@ -489,7 +542,11 @@ export default function App() {
       setAttendance(nextAttendance);
       localStorage.setItem('hrms_attendance', JSON.stringify(nextAttendance));
     }
-  }, [companies, employees, leaves, attendance]);
+    if (payrollChanged) {
+      setPayroll(nextPayroll);
+      localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
+    }
+  }, [companies, employees, leaves, attendance, payroll]);
 
   useEffect(() => {
     if (resolvedRole === 'Super Admin' && ['employees', 'leaves', 'payroll', 'documents', 'reports'].includes(currentPage)) {
@@ -530,13 +587,14 @@ export default function App() {
       case 'companies':
         return (
           <Companies
-            role={resolvedRole}
+            _role={resolvedRole}
             companies={companies}
             onUpdateCompanies={handleUpdateCompanies}
             userAccounts={userAccounts}
             onUpdateAccounts={handleUpdateAccounts}
             onStartMasquerade={handleStartMasquerade}
             plans={plans}
+            employees={employees}
           />
         );
       case 'billing':
@@ -568,7 +626,7 @@ export default function App() {
             activeCompanyId={resolvedCompanyId}
             leaves={leaves}
             onUpdateLeaves={handleUpdateLeaves}
-            employees={employees}
+            _employees={employees}
           />
         );
       case 'payroll':

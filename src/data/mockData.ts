@@ -224,33 +224,33 @@ export const companies: Company[] = [
   },
   { 
     id: 'c2', 
-    name: 'Global Finance Corp', 
-    domain: 'globalfinance.com', 
+    name: 'Quantum Data Labs', 
+    domain: 'quantumdatalabs.ai', 
     adminName: 'Sneha Patel', 
-    adminEmail: 'sneha@globalfinance.com', 
-    phone: '+91 98001 23456', 
-    industry: 'Finance', 
+    adminEmail: 'sneha.patel@quantumdatalabs.ai', 
+    phone: '+91 98123 45678', 
+    industry: 'Analytics', 
     status: 'Active', 
     employeeCount: 4, 
     joinDate: '2025-02-15', 
     plan: 'Enterprise', 
-    logo: 'GF', 
+    logo: 'QD', 
     pfRate: 14, 
     esicRate: 3.25, 
     basicPercent: 55, 
     overtimeRate: 1.5, 
     profTaxRate: 200,
-    address: 'Nariman Point, Mumbai, Maharashtra 400021',
-    email: 'ops@globalfinance.com',
-    primaryColor: '#0f766e', // Deep Teal
-    headerText: 'GLOBAL FINANCE CORPORATION',
-    footerText: 'Financial Hub, Nariman Point, Mumbai · Strictly Confidential · www.globalfinance.com',
+    address: 'Bandra Kurla Complex, Mumbai, Maharashtra 400051',
+    email: 'ops@quantumdatalabs.ai',
+    primaryColor: '#0a74a3', // Deep Blue
+    headerText: 'QUANTUM DATA LABS',
+    footerText: 'BKC, Mumbai · Data-driven Intelligence · www.quantumdatalabs.ai',
     signatureText: 'Sneha Patel, Managing Director',
-    themeStyle: 'Elegant',
+    themeStyle: 'Futuristic',
     paymentStatus: 'Paid',
     renewalDate: '2026-07-15',
     gstNumber: '27AAAAC5678A1Z5',
-    billingAddress: 'Nariman Point, Mumbai, Maharashtra 400021',
+    billingAddress: 'Bandra Kurla Complex, Mumbai, Maharashtra 400051',
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
     accountStatus: 'Active'
@@ -365,11 +365,11 @@ export const employees: Employee[] = [
   { id: 'e3', employeeId: 'EMP003', companyId: 'c1', name: 'Vikram Singh', email: 'vikram.singh@technova.in', phone: '+91 98765 43212', department: 'Management', designation: 'Operations Director', role: 'Company Head', status: 'Active', joinDate: '2019-01-10', salary: 120000, manager: 'Super Admin', location: 'Delhi', avatar: 'VS' },
   { id: 'e4', employeeId: 'EMP004', companyId: 'c1', name: 'Anita Verma', email: 'anita.verma@technova.in', phone: '+91 98765 43213', department: 'Accounts', designation: 'Payroll Officer', role: 'Staff', status: 'Active', joinDate: '2021-08-20', salary: 65000, manager: 'Vikram Singh', location: 'Hyderabad', avatar: 'AV' },
 
-  // Global Finance Corp (c2)
-  { id: 'e5', employeeId: 'EMP005', companyId: 'c2', name: 'Mohammed Ali', email: 'mohammed.ali@globalfinance.com', phone: '+91 98765 43214', department: 'Finance', designation: 'Senior Accountant', role: 'Staff', status: 'Active', joinDate: '2022-02-14', salary: 90000, manager: 'Sneha Patel', location: 'Chennai', avatar: 'MA' },
-  { id: 'e6', employeeId: 'EMP006', companyId: 'c2', name: 'Sneha Patel', email: 'sneha.patel@globalfinance.com', phone: '+91 98765 43215', department: 'Operations', designation: 'Company Head', role: 'Company Head', status: 'Active', joinDate: '2022-05-10', salary: 110000, manager: 'Super Admin', location: 'Pune', avatar: 'SP' },
-  { id: 'e7', employeeId: 'EMP007', companyId: 'c2', name: 'Arjun Nair', email: 'arjun.nair@globalfinance.com', phone: '+91 98765 43216', department: 'Finance', designation: 'Accounts Specialist', role: 'Staff', status: 'Active', joinDate: '2023-01-05', salary: 70000, manager: 'Mohammed Ali', location: 'Bangalore', avatar: 'AN' },
-  { id: 'e8', employeeId: 'EMP008', companyId: 'c2', name: 'Divya Menon', email: 'divya.menon@globalfinance.com', phone: '+91 98765 43217', department: 'Operations', designation: 'Operations Executive', role: 'Staff', status: 'On Leave', joinDate: '2022-11-15', salary: 58000, manager: 'Sneha Patel', location: 'Kochi', avatar: 'DM' },
+  // Quantum Data Labs (c2)
+  { id: 'e5', employeeId: 'EMP005', companyId: 'c2', name: 'Nikhil Sharma', email: 'nikhil.sharma@quantumdatalabs.ai', phone: '+91 98765 43214', department: 'Finance', designation: 'Senior Accountant', role: 'Staff', status: 'Active', joinDate: '2022-02-14', salary: 90000, manager: 'Sneha Patel', location: 'Chennai', avatar: 'NS' },
+  { id: 'e6', employeeId: 'EMP006', companyId: 'c2', name: 'Sneha Patel', email: 'sneha.patel@quantumdatalabs.ai', phone: '+91 98765 43215', department: 'Operations', designation: 'Company Head', role: 'Company Head', status: 'Active', joinDate: '2022-05-10', salary: 110000, manager: 'Super Admin', location: 'Pune', avatar: 'SP' },
+  { id: 'e7', employeeId: 'EMP007', companyId: 'c2', name: 'Arjun Nair', email: 'arjun.nair@quantumdatalabs.ai', phone: '+91 98765 43216', department: 'Analytics', designation: 'Insights Specialist', role: 'Staff', status: 'Active', joinDate: '2023-01-05', salary: 70000, manager: 'Nikhil Sharma', location: 'Bangalore', avatar: 'AN' },
+  { id: 'e8', employeeId: 'EMP008', companyId: 'c2', name: 'Divya Menon', email: 'divya.menon@quantumdatalabs.ai', phone: '+91 98765 43217', department: 'Operations', designation: 'Operations Executive', role: 'Staff', status: 'On Leave', joinDate: '2022-11-15', salary: 58000, manager: 'Sneha Patel', location: 'Kochi', avatar: 'DM' },
 
   // HealthFirst Ltd (c3)
   { id: 'e9', employeeId: 'EMP009', companyId: 'c3', name: 'Karthik Reddy', email: 'karthik.reddy@healthfirst.in', phone: '+91 98765 43218', department: 'Engineering', designation: 'Software Lead', role: 'Staff', status: 'Active', joinDate: '2021-07-01', salary: 95000, manager: 'Dr. Suresh Babu', location: 'Hyderabad', avatar: 'KR' },
@@ -392,12 +392,12 @@ export const attendanceRecords: AttendanceRecord[] = [
   { id: 'a13', companyId: 'c1', employeeId: 'e1', employeeName: 'Rajesh Kumar', department: 'Engineering', date: yesterday, clockIn: '09:00', clockOut: '18:00', status: 'Present', hoursWorked: 9.0 },
   { id: 'a14', companyId: 'c1', employeeId: 'e2', employeeName: 'Priya Sharma', department: 'HR', date: yesterday, clockIn: '08:50', clockOut: '17:50', status: 'Present', hoursWorked: 9.0 },
 
-  // Global Finance Corp (c2)
-  { id: 'a5', companyId: 'c2', employeeId: 'e5', employeeName: 'Mohammed Ali', department: 'Finance', date: today, clockIn: '08:45', clockOut: '18:00', status: 'Present', hoursWorked: 9.25 },
+  // Quantum Data Labs (c2)
+  { id: 'a5', companyId: 'c2', employeeId: 'e5', employeeName: 'Nikhil Sharma', department: 'Finance', date: today, clockIn: '08:45', clockOut: '18:00', status: 'Present', hoursWorked: 9.25 },
   { id: 'a6', companyId: 'c2', employeeId: 'e6', employeeName: 'Sneha Patel', department: 'Operations', date: today, clockIn: '09:15', clockOut: '14:00', status: 'Half Day', hoursWorked: 4.75 },
-  { id: 'a7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Finance', date: today, clockIn: '09:00', clockOut: '18:00', status: 'WFH', hoursWorked: 9.0 },
+  { id: 'a7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Analytics', date: today, clockIn: '09:00', clockOut: '18:00', status: 'WFH', hoursWorked: 9.0 },
   { id: 'a8', companyId: 'c2', employeeId: 'e8', employeeName: 'Divya Menon', department: 'Operations', date: today, clockIn: '', clockOut: '', status: 'Absent', hoursWorked: 0 },
-  { id: 'a15', companyId: 'c2', employeeId: 'e5', employeeName: 'Mohammed Ali', department: 'Finance', date: yesterday, clockIn: '09:00', clockOut: '18:00', status: 'Present', hoursWorked: 9.0 },
+  { id: 'a15', companyId: 'c2', employeeId: 'e5', employeeName: 'Nikhil Sharma', department: 'Finance', date: yesterday, clockIn: '09:00', clockOut: '18:00', status: 'Present', hoursWorked: 9.0 },
 
   // HealthFirst Ltd (c3)
   { id: 'a9', companyId: 'c3', employeeId: 'e9', employeeName: 'Karthik Reddy', department: 'Engineering', date: today, clockIn: '08:45', clockOut: '18:10', status: 'Present', hoursWorked: 9.4 },
@@ -414,9 +414,9 @@ export const leaveRequests: LeaveRequest[] = [
   { id: 'l2', companyId: 'c1', employeeId: 'e1', employeeName: 'Rajesh Kumar', department: 'Engineering', leaveType: 'Annual', fromDate: '2026-06-10', toDate: '2026-06-17', days: 6, reason: 'Pre-planned family vacation', status: 'Approved', appliedOn: '2026-05-01', approvedBy: 'Vikram Singh' },
   { id: 'l3', companyId: 'c1', employeeId: 'e1', employeeName: 'Rajesh Kumar', department: 'Engineering', leaveType: 'Casual', fromDate: '2026-05-30', toDate: '2026-05-30', days: 1, reason: 'Personal domestic chore', status: 'Rejected', appliedOn: '2026-05-28', approvedBy: 'Vikram Singh' },
 
-  // Global Finance (c2)
+  // Quantum Data Labs (c2)
   { id: 'l4', companyId: 'c2', employeeId: 'e8', employeeName: 'Divya Menon', department: 'Operations', leaveType: 'Sick', fromDate: '2026-05-20', toDate: '2026-05-22', days: 3, reason: 'Scheduled medical appointment and recovery', status: 'Approved', appliedOn: '2026-05-18', approvedBy: 'Sneha Patel' },
-  { id: 'l5', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Finance', leaveType: 'Casual', fromDate: '2026-06-01', toDate: '2026-06-02', days: 2, reason: 'Family celebration out of town', status: 'Pending', appliedOn: '2026-05-19' },
+  { id: 'l5', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Analytics', leaveType: 'Casual', fromDate: '2026-06-01', toDate: '2026-06-02', days: 2, reason: 'Family celebration out of town', status: 'Pending', appliedOn: '2026-05-19' },
 
   // HealthFirst (c3)
   { id: 'l6', companyId: 'c3', employeeId: 'e11', employeeName: 'Rahul Gupta', department: 'Engineering', leaveType: 'Annual', fromDate: '2026-06-15', toDate: '2026-06-19', days: 5, reason: 'Sister\'s wedding ceremony', status: 'Approved', appliedOn: '2026-05-18' }
@@ -440,10 +440,10 @@ export const payrollRecords: PayrollRecord[] = [
   { id: 'p3', companyId: 'c1', employeeId: 'e3', employeeName: 'Vikram Singh', department: 'Management', month: 'June', year: 2026, basicSalary: 120000, allowances: 20000, deductions: 15000, netSalary: 125000, status: 'verified', salary: 125000, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
   { id: 'p4', companyId: 'c1', employeeId: 'e4', employeeName: 'Anita Verma', department: 'Accounts', month: 'June', year: 2026, basicSalary: 65000, allowances: 8000, deductions: 6500, netSalary: 66500, status: 'paid', salary: 66500, payrollStatus: 'paid', paymentStatus: 'paid', payslipGenerated: false, paymentDate: '2026-05-20', paymentMethod: 'Bank Transfer', paidBy: 'Finance Admin' },
 
-  // Global Finance (c2)
-  { id: 'p5', companyId: 'c2', employeeId: 'e5', employeeName: 'Mohammed Ali', department: 'Finance', month: 'June', year: 2026, basicSalary: 90000, allowances: 14000, deductions: 9000, netSalary: 95000, status: 'payslip_generated', salary: 95000, payrollStatus: 'payslip_generated', paymentStatus: 'paid', payslipGenerated: true, processedOn: '2026-05-20', paymentDate: '2026-05-20', paymentMethod: 'Bank Transfer', paidBy: 'Finance Admin' },
+  // Quantum Data Labs (c2)
+  { id: 'p5', companyId: 'c2', employeeId: 'e5', employeeName: 'Nikhil Sharma', department: 'Finance', month: 'June', year: 2026, basicSalary: 90000, allowances: 14000, deductions: 9000, netSalary: 95000, status: 'payslip_generated', salary: 95000, payrollStatus: 'payslip_generated', paymentStatus: 'paid', payslipGenerated: true, processedOn: '2026-05-20', paymentDate: '2026-05-20', paymentMethod: 'Bank Transfer', paidBy: 'Finance Admin' },
   { id: 'p6', companyId: 'c2', employeeId: 'e6', employeeName: 'Sneha Patel', department: 'Operations', month: 'June', year: 2026, basicSalary: 110000, allowances: 18000, deductions: 11000, netSalary: 117000, status: 'payslip_generated', salary: 117000, payrollStatus: 'payslip_generated', paymentStatus: 'paid', payslipGenerated: true, processedOn: '2026-05-20', paymentDate: '2026-05-20', paymentMethod: 'UPI Payout', paidBy: 'Finance Admin' },
-  { id: 'p7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Finance', month: 'June', year: 2026, basicSalary: 70000, allowances: 9000, deductions: 7000, netSalary: 72000, status: 'verified', salary: 72000, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Analytics', month: 'June', year: 2026, basicSalary: 70000, allowances: 9000, deductions: 7000, netSalary: 72000, status: 'verified', salary: 72000, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
   { id: 'p8', companyId: 'c2', employeeId: 'e8', employeeName: 'Divya Menon', department: 'Operations', month: 'June', year: 2026, basicSalary: 58000, allowances: 7500, deductions: 5800, netSalary: 59700, status: 'failed', salary: 59700, payrollStatus: 'failed', paymentStatus: 'failed', payslipGenerated: false },
 
   // HealthFirst (c3)
@@ -462,10 +462,10 @@ export const documents: Document[] = [
   { id: 'doc3', companyId: 'c1', name: 'AnitaVerma_AadhaarCard.pdf', type: 'Aadhaar', employeeId: 'e4', employeeName: 'Anita Verma', uploadedBy: 'Priya Sharma', uploadedOn: '2021-08-20', size: '1.1 MB', status: 'Verified' },
   { id: 'doc3b', companyId: 'c1', name: 'AnitaVerma_PANCard.pdf', type: 'PAN', employeeId: 'e4', employeeName: 'Anita Verma', uploadedBy: 'Priya Sharma', uploadedOn: '2021-08-20', size: '670 KB', status: 'Pending' },
 
-  // Global Finance (c2)
-  { id: 'doc4', companyId: 'c2', name: 'GlobalFinance_NDAAgreement.pdf', type: 'Contract', uploadedBy: 'Sneha Patel', uploadedOn: '2025-02-15', size: '1.8 MB', status: 'Verified' },
+  // Quantum Data Labs (c2)
+  { id: 'doc4', companyId: 'c2', name: 'QuantumDataLabs_NDAAgreement.pdf', type: 'Contract', uploadedBy: 'Sneha Patel', uploadedOn: '2025-02-15', size: '1.8 MB', status: 'Verified' },
   { id: 'doc5', companyId: 'c2', name: 'ArjunNair_Resume.pdf', type: 'Resume', employeeId: 'e7', employeeName: 'Arjun Nair', uploadedBy: 'Sneha Patel', uploadedOn: '2023-01-20', size: '890 KB', status: 'Pending' },
-  { id: 'doc6', companyId: 'c2', name: 'MohammedAli_June2026_Payslip.pdf', type: 'Payslip', employeeId: 'e5', employeeName: 'Mohammed Ali', uploadedBy: 'Sneha Patel', uploadedOn: '2026-07-01', size: '256 KB', status: 'Verified' }
+  { id: 'doc6', companyId: 'c2', name: 'NikhilSharma_June2026_Payslip.pdf', type: 'Payslip', employeeId: 'e5', employeeName: 'Nikhil Sharma', uploadedBy: 'Sneha Patel', uploadedOn: '2026-07-01', size: '256 KB', status: 'Verified' }
 ];
 
 // ─── Notifications ───────────────────────────────────────────────────────────────

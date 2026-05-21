@@ -358,7 +358,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         </div>
         <PayrollWorkflowTable
           records={filtered}
-          role={role}
+          _role={role}
           primaryColor={currentCompany.primaryColor || '#3b82f6'}
           onViewPayslip={(r) => setViewPayslip(r)}
           onPrepare={handlePreparePayroll}

@@ -140,7 +140,7 @@ export const PhoneInput: React.FC<PhoneInputProps> = ({
         <button
           type="button"
           disabled={disabled}
-          onClick={() => { setIsOpen(p => !isOpen); setSearchQuery(''); setHighlightedIndex(0); }}
+          onClick={() => { setIsOpen(prev => !prev); setSearchQuery(''); setHighlightedIndex(0); }}
           onKeyDown={handleKeyDown}
           className="flex items-center gap-1.5 px-3 py-2.5 text-sm text-gray-700 bg-transparent hover:bg-gray-50 rounded-l-xl select-none outline-none border-none cursor-pointer h-full transition-colors flex-shrink-0"
         >

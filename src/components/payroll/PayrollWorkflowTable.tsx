@@ -7,7 +7,7 @@ import { payrollStatusConfig, getStatusBadgeVariant } from '../../utils/PayrollW
 
 interface PayrollWorkflowTableProps {
   records: PayrollRecord[];
-  role: Role;
+  _role: Role;
   primaryColor: string;
   onViewPayslip: (record: PayrollRecord) => void;
   onPrepare: (record: PayrollRecord) => void;
@@ -20,7 +20,7 @@ interface PayrollWorkflowTableProps {
 
 export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
   records,
-  role,
+  _role,
   primaryColor,
   onViewPayslip,
   onPrepare,

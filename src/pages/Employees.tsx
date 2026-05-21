@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter, Eye, Edit2, Trash2, Mail, Phone, MapPin, Briefcase, KeyRound, Lock, Trash } from 'lucide-react';
-import { employees as globalEmployees, departments, designations, type Employee, type EmployeeStatus, type Role } from '../data/mockData';
+import React, { useState } from 'react';
+import { Plus, Search, Eye, Edit2, Trash2, Mail, Phone, MapPin, Briefcase, KeyRound, Lock, Trash } from 'lucide-react';
+import { departments, designations, type Employee, type EmployeeStatus, type Role } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card } from '../components/ui/Card';

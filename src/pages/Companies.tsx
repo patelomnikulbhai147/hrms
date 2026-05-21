@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
-  Building2, Plus, Search, ShieldAlert, KeyRound, Lock, Trash2,
+  Building2, Plus, Search, KeyRound, Lock, Trash2,
   CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar
 } from 'lucide-react';
-import { type Company, type Role, type SubscriptionPlan } from '../data/mockData';
+import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
@@ -21,23 +21,25 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 
 interface CompaniesProps {
-  role: Role;
+  _role: Role;
   companies: Company[];
   onUpdateCompanies: (companies: Company[]) => void;
   userAccounts: UserAccount[];
   onUpdateAccounts: (accounts: UserAccount[]) => void;
   onStartMasquerade: (companyId: string) => void;
   plans: SubscriptionPlan[];
+  employees: Employee[];
 }
 
 export const Companies: React.FC<CompaniesProps> = ({
-  role,
+  _role,
   companies,
   onUpdateCompanies,
   userAccounts,
   onUpdateAccounts,
   onStartMasquerade,
-  plans
+  plans,
+  employees
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -408,7 +410,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                     <div className="text-[10px] text-gray-505 space-y-0.5">
                       <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
                       <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
-                      <p>Employees: <span className="font-bold text-blue-700">{c.employeeCount}</span></p>
+                      <p>Employees: <span className="font-bold text-blue-700">{employees.filter(emp => emp.companyId === c.id).length}</span></p>
                     </div>
                   </Td>
 

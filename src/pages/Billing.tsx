@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { 
-  CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle, 
-  XCircle, Edit3, Plus, ArrowUpRight, DollarSign, Users, RefreshCw, 
-  Calendar, FileText, Download, UserCheck, Play, Pause, ChevronRight,
+import {
+  CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
+  XCircle, Edit3, ArrowUpRight, DollarSign, Users,
+  Calendar, FileText, Download, UserCheck, ChevronRight,
   Building2
 } from 'lucide-react';
 import { Company, SubscriptionPlan, PaymentRecord } from '../data/mockData';
@@ -26,19 +26,19 @@ export const Billing: React.FC<BillingProps> = ({
   onUpdatePayments
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
-  
+
   // Filters and search states
   const [companySearch, setCompanySearch] = useState('');
   const [planFilter, setPlanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  
+
   // Modals state
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
   const [changingPlanCompany, setChangingPlanCompany] = useState<Company | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState<Company | null>(null);
   const [renewalConfirmCompany, setRenewalConfirmCompany] = useState<Company | null>(null);
   const [renewalStep, setRenewalStep] = useState<1 | 2>(1);
-  
+
   // Form states
   const [newRenewalDate, setNewRenewalDate] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
@@ -138,7 +138,7 @@ export const Billing: React.FC<BillingProps> = ({
 
       const isSuspended = c.accountStatus === 'Suspended';
       const isOverdueState = c.paymentStatus === 'Overdue' || c.paymentStatus === 'Expired';
-      
+
       let daysLeft: number | null = null;
       if (c.renewalDate) {
         const renDate = new Date(c.renewalDate);
@@ -244,8 +244,8 @@ export const Billing: React.FC<BillingProps> = ({
     onUpdateCompanies(prev => prev.map(c => {
       if (c.id === companyId) {
         const nextStatus = c.accountStatus === 'Active' ? 'Suspended' : 'Active';
-        return { 
-          ...c, 
+        return {
+          ...c,
           accountStatus: nextStatus,
           status: nextStatus === 'Suspended' ? 'Inactive' : 'Active'
         };
@@ -255,7 +255,7 @@ export const Billing: React.FC<BillingProps> = ({
   };
 
   const performRenewal = (
-    company: Company, 
+    company: Company,
     chosenPlan: 'Starter' | 'Professional' | 'Enterprise',
     chosenCycle: 'Monthly' | 'Yearly',
     calculatedPrice: number,
@@ -306,7 +306,7 @@ export const Billing: React.FC<BillingProps> = ({
     setRenewalStep(1);
     setRenewalPlan(initialPlan);
     setRenewalCycle(initialCycle);
-    
+
     // Auto calculate extended date (30 days/365 days from active expiration or from today if expired/overdue)
     const days = initialCycle === 'Yearly' ? 365 : 30;
     const baseDate = company.renewalDate ? new Date(company.renewalDate) : new Date('2026-05-20');
@@ -314,7 +314,7 @@ export const Billing: React.FC<BillingProps> = ({
     const base = baseDate.getTime() < todayVal.getTime() ? todayVal : baseDate;
     const next = new Date(base);
     next.setDate(next.getDate() + days);
-    
+
     setNewRenewalDate(formatIsoDate(next));
     setSuccessMessage('');
   };
@@ -342,7 +342,7 @@ export const Billing: React.FC<BillingProps> = ({
   const handleChangePlanSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!changingPlanCompany) return;
-    
+
     const selectedPlan = plans.find(p => p.id === selectedPlanId);
     if (!selectedPlan) return;
 
@@ -388,8 +388,8 @@ export const Billing: React.FC<BillingProps> = ({
   // Filtered companies safely safeguarded against missing fields
   const filteredCompanies = companies.filter(c => {
     if (!c) return false;
-    const matchSearch = (c.name || '').toLowerCase().includes(companySearch.toLowerCase()) || 
-                        (c.adminName || '').toLowerCase().includes(companySearch.toLowerCase());
+    const matchSearch = (c.name || '').toLowerCase().includes(companySearch.toLowerCase()) ||
+      (c.adminName || '').toLowerCase().includes(companySearch.toLowerCase());
     const matchPlan = !planFilter || (c.plan || '').toLowerCase() === planFilter.toLowerCase();
     const matchStatus = !statusFilter || (c.paymentStatus || '').toLowerCase() === statusFilter.toLowerCase();
     return matchSearch && matchPlan && matchStatus;
@@ -397,7 +397,7 @@ export const Billing: React.FC<BillingProps> = ({
 
   return (
     <div className="space-y-6">
-      
+
       {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
         <div className="bg-gradient-to-tr from-white to-slate-50 p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
@@ -479,44 +479,40 @@ export const Billing: React.FC<BillingProps> = ({
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex flex-wrap gap-2">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
-            activeTab === 'overview' 
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-100' 
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'overview'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
         >
           <Building2 size={16} />
           Company Billing & Accounts
         </button>
         <button
           onClick={() => setActiveTab('plans')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
-            activeTab === 'plans' 
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-100' 
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'plans'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
         >
           <CreditCard size={16} />
           Subscription Plans
         </button>
         <button
           onClick={() => setActiveTab('payments')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
-            activeTab === 'payments' 
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-100' 
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'payments'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
         >
           <FileText size={16} />
           Payment Transactions
         </button>
         <button
           onClick={() => setActiveTab('alerts')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 relative ${
-            activeTab === 'alerts' 
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-100' 
-              : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-          }`}
+          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 relative ${activeTab === 'alerts'
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
+            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
         >
           <ShieldAlert size={16} />
           Renewal Alerts
@@ -698,7 +694,7 @@ export const Billing: React.FC<BillingProps> = ({
                   <span className="text-4xl font-extrabold text-gray-800">₹{plan.priceMonthly}</span>
                   <span className="text-gray-400 text-sm ml-1">/ month</span>
                 </div>
-                
+
                 {/* Plan parameters */}
                 <ul className="mt-6 space-y-3.5 text-sm text-gray-600 border-t border-gray-50 pt-5">
                   <li className="flex items-center gap-2.5">
@@ -750,7 +746,7 @@ export const Billing: React.FC<BillingProps> = ({
               <h4 className="font-bold text-gray-800">SaaS Transaction History</h4>
               <p className="text-xs text-gray-400">Exportable payment receipts ledger</p>
             </div>
-            
+
             <Button
               onClick={handleExportPayments}
               className="py-2 px-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
@@ -797,11 +793,10 @@ export const Billing: React.FC<BillingProps> = ({
                       ₹{pay.amount.toLocaleString('en-IN')}
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        pay.transactionStatus === 'Success' ? 'bg-emerald-50 text-emerald-700' :
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${pay.transactionStatus === 'Success' ? 'bg-emerald-50 text-emerald-700' :
                         pay.transactionStatus === 'Failed' ? 'bg-rose-50 text-rose-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
+                          'bg-gray-100 text-gray-700'
+                        }`}>
                         {pay.transactionStatus === 'Success' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                         {pay.transactionStatus}
                       </span>
@@ -833,10 +828,10 @@ export const Billing: React.FC<BillingProps> = ({
             {dynamicAlerts.map(alertItem => {
               const comp = alertItem.company;
               const isSusp = comp.accountStatus === 'Suspended';
-              
+
               return (
-                <div 
-                  key={`${comp.id}-${alertItem.type}`} 
+                <div
+                  key={`${comp.id}-${alertItem.type}`}
                   className={`p-5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all duration-200 hover:shadow-md ${alertItem.bgColor} ${alertItem.borderColor}`}
                 >
                   <div className="flex items-start gap-4">
@@ -860,7 +855,7 @@ export const Billing: React.FC<BillingProps> = ({
                       <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
                         {alertItem.message} Workspace access is currently {isSusp ? 'fully locked' : 'restricted'} for corporate operations.
                       </p>
-                      
+
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
                         <span className="px-2.5 py-1 bg-white border border-gray-150 text-gray-600 rounded-lg">
                           Plan: <strong className="text-gray-800">{comp.plan}</strong>
@@ -896,11 +891,10 @@ export const Billing: React.FC<BillingProps> = ({
 
                     <button
                       onClick={() => toggleCompanyStatus(comp.id)}
-                      className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isSusp 
-                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
-                          : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                      }`}
+                      className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${isSusp
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
+                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                        }`}
                     >
                       {isSusp ? 'Reactivate Access' : 'Suspend Access'}
                     </button>
@@ -937,14 +931,14 @@ export const Billing: React.FC<BillingProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h4 className="font-bold text-gray-800">Change Subscription Plan</h4>
-              <button 
+              <button
                 onClick={() => setChangingPlanCompany(null)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 ✕
               </button>
             </div>
-            
+
             <form onSubmit={handleChangePlanSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide">
@@ -1043,11 +1037,10 @@ export const Billing: React.FC<BillingProps> = ({
                       <button
                         type="button"
                         onClick={() => updateRenewalState(renewalPlan, 'Monthly')}
-                        className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all ${
-                          renewalCycle === 'Monthly'
-                            ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
-                            : 'border-gray-200 hover:bg-gray-50 text-gray-600'
-                        }`}
+                        className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all ${renewalCycle === 'Monthly'
+                          ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
+                          : 'border-gray-200 hover:bg-gray-50 text-gray-600'
+                          }`}
                       >
                         <span className="font-bold text-sm">Monthly Plan</span>
                         <span className="text-[10px] text-gray-400 mt-1">Adds 30 Days</span>
@@ -1056,11 +1049,10 @@ export const Billing: React.FC<BillingProps> = ({
                       <button
                         type="button"
                         onClick={() => updateRenewalState(renewalPlan, 'Yearly')}
-                        className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all relative overflow-hidden ${
-                          renewalCycle === 'Yearly'
-                            ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
-                            : 'border-gray-200 hover:bg-gray-50 text-gray-600'
-                        }`}
+                        className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all relative overflow-hidden ${renewalCycle === 'Yearly'
+                          ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
+                          : 'border-gray-200 hover:bg-gray-50 text-gray-600'
+                          }`}
                       >
                         <div className="absolute top-0 right-0 bg-gradient-to-l from-amber-500 to-amber-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-bl-lg uppercase tracking-wide">
                           Save ~16%
@@ -1098,7 +1090,7 @@ export const Billing: React.FC<BillingProps> = ({
                     const todayVal = new Date('2026-05-20');
                     const renDate = new Date(renewalConfirmCompany.renewalDate);
                     const isActive = renDate.getTime() > todayVal.getTime();
-                    
+
                     if (isActive) {
                       return (
                         <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-start gap-3">
@@ -1212,14 +1204,14 @@ export const Billing: React.FC<BillingProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h4 className="font-bold text-gray-800">Edit Plan Thresholds ({editingPlan.name})</h4>
-              <button 
+              <button
                 onClick={() => setEditingPlan(null)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 ✕
               </button>
             </div>
-            
+
             <form onSubmit={handleSavePlanSettings} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>

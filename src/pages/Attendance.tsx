@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Search, Download, CheckCircle2, XCircle, Clock, Filter, Upload } from 'lucide-react';
 import {
   type Employee,
-  attendanceRecords as globalAttendance,
   type AttendanceRecord,
   type AttendanceStatus,
   type Role
@@ -103,7 +102,6 @@ export const Attendance: React.FC<AttendanceProps> = ({
     setMarkModal(null);
   };
 
-  const isEmployee = role === 'Employee';
   const canApprove = role === 'Company Head' || role === 'HR';
 
   return (
