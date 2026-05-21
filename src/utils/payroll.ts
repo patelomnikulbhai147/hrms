@@ -1,6 +1,6 @@
-import { type Company, type PayrollRecord } from '../data/mockData';
+import { type PayrollRecord } from '../data/mockData';
 
-const payrollOrder = ['Paid', 'Overdue', 'Processing', 'Generated', 'Draft', 'Failed'] as const;
+const payrollOrder = ['payslip_generated', 'paid', 'verified', 'prepared', 'draft', 'failed'] as const;
 export type PayrollWorkflowStatus = (typeof payrollOrder)[number];
 
 const parsePayrollDate = (record: PayrollRecord) => {
@@ -9,19 +9,13 @@ const parsePayrollDate = (record: PayrollRecord) => {
   return new Date(record.year, 0, 1);
 };
 
-export const getPayrollRecordStatus = (record: PayrollRecord, now = new Date()): PayrollWorkflowStatus => {
-  if (record.status === 'Failed') return 'Failed';
-  if (record.status === 'Paid') return 'Paid';
-  if (record.status === 'Processing') return 'Processing';
-  if (record.status === 'Generated') return 'Generated';
-
-  if (record.status === 'Draft') {
-    const dueDate = record.dueDate ? new Date(record.dueDate) : new Date(parsePayrollDate(record).getFullYear(), parsePayrollDate(record).getMonth() + 1, 7);
-    if (now > dueDate) return 'Overdue';
-    return 'Draft';
+export const getPayrollRecordStatus = (record: PayrollRecord): PayrollWorkflowStatus => {
+  // Support both payrollStatus and status property for backward compatibility
+  const currentStatus = record.payrollStatus || record.status;
+  if (payrollOrder.includes(currentStatus as any)) {
+    return currentStatus as PayrollWorkflowStatus;
   }
-
-  return 'Draft';
+  return 'draft';
 };
 
 export const getLatestPayrollRecord = (records: PayrollRecord[]) => {
@@ -32,7 +26,7 @@ export const getLatestPayrollRecord = (records: PayrollRecord[]) => {
   })[0];
 };
 
-export const deriveCompanyPayrollStatus = (companyId: string, payrollRecords: PayrollRecord[], now = new Date()) => {
+export const deriveCompanyPayrollStatus = (companyId: string, payrollRecords: PayrollRecord[]) => {
   const companyRecords = payrollRecords.filter(record => record.companyId === companyId);
   if (!companyRecords.length) {
     return { label: 'No Payroll', status: null as PayrollWorkflowStatus | null };
@@ -41,9 +35,18 @@ export const deriveCompanyPayrollStatus = (companyId: string, payrollRecords: Pa
   const latestRecord = getLatestPayrollRecord(companyRecords);
   const latestMonthRecords = companyRecords.filter(record => record.month === latestRecord.month && record.year === latestRecord.year);
 
+  const statusLabelMap: Record<PayrollWorkflowStatus, string> = {
+    draft: 'Draft',
+    prepared: 'Prepared',
+    verified: 'Verified',
+    paid: 'Paid',
+    payslip_generated: 'Payslip Generated',
+    failed: 'Failed'
+  };
+
   for (const status of payrollOrder) {
-    if (latestMonthRecords.some(record => getPayrollRecordStatus(record, now) === status)) {
-      return { label: status === 'Draft' ? 'Draft' : status, status };
+    if (latestMonthRecords.some(record => getPayrollRecordStatus(record) === status)) {
+      return { label: statusLabelMap[status] || status, status };
     }
   }
 
@@ -53,21 +56,33 @@ export const deriveCompanyPayrollStatus = (companyId: string, payrollRecords: Pa
 export const getPayrollSummaryCounts = (companyId: string, payrollRecords: PayrollRecord[]) => {
   const companyRecords = payrollRecords.filter(record => record.companyId === companyId);
   return {
-    draft: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Draft').length,
-    processing: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Processing').length,
-    generated: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Generated').length,
-    paid: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Paid').length,
-    overdue: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Overdue').length,
-    failed: companyRecords.filter(record => getPayrollRecordStatus(record) === 'Failed').length,
+    draft: companyRecords.filter(record => getPayrollRecordStatus(record) === 'draft').length,
+    prepared: companyRecords.filter(record => getPayrollRecordStatus(record) === 'prepared').length,
+    verified: companyRecords.filter(record => getPayrollRecordStatus(record) === 'verified').length,
+    paid: companyRecords.filter(record => getPayrollRecordStatus(record) === 'paid').length,
+    payslip_generated: companyRecords.filter(record => getPayrollRecordStatus(record) === 'payslip_generated').length,
+    failed: companyRecords.filter(record => getPayrollRecordStatus(record) === 'failed').length,
   };
 };
 
-export const payrollDisplayLabel = (record: PayrollRecord) => getPayrollRecordStatus(record);
+export const payrollDisplayLabel = (record: PayrollRecord) => {
+  const status = getPayrollRecordStatus(record);
+  const statusLabelMap: Record<PayrollWorkflowStatus, string> = {
+    draft: 'Draft',
+    prepared: 'Prepared',
+    verified: 'Verified',
+    paid: 'Paid',
+    payslip_generated: 'Payslip Generated',
+    failed: 'Failed'
+  };
+  return statusLabelMap[status] || status;
+};
 
-export const nextPayrollStage = (current: PayrollWorkflowStatus) => {
-  if (current === 'Draft') return 'Processing';
-  if (current === 'Processing') return 'Generated';
-  if (current === 'Generated') return 'Paid';
-  if (current === 'Failed') return 'Processing';
+export const nextPayrollStage = (current: PayrollWorkflowStatus): PayrollWorkflowStatus => {
+  if (current === 'draft') return 'prepared';
+  if (current === 'prepared') return 'verified';
+  if (current === 'verified') return 'paid';
+  if (current === 'paid') return 'payslip_generated';
+  if (current === 'failed') return 'prepared';
   return current;
 };

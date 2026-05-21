@@ -718,7 +718,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             label="Payroll Process Status"
             value={payrollStatusStr}
             icon={<FileText size={16} className="text-blue-600" />}
-            color={companyPayrollStatus.status === 'Overdue' ? 'bg-red-50' : 'bg-blue-50'}
+            color={companyPayrollStatus.status === 'failed' ? 'bg-red-50' : 'bg-blue-50'}
             sub="Latest payroll stage"
           />
         </div>

@@ -660,6 +660,7 @@ export default function App() {
           userName={authProfile.name}
           userAvatar={authProfile.avatar}
           pageTitle={pageTitles[currentPage] || 'HRMS'}
+          companies={companies}
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">

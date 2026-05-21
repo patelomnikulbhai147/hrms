@@ -219,7 +219,6 @@ export const Billing: React.FC<BillingProps> = ({
   const alertCount = dynamicAlerts.length;
 
   // ─── SaaS Metrics Calculations ──────────────────────────────────────────────
-  const activeCompanies = companies.filter(c => c && c.status === 'Active' && c.accountStatus === 'Active');
   const activePlansCount = companies.filter(c => c && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')).length;
   const pendingPaymentsCount = dynamicAlerts.filter(a => a.type === 'Overdue').length;
   const expiringCount = dynamicAlerts.filter(a => a.type === 'Expiring Soon' || a.type === 'Trial Ending').length;
@@ -299,7 +298,7 @@ export const Billing: React.FC<BillingProps> = ({
     const company = companies.find(c => c.id === companyId);
     if (!company) return;
 
-    const normalizedPlan = (company.plan === 'Growth' ? 'Professional' : company.plan) as 'Starter' | 'Professional' | 'Enterprise';
+    const normalizedPlan = ((company.plan as string) === 'Growth' ? 'Professional' : company.plan) as 'Starter' | 'Professional' | 'Enterprise';
     const initialPlan = normalizedPlan || 'Starter';
     const initialCycle = company.billingCycle === 'Yearly' ? 'Yearly' : 'Monthly';
 
@@ -831,20 +830,20 @@ export const Billing: React.FC<BillingProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-4">
-            {dynamicAlerts.map(alert => {
-              const comp = alert.company;
+            {dynamicAlerts.map(alertItem => {
+              const comp = alertItem.company;
               const isSusp = comp.accountStatus === 'Suspended';
               
               return (
                 <div 
-                  key={`${comp.id}-${alert.type}`} 
-                  className={`p-5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all duration-200 hover:shadow-md ${alert.bgColor} ${alert.borderColor}`}
+                  key={`${comp.id}-${alertItem.type}`} 
+                  className={`p-5 rounded-2xl border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all duration-200 hover:shadow-md ${alertItem.bgColor} ${alertItem.borderColor}`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className={`p-3 rounded-xl flex items-center justify-center ${alert.badgeColor} border`}>
-                      {alert.type === 'Suspended' ? (
+                    <div className={`p-3 rounded-xl flex items-center justify-center ${alertItem.badgeColor} border`}>
+                      {alertItem.type === 'Suspended' ? (
                         <XCircle size={22} />
-                      ) : alert.type === 'Overdue' ? (
+                      ) : alertItem.type === 'Overdue' ? (
                         <AlertTriangle size={22} />
                       ) : (
                         <ShieldAlert size={22} />
@@ -854,12 +853,12 @@ export const Billing: React.FC<BillingProps> = ({
                       <div className="flex items-center flex-wrap gap-2">
                         <h5 className="font-bold text-gray-800 text-base">{comp.name}</h5>
                         <span className="text-xs text-gray-400">({comp.domain})</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${alert.badgeColor}`}>
-                          {alert.type}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${alertItem.badgeColor}`}>
+                          {alertItem.type}
                         </span>
                       </div>
                       <p className="text-xs text-gray-600 mt-1.5 leading-relaxed">
-                        {alert.message} Workspace access is currently {isSusp ? 'fully locked' : 'restricted'} for corporate operations.
+                        {alertItem.message} Workspace access is currently {isSusp ? 'fully locked' : 'restricted'} for corporate operations.
                       </p>
                       
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">

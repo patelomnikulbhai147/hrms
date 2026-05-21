@@ -53,6 +53,14 @@ export const statusBadge = (status: string) => {
     Pending: 'yellow', 'On Leave': 'orange', Late: 'orange', 'Half Day': 'orange', 'On Hold': 'orange',
     WFH: 'blue', Planning: 'blue', Screening: 'blue', Applied: 'indigo',
     Interview: 'purple', Prospect: 'blue',
+    
+    // Lowercase payroll workflow mapping
+    draft: 'gray',
+    prepared: 'blue',
+    verified: 'orange',
+    paid: 'green',
+    payslip_generated: 'purple',
+    failed: 'red'
   };
   return map[status] ?? 'gray';
 };

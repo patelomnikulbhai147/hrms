@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Menu, Bell, ChevronDown, LogOut, ShieldAlert } from 'lucide-react';
-import { notifications, companies, type Role } from '../../data/mockData';
+import { notifications, type Role, type Company } from '../../data/mockData';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
 
@@ -15,6 +15,7 @@ interface TopbarProps {
   userName: string;
   userAvatar: string;
   pageTitle: string;
+  companies: Company[];
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -27,7 +28,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onExitMasquerade,
   userName,
   userAvatar,
-  pageTitle
+  pageTitle,
+  companies
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);

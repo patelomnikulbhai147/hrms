@@ -27,7 +27,6 @@ interface ReportsProps {
 type ReportType = 'attendance' | 'payroll' | 'leave';
 
 export const Reports: React.FC<ReportsProps> = ({
-  role,
   activeCompanyId,
   companies,
   employees,

@@ -5,7 +5,7 @@ export type Role = 'Super Admin' | 'Company Head' | 'HR';
 export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated';
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
-export type PayrollStatus = 'Draft' | 'Processing' | 'Generated' | 'Paid' | 'Overdue' | 'Failed' | 'Pending' | 'Processed';
+export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'paid' | 'payslip_generated' | 'failed';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
 
 export interface Company {
@@ -118,9 +118,18 @@ export interface PayrollRecord {
   deductions: number;
   netSalary: number;
   status: PayrollStatus;
+  
+  // New unified schema columns
+  salary: number;
+  payrollStatus: PayrollStatus;
+  paymentStatus: 'pending' | 'paid' | 'failed';
+  payslipGenerated: boolean;
+
   processedOn?: string;
   paymentDate?: string;
   dueDate?: string;
+  paymentMethod?: string;
+  paidBy?: string;
 }
 
 export interface Document {
@@ -426,22 +435,22 @@ export const leaveBalances: LeaveBalance[] = [
 
 export const payrollRecords: PayrollRecord[] = [
   // TechNova (c1)
-  { id: 'p1', companyId: 'c1', employeeId: 'e1', employeeName: 'Rajesh Kumar', department: 'Engineering', month: 'June', year: 2026, basicSalary: 85000, allowances: 12000, deductions: 8500, netSalary: 88500, status: 'Pending' },
-  { id: 'p2', companyId: 'c1', employeeId: 'e2', employeeName: 'Priya Sharma', department: 'HR', month: 'June', year: 2026, basicSalary: 75000, allowances: 10000, deductions: 7500, netSalary: 77500, status: 'Pending' },
-  { id: 'p3', companyId: 'c1', employeeId: 'e3', employeeName: 'Vikram Singh', department: 'Management', month: 'June', year: 2026, basicSalary: 120000, allowances: 20000, deductions: 15000, netSalary: 125000, status: 'Pending' },
-  { id: 'p4', companyId: 'c1', employeeId: 'e4', employeeName: 'Anita Verma', department: 'Accounts', month: 'June', year: 2026, basicSalary: 65000, allowances: 8000, deductions: 6500, netSalary: 66500, status: 'Pending' },
+  { id: 'p1', companyId: 'c1', employeeId: 'e1', employeeName: 'Rajesh Kumar', department: 'Engineering', month: 'June', year: 2026, basicSalary: 85000, allowances: 12000, deductions: 8500, netSalary: 88500, status: 'draft', salary: 88500, payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p2', companyId: 'c1', employeeId: 'e2', employeeName: 'Priya Sharma', department: 'HR', month: 'June', year: 2026, basicSalary: 75000, allowances: 10000, deductions: 7500, netSalary: 77500, status: 'prepared', salary: 77500, payrollStatus: 'prepared', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p3', companyId: 'c1', employeeId: 'e3', employeeName: 'Vikram Singh', department: 'Management', month: 'June', year: 2026, basicSalary: 120000, allowances: 20000, deductions: 15000, netSalary: 125000, status: 'verified', salary: 125000, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p4', companyId: 'c1', employeeId: 'e4', employeeName: 'Anita Verma', department: 'Accounts', month: 'June', year: 2026, basicSalary: 65000, allowances: 8000, deductions: 6500, netSalary: 66500, status: 'paid', salary: 66500, payrollStatus: 'paid', paymentStatus: 'paid', payslipGenerated: false, paymentDate: '2026-05-20', paymentMethod: 'Bank Transfer', paidBy: 'Finance Admin' },
 
   // Global Finance (c2)
-  { id: 'p5', companyId: 'c2', employeeId: 'e5', employeeName: 'Mohammed Ali', department: 'Finance', month: 'June', year: 2026, basicSalary: 90000, allowances: 14000, deductions: 9000, netSalary: 95000, status: 'Processed', processedOn: '2026-06-30', paymentDate: '2026-07-01' },
-  { id: 'p6', companyId: 'c2', employeeId: 'e6', employeeName: 'Sneha Patel', department: 'Operations', month: 'June', year: 2026, basicSalary: 110000, allowances: 18000, deductions: 11000, netSalary: 117000, status: 'Processed', processedOn: '2026-06-30', paymentDate: '2026-07-01' },
-  { id: 'p7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Finance', month: 'June', year: 2026, basicSalary: 70000, allowances: 9000, deductions: 7000, netSalary: 72000, status: 'Processed', processedOn: '2026-06-30', paymentDate: '2026-07-01' },
-  { id: 'p8', companyId: 'c2', employeeId: 'e8', employeeName: 'Divya Menon', department: 'Operations', month: 'June', year: 2026, basicSalary: 58000, allowances: 7500, deductions: 5800, netSalary: 59700, status: 'Failed' },
+  { id: 'p5', companyId: 'c2', employeeId: 'e5', employeeName: 'Mohammed Ali', department: 'Finance', month: 'June', year: 2026, basicSalary: 90000, allowances: 14000, deductions: 9000, netSalary: 95000, status: 'payslip_generated', salary: 95000, payrollStatus: 'payslip_generated', paymentStatus: 'paid', payslipGenerated: true, processedOn: '2026-05-20', paymentDate: '2026-05-20', paymentMethod: 'Bank Transfer', paidBy: 'Finance Admin' },
+  { id: 'p6', companyId: 'c2', employeeId: 'e6', employeeName: 'Sneha Patel', department: 'Operations', month: 'June', year: 2026, basicSalary: 110000, allowances: 18000, deductions: 11000, netSalary: 117000, status: 'payslip_generated', salary: 117000, payrollStatus: 'payslip_generated', paymentStatus: 'paid', payslipGenerated: true, processedOn: '2026-05-20', paymentDate: '2026-05-20', paymentMethod: 'UPI Payout', paidBy: 'Finance Admin' },
+  { id: 'p7', companyId: 'c2', employeeId: 'e7', employeeName: 'Arjun Nair', department: 'Finance', month: 'June', year: 2026, basicSalary: 70000, allowances: 9000, deductions: 7000, netSalary: 72000, status: 'verified', salary: 72000, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p8', companyId: 'c2', employeeId: 'e8', employeeName: 'Divya Menon', department: 'Operations', month: 'June', year: 2026, basicSalary: 58000, allowances: 7500, deductions: 5800, netSalary: 59700, status: 'failed', salary: 59700, payrollStatus: 'failed', paymentStatus: 'failed', payslipGenerated: false },
 
   // HealthFirst (c3)
-  { id: 'p9', companyId: 'c3', employeeId: 'e9', employeeName: 'Karthik Reddy', department: 'Engineering', month: 'June', year: 2026, basicSalary: 95000, allowances: 13000, deductions: 9500, netSalary: 98500, status: 'Pending' },
-  { id: 'p10', companyId: 'c3', employeeId: 'e10', employeeName: 'Sunita Joshi', department: 'HR', month: 'June', year: 2026, basicSalary: 50000, allowances: 5000, deductions: 5000, netSalary: 50000, status: 'Pending' },
-  { id: 'p11', companyId: 'c3', employeeId: 'e11', employeeName: 'Rahul Gupta', department: 'Engineering', month: 'June', year: 2026, basicSalary: 68000, allowances: 8000, deductions: 6800, netSalary: 69200, status: 'Pending' },
-  { id: 'p12', companyId: 'c3', employeeId: 'e12', employeeName: 'Meera Iyer', department: 'Operations', month: 'June', year: 2026, basicSalary: 45000, allowances: 4000, deductions: 4500, netSalary: 44500, status: 'Pending' }
+  { id: 'p9', companyId: 'c3', employeeId: 'e9', employeeName: 'Karthik Reddy', department: 'Engineering', month: 'June', year: 2026, basicSalary: 95000, allowances: 13000, deductions: 9500, netSalary: 98500, status: 'draft', salary: 98500, payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p10', companyId: 'c3', employeeId: 'e10', employeeName: 'Sunita Joshi', department: 'HR', month: 'June', year: 2026, basicSalary: 50000, allowances: 5000, deductions: 5000, netSalary: 50000, status: 'prepared', salary: 50000, payrollStatus: 'prepared', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p11', companyId: 'c3', employeeId: 'e11', employeeName: 'Rahul Gupta', department: 'Engineering', month: 'June', year: 2026, basicSalary: 68000, allowances: 8000, deductions: 6800, netSalary: 69200, status: 'verified', salary: 69200, payrollStatus: 'verified', paymentStatus: 'pending', payslipGenerated: false },
+  { id: 'p12', companyId: 'c3', employeeId: 'e12', employeeName: 'Meera Iyer', department: 'Operations', month: 'June', year: 2026, basicSalary: 45000, allowances: 4000, deductions: 4500, netSalary: 44500, status: 'paid', salary: 44500, payrollStatus: 'paid', paymentStatus: 'paid', payslipGenerated: false, paymentDate: '2026-05-20', paymentMethod: 'Direct Transfer', paidBy: 'Finance Admin' }
 ];
 
 // ─── Documents ───────────────────────────────────────────────────────────────────
