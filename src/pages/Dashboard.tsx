@@ -16,6 +16,11 @@ import {
   notifications
 } from '../data/mockData';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
+import {
+  calculateSubscriptionAnalytics,
+  getSubscriptionAlertsList,
+  getDaysRemaining
+} from '../utils/subscriptionUtils';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Badge } from '../components/ui/Badge';
@@ -57,7 +62,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   companies,
   employees,
   attendance,
-  leaves,
   payroll,
   documents,
   plans,
@@ -88,81 +92,55 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const scopedNotifications = notifications.filter(n => n.companyId === activeCompanyId);
 
   const daysLeft = (dateStr?: string) => {
-    if (!dateStr) return Infinity;
-    const now = new Date('2026-05-20');
-    const d = new Date(dateStr + 'T00:00:00');
-    const diff = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    return diff;
+    const diff = getDaysRemaining(dateStr);
+    return diff === null ? Infinity : diff;
   };
 
   // ─── Super Admin Calculations ───
-  const totalCompaniesCount = companies.length;
+  const analytics = useMemo(() => {
+    return calculateSubscriptionAnalytics(companies, plans);
+  }, [companies, plans]);
 
-  const activeSubscriptionsCount = companies.filter(
-    c => c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')
-  ).length;
-
-  const pendingRenewalsCount = companies.filter(
-    c => c.accountStatus !== 'Suspended' && daysLeft(c.renewalDate) <= 7 && daysLeft(c.renewalDate) >= 0
-  ).length;
-
-  // Dynanically sync monthly subscription income from plans data only
-  const monthlyRevenueVal = companies.reduce((sum, c) => {
-    if (c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')) {
-      const planObj = plans.find(p => p.name === c.plan);
-      if (planObj) {
-        return sum + (c.billingCycle === 'Yearly' ? Math.round(planObj.priceYearly / 12) : planObj.priceMonthly);
-      }
-      return sum + (c.subscriptionPrice || 0);
-    }
-    return sum;
-  }, 0);
+  const totalCompaniesCount = analytics.totalCompanies;
+  const activeSubscriptionsCount = analytics.activeSubscriptions;
+  const pendingRenewalsCount = analytics.pendingRenewals;
+  const monthlyRevenueVal = analytics.monthlyRevenue;
+  const expiringThisWeekCount = analytics.expiringPlans;
 
   // Filter renewal list items
   const renewalAlertsList = useMemo(() => {
-    return companies
-      .map(c => {
-        const remaining = daysLeft(c.renewalDate);
+    const rawAlerts = getSubscriptionAlertsList(companies);
+    return rawAlerts
+      .map(alert => {
+        const remaining = alert.daysRemaining ?? 0;
         let expiryText = '';
         let statusText: 'Active' | 'Warning' | 'Expired' | 'Trial' = 'Active';
         let actionLabel = 'Renew';
 
-        if (c.accountStatus === 'Suspended') {
+        if (alert.type === 'Suspended') {
           expiryText = 'Suspended';
           statusText = 'Expired';
-        } else if (remaining < 0) {
-          expiryText = 'Expired';
+        } else if (alert.type === 'Overdue') {
+          expiryText = remaining < 0 ? 'Expired' : 'Overdue';
           statusText = 'Expired';
-          actionLabel = 'Upgrade';
-        } else if (c.paymentStatus === 'Trial Active') {
+          actionLabel = alert.company.paymentStatus === 'Pending' ? 'Verify' : 'Upgrade';
+        } else if (alert.type === 'Trial Ending') {
           expiryText = `${remaining}d left`;
           statusText = 'Trial';
-        } else if (remaining <= 7) {
+        } else if (alert.type === 'Expiring Soon') {
           expiryText = `${remaining} days left`;
           statusText = 'Warning';
-        } else if (remaining <= 15) {
-          expiryText = `${remaining} days left`;
-          statusText = 'Warning';
-        } else {
-          expiryText = `${remaining} days left`;
-          statusText = 'Active';
         }
 
         return {
-          company: c,
+          company: alert.company,
           remaining,
           expiryText,
           statusText,
           actionLabel
         };
       })
-      .filter(item => item.remaining <= 15 || item.company.paymentStatus === 'Expired' || item.company.paymentStatus === 'Overdue' || item.company.accountStatus === 'Suspended')
       .sort((a, b) => a.remaining - b.remaining);
-  }, [companies]);
-
-  // Renewal banner alerts
-  const expiringThisWeekCount = useMemo(() => {
-    return companies.filter(c => c.accountStatus !== 'Suspended' && daysLeft(c.renewalDate) <= 7 && daysLeft(c.renewalDate) >= 0).length;
   }, [companies]);
 
   // Renewal Alert Handlers
@@ -267,8 +245,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let trial = 0;
     let suspended = 0;
     companies.forEach(c => {
+      const daysRemaining = getDaysRemaining(c.renewalDate);
       if (c.accountStatus === 'Suspended') suspended++;
-      else if (c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || daysLeft(c.renewalDate) < 0) expired++;
+      else if (c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || (daysRemaining !== null && daysRemaining < 0)) expired++;
       else if (c.paymentStatus === 'Trial Active') trial++;
       else active++;
     });
@@ -320,7 +299,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   Subscription Notice <Sparkles size={13} className="text-amber-500" />
                 </h4>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  Workspaces require active licenses. There are <strong>{expiringThisWeekCount} subscriptions</strong> nearing expiration within 7 days.
+                  Workspaces require active licenses. There are <strong>{expiringThisWeekCount} subscriptions</strong> nearing expiration within 10 days.
                 </p>
               </div>
             </div>
@@ -385,7 +364,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="mt-3.5">
               <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{pendingRenewalsCount}</h3>
-              <p className="text-xs text-amber-600 font-semibold mt-1">⚠ Expiring within 7 Days</p>
+              <p className="text-xs text-amber-600 font-semibold mt-1">⚠ Overdue / Pending</p>
             </div>
           </div>
 

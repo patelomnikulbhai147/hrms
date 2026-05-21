@@ -2,11 +2,16 @@ import React, { useState } from 'react';
 import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
   XCircle, Edit3, ArrowUpRight, DollarSign, Users,
-  Calendar, FileText, Download, UserCheck, ChevronRight,
+  FileText, Download, UserCheck, ChevronRight,
   Building2
 } from 'lucide-react';
 import { Company, SubscriptionPlan, PaymentRecord } from '../data/mockData';
 import { Button } from '../components/ui/Button';
+import {
+  calculateSubscriptionAnalytics,
+  getSubscriptionAlertsList,
+  getDaysRemaining
+} from '../utils/subscriptionUtils';
 
 interface BillingProps {
   companies: Company[];
@@ -91,7 +96,6 @@ export const Billing: React.FC<BillingProps> = ({
   };
 
   // Date and math helper utilities
-  const today = new Date('2026-05-20'); // Mock system date
   const formatIsoDate = (date: Date) => {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, '0');
@@ -106,13 +110,6 @@ export const Billing: React.FC<BillingProps> = ({
     return date.toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const getDaysBetweenSafe = (d1: Date, d2: Date) => {
-    const start = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
-    const end = new Date(d2.getFullYear(), d2.getMonth(), d2.getDate());
-    const diffTime = end.getTime() - start.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  };
-
   const getNowTimestampDisplay = () => {
     const now = new Date();
     const hours = String(now.getHours()).padStart(2, '0');
@@ -120,119 +117,15 @@ export const Billing: React.FC<BillingProps> = ({
     return `${formatIsoDate(now)} ${hours}:${minutes}`;
   };
 
-  // Centralized alert generator function
-  const getSubscriptionAlerts = () => {
-    const alertsList: {
-      company: Company;
-      type: 'Suspended' | 'Overdue' | 'Expiring Soon' | 'Trial Ending';
-      message: string;
-      daysRemaining: number | null;
-      badgeColor: string;
-      textColor: string;
-      bgColor: string;
-      borderColor: string;
-    }[] = [];
-
-    companies.forEach(c => {
-      if (!c) return;
-
-      const isSuspended = c.accountStatus === 'Suspended';
-      const isOverdueState = c.paymentStatus === 'Overdue' || c.paymentStatus === 'Expired';
-
-      let daysLeft: number | null = null;
-      if (c.renewalDate) {
-        const renDate = new Date(c.renewalDate);
-        daysLeft = getDaysBetweenSafe(today, renDate);
-      }
-
-      // 1. Suspended
-      if (isSuspended) {
-        alertsList.push({
-          company: c,
-          type: 'Suspended',
-          message: 'Account suspended due to outstanding payment or administrative action.',
-          daysRemaining: daysLeft,
-          badgeColor: 'bg-rose-100 text-rose-700 border-rose-200',
-          textColor: 'text-rose-700',
-          bgColor: 'bg-rose-50/50',
-          borderColor: 'border-rose-100'
-        });
-      }
-      // 2. Overdue (paymentStatus is Overdue/Expired, or renewal date is in the past and not suspended)
-      else if (isOverdueState || (daysLeft !== null && daysLeft < 0)) {
-        alertsList.push({
-          company: c,
-          type: 'Overdue',
-          message: `Payment overdue. Subscription elapsed on ${formatDisplayDate(c.renewalDate)}.`,
-          daysRemaining: daysLeft,
-          badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
-          textColor: 'text-amber-700',
-          bgColor: 'bg-amber-50/50',
-          borderColor: 'border-amber-100'
-        });
-      }
-      // 3. Trial Ending
-      else if (c.paymentStatus === 'Trial Active' && daysLeft !== null && daysLeft >= 0 && daysLeft <= 10) {
-        alertsList.push({
-          company: c,
-          type: 'Trial Ending',
-          message: `Trial tier ends in ${daysLeft} days. Workspace will be restricted upon expiration.`,
-          daysRemaining: daysLeft,
-          badgeColor: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-          textColor: 'text-indigo-700',
-          bgColor: 'bg-indigo-50/50',
-          borderColor: 'border-indigo-100'
-        });
-      }
-      // 4. Expiring Soon
-      else if (daysLeft !== null && daysLeft >= 0 && daysLeft <= 10) {
-        alertsList.push({
-          company: c,
-          type: 'Expiring Soon',
-          message: `Subscription renewal coming up in ${daysLeft} days.`,
-          daysRemaining: daysLeft,
-          badgeColor: 'bg-blue-100 text-blue-700 border-blue-200',
-          textColor: 'text-blue-700',
-          bgColor: 'bg-blue-50/50',
-          borderColor: 'border-blue-100'
-        });
-      }
-      // 5. Pending Payment
-      else if (c.paymentStatus === 'Pending') {
-        alertsList.push({
-          company: c,
-          type: 'Overdue',
-          message: 'Payment invoice generated and pending approval.',
-          daysRemaining: daysLeft,
-          badgeColor: 'bg-amber-100 text-amber-700 border-amber-200',
-          textColor: 'text-amber-700',
-          bgColor: 'bg-amber-50/50',
-          borderColor: 'border-amber-100'
-        });
-      }
-    });
-
-    return alertsList;
-  };
-
-  const dynamicAlerts = getSubscriptionAlerts();
+  const dynamicAlerts = getSubscriptionAlertsList(companies);
   const alertCount = dynamicAlerts.length;
 
   // ─── SaaS Metrics Calculations ──────────────────────────────────────────────
-  const activePlansCount = companies.filter(c => c && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')).length;
-  const pendingPaymentsCount = dynamicAlerts.filter(a => a.type === 'Overdue').length;
-  const expiringCount = dynamicAlerts.filter(a => a.type === 'Expiring Soon' || a.type === 'Trial Ending').length;
+  const analytics = calculateSubscriptionAnalytics(companies, plans);
 
-  // Calculate MRR safely
-  const mrr = companies.reduce((sum, c) => {
-    if (c && c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')) {
-      if (c.billingCycle === 'Yearly') {
-        return sum + Math.round((c.subscriptionPrice || 0) / 12);
-      }
-      return sum + (c.subscriptionPrice || 0);
-    }
-    return sum;
-  }, 0);
+  const activePlansCount = analytics.activeSubscriptions;
+  const pendingPaymentsCount = analytics.pendingRenewals;
+  const mrr = analytics.monthlyRevenue;
 
   // Total Lifetime Revenue safely
   const totalRevenue = (payments || [])
@@ -399,7 +292,7 @@ export const Billing: React.FC<BillingProps> = ({
     <div className="space-y-6">
 
       {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <div className="bg-gradient-to-tr from-white to-slate-50 p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
           <div className="flex items-start justify-between text-gray-500">
             <div>
@@ -461,18 +354,6 @@ export const Billing: React.FC<BillingProps> = ({
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
-          <div className="flex items-start justify-between text-gray-500">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Expiring in 10 Days</div>
-              <div className="mt-2 text-2xl font-bold text-gray-900">{expiringCount}</div>
-              <div className="mt-1 text-sm text-gray-500">Pending renewals</div>
-            </div>
-            <div className="text-rose-600 bg-rose-50 rounded-lg p-2">
-              <Calendar size={20} />
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* ─── Premium Tab Bar ────────────────────────────────────────────────── */}
@@ -587,8 +468,7 @@ export const Billing: React.FC<BillingProps> = ({
           {/* Companies as Workspace Cards */}
           <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredCompanies.map(comp => {
-              const renDate = comp.renewalDate ? new Date(comp.renewalDate) : today;
-              const daysLeft = comp.renewalDate ? getDaysBetweenSafe(today, renDate) : null;
+              const daysLeft = getDaysRemaining(comp.renewalDate);
               const isSoon = daysLeft !== null ? (daysLeft <= 10 && daysLeft >= 0) : false;
 
               const statusBadge = () => {
