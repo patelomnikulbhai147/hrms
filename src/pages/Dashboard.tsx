@@ -85,6 +85,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   }, [toast]);
 
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+
   // Scoped Data for Company Head / HR roles
   const scopedEmployees = employees.filter(e => e.companyId === activeCompanyId);
   const scopedAttendance = attendance.filter(a => a.date === todayStr && a.companyId === activeCompanyId);
@@ -687,6 +689,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';
 
+    const handleSendBroadcast = () => {
+      if (!broadcastMsg.trim()) {
+        showToast('Please type a message to broadcast.', 'warning');
+        return;
+      }
+      showToast('Broadcast notification successfully sent to all selected employee devices!', 'success');
+      setBroadcastMsg('');
+    };
+
     return (
       <div className="space-y-4">
         <div>
@@ -694,7 +705,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <StatCard
             label="Total Employees"
             value={totalEmployees}
@@ -708,13 +719,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             icon={<CheckCircle2 size={16} className="text-emerald-600" />}
             color="bg-emerald-50"
             sub="Active contract roster"
-          />
-          <StatCard
-            label="Attendance Pending"
-            value={attendancePending}
-            icon={<Clock size={16} className="text-amber-600 animate-pulse" />}
-            color="bg-amber-50"
-            sub="Not marked for today"
           />
         </div>
 
@@ -756,23 +760,42 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <Card>
             <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 pb-2 border-b border-gray-100 flex items-center gap-1">
-              <Info size={13} className="text-blue-600" />
-              <span>Company Notifications</span>
+              <Bell size={13} className="text-indigo-600" />
+              <span>Send Broadcast Notification</span>
             </h3>
-            <div className="space-y-3">
-              {scopedNotifications.length === 0 ? (
-                <p className="text-xs text-gray-400 py-4 text-center">No recent alerts logged</p>
-              ) : (
-                scopedNotifications.slice(0, 4).map((notif: Notification) => (
-                  <div key={notif.id} className="p-2.5 bg-slate-50 border border-slate-100 rounded-md space-y-1">
-                    <p className="text-xs text-gray-700 font-medium leading-relaxed">{notif.message}</p>
-                    <div className="flex justify-between items-center text-[9px] text-gray-400 font-mono">
-                      <span>{notif.timestamp}</span>
-                      <span className="uppercase text-blue-650 font-bold">{notif.type}</span>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Target Audience
+                </label>
+                <select className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
+                  <option>All Staff (GCRI Ahmedabad)</option>
+                  <option>Doctors & Medical Staff</option>
+                  <option>Nursing & Clinical Staff</option>
+                  <option>Administrative & Support</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Notification Message
+                </label>
+                <textarea
+                  value={broadcastMsg}
+                  onChange={e => setBroadcastMsg(e.target.value)}
+                  placeholder="Type broadcast message to all corporate roster devices..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white resize-none"
+                />
+              </div>
+
+              <button
+                onClick={handleSendBroadcast}
+                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <Bell size={13} />
+                <span>Dispatch Broadcast</span>
+              </button>
             </div>
           </Card>
         </div>
