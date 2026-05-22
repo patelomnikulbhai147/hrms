@@ -698,6 +698,7 @@ export default function App() {
             onStartMasquerade={handleStartMasquerade}
             plans={plans}
             employees={employees}
+            onUpdateEmployees={handleUpdateEmployees}
           />
         );
       case 'billing':

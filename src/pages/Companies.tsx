@@ -29,6 +29,7 @@ interface CompaniesProps {
   onStartMasquerade: (companyId: string) => void;
   plans: SubscriptionPlan[];
   employees: Employee[];
+  onUpdateEmployees?: (employees: Employee[]) => void;
 }
 
 export const Companies: React.FC<CompaniesProps> = ({
@@ -39,7 +40,8 @@ export const Companies: React.FC<CompaniesProps> = ({
   onUpdateAccounts,
   onStartMasquerade,
   plans,
-  employees
+  employees,
+  onUpdateEmployees
 }) => {
   if (false as boolean) {
     console.log(_role);
@@ -54,6 +56,112 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
   const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
+
+  // Branch Management state
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Company | null>(null);
+  const [parentCompanyIdForBranch, setParentCompanyIdForBranch] = useState<string>('');
+  const [branchForm, setBranchForm] = useState({
+    name: '',
+    branchCode: '',
+    location: '',
+    email: '',
+    phone: '',
+    adminName: '',
+    employeeCapacity: 200,
+    status: 'Active' as 'Active' | 'Inactive',
+    pfRate: 12,
+    esicRate: 3.25,
+    basicPercent: 50,
+    profTaxRate: 200,
+    overtimeRate: 1.5,
+    enableBroadcasts: true,
+    enableSystemAlerts: true
+  });
+
+  const handleOpenCreateBranch = (parentId: string) => {
+    setEditingBranch(null);
+    setParentCompanyIdForBranch(parentId);
+    setBranchForm({
+      name: '',
+      branchCode: '',
+      location: '',
+      email: '',
+      phone: '',
+      adminName: '',
+      employeeCapacity: 200,
+      status: 'Active',
+      pfRate: 12,
+      esicRate: 3.25,
+      basicPercent: 50,
+      profTaxRate: 200,
+      overtimeRate: 1.5,
+      enableBroadcasts: true,
+      enableSystemAlerts: true
+    });
+    setBranchModalOpen(true);
+  };
+
+  const handleOpenEditBranch = (branch: Company) => {
+    setEditingBranch(branch);
+    setParentCompanyIdForBranch(branch.parentCompanyId || 'c-gcri');
+    setBranchForm({
+      name: branch.name,
+      branchCode: branch.branchCode || '',
+      location: branch.location || branch.address || '',
+      email: branch.email || branch.adminEmail || '',
+      phone: branch.phone || '',
+      adminName: branch.adminName || '',
+      employeeCapacity: branch.employeeCapacity || 200,
+      status: branch.status === 'Active' ? 'Active' : 'Inactive',
+      pfRate: branch.pfRate || 12,
+      esicRate: branch.esicRate || 3.25,
+      basicPercent: branch.basicPercent || 50,
+      profTaxRate: branch.profTaxRate || 200,
+      overtimeRate: branch.overtimeRate || 1.5,
+      enableBroadcasts: true,
+      enableSystemAlerts: true
+    });
+    setBranchModalOpen(true);
+  };
+
+  const handleRemoveBranch = (branchId: string) => {
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch) return;
+
+    const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
+    if (!confirmDelete) return;
+
+    // Ask for reassignment or archive
+    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
+    
+    if (reassign) {
+      if (onUpdateEmployees) {
+        const updated = employees.map(emp => {
+          if (emp.companyId === branchId) {
+            return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
+          }
+          return emp;
+        });
+        onUpdateEmployees(updated);
+      }
+    } else {
+      if (onUpdateEmployees) {
+        const updated = employees.map(emp => {
+          if (emp.companyId === branchId) {
+            return { ...emp, status: 'Inactive' as const };
+          }
+          return emp;
+        });
+        onUpdateEmployees(updated);
+      }
+    }
+
+    // Delete company/branch
+    const nextCompanies = companies.filter(c => c.id !== branchId);
+    onUpdateCompanies(nextCompanies);
+    alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+  };
   
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({
     'c-gcri': true
@@ -218,6 +326,99 @@ export const Companies: React.FC<CompaniesProps> = ({
     if (!editPlanModal) return;
     onUpdateCompanies(companies.map(c => c.id === editPlanModal.id ? { ...c, plan: newPlan } : c));
     setEditPlanModal(null);
+  };
+
+  const handleSaveBranch = () => {
+    if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
+      alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
+      return;
+    }
+    
+    if (editingBranch) {
+      // Edit mode
+      const updatedCompanies = companies.map(c => {
+        if (c.id === editingBranch.id) {
+          return {
+            ...c,
+            name: branchForm.name,
+            branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+            branchCode: branchForm.branchCode,
+            location: branchForm.location,
+            address: branchForm.location,
+            email: branchForm.email,
+            adminEmail: branchForm.email,
+            phone: branchForm.phone,
+            adminName: branchForm.adminName,
+            employeeCapacity: Number(branchForm.employeeCapacity) || 200,
+            status: branchForm.status,
+            pfRate: Number(branchForm.pfRate) || 12,
+            esicRate: Number(branchForm.esicRate) || 3.25,
+            basicPercent: Number(branchForm.basicPercent) || 50,
+            profTaxRate: Number(branchForm.profTaxRate) || 200,
+            overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+          };
+        }
+        return c;
+      });
+      onUpdateCompanies(updatedCompanies);
+      alert('Branch updated successfully.');
+    } else {
+      // Create mode
+      const newId = `c-br-${Date.now()}`;
+      const newBranchObj: Company = {
+        id: newId,
+        parentCompanyId: parentCompanyIdForBranch || 'c-gcri',
+        name: branchForm.name,
+        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+        branchCode: branchForm.branchCode,
+        domain: `${branchForm.name.toLowerCase().replace(/\s+/g, '')}.gcri.in`,
+        adminName: branchForm.adminName,
+        adminEmail: branchForm.email,
+        phone: branchForm.phone,
+        industry: 'Healthcare & Research',
+        status: branchForm.status,
+        employeeCount: 0,
+        joinDate: new Date().toISOString().split('T')[0],
+        plan: 'Enterprise',
+        logo: 'GC',
+        pfRate: Number(branchForm.pfRate) || 12,
+        esicRate: Number(branchForm.esicRate) || 3.25,
+        basicPercent: Number(branchForm.basicPercent) || 50,
+        profTaxRate: Number(branchForm.profTaxRate) || 200,
+        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+        address: branchForm.location,
+        email: branchForm.email,
+        primaryColor: '#6366f1',
+        headerText: `${branchForm.name.toUpperCase()} REGIONAL CENTER`,
+        footerText: `${branchForm.name} · Subsidiary of Gujarat Cancer Research Institute`,
+        signatureText: `${branchForm.adminName}, Branch Director`,
+        themeStyle: 'Modern',
+        paymentStatus: 'Trial Active',
+        renewalDate: '2027-12-31',
+        subscriptionPrice: 0,
+        billingCycle: 'Monthly',
+        accountStatus: 'Active'
+      };
+
+      // Auto provision Branch Admin user account!
+      const newAdminUser: UserAccount = {
+        id: `u-ba-${Date.now()}`,
+        name: branchForm.adminName,
+        email: branchForm.email,
+        username: branchForm.email.split('@')[0],
+        passwordStr: 'welcome123',
+        role: 'Company Head',
+        companyId: newId,
+        status: 'Active',
+        avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      };
+
+      onUpdateAccounts([...userAccounts, newAdminUser]);
+      onUpdateCompanies([...companies, newBranchObj]);
+      alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+    }
+    
+    setBranchModalOpen(false);
   };
 
   // Manage Accounts triggers
@@ -512,7 +713,15 @@ export const Companies: React.FC<CompaniesProps> = ({
                           <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                             <div className="bg-slate-100/50 px-4 py-2 border-b border-gray-200/60 flex items-center justify-between">
                               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
-                              <span className="text-[10px] text-slate-400 font-medium">{branches.length} branches resolved</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-400 font-medium">{branches.length} branches resolved</span>
+                                <button
+                                  onClick={() => handleOpenCreateBranch(c.id)}
+                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                >
+                                  <Plus size={10} /> Create Branch
+                                </button>
+                              </div>
                             </div>
                             <table className="w-full text-left border-collapse">
                               <thead>
@@ -579,8 +788,22 @@ export const Companies: React.FC<CompaniesProps> = ({
                                             <KeyRound size={11} />
                                           </button>
                                           <button
+                                            onClick={() => handleOpenEditBranch(b)}
+                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-indigo-650"
+                                            title="Edit Branch Settings"
+                                          >
+                                            <Edit size={11} />
+                                          </button>
+                                          <button
+                                            onClick={() => handleRemoveBranch(b.id)}
+                                            className="p-1 bg-rose-50 border border-rose-150 rounded text-rose-650 hover:text-rose-700 hover:bg-rose-100"
+                                            title="Remove Branch"
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                          <button
                                             onClick={() => handleToggleStatus(b.id, b.status)}
-                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
+                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-650' : 'text-emerald-600'}`}
                                           >
                                             {b.status === 'Active' ? 'Suspend' : 'Activate'}
                                           </button>
@@ -959,6 +1182,182 @@ export const Companies: React.FC<CompaniesProps> = ({
             />
           </div>
         )}
+      </Modal>
+
+      {/* Branch Creation / Edition Modal */}
+      <Modal
+        open={branchModalOpen}
+        onClose={() => setBranchModalOpen(false)}
+        title={editingBranch ? `Edit Regional Branch: ${editingBranch.branchName || editingBranch.name}` : "Create Subsidiary Regional Branch"}
+        size="lg"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setBranchModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveBranch}>
+              {editingBranch ? "Save Branch Settings" : "Deploy Branch Portal"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <p className="text-xs text-gray-500">
+            {editingBranch 
+              ? "Modify this subsidiary's regional limits, operational capacity, statutory parameters, and local leadership accounts." 
+              : "Registering a new sub-center branches under Gujarat Cancer Research Institute. Generates specialized Branch Admin logins on completion."}
+          </p>
+
+          {/* General Center Specifications */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">1. Regional Center Specifications</h4>
+            <div className="grid grid-cols-2 gap-3 text-left">
+              <Input
+                label="Branch Name (e.g. GCRI Siddhpur) *"
+                placeholder="e.g. GCRI Siddhpur"
+                value={branchForm.name}
+                onChange={e => setBranchForm({ ...branchForm, name: e.target.value })}
+              />
+              <Input
+                label="Branch Code (e.g. SIDD) *"
+                placeholder="e.g. SIDD"
+                value={branchForm.branchCode}
+                onChange={e => setBranchForm({ ...branchForm, branchCode: e.target.value.toUpperCase() })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-left">
+              <Input
+                label="Branch Location / Address *"
+                placeholder="e.g. Siddhpur Highway, Patan"
+                value={branchForm.location}
+                onChange={e => setBranchForm({ ...branchForm, location: e.target.value })}
+              />
+              <Select
+                label="Operational Status *"
+                value={branchForm.status}
+                onChange={e => setBranchForm({ ...branchForm, status: e.target.value as 'Active' | 'Inactive' })}
+                options={[
+                  { value: 'Active', label: 'Active (Permit Portal Access)' },
+                  { value: 'Inactive', label: 'Suspended (Revoke Branch Portal Access)' }
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Branch Authority Credentials */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">2. Local Leadership (Branch Admin)</h4>
+            <div className="grid grid-cols-3 gap-3 text-left">
+              <div className="col-span-1">
+                <Input
+                  label="Branch Admin Full Name *"
+                  placeholder="e.g. Dr. Harshit Patel"
+                  value={branchForm.adminName}
+                  onChange={e => setBranchForm({ ...branchForm, adminName: e.target.value })}
+                />
+              </div>
+              <div className="col-span-1">
+                <Input
+                  label="Branch Contact Email *"
+                  placeholder="e.g. siddhpur@gcri.in"
+                  type="email"
+                  value={branchForm.email}
+                  onChange={e => setBranchForm({ ...branchForm, email: e.target.value })}
+                />
+              </div>
+              <div className="col-span-1">
+                <Input
+                  label="Branch Contact Phone *"
+                  placeholder="e.g. +91 9988776655"
+                  value={branchForm.phone}
+                  onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })}
+                />
+              </div>
+            </div>
+            {!editingBranch && (
+              <p className="text-[10px] text-gray-400 italic mt-0.5">
+                * Note: Login ID will be derived from email username (e.g. `siddhpur`). Default access password is <strong>welcome123</strong>.
+              </p>
+            )}
+          </div>
+
+          {/* Capacity and Statutory Parameters */}
+          <div className="space-y-3 pt-2">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">3. Capacity & Statutory Payroll Configurations</h4>
+            <div className="grid grid-cols-3 gap-3 text-left">
+              <Input
+                label="Max Employee Capacity Limit *"
+                type="number"
+                placeholder="e.g. 200"
+                value={branchForm.employeeCapacity}
+                onChange={e => setBranchForm({ ...branchForm, employeeCapacity: Number(e.target.value) || 200 })}
+              />
+              <Input
+                label="PF Contribution Rate (%)"
+                type="number"
+                step="0.01"
+                placeholder="e.g. 12"
+                value={branchForm.pfRate}
+                onChange={e => setBranchForm({ ...branchForm, pfRate: Number(e.target.value) || 12 })}
+              />
+              <Input
+                label="ESIC Contribution Rate (%)"
+                type="number"
+                step="0.01"
+                placeholder="e.g. 3.25"
+                value={branchForm.esicRate}
+                onChange={e => setBranchForm({ ...branchForm, esicRate: Number(e.target.value) || 3.25 })}
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-left">
+              <Input
+                label="Basic Salary % of CTC (%)"
+                type="number"
+                placeholder="e.g. 50"
+                value={branchForm.basicPercent}
+                onChange={e => setBranchForm({ ...branchForm, basicPercent: Number(e.target.value) || 50 })}
+              />
+              <Input
+                label="Overtime Rate Multiplier"
+                type="number"
+                step="0.1"
+                placeholder="e.g. 1.5"
+                value={branchForm.overtimeRate}
+                onChange={e => setBranchForm({ ...branchForm, overtimeRate: Number(e.target.value) || 1.5 })}
+              />
+              <Input
+                label="Professional Tax Rate (INR)"
+                type="number"
+                placeholder="e.g. 200"
+                value={branchForm.profTaxRate}
+                onChange={e => setBranchForm({ ...branchForm, profTaxRate: Number(e.target.value) || 200 })}
+              />
+            </div>
+          </div>
+
+          {/* Local Notification Privileges */}
+          <div className="space-y-3 pt-2 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">4. Subsidiary Notification & Scopes</h4>
+            <div className="flex flex-col gap-2 pt-1 text-xs">
+              <label className="flex items-center gap-2 font-medium text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={branchForm.enableBroadcasts}
+                  onChange={e => setBranchForm({ ...branchForm, enableBroadcasts: e.target.checked })}
+                  className="rounded text-indigo-650 focus:ring-indigo-500 w-3.5 h-3.5"
+                />
+                Permit local Broadcast Dispatch to all devices in this branch
+              </label>
+              <label className="flex items-center gap-2 font-medium text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={branchForm.enableSystemAlerts}
+                  onChange={e => setBranchForm({ ...branchForm, enableSystemAlerts: e.target.checked })}
+                  className="rounded text-indigo-650 focus:ring-indigo-500 w-3.5 h-3.5"
+                />
+                Receive automatic critical biometric and compliance alerts
+              </label>
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

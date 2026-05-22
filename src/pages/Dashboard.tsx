@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   Building2, Calendar, AlertCircle, FileText, CheckCircle2, Clock, Info,
-  Search, Bell, DollarSign, Sparkles, ChevronRight
+  Search, Bell, DollarSign, Sparkles, ChevronRight, Users
 } from 'lucide-react';
 import {
   type Role,
@@ -230,7 +230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const revenueChartData = useMemo(() => {
     const counts = { Starter: 0, Professional: 0, Enterprise: 0 };
     const sums = { Starter: 0, Professional: 0, Enterprise: 0 };
-    companies.forEach(c => {
+    companies.filter(c => !c.parentCompanyId).forEach(c => {
       if (c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')) {
         const planObj = plans.find(p => p.name === c.plan);
         const cost = planObj ? (c.billingCycle === 'Yearly' ? Math.round(planObj.priceYearly / 12) : planObj.priceMonthly) : (c.subscriptionPrice || 0);
@@ -253,7 +253,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let expired = 0;
     let trial = 0;
     let suspended = 0;
-    companies.forEach(c => {
+    companies.filter(c => !c.parentCompanyId).forEach(c => {
       const daysRemaining = getDaysRemaining(c.renewalDate);
       if (c.accountStatus === 'Suspended') suspended++;
       else if (c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || (daysRemaining !== null && daysRemaining < 0)) expired++;
@@ -337,7 +337,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Dynamic Metric Cards (Top cards keeping only important) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Companies</span>
@@ -348,6 +348,32 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="mt-3.5">
               <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{totalCompaniesCount}</h3>
               <p className="text-xs text-gray-500 mt-1">Tenant spaces registered</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Branches</span>
+              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                <Building2 size={18} />
+              </div>
+            </div>
+            <div className="mt-3.5">
+              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{analytics.totalBranches}</h3>
+              <p className="text-xs text-gray-500 mt-1">Subsidiaries managed</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Combined Employees</span>
+              <div className="p-2.5 bg-violet-50 text-violet-600 rounded-xl">
+                <Users size={18} />
+              </div>
+            </div>
+            <div className="mt-3.5">
+              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{employees.length}</h3>
+              <p className="text-xs text-gray-500 mt-1">Total active workforce</p>
             </div>
           </div>
 
@@ -667,6 +693,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const branches = companies.filter(b => b.parentCompanyId === 'c-gcri');
     const isParentCompany = activeCompanyId === 'c-gcri';
 
+    const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all-gcri' : 'branch');
+    const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
+    const [selectedDept, setSelectedDept] = useState('all');
+    const [selectedRole, setSelectedRole] = useState('all');
+
     // Filter leaves for this company (supports parent + branches)
     const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies));
 
@@ -743,17 +774,52 @@ export const Dashboard: React.FC<DashboardProps> = ({
         showToast('Please type a message to broadcast.', 'warning');
         return;
       }
+
+      // Calculate Human-readable Audience stamp & scopes
+      let audienceDesc = '';
+      let targetBranchId = activeCompanyId;
+      let targetBranchName = 'All';
+
+      if (selectedAudience === 'all-gcri') {
+        audienceDesc = 'All GCRI Staff';
+        targetBranchId = 'c-gcri';
+        targetBranchName = 'All';
+      } else if (selectedAudience === 'branch') {
+        const brId = isParentCompany ? selectedBranch : activeCompanyId;
+        const brObj = companies.find(c => c.id === brId);
+        targetBranchId = brId;
+        targetBranchName = brObj ? (brObj.branchName || brObj.name) : 'Branch';
+        audienceDesc = `${targetBranchName} Branch Staff`;
+      } else if (selectedAudience === 'role-medical') {
+        audienceDesc = 'Doctors & Medical Staff';
+      } else if (selectedAudience === 'role-nursing') {
+        audienceDesc = 'Nursing & Clinical Staff';
+      } else if (selectedAudience === 'role-admin') {
+        audienceDesc = 'Administrative & Support Staff';
+      }
+
+      if (selectedDept !== 'all') {
+        audienceDesc += ` (${selectedDept} Dept)`;
+      }
+      if (selectedRole !== 'all') {
+        audienceDesc += ` [Category: ${selectedRole}]`;
+      }
+
       const newNotif: Notification = {
         id: `notif-${Date.now()}`,
         companyId: activeCompanyId,
+        branchId: targetBranchId,
+        branchName: targetBranchName,
+        targetAudience: audienceDesc,
         type: 'company',
         message: `Broadcast: ${broadcastMsg}`,
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
         read: false,
         priority: 'high'
       };
+
       onUpdateNotifications(prev => [newNotif, ...prev]);
-      showToast('Broadcast notification successfully sent to all selected employee devices!', 'success');
+      showToast(`Broadcast dispatch logged for: ${audienceDesc}!`, 'success');
       setBroadcastMsg('');
     };
 
@@ -996,14 +1062,94 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="space-y-3.5">
               <div>
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  Target Audience
+                  Target Audience Scope
                 </label>
-                <select className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500">
-                  <option>All Staff (GCRI Ahmedabad)</option>
-                  <option>Doctors & Medical Staff</option>
-                  <option>Nursing & Clinical Staff</option>
-                  <option>Administrative & Support</option>
+                <select
+                  value={selectedAudience}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setSelectedAudience(val);
+                    if (val === 'all-gcri') {
+                      setSelectedBranch('all');
+                    } else if (val === 'branch') {
+                      if (!isParentCompany) {
+                        setSelectedBranch(activeCompanyId);
+                      } else {
+                        setSelectedBranch('c-ahmedabad');
+                      }
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                >
+                  {isParentCompany && (
+                    <option value="all-gcri">GCRI (All Staff across all centers)</option>
+                  )}
+                  {isParentCompany ? (
+                    <optgroup label="GCRI Subsidiaries & Branches">
+                      <option value="branch">Select Specific Branch Staff</option>
+                    </optgroup>
+                  ) : (
+                    <option value="branch">My Local Branch Staff Only</option>
+                  )}
+                  <optgroup label="Role / Category Scope">
+                    <option value="role-medical">Doctors & Medical Staff</option>
+                    <option value="role-nursing">Nursing & Clinical Staff</option>
+                    <option value="role-admin">Administrative & Support Staff</option>
+                  </optgroup>
                 </select>
+              </div>
+
+              {selectedAudience === 'branch' && isParentCompany && (
+                <div className="animate-fade-in text-left">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Target Branch Regional Center
+                  </label>
+                  <select
+                    value={selectedBranch}
+                    onChange={e => setSelectedBranch(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                  >
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>
+                        {b.branchName || b.name} ({b.branchCode || 'BR'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 text-left">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Target Department
+                  </label>
+                  <select
+                    value={selectedDept}
+                    onChange={e => setSelectedDept(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                  >
+                    <option value="all">All Departments</option>
+                    {topDepartments.map(d => (
+                      <option key={d.name} value={d.name}>{d.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Target Role Category
+                  </label>
+                  <select
+                    value={selectedRole}
+                    onChange={e => setSelectedRole(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="Doctor">Doctors Only</option>
+                    <option value="Nurse">Nursing Only</option>
+                    <option value="Admin">Admin Staff Only</option>
+                  </select>
+                </div>
               </div>
 
               <div>
@@ -1013,7 +1159,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <textarea
                   value={broadcastMsg}
                   onChange={e => setBroadcastMsg(e.target.value)}
-                  placeholder="Type broadcast message to all corporate roster devices..."
+                  placeholder="Type broadcast message to all scoped roster devices..."
                   rows={3}
                   className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white resize-none"
                 />

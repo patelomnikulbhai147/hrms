@@ -4,12 +4,12 @@ export type SubscriptionStatus = 'Suspended' | 'Overdue' | 'Expiring Soon' | 'Tr
 
 export interface SubscriptionMetrics {
   totalCompanies: number;
+  totalBranches: number;
   activeSubscriptions: number;
   expiringPlans: number;
   pendingRenewals: number;
   monthlyRevenue: number;
 }
-
 export interface SubscriptionAlert {
   company: Company;
   type: SubscriptionStatus;
@@ -57,13 +57,15 @@ export const calculateSubscriptionStatus = (company: Company): SubscriptionStatu
 };
 
 export const calculateSubscriptionAnalytics = (companies: Company[], plans: SubscriptionPlan[]): SubscriptionMetrics => {
-  const totalCompanies = companies.length;
+  const parentCompanies = companies.filter(c => !c.parentCompanyId);
+  const totalCompanies = parentCompanies.length;
+  const totalBranches = companies.filter(c => !!c.parentCompanyId).length;
   let activeSubscriptions = 0;
   let expiringPlans = 0;
   let pendingRenewals = 0;
   let monthlyRevenue = 0;
 
-  companies.forEach(company => {
+  parentCompanies.forEach(company => {
     if (!company) return;
 
     // Active means accountStatus === 'Active' and paymentStatus is Paid or Trial Active
@@ -99,6 +101,7 @@ export const calculateSubscriptionAnalytics = (companies: Company[], plans: Subs
 
   return {
     totalCompanies,
+    totalBranches,
     activeSubscriptions,
     expiringPlans,
     pendingRenewals,
