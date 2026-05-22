@@ -210,6 +210,22 @@ const seedDataForCompany = (companyId: string, companyName: string) => {
 };
 
 export default function App() {
+  // Auto-migration: check if browser has cached the old mock database, and clear it for a clean slate
+  if (typeof window !== 'undefined') {
+    const rawAccounts = localStorage.getItem('hrms_accounts');
+    if (rawAccounts && rawAccounts.includes('vikram')) {
+      localStorage.removeItem('hrms_accounts');
+      localStorage.removeItem('hrms_companies');
+      localStorage.removeItem('hrms_employees');
+      localStorage.removeItem('hrms_attendance');
+      localStorage.removeItem('hrms_leaves');
+      localStorage.removeItem('hrms_payroll');
+      localStorage.removeItem('hrms_documents');
+      localStorage.removeItem('hrms_payments');
+      window.location.reload();
+    }
+  }
+
   // Persistent user credentials
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => {
     const raw = localStorage.getItem('hrms_accounts');
