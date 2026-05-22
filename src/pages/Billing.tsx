@@ -3,9 +3,9 @@ import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
   XCircle, Edit3, ArrowUpRight, DollarSign, Users,
   FileText, Download, UserCheck, ChevronRight,
-  Building2
+  Building2, Plus, KeyRound, Trash2, Lock, Mail, Phone, ArrowRight
 } from 'lucide-react';
-import { Company, SubscriptionPlan, PaymentRecord } from '../data/mockData';
+import { Company, SubscriptionPlan, PaymentRecord, Employee, UserAccount } from '../data/mockData';
 import { Button } from '../components/ui/Button';
 import {
   calculateSubscriptionAnalytics,
@@ -20,6 +20,11 @@ interface BillingProps {
   onUpdatePlans: (updater: SubscriptionPlan[] | ((prev: SubscriptionPlan[]) => SubscriptionPlan[])) => void;
   payments: PaymentRecord[];
   onUpdatePayments: (updater: PaymentRecord[] | ((prev: PaymentRecord[]) => PaymentRecord[])) => void;
+  employees: Employee[];
+  onUpdateEmployees: (updater: Employee[] | ((prev: Employee[]) => Employee[])) => void;
+  userAccounts: UserAccount[];
+  onUpdateAccounts: (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => void;
+  onStartMasquerade: (companyId: string) => void;
 }
 
 export const Billing: React.FC<BillingProps> = ({
@@ -28,7 +33,12 @@ export const Billing: React.FC<BillingProps> = ({
   plans,
   onUpdatePlans,
   payments,
-  onUpdatePayments
+  onUpdatePayments,
+  employees,
+  onUpdateEmployees,
+  userAccounts,
+  onUpdateAccounts,
+  onStartMasquerade
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
 
@@ -43,6 +53,205 @@ export const Billing: React.FC<BillingProps> = ({
   const [showInvoiceModal, setShowInvoiceModal] = useState<Company | null>(null);
   const [renewalConfirmCompany, setRenewalConfirmCompany] = useState<Company | null>(null);
   const [renewalStep, setRenewalStep] = useState<1 | 2>(1);
+  // Branch Management state
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [editingBranch, setEditingBranch] = useState<Company | null>(null);
+  const [parentCompanyIdForBranch, setParentCompanyIdForBranch] = useState<string>('');
+  const [branchForm, setBranchForm] = useState({
+    name: '',
+    branchCode: '',
+    location: '',
+    email: '',
+    phone: '',
+    adminName: '',
+    employeeCapacity: 200,
+    status: 'Active' as 'Active' | 'Inactive',
+    pfRate: 12,
+    esicRate: 3.25,
+    basicPercent: 50,
+    profTaxRate: 200,
+    overtimeRate: 1.5,
+    enableBroadcasts: true,
+    enableSystemAlerts: true
+  });
+
+  const handleOpenCreateBranch = (parentId: string) => {
+    setEditingBranch(null);
+    setParentCompanyIdForBranch(parentId);
+    setBranchForm({
+      name: '',
+      branchCode: '',
+      location: '',
+      email: '',
+      phone: '',
+      adminName: '',
+      employeeCapacity: 200,
+      status: 'Active',
+      pfRate: 12,
+      esicRate: 3.25,
+      basicPercent: 50,
+      profTaxRate: 200,
+      overtimeRate: 1.5,
+      enableBroadcasts: true,
+      enableSystemAlerts: true
+    });
+    setBranchModalOpen(true);
+  };
+
+  const handleOpenEditBranch = (branch: Company) => {
+    setEditingBranch(branch);
+    setParentCompanyIdForBranch(branch.parentCompanyId || 'c-gcri');
+    setBranchForm({
+      name: branch.name,
+      branchCode: branch.branchCode || '',
+      location: branch.location || branch.address || '',
+      email: branch.email || branch.adminEmail || '',
+      phone: branch.phone || '',
+      adminName: branch.adminName || '',
+      employeeCapacity: branch.employeeCapacity || 200,
+      status: branch.status === 'Active' ? 'Active' : 'Inactive',
+      pfRate: branch.pfRate || 12,
+      esicRate: branch.esicRate || 3.25,
+      basicPercent: branch.basicPercent || 50,
+      profTaxRate: branch.profTaxRate || 200,
+      overtimeRate: branch.overtimeRate || 1.5,
+      enableBroadcasts: true,
+      enableSystemAlerts: true
+    });
+    setBranchModalOpen(true);
+  };
+
+  const handleRemoveBranch = (branchId: string) => {
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch) return;
+
+    const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
+    if (!confirmDelete) return;
+
+    // Ask for reassignment or archive
+    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
+    
+    if (reassign) {
+      const updated = employees.map(emp => {
+        if (emp.companyId === branchId) {
+          return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
+        }
+        return emp;
+      });
+      onUpdateEmployees(updated);
+    } else {
+      const updated = employees.map(emp => {
+        if (emp.companyId === branchId) {
+          return { ...emp, status: 'Inactive' as const };
+        }
+        return emp;
+      });
+      onUpdateEmployees(updated);
+    }
+
+    // Delete company/branch
+    const nextCompanies = companies.filter(c => c.id !== branchId);
+    onUpdateCompanies(nextCompanies);
+    alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+  };
+
+  const handleToggleBranchStatus = (branchId: string, current: 'Active' | 'Inactive' | 'Pending') => {
+    const nextStatus = current === 'Active' ? 'Inactive' : 'Active';
+    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, status: nextStatus, accountStatus: nextStatus === 'Inactive' ? 'Suspended' : 'Active' } : c));
+  };
+
+  const handleSaveBranch = () => {
+    if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
+      alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
+      return;
+    }
+    
+    if (editingBranch) {
+      // Edit mode
+      const updatedCompanies = companies.map(c => {
+        if (c.id === editingBranch.id) {
+          return {
+            ...c,
+            name: branchForm.name,
+            branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+            branchCode: branchForm.branchCode,
+            location: branchForm.location,
+            address: branchForm.location,
+            email: branchForm.email,
+            adminEmail: branchForm.email,
+            phone: branchForm.phone,
+            adminName: branchForm.adminName,
+            employeeCapacity: Number(branchForm.employeeCapacity) || 200,
+            status: branchForm.status,
+            pfRate: Number(branchForm.pfRate) || 12,
+            esicRate: Number(branchForm.esicRate) || 3.25,
+            basicPercent: Number(branchForm.basicPercent) || 50,
+            profTaxRate: Number(branchForm.profTaxRate) || 200,
+            overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+          };
+        }
+        return c;
+      });
+      onUpdateCompanies(updatedCompanies);
+      alert('Branch updated successfully.');
+    } else {
+      // Create mode
+      const newId = `c-br-${Date.now()}`;
+      const newBranchObj: Company = {
+        id: newId,
+        parentCompanyId: parentCompanyIdForBranch || 'c-gcri',
+        name: branchForm.name,
+        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+        branchCode: branchForm.branchCode,
+        domain: `${branchForm.name.toLowerCase().replace(/\s+/g, '')}.gcri.in`,
+        adminName: branchForm.adminName,
+        adminEmail: branchForm.email,
+        phone: branchForm.phone,
+        industry: 'Healthcare & Research',
+        status: branchForm.status,
+        employeeCount: 0,
+        joinDate: new Date().toISOString().split('T')[0],
+        plan: 'Enterprise',
+        logo: 'GC',
+        pfRate: Number(branchForm.pfRate) || 12,
+        esicRate: Number(branchForm.esicRate) || 3.25,
+        basicPercent: Number(branchForm.basicPercent) || 50,
+        profTaxRate: Number(branchForm.profTaxRate) || 200,
+        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+        address: branchForm.location,
+        email: branchForm.email,
+        primaryColor: '#6366f1',
+        headerText: `${branchForm.name.toUpperCase()} REGIONAL CENTER`,
+        footerText: `${branchForm.name} · Subsidiary of Gujarat Cancer Research Institute`,
+        signatureText: `${branchForm.adminName}, Branch Director`,
+        themeStyle: 'Modern',
+        paymentStatus: 'Trial Active',
+        renewalDate: '2027-12-31',
+        subscriptionPrice: 0,
+        billingCycle: 'Monthly',
+        accountStatus: 'Active'
+      };
+
+      // Auto provision Branch Admin user account!
+      const newAdminUser: UserAccount = {
+        id: `u-ba-${Date.now()}`,
+        name: branchForm.adminName,
+        email: branchForm.email,
+        username: branchForm.email.split('@')[0],
+        passwordStr: 'welcome123',
+        role: 'Company Head',
+        companyId: newId,
+        status: 'Active',
+        avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+      };
+
+      onUpdateAccounts([...userAccounts, newAdminUser]);
+      onUpdateCompanies([...companies, newBranchObj]);
+      alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+    }
+    
+    setBranchModalOpen(false);
+  };
 
   // Form states
   const [newRenewalDate, setNewRenewalDate] = useState('');
@@ -119,6 +328,7 @@ export const Billing: React.FC<BillingProps> = ({
 
   const dynamicAlerts = getSubscriptionAlertsList(companies);
   const alertCount = dynamicAlerts.length;
+  const parentCompanies = companies.filter(c => !c.parentCompanyId);
 
   // ─── SaaS Metrics Calculations ──────────────────────────────────────────────
   const analytics = calculateSubscriptionAnalytics(companies, plans);
@@ -281,6 +491,7 @@ export const Billing: React.FC<BillingProps> = ({
   // Filtered companies safely safeguarded against missing fields
   const filteredCompanies = companies.filter(c => {
     if (!c) return false;
+    if (c.parentCompanyId) return false;
     const matchSearch = (c.name || '').toLowerCase().includes(companySearch.toLowerCase()) ||
       (c.adminName || '').toLowerCase().includes(companySearch.toLowerCase());
     const matchPlan = !planFilter || (c.plan || '').toLowerCase() === planFilter.toLowerCase();
@@ -332,7 +543,7 @@ export const Billing: React.FC<BillingProps> = ({
           <div className="flex items-start justify-between text-gray-500">
             <div>
               <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Subscriptions</div>
-              <div className="mt-2 text-2xl font-bold text-gray-900">{activePlansCount} <span className="text-sm font-medium text-gray-400">/ {companies.length}</span></div>
+              <div className="mt-2 text-2xl font-bold text-gray-900">{activePlansCount} <span className="text-sm font-medium text-gray-400">/ {parentCompanies.length}</span></div>
               <div className="mt-1 text-sm text-gray-500">Paid or trial workspaces</div>
             </div>
             <div className="text-indigo-600 bg-indigo-50 rounded-lg p-2">
@@ -459,96 +670,204 @@ export const Billing: React.FC<BillingProps> = ({
             </div>
           </div>
 
-          {successMessage && (
-            <div className="mx-6 mb-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 shadow-sm">
-              {successMessage}
-            </div>
-          )}
-
           {/* Companies as Workspace Cards */}
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="p-6 space-y-6">
             {filteredCompanies.map(comp => {
+              const compBranches = companies.filter(c => c.parentCompanyId === comp.id);
+              const branchIds = [comp.id, ...compBranches.map(b => b.id)];
+              const parentEmployeesCount = employees.filter(emp => emp.companyId === comp.id).length;
+              const totalWorkforce = employees.filter(emp => branchIds.includes(emp.companyId)).length;
+
               const daysLeft = getDaysRemaining(comp.renewalDate);
               const isSoon = daysLeft !== null ? (daysLeft <= 10 && daysLeft >= 0) : false;
 
               const statusBadge = () => {
                 switch (comp.paymentStatus) {
-                  case 'Paid': return 'bg-emerald-50 text-emerald-700';
-                  case 'Pending': return 'bg-amber-50 text-amber-700';
-                  case 'Overdue': return 'bg-rose-50 text-rose-700';
-                  case 'Trial Active': return 'bg-sky-50 text-sky-700';
-                  default: return 'bg-gray-100 text-gray-700';
+                  case 'Paid': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
+                  case 'Pending': return 'bg-amber-50 text-amber-700 border border-amber-100';
+                  case 'Overdue': return 'bg-rose-50 text-rose-700 border border-rose-100';
+                  case 'Trial Active': return 'bg-sky-50 text-sky-700 border border-sky-100';
+                  default: return 'bg-gray-100 text-gray-700 border border-gray-200';
                 }
               };
 
               return (
-                <div key={comp.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex items-start gap-4">
-                    <div className="flex-shrink-0">
-                      <div className="w-12 h-12 rounded-xl flex items-center justify-center font-bold text-white text-sm shadow" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>{comp.logo}</div>
+                <div key={comp.id} className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                  {/* Parent Company Header */}
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                    <div className="flex items-center gap-4">
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-sm" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>
+                        {comp.logo}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xl font-bold text-gray-900">{comp.name}</h3>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">Parent Company</span>
+                        </div>
+                        <p className="text-sm text-gray-500 mt-0.5">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
+                      </div>
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-900 truncate">{comp.name}</h4>
-                          <p className="text-xs text-gray-500 truncate">{comp.domain} • {comp.adminEmail}</p>
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-bold ${statusBadge()}`}>
+                        {comp.paymentStatus}
+                      </span>
+                      <button
+                        onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
+                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                      >
+                        Change Plan
+                      </button>
+                      <button
+                        onClick={() => handleQuickExtend(comp.id)}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+                      >
+                        Renew Subscription
+                      </button>
+                    </div>
+                  </div>
 
-                        <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${statusBadge()}`}>
-                          {comp.paymentStatus}
-                        </div>
+                  {/* High-Fidelity Combined Summary Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-slate-50/50 rounded-2xl px-5 mt-5 border border-slate-100/50">
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subscription Tier</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        {getPlanBadge(comp.plan)}
                       </div>
-
-                      <div className="mt-3 flex items-center justify-between gap-4">
-                        <div className="text-sm text-gray-700">
-                          <div className="font-medium flex items-center gap-1.5">
-                            {getPlanBadge(comp.plan)}
-                          </div>
-                          <div className="text-xs text-gray-500 font-semibold mt-1">
-                            ₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')} / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div className="text-sm font-medium text-gray-800">Renewal</div>
-                          <div className="text-xs text-gray-500">{formatDisplayDate(comp.renewalDate) || '—'}{isSoon ? <span className="ml-2 text-amber-600 font-semibold">• {daysLeft}d</span> : null}</div>
-                        </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Combined Workforce</div>
+                      <div className="mt-1 text-sm font-extrabold text-slate-800">
+                        {totalWorkforce} <span className="text-[10px] font-normal text-slate-500">Employees (Head Office: {parentEmployeesCount})</span>
                       </div>
-
-                      <div className="mt-4 flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
-                            className="px-3 py-1 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            Manage
-                          </button>
-                          <button
-                            onClick={() => handleQuickExtend(comp.id)}
-                            className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded-lg text-sm"
-                          >
-                            Renew
-                          </button>
-                          <button
-                            onClick={() => toggleCompanyStatus(comp.id)}
-                            className="px-3 py-1 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                          >
-                            {comp.accountStatus === 'Active' ? 'Suspend' : 'Activate'}
-                          </button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setShowInvoiceModal(comp)}
-                            className="text-sm text-gray-500 hover:text-gray-800"
-                            title="View latest invoice"
-                          >
-                            View Invoice
-                          </button>
-                          <ChevronRight size={16} className="text-gray-300" />
-                        </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Linked Regional Branches</div>
+                      <div className="mt-1 text-sm font-extrabold text-slate-800">
+                        {compBranches.length} <span className="text-[10px] font-normal text-slate-500">Sub-centers active</span>
                       </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Consolidated Renewal</div>
+                      <div className="mt-1 text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>{formatDisplayDate(comp.renewalDate) || '—'}</span>
+                        {isSoon && <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">Expires in {daysLeft}d</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Branches Directory Panel */}
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Building2 size={16} className="text-indigo-600" />
+                        <h4 className="font-bold text-gray-800 text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
+                      </div>
+                      <button
+                        onClick={() => handleOpenCreateBranch(comp.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-colors"
+                      >
+                        <Plus size={14} /> Deploy Branch Portal
+                      </button>
+                    </div>
+
+                    {compBranches.length === 0 ? (
+                      <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+                        No branches deployed yet for this workspace. Click "Deploy Branch Portal" to onboard one.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-100 rounded-2xl">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
+                              <th className="px-4 py-3">Branch Details</th>
+                              <th className="px-4 py-3">Code & Domain</th>
+                              <th className="px-4 py-3">Roster Count</th>
+                              <th className="px-4 py-3">Admin Officer</th>
+                              <th className="px-4 py-3">Statutory Status</th>
+                              <th className="px-4 py-3 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                            {compBranches.map(br => {
+                              const brEmployeesCount = employees.filter(emp => emp.companyId === br.id).length;
+                              const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
+
+                              return (
+                                <tr key={br.id} className="hover:bg-slate-50/50 transition-colors">
+                                  <td className="px-4 py-3">
+                                    <div className="font-bold text-slate-900">{br.name}</div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">{br.location || br.address}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-mono text-[10px] text-indigo-600 bg-indigo-50/50 px-1.5 py-0.5 rounded inline-block font-bold">{br.branchCode || 'BR'}</div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">{br.domain}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-bold text-slate-900">{brEmployeesCount} <span className="text-[10px] text-slate-400 font-normal">employees</span></div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-medium text-slate-800">{br.adminName}</div>
+                                    <div className="text-[10px] text-slate-400">{br.adminEmail}</div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isSuspended ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                                      {isSuspended ? 'Portal Suspended' : 'Portal Active'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button
+                                        onClick={() => onStartMasquerade(br.id)}
+                                        className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px] transition-colors"
+                                      >
+                                        Masquerade
+                                      </button>
+                                      <button
+                                        onClick={() => handleOpenEditBranch(br)}
+                                        className="p-1 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
+                                        title="Edit Branch Settings"
+                                      >
+                                        <Edit3 size={12} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
+                                        className={`px-2 py-1 border rounded-lg font-bold text-[10px] transition-colors ${isSuspended ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
+                                      >
+                                        {isSuspended ? 'Activate' : 'Suspend'}
+                                      </button>
+                                      <button
+                                        onClick={() => handleRemoveBranch(br.id)}
+                                        className="p-1 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors"
+                                        title="Remove Branch"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Invoices and Stats Bar */}
+                  <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                    <div>
+                      Unified price: <strong className="text-slate-800">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setShowInvoiceModal(comp)}
+                        className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors"
+                      >
+                        View Latest Payment Receipt
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <span>Next renewal: {formatDisplayDate(comp.renewalDate)}</span>
                     </div>
                   </div>
                 </div>
@@ -1261,6 +1580,225 @@ export const Billing: React.FC<BillingProps> = ({
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: DEPLOY BRANCH PORTAL / statutory payroll setup ────────── */}
+      {branchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200 my-8">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-slate-50/50">
+              <div>
+                <h4 className="font-bold text-gray-800 text-lg">
+                  {editingBranch ? 'Edit Regional Branch Parameters' : 'Deploy Subsidiary Branch Portal'}
+                </h4>
+                <p className="text-xs text-gray-500 mt-1">Configure workspace boundaries, regional capacity, and statutory payroll rates.</p>
+              </div>
+              <button
+                onClick={() => setBranchModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 bg-transparent border-none text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+              {/* General details */}
+              <div className="space-y-4">
+                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">1. General Subsidiary Profiles</h5>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. GCRI Rajkot"
+                      value={branchForm.name}
+                      onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Code (3-4 Letters)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. RAJ"
+                      value={branchForm.branchCode}
+                      onChange={(e) => setBranchForm({ ...branchForm, branchCode: e.target.value.toUpperCase() })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Admin Officer</label>
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={branchForm.adminName}
+                      onChange={(e) => setBranchForm({ ...branchForm, adminName: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Contact Email</label>
+                    <input
+                      type="email"
+                      placeholder="admin@gcri.in"
+                      value={branchForm.email}
+                      onChange={(e) => setBranchForm({ ...branchForm, email: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Contact Phone</label>
+                    <input
+                      type="text"
+                      placeholder="+91 XXXXX XXXXX"
+                      value={branchForm.phone}
+                      onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Physical Location Address</label>
+                    <input
+                      type="text"
+                      placeholder="Rajkot, Gujarat"
+                      value={branchForm.location}
+                      onChange={(e) => setBranchForm({ ...branchForm, location: e.target.value })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Threshold limits */}
+              <div className="space-y-4 border-t border-slate-100 pt-5">
+                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">2. Regional Limits & Settings</h5>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Employee Capacity Limit</label>
+                    <input
+                      type="number"
+                      value={branchForm.employeeCapacity}
+                      onChange={(e) => setBranchForm({ ...branchForm, employeeCapacity: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">System Status</label>
+                    <select
+                      value={branchForm.status}
+                      onChange={(e) => setBranchForm({ ...branchForm, status: e.target.value as any })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="Active">Active (Live Portal)</option>
+                      <option value="Inactive">Inactive (Suspended)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 pt-2">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={branchForm.enableBroadcasts}
+                      onChange={(e) => setBranchForm({ ...branchForm, enableBroadcasts: e.target.checked })}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <span>Allow regional administrative broadcasts</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={branchForm.enableSystemAlerts}
+                      onChange={(e) => setBranchForm({ ...branchForm, enableSystemAlerts: e.target.checked })}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                    />
+                    <span>Allow automatic system payroll alerts</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Statutory parameters */}
+              <div className="space-y-4 border-t border-slate-100 pt-5">
+                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">3. Statutory Payroll Parameters Override</h5>
+                
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">PF Contribution Rate (%)</label>
+                    <input
+                      type="number"
+                      value={branchForm.pfRate}
+                      onChange={(e) => setBranchForm({ ...branchForm, pfRate: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">ESIC Contribution (%)</label>
+                    <input
+                      type="number"
+                      value={branchForm.esicRate}
+                      onChange={(e) => setBranchForm({ ...branchForm, esicRate: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-500 mb-1">Basic Salary % of Gross</label>
+                    <input
+                      type="number"
+                      value={branchForm.basicPercent}
+                      onChange={(e) => setBranchForm({ ...branchForm, basicPercent: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Professional Tax (₹/mo)</label>
+                    <input
+                      type="number"
+                      value={branchForm.profTaxRate}
+                      onChange={(e) => setBranchForm({ ...branchForm, profTaxRate: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-500 mb-1">Overtime Multiplier (e.g. 1.5x)</label>
+                    <input
+                      type="number"
+                      value={branchForm.overtimeRate}
+                      onChange={(e) => setBranchForm({ ...branchForm, overtimeRate: Number(e.target.value) })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50/50">
+              <button
+                type="button"
+                onClick={() => setBranchModalOpen(false)}
+                className="px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveBranch}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
+              >
+                {editingBranch ? 'Save Branch Settings' : 'Deploy Branch Workspace'}
+              </button>
             </div>
           </div>
         </div>

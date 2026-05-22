@@ -710,6 +710,11 @@ export default function App() {
             onUpdatePlans={handleUpdatePlans}
             payments={payments}
             onUpdatePayments={handleUpdatePayments}
+            employees={employees}
+            onUpdateEmployees={handleUpdateEmployees}
+            userAccounts={userAccounts}
+            onUpdateAccounts={handleUpdateAccounts}
+            onStartMasquerade={handleStartMasquerade}
           />
         );
       case 'employees':
