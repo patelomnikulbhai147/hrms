@@ -48,6 +48,8 @@ interface DashboardProps {
   payroll: PayrollRecord[];
   documents: Document[];
   plans: SubscriptionPlan[];
+  notifications: Notification[];
+  onUpdateNotifications: (updater: Notification[] | ((prev: Notification[]) => Notification[])) => void;
   onUpdateCompanies?: (updater: Company[] | ((prev: Company[]) => Company[])) => void;
   onUpdatePayments?: (updater: any[] | ((prev: any[]) => any[])) => void;
   onUpdateEmployees?: (updater: Employee[] | ((prev: Employee[]) => Employee[])) => void;
@@ -66,6 +68,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   payroll,
   documents,
   plans,
+  notifications,
+  onUpdateNotifications,
   onUpdateCompanies,
   onUpdatePayments
 }) => {
@@ -694,6 +698,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
         showToast('Please type a message to broadcast.', 'warning');
         return;
       }
+      const newNotif: Notification = {
+        id: `notif-${Date.now()}`,
+        companyId: activeCompanyId,
+        type: 'company',
+        message: `Broadcast: ${broadcastMsg}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        read: false,
+        priority: 'high'
+      };
+      onUpdateNotifications(prev => [newNotif, ...prev]);
       showToast('Broadcast notification successfully sent to all selected employee devices!', 'success');
       setBroadcastMsg('');
     };

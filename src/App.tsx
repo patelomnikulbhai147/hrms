@@ -26,7 +26,8 @@ import {
   PayrollRecord,
   Document,
   SubscriptionPlan,
-  PaymentRecord
+  PaymentRecord,
+  Notification
 } from './data/mockData';
 import { allExcelParsedEmployees } from './data/excelSeededData';
 
@@ -341,6 +342,23 @@ export default function App() {
     const next = typeof updater === 'function' ? updater(payments) : updater;
     setPayments(next);
     localStorage.setItem('hrms_payments', JSON.stringify(next));
+  };
+
+  // Persistent notifications state
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    const raw = localStorage.getItem('hrms_notifications');
+    if (raw) return JSON.parse(raw);
+    const initialList: Notification[] = [
+      { id: 'n1', companyId: 'c-ahmedabad', type: 'system', message: 'Welcome to GCRI Ahmedabad Enterprise HRMS Platform!', timestamp: '2026-05-22 09:00', read: false, priority: 'medium' }
+    ];
+    localStorage.setItem('hrms_notifications', JSON.stringify(initialList));
+    return initialList;
+  });
+
+  const handleUpdateNotifications = (updater: Notification[] | ((prev: Notification[]) => Notification[])) => {
+    const next = typeof updater === 'function' ? updater(notifications) : updater;
+    setNotifications(next);
+    localStorage.setItem('hrms_notifications', JSON.stringify(next));
   };
 
   const handleUpdateAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
@@ -664,6 +682,8 @@ export default function App() {
             payroll={payroll}
             documents={documents}
             plans={plans}
+            notifications={notifications}
+            onUpdateNotifications={handleUpdateNotifications}
             onUpdateCompanies={handleUpdateCompanies}
             onUpdatePayments={handleUpdatePayments}
             onUpdateEmployees={handleUpdateEmployees}
@@ -818,6 +838,8 @@ export default function App() {
           userAvatar={authProfile.avatar}
           pageTitle={pageTitles[currentPage] || 'HRMS'}
           companies={companies}
+          notifications={notifications}
+          onUpdateNotifications={handleUpdateNotifications}
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">

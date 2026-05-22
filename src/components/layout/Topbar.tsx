@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, ShieldAlert } from 'lucide-react';
-import { notifications, type Role, type Company } from '../../data/mockData';
+import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X } from 'lucide-react';
+import { type Role, type Company, type Notification } from '../../data/mockData';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
 
@@ -16,6 +16,8 @@ interface TopbarProps {
   userAvatar: string;
   pageTitle: string;
   companies: Company[];
+  notifications: Notification[];
+  onUpdateNotifications: (updater: Notification[] | ((prev: Notification[]) => Notification[])) => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -29,7 +31,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   userName,
   userAvatar,
   pageTitle,
-  companies
+  companies,
+  notifications,
+  onUpdateNotifications
 }) => {
   if (false as boolean) {
     console.log(onRoleChange, onCompanyChange);
@@ -116,14 +120,24 @@ export const Topbar: React.FC<TopbarProps> = ({
                     <p className="p-4 text-center text-xs text-gray-400">No recent alerts</p>
                   ) : (
                     companyNotifs.slice(0, 5).map(n => (
-                      <div key={n.id} className={cn('px-4 py-2.5 hover:bg-gray-50 cursor-pointer', !n.read && 'bg-blue-50/50')}>
-                        <div className="flex items-start gap-2">
+                      <div key={n.id} className={cn('px-4 py-2.5 hover:bg-gray-50 flex items-start justify-between gap-2', !n.read && 'bg-blue-50/50')}>
+                        <div className="flex items-start gap-2 min-w-0">
                           <div className={cn('w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0', n.priority === 'high' ? 'bg-red-500' : n.priority === 'medium' ? 'bg-amber-500' : 'bg-gray-300')} />
-                          <div>
-                            <p className="text-[11px] text-gray-700 leading-relaxed">{n.message}</p>
+                          <div className="min-w-0">
+                            <p className="text-[11px] text-gray-700 leading-relaxed break-words">{n.message}</p>
                             <p className="text-[10px] text-gray-400 mt-0.5">{n.timestamp}</p>
                           </div>
                         </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onUpdateNotifications(prev => prev.filter(item => item.id !== n.id));
+                          }}
+                          title="Delete notification"
+                          className="text-gray-400 hover:text-red-500 p-0.5 hover:bg-gray-100 rounded transition-colors flex-shrink-0"
+                        >
+                          <X size={12} />
+                        </button>
                       </div>
                     ))
                   )}
