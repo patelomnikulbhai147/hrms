@@ -498,8 +498,9 @@ export const Companies: React.FC<CompaniesProps> = ({
     return matchSearch && matchStatus && matchPlan;
   });
 
-  const activeCount = companies.filter(c => c.status === 'Active').length;
-  const suspendedCount = companies.filter(c => c.status === 'Inactive').length;
+  const parentCompanies = companies.filter(c => !c.parentCompanyId);
+  const activeCount = parentCompanies.filter(c => c.status === 'Active').length;
+  const suspendedCount = parentCompanies.filter(c => c.status === 'Inactive').length;
 
   // Determine if save button should be disabled
   const isSaveDisabled =
@@ -530,7 +531,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <StatCard label="Active Companies" value={activeCount} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" sub="Access allowed to portal" />
         <StatCard label="Suspended Accounts" value={suspendedCount} icon={<XCircle size={16} className="text-red-500" />} color="bg-red-50" sub="Portal entry blocked" />
-        <StatCard label="Total Scoped Tenants" value={companies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
+        <StatCard label="Total Scoped Tenants" value={parentCompanies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
       </div>
 
       {/* Filters bar */}
