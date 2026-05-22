@@ -614,7 +614,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <Th>Designation</Th>
               <Th>Category</Th>
               <Th>Date of Exit</Th>
-              <Th>Actions</Th>
+              <Th className="min-w-[180px]">ACTIONS</Th>
             </tr>
           </Thead>
           <Tbody>
@@ -640,12 +640,32 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Td><span className="text-xs font-medium text-slate-800">{emp.designation}</span></Td>
                   <Td><Badge variant="blue">{emp.category || 'SKILLED'}</Badge></Td>
                   <Td><span className="text-xs text-slate-500 font-medium">{emp.exitDate || '—'}</span></Td>
-                  <Td>
+                  <Td className="min-w-[180px]">
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => setViewEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="View Master File"><Eye size={14} /></button>
-                      <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
-                      <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
-                    </div>
+  <button
+    onClick={() => setViewEmp(emp)}
+    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600"
+    title="View Master File"
+  >
+    <Eye size={14} />
+  </button>
+
+  <button
+    onClick={() => handleStartEdit(emp)}
+    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600"
+    title="Edit File"
+  >
+    <Edit2 size={14} />
+  </button>
+
+  <button
+    onClick={() => setDeleteEmp(emp)}
+    className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700"
+    title="Delete Employee"
+  >
+    <Trash2 size={14} />
+  </button>
+</div>
                   </Td>
                 </Tr>
               ))
