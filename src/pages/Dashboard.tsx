@@ -62,6 +62,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   companies,
   employees,
   attendance,
+  leaves,
   payroll,
   documents,
   plans,
@@ -652,18 +653,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // ─── Company Head Dashboard (Corporate Operations Control) ───
   if (role === 'Company Head') {
-    const presentToday = scopedEmployees.filter(e =>
-      e.status === 'Active' &&
-      scopedAttendance.some(a => a.employeeId === e.id && (a.status === 'Present' || a.status === 'Late' || a.status === 'WFH'))
-    ).length;
+    const totalEmployees = scopedEmployees.length;
+    const activeEmployeesCount = scopedEmployees.filter(e => e.status === 'Active').length;
 
-    const absentToday = scopedEmployees.filter(e =>
-      e.status === 'Active' &&
-      (scopedAttendance.some(a => a.employeeId === e.id && a.status === 'Absent') ||
-        !scopedAttendance.some(a => a.employeeId === e.id))
-    ).length;
+    // Filter leaves for this company
+    const scopedLeaves = leaves.filter(l => l.companyId === activeCompanyId);
 
-    const onLeaveToday = scopedEmployees.filter(e => e.status === 'On Leave').length;
+    // Employees on leave today
+    const onLeaveToday = scopedEmployees.filter(e => {
+      if (e.status === 'On Leave') return true;
+      return scopedLeaves.some(l => 
+        l.employeeId === e.id && 
+        l.status === 'Approved' && 
+        todayStr >= l.fromDate && 
+        todayStr <= l.toDate
+      );
+    }).length;
+
+    // Attendance pending today: Active employees who have not clocked in, and are not on leave today
+    const attendancePending = scopedEmployees.filter(e => {
+      if (e.status !== 'Active') return false;
+      const hasAttendance = scopedAttendance.some(a => a.employeeId === e.id);
+      if (hasAttendance) return false;
+      const isOnLeave = scopedLeaves.some(l => 
+        l.employeeId === e.id && 
+        l.status === 'Approved' && 
+        todayStr >= l.fromDate && 
+        todayStr <= l.toDate
+      );
+      return !isOnLeave;
+    }).length;
 
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';
@@ -675,30 +694,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <StatCard
-            label="Present Employees"
-            value={presentToday}
-            icon={<CheckCircle2 size={16} className="text-emerald-600" />}
-            color="bg-emerald-50"
-            sub="Checked-in today"
+            label="Total Employees"
+            value={totalEmployees}
+            icon={<Building2 size={16} className="text-indigo-600" />}
+            color="bg-indigo-50"
+            sub="Registered in directory"
           />
           <StatCard
-            label="Absent Employees"
-            value={absentToday}
-            icon={<AlertCircle size={16} className="text-red-500" />}
-            color="bg-red-50"
-            sub="Unregistered biometrics"
+            label="Active Employees"
+            value={activeEmployeesCount}
+            icon={<CheckCircle2 size={16} className="text-emerald-600" />}
+            color="bg-emerald-50"
+            sub="Active contract roster"
+          />
+          <StatCard
+            label="Attendance Pending"
+            value={attendancePending}
+            icon={<Clock size={16} className="text-amber-600 animate-pulse" />}
+            color="bg-amber-50"
+            sub="Not marked for today"
           />
           <StatCard
             label="Employees on Leave"
             value={onLeaveToday}
-            icon={<Calendar size={16} className="text-amber-600" />}
-            color="bg-amber-50"
-            sub="Authorized leave schedule"
+            icon={<Calendar size={16} className="text-purple-600" />}
+            color="bg-purple-50"
+            sub="Approved leave absence"
           />
           <StatCard
-            label="Payroll Process Status"
+            label="Payroll Status"
             value={payrollStatusStr}
             icon={<FileText size={16} className="text-blue-600" />}
             color={companyPayrollStatus.status === 'failed' ? 'bg-red-50' : 'bg-blue-50'}
