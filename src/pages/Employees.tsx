@@ -364,9 +364,16 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   const handleDelete = () => {
     if (!deleteEmp) return;
-    onUpdateEmployees(employees.filter(e => e.id !== deleteEmp.id));
+    const today = new Date().toISOString().split('T')[0];
+    const updated: Employee = {
+      ...deleteEmp,
+      status: 'Terminated',
+      exitDate: today,
+      exitReason: 'Archived / Soft-Deleted'
+    };
+    onUpdateEmployees(employees.map(e => e.id === deleteEmp.id ? updated : e));
     setDeleteEmp(null);
-    alert('Employee record removed successfully.');
+    alert(`Employee file for ${deleteEmp.name} soft-deleted and archived successfully.`);
   };
 
   // Toggling secure field values
@@ -636,12 +643,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Td>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => setViewEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="View Master File"><Eye size={14} /></button>
-                      {isHR && (
-                        <>
-                           <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
-                           <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
-                        </>
-                      )}
+                      <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
+                      <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
                     </div>
                   </Td>
                 </Tr>
@@ -1330,19 +1333,26 @@ export const Employees: React.FC<EmployeesProps> = ({
       </Modal>
 
       {/* Delete Confirmation */}
-      <Modal open={!!deleteEmp} onClose={() => setDeleteEmp(null)} title="Delete Synchronized Employee File" size="sm">
+      <Modal open={!!deleteEmp} onClose={() => setDeleteEmp(null)} title="Confirm Soft-Delete & Archive" size="sm">
         {deleteEmp && (
-          <div className="space-y-3 text-xs text-left">
-            <p className="leading-relaxed">
-              Are you absolutely sure you want to permanently remove employee <strong className="text-slate-900">{deleteEmp.name}</strong> (`{deleteEmp.employeeId}`) from the roster?
-            </p>
-            <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded font-semibold flex items-start gap-1.5">
-              <AlertTriangle className="shrink-0 text-red-600 mt-0.5" size={14} />
-              <span>This will break active payroll history and leave sync. This cannot be undone.</span>
+          <div className="space-y-4 text-xs text-left p-1">
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-950 rounded-xl flex items-start gap-2 shadow-inner">
+              <AlertTriangle className="shrink-0 text-amber-600 mt-0.5 animate-pulse" size={16} />
+              <div>
+                <p className="font-bold text-gray-700">Are you sure you want to remove employee:</p>
+                <p className="text-sm font-extrabold text-slate-900 mt-1 uppercase tracking-wide">
+                  {deleteEmp.name} ?
+                </p>
+              </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
+            
+            <p className="text-[11px] text-gray-500 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-150">
+              Enterprise Safeguard: This record will be soft-deleted (status marked as <span className="font-semibold text-rose-700">Terminated</span>) and archived. The employee will be excluded from the active roster and payroll, but remains fully recoverable in the database later.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
               <Button variant="outline" onClick={() => setDeleteEmp(null)}>Cancel</Button>
-              <Button variant="danger" onClick={handleDelete}>Remove Record</Button>
+              <Button variant="danger" onClick={handleDelete}>Soft-Delete & Archive</Button>
             </div>
           </div>
         )}

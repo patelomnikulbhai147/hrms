@@ -91,7 +91,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
-  const [selectedBranch, setSelectedBranch] = useState<string>('All');
 
   // Scoped Data for Company Head / HR roles
   const scopedEmployees = employees.filter(e => e.companyId === activeCompanyId);
@@ -702,16 +701,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const topDepartments = Object.entries(deptCounts)
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
-      .slice(0, 4);
-
-    // Branch Distribution
-    const branchDistribution = ['Ahmedabad', 'Rajkot', 'Bhavnagar', 'Siddhpur'].map(name => {
-      const count = scopedEmployees.filter(e => {
-        const loc = (e.branchLocation || e.location || 'Ahmedabad').toLowerCase();
-        return loc.includes(name.toLowerCase()) && e.status === 'Active';
-      }).length;
-      return { name, count };
-    });
+      .slice(0, 5);
 
     // Joined Roster feed
     const joinedRoster = [...scopedEmployees]
@@ -739,11 +729,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       ? onLeaveRoster 
       : pendingExitRoster;
 
-    const filteredRosterList = activeTabRoster.filter(e => {
-      if (selectedBranch === 'All') return true;
-      const loc = (e.branchLocation || e.location || 'Ahmedabad').toLowerCase();
-      return loc.includes(selectedBranch.toLowerCase());
-    });
+    const filteredRosterList = activeTabRoster;
 
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';
@@ -805,12 +791,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-gray-100 min-h-[320px]">
+              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-gray-100 min-h-[300px]">
                 {/* LEFT SIDE: Employee Feed & Tabs (Columns: 3/5) */}
                 <div className="md:col-span-3 p-4 flex flex-col justify-between">
                   <div>
                     {/* Tab Selection */}
-                    <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2 mb-3">
+                    <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2 mb-3.5">
                       {(['Joined', 'On Leave', 'Pending Exit'] as const).map((tab) => (
                         <button
                           key={tab}
@@ -826,35 +812,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       ))}
                     </div>
 
-                    {/* Branch Quick Filters */}
-                    <div className="flex flex-wrap items-center gap-1 mb-3">
-                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mr-1">Branch:</span>
-                      {['All', 'Ahmedabad', 'Rajkot', 'Bhavnagar', 'Siddhpur'].map((b) => (
-                        <button
-                          key={b}
-                          onClick={() => setSelectedBranch(b)}
-                          className={`px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all ${
-                            selectedBranch === b
-                              ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-extrabold'
-                              : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-                          }`}
-                        >
-                          {b}
-                        </button>
-                      ))}
-                    </div>
-
                     {/* Compact Roster Feed List */}
-                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                       {filteredRosterList.length === 0 ? (
-                        <div className="text-center py-8 text-xs text-gray-400 font-medium">
+                        <div className="text-center py-12 text-xs text-gray-400 font-medium">
                           No employees matching filter criteria
                         </div>
                       ) : (
                         filteredRosterList.slice(0, 5).map((e) => (
                           <div
                             key={e.id}
-                            className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 bg-white"
+                            className="flex items-center justify-between p-2.5 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 bg-white"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-650 font-sans flex-shrink-0">
@@ -900,23 +868,26 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   )}
                 </div>
 
-                {/* RIGHT SIDE: Dynamic Insights & Distribution (Columns: 2/5) */}
-                <div className="md:col-span-2 p-4 bg-slate-50/30 flex flex-col justify-between gap-4">
+                {/* RIGHT SIDE: Dynamic Insights & Department Distribution (Columns: 2/5) */}
+                <div className="md:col-span-2 p-4 bg-slate-50/30 flex flex-col justify-center">
                   {/* Department distribution */}
-                  <div>
-                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Department Spread
-                    </h4>
-                    <div className="space-y-2">
+                  <div className="space-y-3.5">
+                    <div className="border-b border-gray-100 pb-2">
+                      <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                        Department Spread
+                      </h4>
+                      <p className="text-[8px] text-gray-400 mt-0.5">Distribution across key corporate divisions</p>
+                    </div>
+                    <div className="space-y-3">
                       {topDepartments.map((dept) => {
                         const pct = activeEmployeesCount > 0 ? (dept.count / activeEmployeesCount) * 100 : 0;
                         return (
-                          <div key={dept.name}>
-                            <div className="flex justify-between text-[9px] font-bold mb-0.5">
-                              <span className="text-gray-700 truncate max-w-[100px]">{dept.name}</span>
+                          <div key={dept.name} className="group">
+                            <div className="flex justify-between text-[9px] font-bold mb-1">
+                              <span className="text-gray-700 truncate max-w-[120px] transition-colors group-hover:text-indigo-600">{dept.name}</span>
                               <span className="text-gray-450">{dept.count} ({Math.round(pct)}%)</span>
                             </div>
-                            <div className="w-full bg-gray-150 h-1 rounded-full overflow-hidden">
+                            <div className="w-full bg-gray-150 h-1.5 rounded-full overflow-hidden">
                               <div
                                 style={{ width: `${pct}%` }}
                                 className="bg-indigo-600 h-full rounded-full transition-all duration-500"
@@ -925,21 +896,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         );
                       })}
-                    </div>
-                  </div>
-
-                  {/* Branch wise employee count */}
-                  <div>
-                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                      Branch Summary
-                    </h4>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {branchDistribution.map((branch) => (
-                        <div key={branch.name} className="p-2 bg-white border border-gray-150 rounded-xl text-center shadow-sm">
-                          <p className="text-[9px] font-bold text-gray-400 uppercase truncate">{branch.name}</p>
-                          <p className="text-xs font-extrabold text-gray-800 mt-0.5">{branch.count}</p>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 </div>
