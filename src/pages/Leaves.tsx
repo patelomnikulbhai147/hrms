@@ -39,11 +39,17 @@ export const Leaves: React.FC<LeavesProps> = ({
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [branchFilter, setBranchFilter] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [viewLeave, setViewLeave] = useState<LeaveRequest | null>(null);
   const [editLeave, setEditLeave] = useState<LeaveRequest | null>(null);
   const [nameError, setNameError] = useState('');
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+
+  // States for searchable autocomplete selector
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
 
   const todayStr = '2026-05-20'; // Standard system anchor date
 
@@ -73,6 +79,9 @@ export const Leaves: React.FC<LeavesProps> = ({
   useEffect(() => {
     if (!addOpen) {
       setNameError('');
+      setSearchQuery('');
+      setShowDropdown(false);
+      setSelectedEmp(null);
     }
   }, [addOpen]);
 
@@ -112,9 +121,16 @@ export const Leaves: React.FC<LeavesProps> = ({
       const matchSearch = !q || l.employeeName.toLowerCase().includes(q) || l.department.toLowerCase().includes(q);
       const matchType = !typeFilter || l.leaveType === typeFilter;
       const matchStatus = !statusFilter || l.status === statusFilter;
-      return matchSearch && matchType && matchStatus;
+      
+      let matchBranch = true;
+      if (branchFilter) {
+        const emp = _employees.find(e => e.id === l.employeeId || e.name.toLowerCase() === l.employeeName.toLowerCase());
+        matchBranch = emp ? (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase() : false;
+      }
+      
+      return matchSearch && matchType && matchStatus && matchBranch;
     });
-  }, [companyLeaves, search, typeFilter, statusFilter]);
+  }, [companyLeaves, search, typeFilter, statusFilter, branchFilter, _employees]);
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
@@ -148,6 +164,31 @@ export const Leaves: React.FC<LeavesProps> = ({
       };
     });
   }, [leaves, _employees, activeCompanyId]);
+
+  // 2b. Real-time Allowed vs Used Balance calculations for the currently selected employee in Log modal
+  const selectedEmpLeaves = useMemo(() => {
+    if (!selectedEmp) return null;
+    const empLeaves = leaves.filter(
+      l => (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && 
+           l.companyId === activeCompanyId &&
+           l.status === 'Approved'
+    );
+    const sickUsed = empLeaves.filter(l => l.leaveType === 'Sick').reduce((sum, l) => sum + l.days, 0);
+    const casualUsed = empLeaves.filter(l => l.leaveType === 'Casual').reduce((sum, l) => sum + l.days, 0);
+    const annualUsed = empLeaves.filter(l => l.leaveType === 'Annual').reduce((sum, l) => sum + l.days, 0);
+    const otherUsed = empLeaves.filter(l => !['Sick', 'Casual', 'Annual'].includes(l.leaveType)).reduce((sum, l) => sum + l.days, 0);
+    const totalUsed = sickUsed + casualUsed + annualUsed + otherUsed;
+    const remaining = Math.max(0, TOTAL_ALLOWED - totalUsed);
+
+    return {
+      sickUsed,
+      casualUsed,
+      annualUsed,
+      otherUsed,
+      totalUsed,
+      remaining
+    };
+  }, [leaves, selectedEmp, activeCompanyId]);
 
   // 3. Dynamic top metric card counts
   const totalCount = companyLeaves.length;
@@ -226,22 +267,18 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // Operations
   const handleApply = () => {
-    const err = validateName(form.employeeName).error;
-    if (err) {
-      alert('Error: Please resolve validation errors before logging leave.');
+    if (!selectedEmp) {
+      setNameError('Please select a valid employee from the autocomplete search.');
+      alert('Error: Please select a valid employee from the autocomplete search.');
       return;
     }
-
-    const matchingEmp = _employees.find(
-      e => e.companyId === activeCompanyId && e.name.toLowerCase() === form.employeeName.toLowerCase()
-    );
 
     const newLeave: LeaveRequest = {
       id: `l${Date.now()}`,
       companyId: activeCompanyId,
-      employeeId: matchingEmp ? matchingEmp.id : `e${Date.now()}`,
-      employeeName: form.employeeName,
-      department: matchingEmp ? matchingEmp.department : form.department,
+      employeeId: selectedEmp.id,
+      employeeName: selectedEmp.name,
+      department: selectedEmp.department,
       leaveType: form.leaveType,
       fromDate: form.fromDate,
       toDate: form.toDate,
@@ -255,6 +292,8 @@ export const Leaves: React.FC<LeavesProps> = ({
     setAddOpen(false);
     setForm({ employeeName: '', department: 'Engineering', leaveType: 'Annual', fromDate: todayStr, toDate: todayStr, reason: '' });
     setNameError('');
+    setSelectedEmp(null);
+    setSearchQuery('');
     alert('Leave request submitted successfully.');
   };
 
@@ -363,20 +402,26 @@ export const Leaves: React.FC<LeavesProps> = ({
 
       {/* Filter panel */}
       <Card>
-        <div className="flex flex-wrap gap-3">
-          <div className="flex-1 min-w-48">
-            <Input placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
-          </div>
-          <div className="w-36">
-            <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              options={[{ value: '', label: 'All Types' }, ...leaveTypes.map(t => ({ value: t, label: t }))]}
-            />
-          </div>
-          <div className="w-36">
-            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              options={[{ value: '', label: 'All Status' }, ...leaveStatuses.map(s => ({ value: s, label: s }))]}
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <Input placeholder="Search employee..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
+          
+          <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            options={[
+              { value: '', label: 'All Branches' },
+              { value: 'AHMEDABAD', label: 'Ahmedabad' },
+              { value: 'RAJKOT', label: 'Rajkot' },
+              { value: 'BHAVNAGAR', label: 'Bhavnagar' },
+              { value: 'SIDDHPUR', label: 'Siddhpur' }
+            ]}
+          />
+          
+          <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
+            options={[{ value: '', label: 'All Types' }, ...leaveTypes.map(t => ({ value: t, label: t }))]}
+          />
+          
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            options={[{ value: '', label: 'All Status' }, ...leaveStatuses.map(s => ({ value: s, label: s }))]}
+          />
         </div>
       </Card>
 
@@ -544,11 +589,10 @@ export const Leaves: React.FC<LeavesProps> = ({
             <Button 
               onClick={handleApply} 
               disabled={
-                !form.employeeName || 
+                !selectedEmp || 
                 !form.fromDate || 
                 !form.toDate || 
-                !form.reason || 
-                !!nameError
+                !form.reason
               }
             >
               Log Leave
@@ -556,19 +600,110 @@ export const Leaves: React.FC<LeavesProps> = ({
           </>
         }
       >
-        <div className="space-y-3 text-left">
-          <Input 
-            label="Employee Name *" 
-            placeholder="e.g. Arjun Mehta" 
-            value={form.employeeName} 
-            onChange={e => {
-              const clean = e.target.value.replace(/[^a-zA-Z\s]/g, '');
-              setForm({ ...form, employeeName: clean });
-              setNameError(validateName(clean).error);
-            }} 
-            error={nameError}
-            success={form.employeeName !== '' && !nameError}
-          />
+        <div className="space-y-3.5 text-left font-sans">
+          {/* Autocomplete Search input */}
+          <div className="relative">
+            <Input 
+              label="Search Roster Employee *" 
+              placeholder="Type Employee Code, Full Name, Designation..." 
+              value={searchQuery}
+              onChange={e => {
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+                setSelectedEmp(null);
+                setForm(prev => ({ ...prev, employeeName: '' }));
+                setNameError('');
+              }}
+              onFocus={() => setShowDropdown(true)}
+              error={nameError}
+              success={!!selectedEmp}
+            />
+            
+            {showDropdown && (
+              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
+                {(() => {
+                  const q = searchQuery.toLowerCase().trim();
+                  const matches = _employees.filter(emp => {
+                    if (emp.companyId !== activeCompanyId) return false;
+                    if (!q) return true; // show all under current tenant when focused
+                    return (
+                      emp.name.toLowerCase().includes(q) ||
+                      emp.employeeId.toLowerCase().includes(q) ||
+                      (emp.branchLocation || '').toLowerCase().includes(q) ||
+                      (emp.designation || '').toLowerCase().includes(q)
+                    );
+                  });
+
+                  if (matches.length === 0) {
+                    return (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        No matching employee found in this branch roster
+                      </div>
+                    );
+                  }
+
+                  return matches.map(emp => (
+                    <div
+                      key={emp.id}
+                      onClick={() => {
+                        setSelectedEmp(emp);
+                        setForm(prev => ({
+                          ...prev,
+                          employeeName: emp.name,
+                          department: emp.department
+                        }));
+                        setSearchQuery(`${emp.name} (${emp.employeeId})`);
+                        setShowDropdown(false);
+                        setNameError('');
+                      }}
+                      className="p-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 text-left text-xs"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-bold text-slate-800">{emp.name}</span>
+                        <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono font-bold">{emp.employeeId}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2">
+                        <span>{emp.designation}</span>
+                        <span>•</span>
+                        <span>{emp.department}</span>
+                        <span>•</span>
+                        <span className="font-semibold text-slate-600">{emp.branchLocation || 'Ahmedabad'}</span>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Dynamic Leave Balance Ratios Panel */}
+          {selectedEmp && selectedEmpLeaves && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+              <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
+                <span className="font-bold text-slate-800">Dynamic Leave Balance Ratios</span>
+                <span className="text-[10px] text-slate-500 font-semibold">{selectedEmp.department} · {selectedEmp.branchLocation || 'AHMEDABAD'}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-white p-2 rounded border border-slate-150 text-center">
+                  <p className="text-[9px] text-gray-400 font-medium">Sick Leaves</p>
+                  <p className="font-bold text-red-600 mt-0.5">{selectedEmpLeaves.sickUsed} / {ALLOWED_SICK}d</p>
+                </div>
+                <div className="bg-white p-2 rounded border border-slate-150 text-center">
+                  <p className="text-[9px] text-gray-400 font-medium">Casual Leaves</p>
+                  <p className="font-bold text-emerald-600 mt-0.5">{selectedEmpLeaves.casualUsed} / {ALLOWED_CASUAL}d</p>
+                </div>
+                <div className="bg-white p-2 rounded border border-slate-150 text-center">
+                  <p className="text-[9px] text-gray-400 font-medium">Annual Leaves</p>
+                  <p className="font-bold text-blue-600 mt-0.5">{selectedEmpLeaves.annualUsed} / {ALLOWED_ANNUAL}d</p>
+                </div>
+                <div className="bg-white p-2 rounded border border-slate-150 text-center">
+                  <p className="text-[9px] text-gray-400 font-medium">Total Pool Pool</p>
+                  <p className="font-bold text-purple-700 mt-0.5">{selectedEmpLeaves.remaining}d Left</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Select label="Leave Category *" value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
             options={leaveTypes.map(t => ({ value: t, label: t }))}
           />

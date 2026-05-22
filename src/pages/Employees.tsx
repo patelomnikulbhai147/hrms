@@ -29,6 +29,7 @@ interface EmployeesProps {
   onUpdateAccounts: (accounts: UserAccount[]) => void;
   employees: Employee[];
   onUpdateEmployees: (employees: Employee[]) => void;
+  leaves?: any[];
 }
 
 const capitalize = (str: string) => {
@@ -47,7 +48,8 @@ export const Employees: React.FC<EmployeesProps> = ({
   userAccounts: _userAccounts,
   onUpdateAccounts: _onUpdateAccounts,
   employees,
-  onUpdateEmployees
+  onUpdateEmployees,
+  leaves = []
 }) => {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -68,10 +70,41 @@ export const Employees: React.FC<EmployeesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Tabs in drawer
-  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'address'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves'>('personal');
   
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
+
+  // Dynamic Leave History filtering for the currently viewed employee
+  const empLeavesHistory = useMemo(() => {
+    if (!viewEmp) return [];
+    return leaves.filter(
+      l => (l.employeeId === viewEmp.id || l.employeeName.toLowerCase() === viewEmp.name.toLowerCase()) && 
+           l.companyId === activeCompanyId
+    );
+  }, [leaves, viewEmp, activeCompanyId]);
+
+  // Handlers for premium document upload and base64 parsing
+  const handleUploadDocType = (docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload', fileUrl: string) => {
+    if (!viewEmp) return;
+    const updatedEmp = {
+      ...viewEmp,
+      [docType]: fileUrl
+    };
+    onUpdateEmployees(employees.map(e => e.id === viewEmp.id ? updatedEmp : e));
+    setViewEmp(updatedEmp);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload') => {
+    if (!viewEmp || !e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      handleUploadDocType(docType, dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -198,15 +231,58 @@ export const Employees: React.FC<EmployeesProps> = ({
     const empIdErr = validateEmployeeId(form.employeeId, companyEmployees).error;
     const salaryErr = validateSalary(form.salary).error;
 
-    if (nameErr || emailErr || phoneErr || empIdErr || salaryErr) {
-      alert('Error: Please resolve validation errors across all sections before submitting.');
-      setErrors({
-        name: nameErr,
-        email: emailErr,
-        phone: phoneErr,
-        employeeId: empIdErr,
-        salary: salaryErr
-      });
+    const activeErrors: Record<string, string> = {
+      name: nameErr || '',
+      email: emailErr || '',
+      phone: phoneErr || '',
+      employeeId: empIdErr || '',
+      salary: salaryErr || ''
+    };
+
+    if (!form.aadhaarName || form.aadhaarName.trim().length < 3) {
+      activeErrors.aadhaarName = 'Name as per Aadhaar is required';
+    }
+    if (!form.designation || form.designation.trim().length === 0) {
+      activeErrors.designation = 'Designation is required';
+    }
+    if (!form.category || form.category.trim().length === 0) {
+      activeErrors.category = 'Category is required';
+    }
+    if (!form.joinDate) {
+      activeErrors.joinDate = 'Date of Joining is required';
+    }
+    if (!form.employmentType) {
+      activeErrors.employmentType = 'Type of Employment is required';
+    }
+    if (!form.pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(form.pan.trim().toUpperCase())) {
+      activeErrors.pan = 'Valid 10-character PAN is required (e.g. ABCDE1234F)';
+    }
+    if (!form.aadhaar || !/^\d{12}$/.test(form.aadhaar.trim())) {
+      activeErrors.aadhaar = 'Valid 12-digit Aadhaar number is required';
+    }
+    if (!form.bankName || form.bankName.trim().length < 3) {
+      activeErrors.bankName = 'Bank Name is required';
+    }
+    if (!form.accountNumber || form.accountNumber.trim().length < 9) {
+      activeErrors.accountNumber = 'Valid Bank Account Number is required';
+    }
+    if (!form.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc.trim().toUpperCase())) {
+      activeErrors.ifsc = 'Valid 11-character IFSC is required';
+    }
+
+    if (form.pfNumber || form.uan) {
+      if (!form.pfNumber) {
+        activeErrors.pfNumber = 'PF Number is required if UAN is provided';
+      }
+      if (!form.uan || !/^\d{12}$/.test(form.uan.trim())) {
+        activeErrors.uan = 'Valid 12-digit UAN is required if PF number is provided';
+      }
+    }
+
+    const hasErrors = Object.values(activeErrors).some(val => val !== '');
+    if (hasErrors) {
+      setErrors(activeErrors);
+      alert('Error: Please resolve all required fields and format validation errors before submitting.');
       return;
     }
 
@@ -502,25 +578,20 @@ export const Employees: React.FC<EmployeesProps> = ({
 
       {/* Filters */}
       <Card>
-        <div className="flex flex-wrap gap-3">
-          <div className="flex-1 min-w-48">
-            <Input placeholder="Search code, name, designation..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
-          </div>
-          <div className="w-36">
-            <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
-              options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))] }
-            />
-          </div>
-          <div className="w-36">
-            <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-              options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))] }
-            />
-          </div>
-          <div className="w-36">
-            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              options={[{ value: '', label: 'All Status' }, ...statusOptions.map(s => ({ value: s, label: s }))] }
-            />
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+          <Input placeholder="Search code, name, designation..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
+          
+          <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+            options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))] }
+          />
+          
+          <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
+            options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))] }
+          />
+          
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            options={[{ value: '', label: 'All Status' }, ...statusOptions.map(s => ({ value: s, label: s }))] }
+          />
         </div>
       </Card>
 
@@ -530,12 +601,12 @@ export const Employees: React.FC<EmployeesProps> = ({
           <Thead>
             <tr>
               <Th>Emp Code</Th>
-              <Th>Name</Th>
-              <Th>Branch / Dept</Th>
-              <Th>Designation / Category</Th>
-              <Th>Govt Compliance</Th>
-              <Th>Bank Account</Th>
-              <Th>Status</Th>
+              <Th>Employee Full Name</Th>
+              <Th>Nationality</Th>
+              <Th>Date of Joining</Th>
+              <Th>Designation</Th>
+              <Th>Category</Th>
+              <Th>Date of Exit</Th>
               <Th>Actions</Th>
             </tr>
           </Thead>
@@ -557,57 +628,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                     </div>
                   </Td>
-                  <Td>
-                    <p className="text-xs font-semibold text-slate-800">{emp.branchLocation || emp.location.split(',')[0] || 'Ahmedabad'}</p>
-                    <p className="text-[10px] text-gray-400">{emp.department}</p>
-                  </Td>
-                  <Td>
-                    <p className="text-xs font-medium text-slate-800">{emp.designation}</p>
-                    <p className="text-[10px] text-gray-400">Category: {emp.category || 'Skilled'}</p>
-                  </Td>
-                  <Td>
-                    <div className="space-y-0.5 text-[10px]">
-                      <div className="flex items-center gap-1.5 justify-between w-28">
-                        <span className="text-gray-400">AAD:</span>
-                        <span className="font-semibold text-slate-700">{getMaskedValue(emp.aadhaar, 'aadhaar', emp.id)}</span>
-                        {emp.aadhaar && (
-                          <button onClick={() => toggleFieldMask(emp.id, 'aadhaar')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
-                            {unmaskedField[`${emp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
-                          </button>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1.5 justify-between w-28">
-                        <span className="text-gray-400">PAN:</span>
-                        <span className="font-semibold text-slate-700">{getMaskedValue(emp.pan, 'pan', emp.id)}</span>
-                        {emp.pan && (
-                          <button onClick={() => toggleFieldMask(emp.id, 'pan')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
-                            {unmaskedField[`${emp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </Td>
-                  <Td>
-                    <div className="flex items-center gap-1.5 justify-between w-36">
-                      <div className="text-[10px]">
-                        <p className="font-bold text-slate-700">{emp.bankName || 'N/A'}</p>
-                        <p className="text-gray-400 font-semibold">{getMaskedValue(emp.accountNumber, 'accountNumber', emp.id)}</p>
-                      </div>
-                      {emp.accountNumber && (
-                        <button onClick={() => toggleFieldMask(emp.id, 'accountNumber')} className="p-0.5 hover:bg-slate-100 rounded text-slate-400">
-                          {unmaskedField[`${emp.id}-accountNumber`] ? <EyeOff size={10} /> : <Eye size={10} />}
-                        </button>
-                      )}
-                    </div>
-                  </Td>
-                  <Td><Badge variant={statusBadge(emp.status)} dot>{emp.status}</Badge></Td>
+                  <Td><span className="text-xs font-semibold text-slate-700">{emp.nationality || 'INDIAN'}</span></Td>
+                  <Td><span className="text-xs text-slate-600">{emp.joinDate}</span></Td>
+                  <Td><span className="text-xs font-medium text-slate-800">{emp.designation}</span></Td>
+                  <Td><Badge variant="blue">{emp.category || 'SKILLED'}</Badge></Td>
+                  <Td><span className="text-xs text-slate-500 font-medium">{emp.exitDate || '—'}</span></Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => setViewEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="View Master File"><Eye size={14} /></button>
                       {isHR && (
                         <>
-                          <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
-                          <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
+                           <button onClick={() => handleStartEdit(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600" title="Edit File"><Edit2 size={14} /></button>
+                           <button onClick={() => setDeleteEmp(emp)} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-red-600" title="Remove Record"><Trash2 size={14} /></button>
                         </>
                       )}
                     </div>
@@ -638,24 +670,39 @@ export const Employees: React.FC<EmployeesProps> = ({
             </div>
 
             {/* Sub-Tabs Navigation */}
-            <div className="flex border-b border-gray-200 gap-3 text-xs">
-              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Profile</button>
-              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment details</button>
-              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance & Bank</button>
-              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Addresses</button>
+            <div className="flex border-b border-gray-200 gap-2.5 text-xs overflow-x-auto pb-1">
+              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Details</button>
+              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment Details</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Payroll & Banking</button>
+              <button onClick={() => setActiveTab('compliance')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'compliance' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance IDs</button>
+              <button onClick={() => setActiveTab('documents')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'documents' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
+              <button onClick={() => setActiveTab('leaves')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'leaves' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Leave History</button>
             </div>
 
             {/* Sub-Tabs View Content */}
             {activeTab === 'personal' && (
-              <div className="grid grid-cols-2 gap-3 p-1">
-                <div><p className="text-[10px] text-gray-400">First Name</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.firstName || viewEmp.name.split(' ')[0]}</p></div>
-                <div><p className="text-[10px] text-gray-400">Last Name / Surname</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.lastName || '—'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Name on Aadhaar</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.aadhaarName || viewEmp.name}</p></div>
-                <div><p className="text-[10px] text-gray-400">Gender</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.gender || 'Female'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.dob || '—'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Marital Status</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.maritalStatus || 'UNMARRIED'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
+              <div className="space-y-3.5">
+                <div className="grid grid-cols-2 gap-3 p-1">
+                  <div><p className="text-[10px] text-gray-400">First Name</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.firstName || viewEmp.name.split(' ')[0]}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Last Name / Surname</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.lastName || '—'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Name on Aadhaar</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.aadhaarName || viewEmp.name}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Gender</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.gender || 'Female'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.dob || '—'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Marital Status</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.maritalStatus || 'UNMARRIED'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
+                </div>
+                
+                <div className="border-t border-slate-150 pt-3.5 space-y-3 p-1">
+                  <div>
+                    <p className="text-[10px] text-gray-400">Present Residential Address</p>
+                    <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.presentAddress || 'No present address recorded.'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Permanent Residential Address</p>
+                    <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.permanentAddress || 'No permanent address recorded.'}</p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -666,7 +713,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div><p className="text-[10px] text-gray-400">Type of Employment</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.employmentType || 'CONTRACTUAL'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.joinDate}</p></div>
                 <div><p className="text-[10px] text-gray-400">Service Book No</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.serviceBookNo || '—'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Salary (Monthly Basic)</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
+                <div><p className="text-[10px] text-gray-400">Monthly Basic Salary</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
                 {viewEmp.exitDate && (
                   <>
                     <div><p className="text-[10px] text-gray-400">Exit Date</p><p className="font-semibold text-red-600 mt-0.5">{viewEmp.exitDate}</p></div>
@@ -677,45 +724,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             )}
 
             {activeTab === 'banking' && (
-              <div className="space-y-2.5 p-1">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[10px] text-gray-400">Aadhaar Number</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.aadhaar, 'aadhaar', viewEmp.id)}</span>
-                      {viewEmp.aadhaar && (
-                        <button onClick={() => toggleFieldMask(viewEmp.id, 'aadhaar')} className="text-slate-400 p-0.5">
-                          {unmaskedField[`${viewEmp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-400">Permanent Account No (PAN)</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.pan, 'pan', viewEmp.id)}</span>
-                      {viewEmp.pan && (
-                        <button onClick={() => toggleFieldMask(viewEmp.id, 'pan')} className="text-slate-400 p-0.5">
-                          {unmaskedField[`${viewEmp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-400">Provident Fund (PF) No</p>
-                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.pfNumber || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-400">Universal Account No (UAN)</p>
-                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.uan || '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-gray-400">ESIC IP Number</p>
-                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || '—'}</p>
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+              <div className="space-y-3.5 p-1">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-400">Bank Name</p>
                     <p className="font-bold text-slate-800 mt-0.5">{viewEmp.bankName || '—'}</p>
@@ -736,19 +746,282 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.ifsc || '—'}</p>
                   </div>
                 </div>
+                
+                <div className="border-t border-slate-150 pt-3.5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] text-gray-400">Monthly Basic Salary</p>
+                      <p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-gray-400">PF Contribution Target</p>
+                      <p className="font-semibold text-slate-800 mt-0.5">Eligible (Under Master Scheme)</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
-            {activeTab === 'address' && (
+            {activeTab === 'compliance' && (
+              <div className="grid grid-cols-2 gap-3 p-1">
+                <div>
+                  <p className="text-[10px] text-gray-400">Aadhaar Number</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.aadhaar, 'aadhaar', viewEmp.id)}</span>
+                    {viewEmp.aadhaar && (
+                      <button onClick={() => toggleFieldMask(viewEmp.id, 'aadhaar')} className="text-slate-400 p-0.5">
+                        {unmaskedField[`${viewEmp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Permanent Account No (PAN)</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.pan, 'pan', viewEmp.id)}</span>
+                    {viewEmp.pan && (
+                      <button onClick={() => toggleFieldMask(viewEmp.id, 'pan')} className="text-slate-400 p-0.5">
+                        {unmaskedField[`${viewEmp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Provident Fund (PF) No</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.pfNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Universal Account No (UAN)</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.uan || '—'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] text-gray-400">ESIC IP Number</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || '—'}</p>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'documents' && (
               <div className="space-y-3 p-1">
-                <div>
-                  <p className="text-[10px] text-gray-400">Present Residential Address</p>
-                  <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.presentAddress || 'No present address recorded.'}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Photo Card */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Passport Photo</span>
+                        <Badge variant={viewEmp.photoUpload ? 'green' : 'amber'}>
+                          {viewEmp.photoUpload ? 'Verified' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Primary photo identification</p>
+                      
+                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                        {viewEmp.photoUpload ? (
+                          <img src={viewEmp.photoUpload} alt="Passport Photo" className="h-full object-contain rounded" />
+                        ) : (
+                          <div className="text-center text-slate-400 py-2">
+                            <Users size={20} className="mx-auto text-slate-300 block" />
+                            <span className="text-[9px]">No photo uploaded</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                      {viewEmp.photoUpload ? (
+                        <>
+                          <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Download
+                          </a>
+                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Replace
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <Upload size={10} /> Upload
+                        </button>
+                      )}
+                      <input type="file" id="upload-photoUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'photoUpload')} />
+                    </div>
+                  </div>
+
+                  {/* Aadhaar Card */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Aadhaar Card</span>
+                        <Badge variant={viewEmp.aadhaarUpload ? 'green' : 'amber'}>
+                          {viewEmp.aadhaarUpload ? 'Verified' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Government identification scanner</p>
+                      
+                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                        {viewEmp.aadhaarUpload ? (
+                          <div className="text-center text-emerald-600 py-2">
+                            <ShieldCheck size={20} className="mx-auto text-emerald-500" />
+                            <a href={viewEmp.aadhaarUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
+                          </div>
+                        ) : (
+                          <div className="text-center text-slate-400 py-2">
+                            <FileSpreadsheet size={20} className="mx-auto text-slate-300 block" />
+                            <span className="text-[9px]">Pending compliance upload</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                      {viewEmp.aadhaarUpload ? (
+                        <>
+                          <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Download
+                          </a>
+                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Replace
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <Upload size={10} /> Upload
+                        </button>
+                      )}
+                      <input type="file" id="upload-aadhaarUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'aadhaarUpload')} />
+                    </div>
+                  </div>
+
+                  {/* PAN Card */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">PAN Card</span>
+                        <Badge variant={viewEmp.panUpload ? 'green' : 'amber'}>
+                          {viewEmp.panUpload ? 'Verified' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Tax division registration card</p>
+                      
+                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                        {viewEmp.panUpload ? (
+                          <div className="text-center text-emerald-600 py-2">
+                            <ShieldCheck size={20} className="mx-auto text-emerald-500" />
+                            <a href={viewEmp.panUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
+                          </div>
+                        ) : (
+                          <div className="text-center text-slate-400 py-2">
+                            <FileSpreadsheet size={20} className="mx-auto text-slate-300 block" />
+                            <span className="text-[9px]">Pending compliance upload</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                      {viewEmp.panUpload ? (
+                        <>
+                          <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Download
+                          </a>
+                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Replace
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <Upload size={10} /> Upload
+                        </button>
+                      )}
+                      <input type="file" id="upload-panUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'panUpload')} />
+                    </div>
+                  </div>
+
+                  {/* Signature Scan */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Signature</span>
+                        <Badge variant={viewEmp.signatureUpload ? 'green' : 'amber'}>
+                          {viewEmp.signatureUpload ? 'Verified' : 'Pending'}
+                        </Badge>
+                      </div>
+                      <p className="text-[9px] text-slate-400 mt-0.5">Official signature record</p>
+                      
+                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                        {viewEmp.signatureUpload ? (
+                          <img src={viewEmp.signatureUpload} alt="Signature Record" className="h-full object-contain rounded" />
+                        ) : (
+                          <div className="text-center text-slate-400 py-2">
+                            <Edit2 size={20} className="mx-auto text-slate-300 block" />
+                            <span className="text-[9px]">No signature uploaded</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                      {viewEmp.signatureUpload ? (
+                        <>
+                          <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Download
+                          </a>
+                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                            Replace
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <Upload size={10} /> Upload
+                        </button>
+                      )}
+                      <input type="file" id="upload-signatureUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'signatureUpload')} />
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[10px] text-gray-400">Permanent Residential Address</p>
-                  <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.permanentAddress || 'No permanent address recorded.'}</p>
+              </div>
+            )}
+
+            {activeTab === 'leaves' && (
+              <div className="space-y-3 p-1 font-sans">
+                <div className="flex items-center justify-between border-b border-slate-150 pb-2">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Absence Dossier Log</span>
+                  <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold font-mono">
+                    Total recorded: {empLeavesHistory.length}
+                  </span>
                 </div>
+                
+                {empLeavesHistory.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                    No leaves logged for this employee context.
+                  </div>
+                ) : (
+                  <div className="border border-slate-150 rounded-xl overflow-hidden shadow-2xs max-h-56 overflow-y-auto">
+                    <Table>
+                      <Thead>
+                        <tr className="bg-slate-50 text-[9px] border-b border-slate-150">
+                          <Th className="py-1 px-2">Type</Th>
+                          <Th className="py-1 px-2">From - To</Th>
+                          <Th className="py-1 px-2">Days</Th>
+                          <Th className="py-1 px-2">Status</Th>
+                        </tr>
+                      </Thead>
+                      <Tbody>
+                        {empLeavesHistory.map(l => (
+                          <Tr key={l.id} className="text-[10px]">
+                            <Td className="py-1 px-2 font-semibold text-slate-800">{l.leaveType}</Td>
+                            <Td className="py-1 px-2 text-slate-500">{l.fromDate} to {l.toDate}</Td>
+                            <Td className="py-1 px-2 font-bold text-slate-800">{l.days}d</Td>
+                            <Td className="py-1 px-2">
+                              <Badge variant={l.status === 'Approved' ? 'green' : l.status === 'Pending' ? 'amber' : 'red'}>
+                                {l.status}
+                              </Badge>
+                            </Td>
+                          </Tr>
+                        ))}
+                      </Tbody>
+                    </Table>
+                  </div>
+                )}
               </div>
             )}
           </div>
