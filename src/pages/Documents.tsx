@@ -214,6 +214,89 @@ export const Documents: React.FC<DocumentsProps> = ({
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
   const itemsPerPage = 5;
 
+  // Dossier list redesigned states
+  const [dossierSearch, setDossierSearch] = useState('');
+  const [dossierStatusFilter, setDossierStatusFilter] = useState<'' | 'Verified' | 'Pending Documents' | 'Missing Audit' | 'Under Review'>('');
+  const [dossierPage, setDossierPage] = useState(1);
+  const dossierItemsPerPage = 10;
+
+  // Quick verify helper
+  const handleQuickVerify = (empId: string) => {
+    const updated = documents.map(d => {
+      if (d.employeeId === empId && d.status === 'Pending') {
+        return { ...d, status: 'Verified' as const };
+      }
+      return d;
+    });
+    onUpdateDocuments(updated);
+    alert(`All pending documents for this employee have been audited as Verified.`);
+  };
+
+  // Compute dossier records reactively
+  const dossiers = useMemo(() => {
+    return companyEmployees.map(emp => {
+      const empDocs = list.filter(d => d.employeeId === emp.id);
+      const primaryCount = (emp.aadhaarUpload ? 1 : 0) + (emp.panUpload ? 1 : 0) + (emp.photoUpload ? 1 : 0);
+      const totalDocs = primaryCount + empDocs.length;
+      
+      let status: 'Verified' | 'Pending Documents' | 'Missing Audit' | 'Under Review' = 'Missing Audit';
+      
+      const allVaultVerified = empDocs.length > 0 && empDocs.every(d => d.status === 'Verified');
+      const anyVaultPending = empDocs.some(d => d.status === 'Pending');
+      const anyVaultRejected = empDocs.some(d => d.status === 'Rejected');
+      
+      if (totalDocs === 0) {
+        status = 'Missing Audit';
+      } else if (anyVaultPending) {
+        status = 'Under Review';
+      } else if (primaryCount > 0 && empDocs.length === 0) {
+        status = 'Pending Documents';
+      } else if (allVaultVerified) {
+        status = 'Verified';
+      } else if (anyVaultRejected) {
+        status = 'Pending Documents';
+      } else {
+        status = 'Pending Documents';
+      }
+
+      let lastUpdated = emp.joinDate || '—';
+      if (empDocs.length > 0) {
+        const sortedDocs = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn));
+        lastUpdated = sortedDocs[0].uploadedOn;
+      }
+      
+      return {
+        emp,
+        totalDocs,
+        status,
+        lastUpdated,
+        empDocs
+      };
+    });
+  }, [companyEmployees, list]);
+
+  const filteredDossiers = useMemo(() => {
+    return dossiers.filter(d => {
+      const q = dossierSearch.toLowerCase();
+      const matchSearch = !q ||
+        d.emp.name.toLowerCase().includes(q) ||
+        d.emp.employeeId.toLowerCase().includes(q) ||
+        (d.emp.designation || '').toLowerCase().includes(q) ||
+        (d.emp.department || '').toLowerCase().includes(q);
+      
+      const matchStatus = !dossierStatusFilter || d.status === dossierStatusFilter;
+      
+      return matchSearch && matchStatus;
+    });
+  }, [dossiers, dossierSearch, dossierStatusFilter]);
+
+  const totalDossierPages = Math.ceil(filteredDossiers.length / dossierItemsPerPage) || 1;
+  
+  const paginatedDossiers = useMemo(() => {
+    const start = (dossierPage - 1) * dossierItemsPerPage;
+    return filteredDossiers.slice(start, start + dossierItemsPerPage);
+  }, [filteredDossiers, dossierPage, dossierItemsPerPage]);
+
   // ─── Document Template Engine State ───
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [currentCategory, setCurrentCategory] = useState<DocumentTemplate['category']>('Corporate Offer Letter');
@@ -664,101 +747,324 @@ export const Documents: React.FC<DocumentsProps> = ({
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2">
-              <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
+          <div className="space-y-6">
+            {/* Compliance Verification Vault Files Card */}
+            <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
+              <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck size={15} className="text-indigo-600" />
+                  Compliance Verification Vault Files
+                </h3>
+                <span className="text-[10px] text-slate-400 font-bold">Main Registry Vault</span>
+              </div>
+              <Table>
+                <Thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-xs">
+                    <Th>Employee Name</Th>
+                    <Th>Document Title / Type</Th>
+                    <Th>Uploaded Date</Th>
+                    <Th>Verification Status</Th>
+                    <Th>Actions</Th>
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {filteredCompliance.length === 0 ? (
+                    <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">No compliance files in company registry</td></tr>
+                  ) : (
+                    filteredCompliance.map(d => (
+                      <Tr key={d.id}>
+                        <Td>
+                          <div>
+                            <p className="text-xs font-semibold text-gray-900">{d.employeeName || 'Corporate Archive'}</p>
+                            <p className="text-[10px] text-gray-400">ID: {d.employeeId || 'N/A'}</p>
+                          </div>
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-1.5">
+                            <FileText size={14} className="text-gray-400" />
+                            <div>
+                              <p className="text-xs font-medium text-gray-750">{d.name}</p>
+                              <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-bold uppercase">{d.type}</span>
+                            </div>
+                          </div>
+                        </Td>
+                        <Td><span className="text-xs text-gray-600">{d.uploadedOn}</span></Td>
+                        <Td>
+                          <div className="flex items-center gap-1">
+                            <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} dot>
+                              {d.status}
+                            </Badge>
+                            {d.status === 'Verified' && <Award size={12} className="text-emerald-600" />}
+                          </div>
+                        </Td>
+                        <Td>
+                          <div className="flex items-center gap-1.5">
+                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR') ? (
+                              <>
+                                <button
+                                  onClick={() => handleToggleStatus(d.id, 'Verified')}
+                                  className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors"
+                                >
+                                  Verify
+                                </button>
+                                <button
+                                  onClick={() => handleToggleStatus(d.id, 'Rejected')}
+                                  className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[10px] text-gray-400">Audited</span>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </Card>
+
+            {/* REDESIGNED Employee Dossier History Logs */}
+            <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
+              {/* Sticky header with Counters */}
+              <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-slate-100 p-4 z-10 flex flex-wrap gap-4 items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                    <Sliders size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">
+                      Employee Dossier History Logs
+                    </h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Audits, verification status and dossier completion for all roster members
+                    </p>
+                  </div>
+                </div>
+
+                {/* Counter statistics widgets */}
+                <div className="flex items-center gap-2.5">
+                  <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[70px]">
+                    <span className="text-[11px] font-extrabold text-slate-800">{companyEmployees.length}</span>
+                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
+                  </div>
+                  <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[70px]">
+                    <span className="text-[11px] font-extrabold text-emerald-700">
+                      {dossiers.filter(d => d.status === 'Verified').length}
+                    </span>
+                    <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-wider">Verified</span>
+                  </div>
+                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[70px]">
+                    <span className="text-[11px] font-extrabold text-amber-700">
+                      {dossiers.filter(d => d.status === 'Pending Documents' || d.status === 'Under Review').length}
+                    </span>
+                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Audits</span>
+                  </div>
+                  <div className="px-3 py-1 bg-rose-50 border border-rose-150 rounded-xl flex flex-col items-center min-w-[70px]">
+                    <span className="text-[11px] font-extrabold text-rose-700">
+                      {dossiers.filter(d => d.status === 'Missing Audit').length}
+                    </span>
+                    <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Missing</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Redesigned Search & Filters bar */}
+              <div className="p-4 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3.5">
+                <div className="flex items-center gap-3.5 flex-1 min-w-[280px]">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search dossier by employee name, code, designation..."
+                      value={dossierSearch}
+                      onChange={e => {
+                        setDossierSearch(e.target.value);
+                        setDossierPage(1);
+                      }}
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    />
+                  </div>
+
+                  <select
+                    value={dossierStatusFilter}
+                    onChange={e => {
+                      setDossierStatusFilter(e.target.value as any);
+                      setDossierPage(1);
+                    }}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 min-w-[150px]"
+                  >
+                    <option value="">All Verification Status</option>
+                    <option value="Verified">Verified</option>
+                    <option value="Pending Documents">Pending Documents</option>
+                    <option value="Missing Audit">Missing Audit</option>
+                    <option value="Under Review">Under Review</option>
+                  </select>
+                </div>
+
+                <div className="text-[11px] text-slate-400 font-bold">
+                  Showing {filteredDossiers.length} records
+                </div>
+              </div>
+
+              {/* Redesigned Dossiers Table */}
+              <div className="overflow-x-auto">
                 <Table>
                   <Thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                      <Th>Employee Name</Th>
-                      <Th>Document Title / Type</Th>
-                      <Th>Uploaded Date</Th>
+                      <Th className="pl-4">Employee Details</Th>
+                      <Th>Department & Role</Th>
+                      <Th>Document Progress</Th>
                       <Th>Verification Status</Th>
-                      <Th>Actions</Th>
+                      <Th>Last Updated</Th>
+                      <Th className="text-center pr-4">Compliance Actions</Th>
                     </tr>
                   </Thead>
                   <Tbody>
-                    {filteredCompliance.length === 0 ? (
-                      <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">No compliance files in company registry</td></tr>
+                    {paginatedDossiers.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-12 text-xs text-gray-400 bg-white">
+                          No matching dossiers found.
+                        </td>
+                      </tr>
                     ) : (
-                      filteredCompliance.map(d => (
-                        <Tr key={d.id}>
-                          <Td>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-900">{d.employeeName || 'Corporate Archive'}</p>
-                              <p className="text-[10px] text-gray-400">ID: {d.employeeId || 'N/A'}</p>
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="flex items-center gap-1.5">
-                              <FileText size={14} className="text-gray-400" />
-                              <div>
-                                <p className="text-xs font-medium text-gray-750">{d.name}</p>
-                                <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-bold uppercase">{d.type}</span>
+                      paginatedDossiers.map(({ emp, totalDocs, status, lastUpdated }) => {
+                        return (
+                          <Tr key={emp.id} className="hover:bg-slate-50/50 transition duration-150">
+                            <Td className="pl-4">
+                              <div className="flex items-center gap-2.5">
+                                <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-750 shadow-inner">
+                                  {emp.name.slice(0, 2).toUpperCase()}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-extrabold text-slate-900">{emp.name}</p>
+                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5">{emp.employeeId}</p>
+                                </div>
                               </div>
-                            </div>
-                          </Td>
-                          <Td><span className="text-xs text-gray-600">{d.uploadedOn}</span></Td>
-                          <Td>
-                            <div className="flex items-center gap-1">
-                              <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} dot>
-                                {d.status}
+                            </Td>
+                            <Td>
+                              <div>
+                                <p className="text-xs text-slate-800 font-medium">{emp.designation || 'Staff'}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{emp.department || 'Clinical'}</p>
+                              </div>
+                            </Td>
+                            <Td>
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
+                                  <span>{totalDocs} / 5 uploads</span>
+                                  <span className="font-mono">{Math.round((totalDocs / 5) * 100)}%</span>
+                                </div>
+                                <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-150">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${
+                                      status === 'Verified'
+                                        ? 'bg-emerald-500'
+                                        : status === 'Missing Audit'
+                                        ? 'bg-rose-500'
+                                        : 'bg-indigo-500'
+                                    }`}
+                                    style={{ width: `${Math.min(100, (totalDocs / 5) * 100)}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            </Td>
+                            <Td>
+                              <Badge
+                                variant={
+                                  status === 'Verified'
+                                    ? 'green'
+                                    : status === 'Pending Documents'
+                                    ? 'amber'
+                                    : status === 'Missing Audit'
+                                    ? 'red'
+                                    : 'indigo'
+                                }
+                                className="text-[9px] px-2 py-0.5 rounded-full border shadow-2xs font-extrabold flex items-center gap-1.5 w-fit"
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${
+                                  status === 'Verified'
+                                    ? 'bg-emerald-500'
+                                    : status === 'Pending Documents'
+                                    ? 'bg-amber-500'
+                                    : status === 'Missing Audit'
+                                    ? 'bg-rose-500'
+                                    : 'bg-indigo-505 bg-indigo-500'
+                                }`}></span>
+                                {status}
                               </Badge>
-                              {d.status === 'Verified' && <Award size={12} className="text-emerald-600" />}
-                            </div>
-                          </Td>
-                          <Td>
-                            <div className="flex items-center gap-1.5">
-                              {d.status === 'Pending' && (role === 'Company Head' || role === 'HR') ? (
-                                <>
+                            </Td>
+                            <Td>
+                              <span className="text-[11px] text-slate-500 font-medium">{lastUpdated}</span>
+                            </Td>
+                            <Td className="text-center pr-4">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  onClick={() => setSelectedReviewEmp(emp)}
+                                  className="p-1 text-slate-550 hover:text-slate-900 hover:bg-slate-100 rounded transition"
+                                  title="View Uploaded Docs"
+                                >
+                                  <Eye size={13} />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setSelectedEmpId(emp.id);
+                                    setUploadOpen(true);
+                                  }}
+                                  className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
+                                  title="Upload New Document"
+                                >
+                                  <Upload size={13} />
+                                </button>
+                                {status !== 'Verified' && (role === 'Company Head' || role === 'HR') ? (
                                   <button
-                                    onClick={() => handleToggleStatus(d.id, 'Verified')}
-                                    className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors"
+                                    onClick={() => handleQuickVerify(emp.id)}
+                                    className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"
+                                    title="Quick Verify Dossier"
                                   >
-                                    Verify
+                                    <Check size={13} />
                                   </button>
-                                  <button
-                                    onClick={() => handleToggleStatus(d.id, 'Rejected')}
-                                    className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors"
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              ) : (
-                                <span className="text-[10px] text-gray-400">Audited</span>
-                              )}
-                            </div>
-                          </Td>
-                        </Tr>
-                      ))
+                                ) : (
+                                  <div className="w-5"></div>
+                                )}
+                              </div>
+                            </Td>
+                          </Tr>
+                        );
+                      })
                     )}
                   </Tbody>
                 </Table>
-              </Card>
-            </div>
-
-            <Card className="border border-slate-150 rounded-2xl p-5 shadow-xs bg-white">
-              <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3.5 pb-2 border-b border-slate-100 flex items-center gap-1">
-                <Sliders size={14} className="text-indigo-500" />
-                Employee Dossier History Logs
-              </h3>
-              <div className="space-y-3.5 text-xs text-gray-600">
-                {companyEmployees.map(emp => {
-                  const empDocs = list.filter(d => d.employeeId === emp.id);
-                  const isVerified = empDocs.length > 0 && empDocs.every(d => d.status === 'Verified');
-                  return (
-                    <div key={emp.id} className="pb-3 border-b border-slate-100 flex items-center justify-between last:border-0 last:pb-0">
-                      <div>
-                        <p className="font-semibold text-gray-900">{emp.name}</p>
-                        <p className="text-[10px] text-gray-400">Total uploads: {empDocs.length} files</p>
-                      </div>
-                      <Badge variant={isVerified ? 'green' : 'amber'}>
-                        {isVerified ? 'Dossier Cleared' : 'Missing Audits'}
-                      </Badge>
-                    </div>
-                  );
-                })}
               </div>
+
+              {/* Redesigned Pagination Controls */}
+              {totalDossierPages > 1 && (
+                <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between">
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    Showing page <span className="font-extrabold text-slate-800">{dossierPage}</span> of <span className="font-extrabold text-slate-800">{totalDossierPages}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setDossierPage(p => Math.max(1, p - 1))}
+                      disabled={dossierPage === 1}
+                      className="p-1.5 border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-lg text-slate-600 transition"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <span className="text-[11px] font-extrabold text-slate-700 min-w-[20px] text-center">
+                      {dossierPage}
+                    </span>
+                    <button
+                      onClick={() => setDossierPage(p => Math.min(totalDossierPages, p + 1))}
+                      disabled={dossierPage === totalDossierPages}
+                      className="p-1.5 border border-slate-200 hover:bg-slate-100 disabled:opacity-40 rounded-lg text-slate-600 transition"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
             </Card>
           </div>
         </div>
@@ -1549,6 +1855,95 @@ export const Documents: React.FC<DocumentsProps> = ({
           </div>
 
         </div>
+      </Modal>
+
+      {/* Premium Dossier Audit Details Modal */}
+      <Modal open={!!selectedReviewEmp} onClose={() => setSelectedReviewEmp(null)} title="Employee Dossier Verification Details" size="md">
+        {selectedReviewEmp && (() => {
+          const empDocs = list.filter(d => d.employeeId === selectedReviewEmp.id);
+          return (
+            <div className="space-y-4 text-left font-sans">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-805 text-indigo-700 font-bold flex items-center justify-center text-sm ring-2 ring-indigo-200">
+                  {selectedReviewEmp.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <p className="text-xs font-extrabold text-slate-900">{selectedReviewEmp.name}</p>
+                  <p className="text-[10px] text-gray-500 font-medium">{selectedReviewEmp.designation || 'Staff'} · {selectedReviewEmp.employeeId}</p>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Primary Profile Uploads</h4>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-800">Aadhaar Card</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Government ID</p>
+                    </div>
+                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.aadhaarUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
+                      {selectedReviewEmp.aadhaarUpload ? 'Uploaded' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-800">PAN Card</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Tax Account ID</p>
+                    </div>
+                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.panUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
+                      {selectedReviewEmp.panUpload ? 'Uploaded' : 'Missing'}
+                    </span>
+                  </div>
+                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-800">Passport Photo</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Primary Picture</p>
+                    </div>
+                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.photoUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
+                      {selectedReviewEmp.photoUpload ? 'Uploaded' : 'Missing'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Compliance Vault Documents ({empDocs.length})</h4>
+                {empDocs.length === 0 ? (
+                  <p className="text-center py-6 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">No compliance audit files uploaded in the main vault.</p>
+                ) : (
+                  <div className="space-y-2 max-h-[200px] overflow-auto pr-1">
+                    {empDocs.map(d => (
+                      <div key={d.id} className="border border-slate-150 p-2.5 rounded-xl flex items-center justify-between hover:bg-slate-50 transition">
+                        <div className="flex items-center gap-2">
+                          <FileText size={14} className="text-slate-400" />
+                          <div>
+                            <p className="text-[10px] font-bold text-slate-850 truncate max-w-[185px]">{d.name}</p>
+                            <span className="text-[8px] text-indigo-650 bg-indigo-50 px-1 py-0.2 rounded font-bold uppercase">{d.type}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} className="text-[8px] px-1 py-0">
+                            {d.status}
+                          </Badge>
+                          {d.status === 'Pending' && (
+                            <button
+                              onClick={() => {
+                                handleToggleStatus(d.id, 'Verified');
+                              }}
+                              className="text-[9px] px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded"
+                            >
+                              Verify
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
     </div>

@@ -200,7 +200,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Table Filters
   const filtered = useMemo(() => {
-    return companyEmployees.filter(e => {
+    const list = companyEmployees.filter(e => {
       const q = search.toLowerCase();
       const matchSearch = !q ||
         e.name.toLowerCase().includes(q) ||
@@ -211,6 +211,11 @@ export const Employees: React.FC<EmployeesProps> = ({
       const matchStatus = !statusFilter || e.status === statusFilter;
       const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
       return matchSearch && matchDept && matchStatus && matchBranch;
+    });
+
+    // Automatically sort employee list by Employee Code in ascending natural order
+    return [...list].sort((a, b) => {
+      return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true, sensitivity: 'base' });
     });
   }, [companyEmployees, search, deptFilter, statusFilter, branchFilter]);
 
@@ -418,6 +423,15 @@ export const Employees: React.FC<EmployeesProps> = ({
     }
   };
 
+  const cleanExcelValue = (val: any): string => {
+    if (val === undefined || val === null) return '-';
+    const str = String(val).trim();
+    if (str === '' || str.toLowerCase() === 'nan' || str.toLowerCase() === 'null' || str.toLowerCase() === 'undefined') {
+      return '-';
+    }
+    return str;
+  };
+
   const parseExcelFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -444,10 +458,21 @@ export const Employees: React.FC<EmployeesProps> = ({
             const row = json[i];
             if (!row || row.length === 0) continue;
 
-            const empCode = String(row[1] || '').trim();
-            const fullName = String(row[2] || '').trim();
+            let empCode = cleanExcelValue(row[1]);
+            let fullName = cleanExcelValue(row[2]);
 
-            if (!empCode || empCode === 'nan' || !fullName || fullName === 'nan') continue;
+            // Skip completely empty rows
+            if (empCode === '-' && fullName === '-' && (!row[3] || String(row[3]).trim() === '')) {
+              continue;
+            }
+
+            // Fallback for missing empCode or fullName to guarantee zero skipped records
+            if (empCode === '-') {
+              empCode = `TEMP-GCRI-${i}`;
+            }
+            if (fullName === '-') {
+              fullName = 'Unknown Employee';
+            }
 
             // Check duplicate
             const isDup = companyEmployees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
@@ -457,66 +482,69 @@ export const Employees: React.FC<EmployeesProps> = ({
             }
 
             // Standard parsing
-            const firstName = String(row[5] || '').trim();
-            const surname = String(row[4] || '').trim();
-            const gender = String(row[6] || '').trim();
-            const designation = String(row[14] || 'Staff Nurse').trim();
-            const category = String(row[15] || 'Skilled').trim();
+            const firstName = cleanExcelValue(row[5]);
+            const surname = cleanExcelValue(row[4]);
+            const gender = cleanExcelValue(row[6]);
+            const designation = cleanExcelValue(row[14]);
+            const category = cleanExcelValue(row[15]);
 
             let baseSalary = 18000;
-            if (designation.toLowerCase().includes('nurse') || designation.toLowerCase().includes('sister')) {
+            if (designation !== '-' && (designation.toLowerCase().includes('nurse') || designation.toLowerCase().includes('sister'))) {
               baseSalary = 38000;
-            } else if (category.toLowerCase() === 'skilled') {
+            } else if (category !== '-' && category.toLowerCase() === 'skilled') {
               baseSalary = 32000;
-            } else if (category.toLowerCase() === 'semi-skilled') {
+            } else if (category !== '-' && category.toLowerCase() === 'semi-skilled') {
               baseSalary = 24000;
-            } else if (category.toLowerCase() === 'highly skilled') {
+            } else if (category !== '-' && category.toLowerCase() === 'highly skilled') {
               baseSalary = 48000;
             }
+
+            const emailVal = cleanExcelValue(row[36]);
+            const email = emailVal !== '-' ? emailVal : `${firstName !== '-' ? firstName.toLowerCase() : 'employee'}@${sheetName.toLowerCase()}.gcri.in`;
 
             const parsedEmp = {
               id: `emp-gcri-${empCode}`,
               employeeId: empCode,
               companyId: activeCompanyId,
               name: fullName,
-              email: String(row[36] || `${firstName.toLowerCase()}@${sheetName.toLowerCase()}.gcri.in`),
-              phone: String(row[17] || '+91 99999 88888'),
-              department: designation.toLowerCase().includes('nurse') ? 'Nursing' : 'Clinical',
+              email: email,
+              phone: cleanExcelValue(row[17]),
+              department: designation !== '-' && designation.toLowerCase().includes('nurse') ? 'Nursing' : 'Clinical',
               designation: designation,
               role: 'Staff' as Role,
-              status: row[29] ? 'Inactive' : 'Active' as EmployeeStatus,
-              joinDate: String(row[13] || '2022-11-01'),
+              status: cleanExcelValue(row[29]) !== '-' ? 'Inactive' : 'Active' as EmployeeStatus,
+              joinDate: cleanExcelValue(row[13]),
               location: `${capitalize(sheetName)}, Gujarat`,
-              avatar: firstName ? firstName.slice(0, 2).toUpperCase() : 'EM',
+              avatar: firstName !== '-' ? firstName.slice(0, 2).toUpperCase() : 'EM',
               salary: baseSalary,
               manager: 'Dr. Suresh Babu',
 
               firstName,
               middleName: surname,
               lastName: surname,
-              aadhaarName: String(row[3] || ''),
+              aadhaarName: cleanExcelValue(row[3]),
               gender: gender.toUpperCase() === 'F' ? 'Female' : 'Male',
-              dob: String(row[9] || ''),
-              maritalStatus: String(row[10] || 'UNMARRIED'),
-              nationality: String(row[11] || 'INDIAN'),
-              fatherSpouseName: String(row[7] || ''),
-              relationType: String(row[8] || 'FATHER'),
+              dob: cleanExcelValue(row[9]),
+              maritalStatus: cleanExcelValue(row[10]),
+              nationality: cleanExcelValue(row[11]),
+              fatherSpouseName: cleanExcelValue(row[7]),
+              relationType: cleanExcelValue(row[8]),
               category: category,
-              employmentType: String(row[16] || 'CONTRACTUAL'),
-              exitDate: String(row[29] || ''),
-              exitReason: String(row[30] || ''),
-              serviceBookNo: String(row[28] || ''),
+              employmentType: cleanExcelValue(row[16]),
+              exitDate: cleanExcelValue(row[29]),
+              exitReason: cleanExcelValue(row[30]),
+              serviceBookNo: cleanExcelValue(row[28]),
               branchLocation: sheetName,
-              aadhaar: String(row[22] || ''),
-              pan: String(row[20] || ''),
-              pfNumber: String(row[18] || ''),
-              uan: String(row[19] || ''),
-              esic: String(row[21] || ''),
-              bankName: String(row[24] || ''),
-              accountNumber: String(row[23] || ''),
-              ifsc: String(row[25] || ''),
-              presentAddress: String(row[26] || ''),
-              permanentAddress: String(row[27] || ''),
+              aadhaar: cleanExcelValue(row[22]),
+              pan: cleanExcelValue(row[20]),
+              pfNumber: cleanExcelValue(row[18]),
+              uan: cleanExcelValue(row[19]),
+              esic: cleanExcelValue(row[21]),
+              bankName: cleanExcelValue(row[24]),
+              accountNumber: cleanExcelValue(row[23]),
+              ifsc: cleanExcelValue(row[25]),
+              presentAddress: cleanExcelValue(row[26]),
+              permanentAddress: cleanExcelValue(row[27]),
             };
 
             allRows.push(parsedEmp);
@@ -546,7 +574,13 @@ export const Employees: React.FC<EmployeesProps> = ({
   const loadSeededMockExcel = () => {
     // Quick load all parsed Excel records from static storage for seamless testing
     const count = allExcelParsedEmployees.length;
-    onUpdateEmployees([...allExcelParsedEmployees, ...employees]);
+    const mapped = allExcelParsedEmployees.map(emp => ({
+      ...emp,
+      companyId: activeCompanyId,
+      role: 'Staff',
+      status: (emp.status || 'Active') as any
+    }));
+    onUpdateEmployees([...mapped, ...employees]);
     alert(`Instantly populated database with ALL ${count} real employee profiles from the Excel master!`);
     setImportOpen(false);
   };
@@ -607,65 +641,65 @@ export const Employees: React.FC<EmployeesProps> = ({
         <Table>
           <Thead>
             <tr>
-              <Th>Emp Code</Th>
-              <Th>Employee Full Name</Th>
-              <Th>Nationality</Th>
-              <Th>Date of Joining</Th>
-              <Th>Designation</Th>
-              <Th>Category</Th>
-              <Th>Date of Exit</Th>
-              <Th className="min-w-[180px]">ACTIONS</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[8%] tracking-wider font-bold">Emp Code</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[26%] tracking-wider font-bold">Employee Full Name</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Nationality</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[12%] tracking-wider font-bold">Date of Joining</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[18%] tracking-wider font-bold">Designation</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Category</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[6%] tracking-wider font-bold text-center">ACTIONS</Th>
             </tr>
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-10 text-sm text-gray-400">No synchronized employee profiles found</td></tr>
+              <tr><td colSpan={8} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
               filtered.map(emp => (
                 <Tr key={emp.id} className="hover:bg-slate-50/50">
-                  <Td><span className="text-xs font-bold text-slate-800">{emp.employeeId}</span></Td>
-                  <Td>
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => setViewEmp(emp)}>
-                      <div className="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[10px] text-slate-600 ring-1 ring-slate-200">
+                  <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
+                  <Td className="px-2 py-1">
+                    <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
+                      <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 ring-1 ring-slate-200 shrink-0">
                         {emp.avatar || 'EM'}
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-900 hover:text-blue-600">{emp.name}</p>
-                        <p className="text-[10px] text-gray-400">{emp.email}</p>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold text-slate-900 hover:text-blue-600 truncate">{emp.name}</p>
+                        <p className="text-[9px] text-gray-400 truncate">{emp.email}</p>
                       </div>
                     </div>
                   </Td>
-                  <Td><span className="text-xs font-semibold text-slate-700">{emp.nationality || 'INDIAN'}</span></Td>
-                  <Td><span className="text-xs text-slate-600">{emp.joinDate}</span></Td>
-                  <Td><span className="text-xs font-medium text-slate-800">{emp.designation}</span></Td>
-                  <Td><Badge variant="blue">{emp.category || 'SKILLED'}</Badge></Td>
-                  <Td><span className="text-xs text-slate-500 font-medium">{emp.exitDate || '—'}</span></Td>
-                  <Td className="min-w-[180px]">
-                    <div className="flex items-center gap-1.5">
-  <button
-    onClick={() => setViewEmp(emp)}
-    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600"
-    title="View Master File"
-  >
-    <Eye size={14} />
-  </button>
+                  <Td className="px-2 py-1"><span className="text-[11px] font-semibold text-slate-700">{emp.nationality || 'INDIAN'}</span></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{emp.joinDate}</span></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[130px]">{emp.designation}</span></Td>
+                  <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{emp.exitDate || '—'}</span></Td>
+                  <Td className="px-2 py-1 w-24">
+                    <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                      <button
+                        onClick={() => setViewEmp(emp)}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                        title="View Master File"
+                      >
+                        <Eye size={13} />
+                      </button>
 
-  <button
-    onClick={() => handleStartEdit(emp)}
-    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600"
-    title="Edit File"
-  >
-    <Edit2 size={14} />
-  </button>
+                      <button
+                        onClick={() => handleStartEdit(emp)}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                        title="Edit File"
+                      >
+                        <Edit2 size={13} />
+                      </button>
 
-  <button
-    onClick={() => setDeleteEmp(emp)}
-    className="p-1 hover:bg-red-100 rounded text-red-600 hover:text-red-700"
-    title="Delete Employee"
-  >
-    <Trash2 size={14} />
-  </button>
-</div>
+                      <button
+                        onClick={() => setDeleteEmp(emp)}
+                        className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
+                        title="Delete Employee"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </Td>
                 </Tr>
               ))

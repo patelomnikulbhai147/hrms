@@ -59,7 +59,6 @@ const defaultPayments: PaymentRecord[] = [];
 const defaultEmployees: Employee[] = allExcelParsedEmployees.map(emp => {
   return {
     ...emp,
-    companyId: 'c-ahmedabad',
     role: 'Staff',
     status: (emp.status || 'Active') as any
   };
@@ -222,13 +221,8 @@ const seedDataForCompany = (companyId: string, companyName: string) => {
 export default function App() {
   // Auto-migration: check if browser has cached the old mock database or is missing our new branch seeding, and clear it for a clean slate
   if (typeof window !== 'undefined') {
-    const rawAccounts = localStorage.getItem('hrms_accounts');
-    const rawCompanies = localStorage.getItem('hrms_companies');
-    if (
-      (rawAccounts && rawAccounts.includes('vikram')) || 
-      (rawCompanies && !rawCompanies.includes('c-ahmedabad')) ||
-      (rawCompanies && rawCompanies.includes('c-rajkot'))
-    ) {
+    const realMigrated = localStorage.getItem('hrms_real_migration_v2');
+    if (!realMigrated) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
       localStorage.removeItem('hrms_employees');
@@ -237,6 +231,7 @@ export default function App() {
       localStorage.removeItem('hrms_payroll');
       localStorage.removeItem('hrms_documents');
       localStorage.removeItem('hrms_payments');
+      localStorage.setItem('hrms_real_migration_v2', 'true');
       window.location.reload();
     }
   }
