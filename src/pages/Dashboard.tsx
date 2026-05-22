@@ -694,7 +694,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatCard
             label="Total Employees"
             value={totalEmployees}
@@ -715,20 +715,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
             icon={<Clock size={16} className="text-amber-600 animate-pulse" />}
             color="bg-amber-50"
             sub="Not marked for today"
-          />
-          <StatCard
-            label="Employees on Leave"
-            value={onLeaveToday}
-            icon={<Calendar size={16} className="text-purple-600" />}
-            color="bg-purple-50"
-            sub="Approved leave absence"
-          />
-          <StatCard
-            label="Payroll Status"
-            value={payrollStatusStr}
-            icon={<FileText size={16} className="text-blue-600" />}
-            color={companyPayrollStatus.status === 'failed' ? 'bg-red-50' : 'bg-blue-50'}
-            sub="Latest payroll stage"
           />
         </div>
 
