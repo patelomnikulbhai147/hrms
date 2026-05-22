@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   Building2, Calendar, AlertCircle, FileText, CheckCircle2, Clock, Info,
-  Search, Bell, DollarSign, Sparkles
+  Search, Bell, DollarSign, Sparkles, ChevronRight
 } from 'lucide-react';
 import {
   type Role,
@@ -90,6 +90,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [toast]);
 
   const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
+  const [selectedBranch, setSelectedBranch] = useState<string>('All');
 
   // Scoped Data for Company Head / HR roles
   const scopedEmployees = employees.filter(e => e.companyId === activeCompanyId);
@@ -690,6 +692,59 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return !isOnLeave;
     }).length;
 
+    // Department Distribution (active only)
+    const deptCounts = scopedEmployees.filter(e => e.status === 'Active').reduce((acc, emp) => {
+      const dept = emp.department || 'Other';
+      acc[dept] = (acc[dept] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    const topDepartments = Object.entries(deptCounts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 4);
+
+    // Branch Distribution
+    const branchDistribution = ['Ahmedabad', 'Rajkot', 'Bhavnagar', 'Siddhpur'].map(name => {
+      const count = scopedEmployees.filter(e => {
+        const loc = (e.branchLocation || e.location || 'Ahmedabad').toLowerCase();
+        return loc.includes(name.toLowerCase()) && e.status === 'Active';
+      }).length;
+      return { name, count };
+    });
+
+    // Joined Roster feed
+    const joinedRoster = [...scopedEmployees]
+      .filter(e => e.status === 'Active')
+      .sort((a, b) => b.joinDate.localeCompare(a.joinDate));
+
+    // On Leave Roster
+    const onLeaveRoster = scopedEmployees.filter(e => {
+      if (e.status === 'On Leave') return true;
+      return scopedLeaves.some(l => 
+        l.employeeId === e.id && 
+        l.status === 'Approved' && 
+        todayStr >= l.fromDate && 
+        todayStr <= l.toDate
+      );
+    });
+
+    // Pending Exit Roster
+    const pendingExitRoster = scopedEmployees.filter(e => e.status === 'Inactive' || e.exitDate);
+
+    // Filtered list
+    const activeTabRoster = rosterTab === 'Joined' 
+      ? joinedRoster 
+      : rosterTab === 'On Leave' 
+      ? onLeaveRoster 
+      : pendingExitRoster;
+
+    const filteredRosterList = activeTabRoster.filter(e => {
+      if (selectedBranch === 'All') return true;
+      const loc = (e.branchLocation || e.location || 'Ahmedabad').toLowerCase();
+      return loc.includes(selectedBranch.toLowerCase());
+    });
+
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';
 
@@ -739,36 +794,156 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-3">
             <Card padding={false}>
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Company Employee List</h3>
-                <button onClick={() => onNavigate('employees')} className="text-[10px] text-blue-600 hover:underline font-semibold">
-                  View Roster
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <div>
+                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Workforce Analytics & Roster Insights</h3>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Real-time branch statistics, department spread, and dynamic joinees feed</p>
+                </div>
+                <button onClick={() => onNavigate('employees')} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition-colors">
+                  <span>View Full Directory</span>
+                  <ChevronRight size={12} />
                 </button>
               </div>
-              <Table>
-                <Thead>
-                  <tr>
-                    <Th>Employee</Th>
-                    <Th>Designation</Th>
-                    <Th>Joining Date</Th>
-                    <Th>Location</Th>
-                    <Th>Status</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {scopedEmployees.slice(0, 4).map(e => (
-                    <Tr key={e.id} className="hover:bg-gray-50/50">
-                      <Td>
-                        <span className="text-xs font-semibold text-gray-900">{e.name}</span>
-                      </Td>
-                      <Td><span className="text-xs text-gray-650">{e.designation}</span></Td>
-                      <Td><span className="text-xs text-gray-655">{e.joinDate}</span></Td>
-                      <Td><span className="text-xs text-gray-655">{e.location}</span></Td>
-                      <Td><Badge variant={statusBadge(e.status) as any}>{e.status}</Badge></Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
+
+              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-gray-100 min-h-[320px]">
+                {/* LEFT SIDE: Employee Feed & Tabs (Columns: 3/5) */}
+                <div className="md:col-span-3 p-4 flex flex-col justify-between">
+                  <div>
+                    {/* Tab Selection */}
+                    <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2 mb-3">
+                      {(['Joined', 'On Leave', 'Pending Exit'] as const).map((tab) => (
+                        <button
+                          key={tab}
+                          onClick={() => setRosterTab(tab)}
+                          className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
+                            rosterTab === tab
+                              ? 'bg-indigo-600 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          }`}
+                        >
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Branch Quick Filters */}
+                    <div className="flex flex-wrap items-center gap-1 mb-3">
+                      <span className="text-[9px] text-gray-400 font-bold uppercase tracking-wider mr-1">Branch:</span>
+                      {['All', 'Ahmedabad', 'Rajkot', 'Bhavnagar', 'Siddhpur'].map((b) => (
+                        <button
+                          key={b}
+                          onClick={() => setSelectedBranch(b)}
+                          className={`px-2 py-0.5 text-[9px] font-bold rounded-md border transition-all ${
+                            selectedBranch === b
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-700 font-extrabold'
+                              : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                          }`}
+                        >
+                          {b}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Compact Roster Feed List */}
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {filteredRosterList.length === 0 ? (
+                        <div className="text-center py-8 text-xs text-gray-400 font-medium">
+                          No employees matching filter criteria
+                        </div>
+                      ) : (
+                        filteredRosterList.slice(0, 5).map((e) => (
+                          <div
+                            key={e.id}
+                            className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 bg-white"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-650 font-sans flex-shrink-0">
+                                {e.name.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-gray-800 truncate">{e.name}</p>
+                                <p className="text-[10px] text-gray-450 truncate">
+                                  {e.designation} • <span className="font-semibold text-gray-500">{e.branchLocation || e.location || 'Ahmedabad'}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-right flex-shrink-0 pl-2">
+                              {rosterTab === 'Joined' && (
+                                <span className="text-[9px] px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded">
+                                  Joined {e.joinDate}
+                                </span>
+                              )}
+                              {rosterTab === 'On Leave' && (
+                                <span className="text-[9px] px-2 py-0.5 bg-amber-50 text-amber-700 font-bold rounded">
+                                  Absence Logged
+                                </span>
+                              )}
+                              {rosterTab === 'Pending Exit' && (
+                                <span className="text-[9px] px-2 py-0.5 bg-rose-50 text-rose-700 font-bold rounded">
+                                  Exit Pending
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {filteredRosterList.length > 5 && (
+                    <button
+                      onClick={() => onNavigate('employees')}
+                      className="w-full mt-3 text-center text-[9px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider py-1.5 border-t border-gray-150"
+                    >
+                      View All {filteredRosterList.length} Roster Records
+                    </button>
+                  )}
+                </div>
+
+                {/* RIGHT SIDE: Dynamic Insights & Distribution (Columns: 2/5) */}
+                <div className="md:col-span-2 p-4 bg-slate-50/30 flex flex-col justify-between gap-4">
+                  {/* Department distribution */}
+                  <div>
+                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                      Department Spread
+                    </h4>
+                    <div className="space-y-2">
+                      {topDepartments.map((dept) => {
+                        const pct = activeEmployeesCount > 0 ? (dept.count / activeEmployeesCount) * 100 : 0;
+                        return (
+                          <div key={dept.name}>
+                            <div className="flex justify-between text-[9px] font-bold mb-0.5">
+                              <span className="text-gray-700 truncate max-w-[100px]">{dept.name}</span>
+                              <span className="text-gray-450">{dept.count} ({Math.round(pct)}%)</span>
+                            </div>
+                            <div className="w-full bg-gray-150 h-1 rounded-full overflow-hidden">
+                              <div
+                                style={{ width: `${pct}%` }}
+                                className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Branch wise employee count */}
+                  <div>
+                    <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                      Branch Summary
+                    </h4>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {branchDistribution.map((branch) => (
+                        <div key={branch.name} className="p-2 bg-white border border-gray-150 rounded-xl text-center shadow-sm">
+                          <p className="text-[9px] font-bold text-gray-400 uppercase truncate">{branch.name}</p>
+                          <p className="text-xs font-extrabold text-gray-800 mt-0.5">{branch.count}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </Card>
           </div>
 
