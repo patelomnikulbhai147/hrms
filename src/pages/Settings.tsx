@@ -5,6 +5,7 @@ import { Input, Select, Textarea } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
 import { Building2, Palette, BadgeCent, CheckCircle2 } from 'lucide-react';
 import { type Company, type Role } from '../data/mockData';
+import { SAFE_COMPANY_FALLBACK } from '../App';
 import {
   validatePhone,
   validateEmail,
@@ -28,7 +29,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding'>('profile');
   
   // Find current company context
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
 
   // Split phone format "+91 9876543210" securely
   const getPhoneParts = () => {

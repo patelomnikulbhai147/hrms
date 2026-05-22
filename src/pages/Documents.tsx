@@ -11,6 +11,7 @@ import {
   type Role,
   type Company
 } from '../data/mockData';
+import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card } from '../components/ui/Card';
@@ -193,7 +194,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   // Scoped lists derived reactively
   const companyEmployees = employees.filter(e => e.companyId === activeCompanyId);
   const list = documents.filter(d => d.companyId === activeCompanyId);
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
 
   // Compliance state
   const [search, setSearch] = useState('');

@@ -16,6 +16,7 @@ import {
   type Company,
   type PayrollStatus
 } from '../data/mockData';
+import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -97,7 +98,7 @@ export const Payroll: React.FC<PayrollProps> = ({
     notes: ''
   });
 
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
   const companyEmployees = useMemo(() => employees.filter(e => e.companyId === activeCompanyId), [employees, activeCompanyId]);
 
   useEffect(() => {

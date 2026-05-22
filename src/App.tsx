@@ -44,14 +44,7 @@ const pageTitles: Record<PageId, string> = {
 };
 
 const defaultUsers: UserAccount[] = [
-  { id: 'u1', name: 'Super Admin', email: 'admin@platform.in', username: 'superadmin', passwordStr: 'admin123', role: 'Super Admin', companyId: '', status: 'Active', avatar: 'SA' },
-  { id: 'u2', name: 'Vikram Singh', email: 'vikram.singh@technova.in', username: 'vikram', passwordStr: 'head123', role: 'Company Head', companyId: 'c1', status: 'Active', avatar: 'VS' },
-  { id: 'u3', name: 'Priya Sharma', email: 'priya.sharma@technova.in', username: 'priya', passwordStr: 'hr123', role: 'HR', companyId: 'c1', status: 'Active', avatar: 'PS' },
-  { id: 'u4', name: 'Sneha Patel', email: 'sneha.patel@quantumdatalabs.ai', username: 'sneha', passwordStr: 'head123', role: 'Company Head', companyId: 'c2', status: 'Active', avatar: 'SP' },
-  { id: 'u5', name: 'Sunita Joshi', email: 'sunita.joshi@healthfirst.in', username: 'sunita', passwordStr: 'hr123', role: 'HR', companyId: 'c3', status: 'Active', avatar: 'SJ' },
-  { id: 'u6', name: 'Rajesh Kumar', email: 'rajesh.kumar@technova.in', username: 'rajesh', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'RK', employeeId: 'e1' },
-  { id: 'u7', name: 'Kavita Rao', email: 'kavita.rao@technova.in', username: 'kavita', passwordStr: 'employee123', role: 'Employee', companyId: 'c1', status: 'Active', avatar: 'KR', employeeId: 'emp-c1-2' },
-  { id: 'u8', name: 'Finance Lead', email: 'finance@healthfirst.in', username: 'finance', passwordStr: 'finance123', role: 'Finance', companyId: 'c3', status: 'Active', avatar: 'FL' }
+  { id: 'u1', name: 'Super Admin', email: 'admin@platform.in', username: 'superadmin', passwordStr: 'admin123', role: 'Super Admin', companyId: '', status: 'Active', avatar: 'SA' }
 ];
 
 const defaultPlans: SubscriptionPlan[] = [
@@ -60,12 +53,41 @@ const defaultPlans: SubscriptionPlan[] = [
   { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: 9999, hrLimit: 9999, storageLimit: '100 GB', payrollAccess: true, documentAccess: true }
 ];
 
-const defaultPayments: PaymentRecord[] = [
-  { id: 'tx1', companyId: 'c1', companyName: 'TechNova Solutions', amount: 4999, paymentDate: '2026-05-10 14:30', invoiceNumber: 'INV-2026-001', planType: 'Professional', paymentMode: 'UPI', transactionStatus: 'Success' },
-  { id: 'tx2', companyId: 'c2', companyName: 'Quantum Data Labs', amount: 12999, paymentDate: '2026-05-12 11:15', invoiceNumber: 'INV-2026-002', planType: 'Enterprise', paymentMode: 'Bank Transfer', transactionStatus: 'Success' },
-  { id: 'tx3', companyId: 'c3', companyName: 'HealthFirst Ltd', amount: 1999, paymentDate: '2026-04-18 16:45', invoiceNumber: 'INV-2026-003', planType: 'Starter', paymentMode: 'Card', transactionStatus: 'Success' },
-  { id: 'tx4', companyId: 'c3', companyName: 'HealthFirst Ltd', amount: 1999, paymentDate: '2026-05-18 09:00', invoiceNumber: 'INV-2026-004', planType: 'Starter', paymentMode: 'Card', transactionStatus: 'Failed' }
-];
+const defaultPayments: PaymentRecord[] = [];
+
+export const SAFE_COMPANY_FALLBACK: any = {
+  id: '',
+  name: 'Global Workspace',
+  domain: '',
+  adminName: '',
+  adminEmail: '',
+  phone: '',
+  industry: '',
+  status: 'Active',
+  employeeCount: 0,
+  joinDate: '',
+  plan: 'Starter',
+  logo: '',
+  pfRate: 12,
+  esicRate: 3.25,
+  basicPercent: 50,
+  profTaxRate: 200,
+  overtimeRate: 1.5,
+  address: '',
+  email: '',
+  primaryColor: '#3b82f6',
+  headerText: 'GLOBAL COMPANY WORKSPACE',
+  footerText: '',
+  signatureText: '',
+  themeStyle: 'Modern',
+  paymentStatus: 'Paid',
+  renewalDate: '',
+  gstNumber: '',
+  billingAddress: '',
+  subscriptionPrice: 0,
+  billingCycle: 'Monthly',
+  accountStatus: 'Active'
+};
 
 const seedDataForCompany = (companyId: string, companyName: string) => {
   const seededEmployees: Employee[] = [
@@ -327,7 +349,7 @@ export default function App() {
       const nextPayroll = prevPayroll.map(p => {
         const emp = nextEmployees.find(e => e.id === p.employeeId);
         if (emp && emp.salary !== p.salary) {
-          const comp = companies.find(c => c.id === emp.companyId) || defaultCompanies[0];
+          const comp = companies.find(c => c.id === emp.companyId) || SAFE_COMPANY_FALLBACK;
           const basicPercent = comp.basicPercent || 50;
           const ctcMonthly = Math.round(emp.salary / 12);
           const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
@@ -393,7 +415,7 @@ export default function App() {
       const nextPayroll = prevPayroll.map(p => {
         const emp = employees.find(e => e.id === p.employeeId);
         if (!emp) return p;
-        const comp = companies.find(c => c.id === emp.companyId) || defaultCompanies[0];
+        const comp = companies.find(c => c.id === emp.companyId) || SAFE_COMPANY_FALLBACK;
         const basicPercent = comp.basicPercent || 50;
         const ctcMonthly = Math.round(emp.salary / 12);
         const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
@@ -577,121 +599,7 @@ export default function App() {
     ? (authProfile?.companyId || 'c1')
     : activeCompanyId;
 
-  // Synchronous auto-seeding hook for registered companies (including newly created ones!)
-  useEffect(() => {
-    let employeesChanged = false;
-    let leavesChanged = false;
-    let attendanceChanged = false;
-    let payrollChanged = false;
-
-    const nextEmployees = [...employees];
-    const nextLeaves = [...leaves];
-    const nextAttendance = [...attendance];
-    const nextPayroll = [...payroll];
-
-    companies.forEach(company => {
-      // If a company has 0 employees, seed full starter pack data for it!
-      const hasEmployees = employees.some(e => e.companyId === company.id);
-      if (!hasEmployees) {
-        const { seededEmployees, seededLeaves, seededAttendance } = seedDataForCompany(company.id, company.name);
-        
-        nextEmployees.push(...seededEmployees);
-        employeesChanged = true;
-
-        // Only seed leaves and attendance if they don't already have records for this company
-        const hasLeaves = leaves.some(l => l.companyId === company.id);
-        if (!hasLeaves) {
-          nextLeaves.push(...seededLeaves);
-          leavesChanged = true;
-        }
-
-        const hasAttendance = attendance.some(a => a.companyId === company.id);
-        if (!hasAttendance) {
-          nextAttendance.push(...seededAttendance);
-          attendanceChanged = true;
-        }
-      }
-
-      // Automatically generate active payroll records for June 2026 if none exist
-      const hasPayroll = payroll.some(p => p.companyId === company.id && p.month === 'June');
-      if (!hasPayroll) {
-        // Calculate payroll for the employees of this company
-        const compEmps = nextEmployees.filter(e => e.companyId === company.id);
-        compEmps.forEach((emp, index) => {
-          const basicPercent = company.basicPercent || 50;
-          const ctcMonthly = Math.round(emp.salary / 12);
-          const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
-          
-          const hra = Math.round(basicSalary * 0.4);
-          const special = Math.max(0, ctcMonthly - basicSalary - hra);
-          const allowances = hra + special;
-
-          const pfRate = company.pfRate || 12;
-          const esicRate = company.esicRate || 0.75;
-          const profTax = company.profTaxRate || 200;
-
-          // Unpaid leaves deduction
-          const empUnpaidLeaves = nextLeaves.filter(l => 
-            l.employeeId === emp.id && 
-            l.status === 'Approved' && 
-            l.leaveType === 'Unpaid' &&
-            l.fromDate.includes('-06-')
-          );
-          const unpaidDays = empUnpaidLeaves.reduce((sum, l) => sum + l.days, 0);
-          const unpaidDeduction = Math.round((ctcMonthly / 30) * unpaidDays);
-
-          const pfDeduction = Math.round(basicSalary * (pfRate / 100));
-          const esicDeduction = Math.round(basicSalary * (esicRate / 100));
-          const baseDeductions = pfDeduction + esicDeduction + profTax;
-          const deductions = baseDeductions + unpaidDeduction;
-          const netSalary = ctcMonthly - deductions;
-
-          let initialStatus: 'draft' | 'prepared' | 'verified' | 'paid' = 'draft';
-          if (index === 0) initialStatus = 'draft';
-          else if (index === 1) initialStatus = 'prepared'; 
-          else if (index === 2) initialStatus = 'verified'; 
-          else if (index === 3) initialStatus = 'paid'; 
-
-          nextPayroll.push({
-            id: `p-init-${company.id}-${emp.id}`,
-            companyId: company.id,
-            employeeId: emp.id,
-            employeeName: emp.name,
-            department: emp.department,
-            month: 'June',
-            year: 2026,
-            basicSalary,
-            allowances,
-            deductions,
-            netSalary,
-            status: initialStatus,
-            salary: netSalary,
-            payrollStatus: initialStatus,
-            paymentStatus: initialStatus === 'paid' ? 'paid' : 'pending',
-            payslipGenerated: false
-          });
-          payrollChanged = true;
-        });
-      }
-    });
-
-    if (employeesChanged) {
-      setEmployees(nextEmployees);
-      localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
-    }
-    if (leavesChanged) {
-      setLeaves(nextLeaves);
-      localStorage.setItem('hrms_leaves', JSON.stringify(nextLeaves));
-    }
-    if (attendanceChanged) {
-      setAttendance(nextAttendance);
-      localStorage.setItem('hrms_attendance', JSON.stringify(nextAttendance));
-    }
-    if (payrollChanged) {
-      setPayroll(nextPayroll);
-      localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
-    }
-  }, [companies, employees, leaves, attendance, payroll]);
+  // Synchronous auto-seeding deactivated for clean SaaS startup environment
 
   useEffect(() => {
     if (resolvedRole === 'Super Admin' && ['employees', 'leaves', 'payroll', 'documents', 'reports'].includes(currentPage)) {

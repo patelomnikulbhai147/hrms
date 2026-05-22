@@ -8,6 +8,7 @@ import {
   type Role,
   type Company
 } from '../data/mockData';
+import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
@@ -45,7 +46,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const companyLeaves = leaves.filter(l => l.companyId === activeCompanyId);
 
   // Load active company branding
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || companies[0];
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
 
   const depts = [...new Set(companyEmployees.map(e => e.department))];
   
