@@ -56,14 +56,9 @@ const defaultPlans: SubscriptionPlan[] = [
 const defaultPayments: PaymentRecord[] = [];
 
 const defaultEmployees: Employee[] = allExcelParsedEmployees.map(emp => {
-  const branch = (emp.branchLocation || '').toUpperCase();
-  let companyId = 'c-ahmedabad';
-  if (branch === 'RAJKOT') companyId = 'c-rajkot';
-  else if (branch === 'BHAVNAGAR') companyId = 'c-bhavnagar';
-  else if (branch === 'SIDDHPUR') companyId = 'c-siddhpur';
   return {
     ...emp,
-    companyId,
+    companyId: 'c-ahmedabad',
     role: 'Staff',
     status: (emp.status || 'Active') as any
   };
@@ -228,7 +223,11 @@ export default function App() {
   if (typeof window !== 'undefined') {
     const rawAccounts = localStorage.getItem('hrms_accounts');
     const rawCompanies = localStorage.getItem('hrms_companies');
-    if ((rawAccounts && rawAccounts.includes('vikram')) || (rawCompanies && !rawCompanies.includes('c-ahmedabad'))) {
+    if (
+      (rawAccounts && rawAccounts.includes('vikram')) || 
+      (rawCompanies && !rawCompanies.includes('c-ahmedabad')) ||
+      (rawCompanies && rawCompanies.includes('c-rajkot'))
+    ) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
       localStorage.removeItem('hrms_employees');
