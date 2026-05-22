@@ -55,7 +55,19 @@ const defaultPlans: SubscriptionPlan[] = [
 
 const defaultPayments: PaymentRecord[] = [];
 
-const defaultEmployees: Employee[] = [];
+const defaultEmployees: Employee[] = allExcelParsedEmployees.map(emp => {
+  const branch = (emp.branchLocation || '').toUpperCase();
+  let companyId = 'c-ahmedabad';
+  if (branch === 'RAJKOT') companyId = 'c-rajkot';
+  else if (branch === 'BHAVNAGAR') companyId = 'c-bhavnagar';
+  else if (branch === 'SIDDHPUR') companyId = 'c-siddhpur';
+  return {
+    ...emp,
+    companyId,
+    role: 'Staff',
+    status: (emp.status || 'Active') as any
+  };
+});
 
 export const SAFE_COMPANY_FALLBACK: any = {
   id: '',
@@ -212,10 +224,11 @@ const seedDataForCompany = (companyId: string, companyName: string) => {
 };
 
 export default function App() {
-  // Auto-migration: check if browser has cached the old mock database or old GCRI seed companies, and clear it for a clean 0-tenant slate
+  // Auto-migration: check if browser has cached the old mock database or is missing our new branch seeding, and clear it for a clean slate
   if (typeof window !== 'undefined') {
+    const rawAccounts = localStorage.getItem('hrms_accounts');
     const rawCompanies = localStorage.getItem('hrms_companies');
-    if (rawCompanies && rawCompanies.includes('c-ahmedabad')) {
+    if ((rawAccounts && rawAccounts.includes('vikram')) || (rawCompanies && !rawCompanies.includes('c-ahmedabad'))) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
       localStorage.removeItem('hrms_employees');
