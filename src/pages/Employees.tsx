@@ -7,7 +7,7 @@ import {
 import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role,
-  departments, designations
+  departments, designations, isCompanyIdMatch
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -195,7 +195,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // central company scope filtering
   const companyEmployees = useMemo(() => {
-    return employees.filter(e => e.companyId === activeCompanyId);
+    return employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
   }, [employees, activeCompanyId]);
 
   // Table Filters

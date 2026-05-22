@@ -10,7 +10,8 @@ import {
   type Employee,
   type Document,
   type Role,
-  type Company
+  type Company,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
@@ -192,9 +193,9 @@ export const Documents: React.FC<DocumentsProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'compliance' | 'letters'>('compliance');
 
-  // Scoped lists derived reactively
-  const companyEmployees = employees.filter(e => e.companyId === activeCompanyId);
-  const list = documents.filter(d => d.companyId === activeCompanyId);
+  // Scoped lists derived reactively (supports parent company branch rollups)
+  const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const list = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId));
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
 
   // Compliance state

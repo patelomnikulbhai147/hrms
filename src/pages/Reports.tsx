@@ -6,7 +6,8 @@ import {
   type LeaveRequest,
   type PayrollRecord,
   type Role,
-  type Company
+  type Company,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Card, StatCard } from '../components/ui/Card';
@@ -39,11 +40,11 @@ export const Reports: React.FC<ReportsProps> = ({
   const [monthFilter, setMonthFilter] = useState('June');
   const [deptFilter, setDeptFilter] = useState('');
 
-  // Scoped datasets derived from reactive props
-  const companyEmployees = employees.filter(e => e.companyId === activeCompanyId);
-  const companyAttendance = attendance.filter(a => a.companyId === activeCompanyId);
-  const companyPayroll = payroll.filter(p => p.companyId === activeCompanyId);
-  const companyLeaves = leaves.filter(l => l.companyId === activeCompanyId);
+  // Scoped datasets derived from reactive props (supports parent company branch rollups)
+  const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const companyAttendance = attendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  const companyPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
+  const companyLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
 
   // Load active company branding
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;

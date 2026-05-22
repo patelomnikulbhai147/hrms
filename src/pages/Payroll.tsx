@@ -14,7 +14,8 @@ import {
   type PayrollRecord,
   type Role,
   type Company,
-  type PayrollStatus
+  type PayrollStatus,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
@@ -99,7 +100,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   });
 
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
-  const companyEmployees = useMemo(() => employees.filter(e => e.companyId === activeCompanyId), [employees, activeCompanyId]);
+  const companyEmployees = useMemo(() => employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId)), [employees, activeCompanyId]);
 
   useEffect(() => {
     const stored = localStorage.getItem(`hrms_payroll_logs_${activeCompanyId}`);
@@ -171,7 +172,7 @@ export const Payroll: React.FC<PayrollProps> = ({
 
         updatedPayroll.push({
           id: `p${Date.now()}-${emp.id}`,
-          companyId: activeCompanyId,
+          companyId: emp.companyId, // Set to the employee's specific branch ID
           employeeId: emp.id,
           employeeName: emp.name,
           department: emp.department,
@@ -197,7 +198,7 @@ export const Payroll: React.FC<PayrollProps> = ({
     if (role === 'Employee' && authProfile?.employeeId) {
       return payroll.filter(p => p.employeeId === authProfile.employeeId);
     }
-    return payroll.filter(p => p.companyId === activeCompanyId);
+    return payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
   }, [payroll, role, activeCompanyId, authProfile]);
 
   const filtered = useMemo(() => scopedRecords.filter(r => {

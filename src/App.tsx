@@ -221,7 +221,7 @@ const seedDataForCompany = (companyId: string, companyName: string) => {
 export default function App() {
   // Auto-migration: check if browser has cached the old mock database or is missing our new branch seeding, and clear it for a clean slate
   if (typeof window !== 'undefined') {
-    const realMigrated = localStorage.getItem('hrms_real_migration_v2');
+    const realMigrated = localStorage.getItem('hrms_real_migration_v3');
     if (!realMigrated) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
@@ -231,10 +231,12 @@ export default function App() {
       localStorage.removeItem('hrms_payroll');
       localStorage.removeItem('hrms_documents');
       localStorage.removeItem('hrms_payments');
-      localStorage.setItem('hrms_real_migration_v2', 'true');
+      localStorage.removeItem('hrms_active_company_id');
+      localStorage.setItem('hrms_real_migration_v3', 'true');
       window.location.reload();
     }
   }
+
 
   // Persistent user credentials
   const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => {
@@ -567,9 +569,9 @@ export default function App() {
     const rawProfile = localStorage.getItem('hrms_profile');
     if (rawProfile) {
       const profile = JSON.parse(rawProfile);
-      return profile.companyId || 'c-ahmedabad';
+      return profile.companyId || 'c-gcri';
     }
-    return 'c-ahmedabad';
+    return 'c-gcri';
   }); 
   const [isMasquerading, setIsMasquerading] = useState<boolean>(() => {
     return localStorage.getItem('hrms_is_masquerading') === 'true';
@@ -582,7 +584,7 @@ export default function App() {
     localStorage.setItem('hrms_auth', 'true');
     localStorage.setItem('hrms_profile', JSON.stringify(profile));
     setRole(profile.role);
-    const initialCompanyId = profile.companyId || 'c-ahmedabad';
+    const initialCompanyId = profile.companyId || 'c-gcri';
     setActiveCompanyId(initialCompanyId);
     localStorage.setItem('hrms_active_company_id', initialCompanyId);
     setCurrentPage('dashboard');
@@ -630,8 +632,8 @@ export default function App() {
     setIsMasquerading(false);
     localStorage.setItem('hrms_is_masquerading', 'false');
     setRole('Super Admin');
-    setActiveCompanyId('c-ahmedabad');
-    localStorage.setItem('hrms_active_company_id', 'c-ahmedabad');
+    setActiveCompanyId('c-gcri');
+    localStorage.setItem('hrms_active_company_id', 'c-gcri');
     setCurrentPage('companies');
     localStorage.setItem('hrms_current_page', 'companies');
   };
@@ -639,7 +641,7 @@ export default function App() {
   const resolvedRole = isMasquerading ? 'Company Head' : role;
 
   const resolvedCompanyId = (authProfile?.role !== 'Super Admin' && !isMasquerading)
-    ? (authProfile?.companyId || 'c-ahmedabad')
+    ? (authProfile?.companyId || 'c-gcri')
     : activeCompanyId;
 
   // Synchronous auto-seeding deactivated for clean SaaS startup environment

@@ -13,7 +13,8 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  notifications
+  notifications,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import {
@@ -92,12 +93,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
 
-  // Scoped Data for Company Head / HR roles
-  const scopedEmployees = employees.filter(e => e.companyId === activeCompanyId);
-  const scopedAttendance = attendance.filter(a => a.date === todayStr && a.companyId === activeCompanyId);
-  const scopedPayroll = payroll.filter(p => p.companyId === activeCompanyId);
-  const scopedDocs = documents.filter(d => d.companyId === activeCompanyId);
-  const scopedNotifications = notifications.filter(n => n.companyId === activeCompanyId);
+  // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
+  const scopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+  const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
+  const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies));
+  const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies));
+  const scopedNotifications = notifications.filter(n => isCompanyIdMatch(n.companyId, activeCompanyId, companies));
 
   const daysLeft = (dateStr?: string) => {
     const diff = getDaysRemaining(dateStr);
@@ -663,8 +664,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const totalEmployees = scopedEmployees.length;
     const activeEmployeesCount = scopedEmployees.filter(e => e.status === 'Active').length;
 
-    // Filter leaves for this company
-    const scopedLeaves = leaves.filter(l => l.companyId === activeCompanyId);
+    const branches = companies.filter(b => b.parentCompanyId === 'c-gcri');
+    const isParentCompany = activeCompanyId === 'c-gcri';
+
+    // Filter leaves for this company (supports parent + branches)
+    const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies));
 
     // Employees on leave today
     const onLeaveToday = scopedEmployees.filter(e => {
@@ -776,6 +780,87 @@ export const Dashboard: React.FC<DashboardProps> = ({
             sub="Active contract roster"
           />
         </div>
+
+        {isParentCompany && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+            {/* Branch Staff allocations */}
+            <Card className="lg:col-span-5">
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100 flex items-center gap-1.5">
+                <Building2 size={14} className="text-indigo-650" />
+                <span>Branch-wise Staff Allocation</span>
+              </h3>
+              <div className="space-y-4">
+                {branches.map(b => {
+                  const count = employees.filter(emp => emp.companyId === b.id).length;
+                  const pct = totalEmployees > 0 ? (count / totalEmployees) * 100 : 0;
+                  return (
+                    <div key={b.id} className="group">
+                      <div className="flex justify-between text-[11px] font-bold mb-1">
+                        <span className="text-gray-800 font-semibold">{b.branchName || b.name}</span>
+                        <span className="text-indigo-700 font-extrabold">{count} Staff ({Math.round(pct)}%)</span>
+                      </div>
+                      <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                        <div
+                          style={{ width: `${pct}%` }}
+                          className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Branch Payroll Rollups */}
+            <Card padding={false} className="lg:col-span-7">
+              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <DollarSign size={14} className="text-emerald-650" />
+                  <span>Branch Payroll Rollup Analytics</span>
+                </h3>
+                <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-extrabold">Consolidated Financials</span>
+              </div>
+              <Table>
+                <Thead>
+                  <tr className="text-[10px]">
+                    <Th>Branch Location</Th>
+                    <Th>Staff Count</Th>
+                    <Th>Processed Payroll</Th>
+                    <Th>Status</Th>
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {branches.map(b => {
+                    const count = employees.filter(emp => emp.companyId === b.id).length;
+                    const branchPayroll = payroll.filter(p => p.companyId === b.id);
+                    const totalSalary = branchPayroll.reduce((sum, p) => sum + (p.netSalary || 0), 0);
+                    const derivedStatus = deriveCompanyPayrollStatus(b.id, payroll);
+
+                    return (
+                      <Tr key={b.id} className="hover:bg-slate-50/50">
+                        <Td>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[9px] font-sans">
+                              {b.branchCode || 'BR'}
+                            </span>
+                            <span className="font-semibold text-gray-900">{b.branchName || b.name}</span>
+                          </div>
+                        </Td>
+                        <Td><span className="text-xs font-bold text-slate-700">{count} staff members</span></Td>
+                        <Td><span className="text-xs font-extrabold text-slate-800">₹{totalSalary.toLocaleString('en-IN')}</span></Td>
+                        <Td>
+                          <Badge variant={derivedStatus.status ? 'green' : 'yellow'}>
+                            {derivedStatus.status ? 'Processed' : 'Draft'}
+                          </Badge>
+                        </Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+            </Card>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-3">

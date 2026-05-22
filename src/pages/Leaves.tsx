@@ -5,7 +5,8 @@ import {
   type LeaveRequest,
   type LeaveType,
   type LeaveStatus,
-  type Role
+  type Role,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -106,7 +107,7 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 1. Role-based isolation & scoping
   const companyLeaves = useMemo(() => {
-    const isCompany = leaves.filter(l => l.companyId === activeCompanyId);
+    const isCompany = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
     if (role === 'Employee') {
       return isCompany.filter(
         l => l.employeeId === authProfile?.employeeId || l.employeeName.toLowerCase() === authProfile?.name?.toLowerCase()
@@ -134,11 +135,11 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
-    const companyEmployees = _employees.filter(e => e.companyId === activeCompanyId);
+    const companyEmployees = _employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
     return companyEmployees.map(emp => {
       const empLeaves = leaves.filter(
         l => (l.employeeId === emp.id || l.employeeName.toLowerCase() === emp.name.toLowerCase()) && 
-             l.companyId === activeCompanyId &&
+             isCompanyIdMatch(l.companyId, activeCompanyId) &&
              l.status === 'Approved'
       );
       const sickUsed = empLeaves.filter(l => l.leaveType === 'Sick').reduce((sum, l) => sum + l.days, 0);
@@ -170,7 +171,7 @@ export const Leaves: React.FC<LeavesProps> = ({
     if (!selectedEmp) return null;
     const empLeaves = leaves.filter(
       l => (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && 
-           l.companyId === activeCompanyId &&
+           isCompanyIdMatch(l.companyId, activeCompanyId) &&
            l.status === 'Approved'
     );
     const sickUsed = empLeaves.filter(l => l.leaveType === 'Sick').reduce((sum, l) => sum + l.days, 0);
@@ -624,7 +625,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                 {(() => {
                   const q = searchQuery.toLowerCase().trim();
                   const matches = _employees.filter(emp => {
-                    if (emp.companyId !== activeCompanyId) return false;
+                    if (!isCompanyIdMatch(emp.companyId, activeCompanyId)) return false;
                     if (!q) return true; // show all under current tenant when focused
                     return (
                       emp.name.toLowerCase().includes(q) ||

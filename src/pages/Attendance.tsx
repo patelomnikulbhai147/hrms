@@ -4,7 +4,8 @@ import {
   type Employee,
   type AttendanceRecord,
   type AttendanceStatus,
-  type Role
+  type Role,
+  isCompanyIdMatch
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -42,7 +43,7 @@ export const Attendance: React.FC<AttendanceProps> = ({
 
   // Dynamically initialize and sync attendance records for all company employees for the selectedDate
   useEffect(() => {
-    const activeCompanyEmployees = employees.filter(e => e.companyId === activeCompanyId);
+    const activeCompanyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
     let updatedAttendance = [...attendance];
     let changed = false;
 
@@ -51,7 +52,7 @@ export const Attendance: React.FC<AttendanceProps> = ({
       if (!exists) {
         const newRecord: AttendanceRecord = {
           id: `a${Date.now()}-${emp.id}`,
-          companyId: activeCompanyId,
+          companyId: emp.companyId, // Set to the employee's specific branch ID
           employeeId: emp.id,
           employeeName: emp.name,
           department: emp.department,
@@ -71,7 +72,7 @@ export const Attendance: React.FC<AttendanceProps> = ({
     }
   }, [activeCompanyId, selectedDate, employees, attendance]);
 
-  const scopedRecords = attendance.filter(a => a.companyId === activeCompanyId);
+  const scopedRecords = attendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
 
   const filtered = scopedRecords.filter(a => {
     const matchDate = a.date === selectedDate;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Building2, Plus, Search, KeyRound, Lock, Trash2,
-  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar
+  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
 import { Card, StatCard } from '../components/ui/Card';
@@ -54,6 +54,17 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
   const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
+  
+  const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({
+    'c-gcri': true
+  });
+
+  const toggleExpandParent = (parentId: string) => {
+    setExpandedParents(prev => ({
+      ...prev,
+      [parentId]: !prev[parentId]
+    }));
+  };
   
   // Dynamic Onboarding state
   const [newCompany, setNewCompany] = useState({
@@ -383,89 +394,210 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </td>
               </tr>
             ) : (
-              filtered.map(c => (
-                <Tr key={c.id}>
-                  {/* Company Profile */}
-                  <Td>
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6' }}>
-                        {c.logo}
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-bold text-gray-900">{c.name}</h4>
-                        <span className="text-[10px] text-gray-405 hover:underline cursor-pointer">{c.domain}</span>
-                      </div>
-                    </div>
-                  </Td>
+              filtered.filter(c => !c.parentCompanyId).map(c => {
+                const branches = companies.filter(b => b.parentCompanyId === c.id);
+                const hasBranches = branches.length > 0;
+                const isExpanded = expandedParents[c.id];
+                
+                // Calculate total combined employees under parent
+                const combinedEmpCount = hasBranches 
+                  ? branches.reduce((sum, b) => sum + employees.filter(emp => emp.companyId === b.id).length, 0) + employees.filter(emp => emp.companyId === c.id).length
+                  : employees.filter(emp => emp.companyId === c.id).length;
 
-                  {/* SaaS Admin Info */}
-                  <Td>
-                    <div className="space-y-0.5">
-                      <p className="text-xs font-semibold text-gray-700">{c.adminName}</p>
-                      <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
-                        <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
-                        <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
-                      </div>
-                    </div>
-                  </Td>
+                return (
+                  <React.Fragment key={c.id}>
+                    <Tr className={hasBranches ? "bg-slate-50/30 hover:bg-slate-50/60 font-medium" : ""}>
+                      {/* Company Profile */}
+                      <Td>
+                        <div className="flex items-center gap-2.5">
+                          {hasBranches && (
+                            <button
+                              onClick={() => toggleExpandParent(c.id)}
+                              className="p-1 hover:bg-gray-200 rounded text-gray-450 hover:text-gray-700 transition-transform duration-200"
+                              style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                            >
+                              <ChevronRight size={14} />
+                            </button>
+                          )}
+                          <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6' }}>
+                            {c.logo}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="text-xs font-bold text-gray-900">{c.name}</h4>
+                              {hasBranches && (
+                                <Badge variant="indigo" className="scale-90 origin-left">Parent Company</Badge>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-gray-400 hover:underline cursor-pointer">{c.domain}</span>
+                          </div>
+                        </div>
+                      </Td>
 
-                  {/* Details */}
-                  <Td>
-                    <div className="text-[10px] text-gray-505 space-y-0.5">
-                      <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
-                      <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
-                      <p>Employees: <span className="font-bold text-blue-700">{employees.filter(emp => emp.companyId === c.id).length}</span></p>
-                    </div>
-                  </Td>
+                      {/* SaaS Admin Info */}
+                      <Td>
+                        <div className="space-y-0.5">
+                          <p className="text-xs font-semibold text-gray-700">{c.adminName}</p>
+                          <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
+                            <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
+                            <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
+                          </div>
+                        </div>
+                      </Td>
 
-                  {/* Plan */}
-                  <Td>
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant={c.plan === 'Enterprise' ? 'purple' : (c.plan === 'Professional' ? 'blue' : 'gray')}>{c.plan}</Badge>
-                      <button
-                        onClick={() => { setEditPlanModal(c); setNewPlan(c.plan); }}
-                        className="p-1 hover:bg-gray-150 rounded text-gray-400 hover:text-gray-700"
-                        title="Edit Plan"
-                      >
-                        <Edit size={11} />
-                      </button>
-                    </div>
-                  </Td>
+                      {/* Details */}
+                      <Td>
+                        <div className="text-[10px] text-gray-500 space-y-0.5">
+                          <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
+                          <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
+                          <p>
+                            {hasBranches ? 'Combined Staff: ' : 'Employees: '}
+                            <span className="font-bold text-blue-700">{combinedEmpCount}</span>
+                          </p>
+                        </div>
+                      </Td>
 
-                  {/* Status */}
-                  <Td>
-                    <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
-                  </Td>
+                      {/* Plan */}
+                      <Td>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant={c.plan === 'Enterprise' ? 'purple' : (c.plan === 'Professional' ? 'blue' : 'gray')}>{c.plan}</Badge>
+                          <button
+                            onClick={() => { setEditPlanModal(c); setNewPlan(c.plan); }}
+                            className="p-1 hover:bg-gray-150 rounded text-gray-400 hover:text-gray-700"
+                            title="Edit Plan"
+                          >
+                            <Edit size={11} />
+                          </button>
+                        </div>
+                      </Td>
 
-                  {/* SaaS action toggles */}
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => onStartMasquerade(c.id)}
-                        className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm"
-                        style={{ backgroundColor: c.primaryColor || '#3b82f6' }}
-                      >
-                        Manage <ArrowRight size={10} />
-                      </button>
-                      
-                      <button
-                        onClick={() => setManageAccountsModal(c)}
-                        className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
-                        title="Manage Company Head / HR Credentials"
-                      >
-                        <KeyRound size={13} />
-                      </button>
-                      
-                      <button
-                        onClick={() => handleToggleStatus(c.id, c.status)}
-                        className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
-                      >
-                        {c.status === 'Active' ? 'Suspend' : 'Activate'}
-                      </button>
-                    </div>
-                  </Td>
-                </Tr>
-              ))
+                      {/* Status */}
+                      <Td>
+                        <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
+                      </Td>
+
+                      {/* Actions */}
+                      <Td>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => onStartMasquerade(c.id)}
+                            className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
+                            style={{ backgroundColor: c.primaryColor || '#3b82f6' }}
+                          >
+                            Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
+                          </button>
+                          
+                          <button
+                            onClick={() => setManageAccountsModal(c)}
+                            className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
+                            title="Manage Credentials"
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                          
+                          <button
+                            onClick={() => handleToggleStatus(c.id, c.status)}
+                            className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
+                          >
+                            {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                          </button>
+                        </div>
+                      </Td>
+                    </Tr>
+
+                    {/* Collapsible Nested Roster for branches */}
+                    {hasBranches && isExpanded && (
+                      <tr>
+                        <td colSpan={6} className="bg-slate-50/45 p-4 border-l-4 border-indigo-600">
+                          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                            <div className="bg-slate-100/50 px-4 py-2 border-b border-gray-200/60 flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
+                              <span className="text-[10px] text-slate-400 font-medium">{branches.length} branches resolved</span>
+                            </div>
+                            <table className="w-full text-left border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50/30 border-b border-gray-150 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                  <th className="py-2.5 px-4">Branch Code & Name</th>
+                                  <th className="py-2.5 px-4">SaaS Admin Info</th>
+                                  <th className="py-2.5 px-4">Staff Count</th>
+                                  <th className="py-2.5 px-4">Tier Plan</th>
+                                  <th className="py-2.5 px-4">Status</th>
+                                  <th className="py-2.5 px-4 text-right">Branch Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100 text-[11px] text-gray-600">
+                                {branches.map(b => {
+                                  const branchEmpCount = employees.filter(emp => emp.companyId === b.id).length;
+                                  return (
+                                    <tr key={b.id} className="hover:bg-slate-50/30 transition-colors">
+                                      <td className="py-2 px-4">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px] font-sans">
+                                            {b.branchCode || 'BR'}
+                                          </span>
+                                          <div>
+                                            <p className="font-bold text-gray-900">{b.branchName || b.name}</p>
+                                            <p className="text-[9px] text-gray-400">{b.domain}</p>
+                                          </div>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 px-4">
+                                        <p className="font-medium text-gray-800">{b.adminName}</p>
+                                        <p className="text-[9px] text-gray-455">{b.adminEmail}</p>
+                                      </td>
+                                      <td className="py-2 px-4 font-bold text-blue-700 font-sans">
+                                        {branchEmpCount} Staff
+                                      </td>
+                                      <td className="py-2 px-4">
+                                        <div className="flex items-center gap-1">
+                                          <Badge variant={b.plan === 'Enterprise' ? 'purple' : 'blue'}>{b.plan}</Badge>
+                                          <button
+                                            onClick={() => { setEditPlanModal(b); setNewPlan(b.plan); }}
+                                            className="p-0.5 hover:bg-gray-100 rounded text-gray-400"
+                                          >
+                                            <Edit size={10} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                      <td className="py-2 px-4">
+                                        <Badge variant={statusBadge(b.status)} dot>{b.status}</Badge>
+                                      </td>
+                                      <td className="py-2 px-4 text-right">
+                                        <div className="inline-flex items-center gap-1.5">
+                                          <button
+                                            onClick={() => onStartMasquerade(b.id)}
+                                            className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
+                                            style={{ backgroundColor: b.primaryColor || '#3b82f6' }}
+                                          >
+                                            Manage Branch
+                                          </button>
+                                          <button
+                                            onClick={() => setManageAccountsModal(b)}
+                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-blue-600"
+                                            title="Credentials"
+                                          >
+                                            <KeyRound size={11} />
+                                          </button>
+                                          <button
+                                            onClick={() => handleToggleStatus(b.id, b.status)}
+                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
+                                          >
+                                            {b.status === 'Active' ? 'Suspend' : 'Activate'}
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </Tbody>
         </Table>

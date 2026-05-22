@@ -46,6 +46,12 @@ export interface Company {
   subscriptionPrice: number;
   billingCycle: 'Monthly' | 'Yearly';
   accountStatus: 'Active' | 'Suspended';
+
+  // Parent Company & Branch Architecture fields
+  parentCompanyId?: string;
+  branchName?: string;
+  branchCode?: string;
+  isHeadOffice?: boolean;
 }
 
 export interface Employee {
@@ -236,6 +242,40 @@ export interface LetterTemplate {
 
 export const companies: Company[] = [
   {
+    id: 'c-gcri',
+    name: 'GCRI',
+    domain: 'gcri.in',
+    adminName: 'Dr. Nilesh Patel',
+    adminEmail: 'admin@gcri.in',
+    phone: '+91 9876543210',
+    industry: 'Healthcare',
+    status: 'Active',
+    employeeCount: 835,
+    joinDate: '2026-05-22',
+    plan: 'Enterprise',
+    logo: 'GCRI',
+    pfRate: 12,
+    esicRate: 3.25,
+    basicPercent: 50,
+    profTaxRate: 200,
+    overtimeRate: 1.5,
+    address: 'Civil Hospital Campus, Asarwa, Ahmedabad, Gujarat 380016',
+    email: 'admin@gcri.in',
+    primaryColor: '#4f46e5', // Deep premium indigo theme
+    headerText: 'GUJARAT CANCER RESEARCH INSTITUTE (GCRI)',
+    footerText: 'Providing Quality Cancer Care',
+    signatureText: 'Director, GCRI',
+    themeStyle: 'Modern',
+    paymentStatus: 'Paid',
+    renewalDate: '2027-05-22',
+    gstNumber: '24AAACG1234F1Z1',
+    billingAddress: 'Civil Hospital Campus, Asarwa, Ahmedabad, Gujarat 380016',
+    subscriptionPrice: 12999,
+    billingCycle: 'Monthly',
+    accountStatus: 'Active',
+    isHeadOffice: true
+  },
+  {
     id: 'c-ahmedabad',
     name: 'GCRI Ahmedabad',
     domain: 'ahmedabad.gcri.in',
@@ -244,7 +284,7 @@ export const companies: Company[] = [
     phone: '+91 9876543210',
     industry: 'Healthcare',
     status: 'Active',
-    employeeCount: 0,
+    employeeCount: 780,
     joinDate: '2026-05-22',
     plan: 'Enterprise',
     logo: 'GCRI',
@@ -266,7 +306,11 @@ export const companies: Company[] = [
     billingAddress: 'Civil Hospital Campus, Asarwa, Ahmedabad, Gujarat 380016',
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
-    accountStatus: 'Active'
+    accountStatus: 'Active',
+    parentCompanyId: 'c-gcri',
+    branchName: 'Ahmedabad',
+    branchCode: 'GCRI-AMD',
+    isHeadOffice: false
   },
   {
     id: 'c-rajkot',
@@ -277,7 +321,7 @@ export const companies: Company[] = [
     phone: '+91 9876543210',
     industry: 'Healthcare',
     status: 'Active',
-    employeeCount: 0,
+    employeeCount: 22,
     joinDate: '2026-05-22',
     plan: 'Enterprise',
     logo: 'GCRI',
@@ -299,7 +343,11 @@ export const companies: Company[] = [
     billingAddress: 'GCRI Rajkot Branch, Rajkot, Gujarat 360001',
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
-    accountStatus: 'Active'
+    accountStatus: 'Active',
+    parentCompanyId: 'c-gcri',
+    branchName: 'Rajkot',
+    branchCode: 'GCRI-RJT',
+    isHeadOffice: false
   },
   {
     id: 'c-bhavnagar',
@@ -310,7 +358,7 @@ export const companies: Company[] = [
     phone: '+91 9876543210',
     industry: 'Healthcare',
     status: 'Active',
-    employeeCount: 0,
+    employeeCount: 16,
     joinDate: '2026-05-22',
     plan: 'Enterprise',
     logo: 'GCRI',
@@ -332,7 +380,11 @@ export const companies: Company[] = [
     billingAddress: 'GCRI Bhavnagar Branch, Bhavnagar, Gujarat 364001',
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
-    accountStatus: 'Active'
+    accountStatus: 'Active',
+    parentCompanyId: 'c-gcri',
+    branchName: 'Bhavnagar',
+    branchCode: 'GCRI-BHV',
+    isHeadOffice: false
   },
   {
     id: 'c-siddhpur',
@@ -343,7 +395,7 @@ export const companies: Company[] = [
     phone: '+91 9876543210',
     industry: 'Healthcare',
     status: 'Active',
-    employeeCount: 0,
+    employeeCount: 17,
     joinDate: '2026-05-22',
     plan: 'Enterprise',
     logo: 'GCRI',
@@ -365,9 +417,39 @@ export const companies: Company[] = [
     billingAddress: 'GCRI Siddhpur Branch, Siddhpur, Gujarat 384151',
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
-    accountStatus: 'Active'
+    accountStatus: 'Active',
+    parentCompanyId: 'c-gcri',
+    branchName: 'Siddhpur',
+    branchCode: 'GCRI-SDP',
+    isHeadOffice: false
   }
 ];
+
+export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[]): boolean => {
+  if (recordCompanyId === activeId) return true;
+  
+  let list = companiesList;
+  if (!list && typeof window !== 'undefined') {
+    const raw = localStorage.getItem('hrms_companies');
+    if (raw) {
+      try { list = JSON.parse(raw); } catch (e) {}
+    }
+  }
+  if (!list) {
+    const branches = ['c-ahmedabad', 'c-rajkot', 'c-bhavnagar', 'c-siddhpur'];
+    if (activeId === 'c-gcri') {
+      return recordCompanyId === 'c-gcri' || branches.includes(recordCompanyId);
+    }
+    return recordCompanyId === activeId;
+  }
+
+  const activeComp = list.find(c => c.id === activeId);
+  if (activeComp && activeComp.id === 'c-gcri') {
+    const recordComp = list.find(c => c.id === recordCompanyId);
+    return recordComp?.parentCompanyId === 'c-gcri';
+  }
+  return false;
+};
 
 // ─── Employees ─────────────────────────────────────────────────────────────────
 
