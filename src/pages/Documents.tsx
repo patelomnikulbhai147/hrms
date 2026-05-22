@@ -3,7 +3,8 @@ import {
   Search, FileText,
   Award,
   Plus, Edit, Trash2, ZoomIn, ZoomOut, Sparkles, Sliders, Palette, Printer,
-  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, Table2, User, Landmark, Tag, Info
+  Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, Table2, User, Landmark, Tag, Info,
+  Upload, Check, ShieldCheck, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Eye, EyeOff, FileCheck
 } from 'lucide-react';
 import {
   type Employee,
@@ -204,6 +205,14 @@ export const Documents: React.FC<DocumentsProps> = ({
     name: '',
     type: 'Aadhaar' as Document['type'],
   });
+
+  // Local compliance override & filtering states
+  const [localEmpOverrides, setLocalEmpOverrides] = useState<Record<string, Partial<Employee>>>({});
+  const [complianceSearch, setComplianceSearch] = useState('');
+  const [complianceStatusFilter, setComplianceStatusFilter] = useState('');
+  const [compliancePage, setCompliancePage] = useState(1);
+  const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
+  const itemsPerPage = 5;
 
   // ─── Document Template Engine State ───
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);

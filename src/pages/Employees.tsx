@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useRef } from 'react';
-import { 
-  Plus, Search, Eye, Edit2, Trash2, 
-  EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, 
+import {
+  Plus, Search, Eye, Edit2, Trash2,
+  EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
   Users, UserCheck, LogOut, ChevronRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { 
+import {
   type Employee, type EmployeeStatus, type Role,
   departments, designations
 } from '../data/mockData';
@@ -15,9 +15,9 @@ import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Input, Select } from '../components/ui/Input';
-import { 
-  validatePhone, validateName, validateEmail, 
-  validateSalary, validateEmployeeId 
+import {
+  validatePhone, validateName, validateEmail,
+  validateSalary, validateEmployeeId
 } from '../utils/validation';
 import { type UserAccount } from './Login';
 import { allExcelParsedEmployees } from '../data/excelSeededData';
@@ -55,23 +55,23 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
-  
+
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [deleteEmp, setDeleteEmp] = useState<Employee | null>(null);
-  
+
   // Excel Importer states
   const [importOpen, setImportOpen] = useState(false);
   const [importedRows, setImportedRows] = useState<any[]>([]);
   const [importLogs, setImportLogs] = useState<string[]>([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Tabs in drawer
   const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves'>('personal');
-  
+
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
 
@@ -79,8 +79,8 @@ export const Employees: React.FC<EmployeesProps> = ({
   const empLeavesHistory = useMemo(() => {
     if (!viewEmp) return [];
     return leaves.filter(
-      l => (l.employeeId === viewEmp.id || l.employeeName.toLowerCase() === viewEmp.name.toLowerCase()) && 
-           l.companyId === activeCompanyId
+      l => (l.employeeId === viewEmp.id || l.employeeName.toLowerCase() === viewEmp.name.toLowerCase()) &&
+        l.companyId === activeCompanyId
     );
   }, [leaves, viewEmp, activeCompanyId]);
 
@@ -123,7 +123,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     joinDate: '2026-05-20',
     manager: 'Dr. Suresh Babu',
     employeeId: '',
-    
+
     // Expanded master fields
     firstName: '',
     middleName: '',
@@ -202,10 +202,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const filtered = useMemo(() => {
     return companyEmployees.filter(e => {
       const q = search.toLowerCase();
-      const matchSearch = !q || 
-        e.name.toLowerCase().includes(q) || 
-        e.email.toLowerCase().includes(q) || 
-        e.employeeId.toLowerCase().includes(q) || 
+      const matchSearch = !q ||
+        e.name.toLowerCase().includes(q) ||
+        e.email.toLowerCase().includes(q) ||
+        e.employeeId.toLowerCase().includes(q) ||
         (e.designation || '').toLowerCase().includes(q);
       const matchDept = !deptFilter || e.department === deptFilter;
       const matchStatus = !statusFilter || e.status === statusFilter;
@@ -302,7 +302,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       avatar: form.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
       salary: parseInt(form.salary) || 0,
       manager: form.manager || 'Dr. Suresh Babu',
-      
+
       // Master compliance columns
       firstName: form.firstName,
       middleName: form.middleName,
@@ -341,7 +341,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Edit Submission
   const handleEditSubmit = () => {
     if (!editEmp) return;
-    
+
     const nameErr = validateName(editEmp.name).error;
     const emailErr = validateEmail(editEmp.email).error;
     const phoneErr = validatePhone(editMobileNumber).error;
@@ -424,7 +424,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       try {
         const data = new Uint8Array(event.target?.result as ArrayBuffer);
         const workbook = XLSX.read(data, { type: 'array' });
-        
+
         const logs: string[] = [];
         const allRows: any[] = [];
         logs.push(`Successfully loaded file: ${file.name}`);
@@ -434,19 +434,19 @@ export const Employees: React.FC<EmployeesProps> = ({
           if (sheetName === 'Sheet1') return;
           const worksheet = workbook.Sheets[sheetName];
           const json: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-          
+
           if (json.length < 2) return;
-          
+
           let validCount = 0;
           let dupCount = 0;
 
           for (let i = 2; i < json.length; i++) {
             const row = json[i];
             if (!row || row.length === 0) continue;
-            
+
             const empCode = String(row[1] || '').trim();
             const fullName = String(row[2] || '').trim();
-            
+
             if (!empCode || empCode === 'nan' || !fullName || fullName === 'nan') continue;
 
             // Check duplicate
@@ -490,7 +490,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               avatar: firstName ? firstName.slice(0, 2).toUpperCase() : 'EM',
               salary: baseSalary,
               manager: 'Dr. Suresh Babu',
-              
+
               firstName,
               middleName: surname,
               lastName: surname,
@@ -587,17 +587,17 @@ export const Employees: React.FC<EmployeesProps> = ({
       <Card>
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <Input placeholder="Search code, name, designation..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
-          
+
           <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
-            options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))] }
+            options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))]}
           />
-          
+
           <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))] }
+            options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))]}
           />
-          
+
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            options={[{ value: '', label: 'All Status' }, ...statusOptions.map(s => ({ value: s, label: s }))] }
+            options={[{ value: '', label: 'All Status' }, ...statusOptions.map(s => ({ value: s, label: s }))]}
           />
         </div>
       </Card>
@@ -695,7 +695,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
                   <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
                 </div>
-                
+
                 <div className="border-t border-slate-150 pt-3.5 space-y-3 p-1">
                   <div>
                     <p className="text-[10px] text-gray-400">Present Residential Address</p>
@@ -749,7 +749,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.ifsc || '—'}</p>
                   </div>
                 </div>
-                
+
                 <div className="border-t border-slate-150 pt-3.5">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -817,7 +817,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </Badge>
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Primary photo identification</p>
-                      
+
                       <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
                         {viewEmp.photoUpload ? (
                           <img src={viewEmp.photoUpload} alt="Passport Photo" className="h-full object-contain rounded" />
@@ -829,7 +829,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
                       {viewEmp.photoUpload ? (
                         <>
@@ -859,7 +859,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </Badge>
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Government identification scanner</p>
-                      
+
                       <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
                         {viewEmp.aadhaarUpload ? (
                           <div className="text-center text-emerald-600 py-2">
@@ -874,7 +874,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
                       {viewEmp.aadhaarUpload ? (
                         <>
@@ -904,7 +904,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </Badge>
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Tax division registration card</p>
-                      
+
                       <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
                         {viewEmp.panUpload ? (
                           <div className="text-center text-emerald-600 py-2">
@@ -919,7 +919,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
                       {viewEmp.panUpload ? (
                         <>
@@ -949,7 +949,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         </Badge>
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Official signature record</p>
-                      
+
                       <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
                         {viewEmp.signatureUpload ? (
                           <img src={viewEmp.signatureUpload} alt="Signature Record" className="h-full object-contain rounded" />
@@ -961,7 +961,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
                       {viewEmp.signatureUpload ? (
                         <>
@@ -992,7 +992,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     Total recorded: {empLeavesHistory.length}
                   </span>
                 </div>
-                
+
                 {empLeavesHistory.length === 0 ? (
                   <div className="text-center py-6 text-xs text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                     No leaves logged for this employee context.
@@ -1058,9 +1058,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleExcelDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${
-              isDragOver ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
-            }`}
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${isDragOver ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
+              }`}
           >
             <input type="file" ref={fileInputRef} onChange={handleExcelSelect} accept=".xlsx,.xls" className="hidden" />
             <FileSpreadsheet className="mx-auto text-slate-400 mb-2" size={32} />
@@ -1345,7 +1344,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 </p>
               </div>
             </div>
-            
+
             <p className="text-[11px] text-gray-500 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-150">
               Enterprise Safeguard: This record will be soft-deleted (status marked as <span className="font-semibold text-rose-700">Terminated</span>) and archived. The employee will be excluded from the active roster and payroll, but remains fully recoverable in the database later.
             </p>
