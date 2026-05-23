@@ -63,6 +63,13 @@ export interface Company {
   activeHrUsers?: number;
   monthlyUsage?: number;
   branchPriceAddon?: number;
+
+  // Branch Billing Status Engine fields
+  branchLicenseActive?: boolean;
+  branchPortalActive?: boolean;
+  licensedEmployeeLimit?: number;
+  monthlyBranchCost?: number;
+  billingIncluded?: boolean;
 }
 
 export interface Employee {
@@ -331,7 +338,12 @@ export const companies: Company[] = [
     storageUsed: '45.2 GB',
     activeHrUsers: 4,
     monthlyUsage: 94,
-    branchPriceAddon: 0
+    branchPriceAddon: 0,
+    branchLicenseActive: true,
+    branchPortalActive: true,
+    licensedEmployeeLimit: 1000,
+    monthlyBranchCost: 0,
+    billingIncluded: true
   },
   {
     id: 'c-rajkot',
@@ -376,7 +388,12 @@ export const companies: Company[] = [
     storageUsed: '3.4 GB',
     activeHrUsers: 2,
     monthlyUsage: 72,
-    branchPriceAddon: 999
+    branchPriceAddon: 0,
+    branchLicenseActive: true,
+    branchPortalActive: true,
+    licensedEmployeeLimit: 200,
+    monthlyBranchCost: 0,
+    billingIncluded: true
   },
   {
     id: 'c-bhavnagar',
@@ -421,7 +438,12 @@ export const companies: Company[] = [
     storageUsed: '1.8 GB',
     activeHrUsers: 2,
     monthlyUsage: 64,
-    branchPriceAddon: 999
+    branchPriceAddon: 999,
+    branchLicenseActive: true,
+    branchPortalActive: true,
+    licensedEmployeeLimit: 200,
+    monthlyBranchCost: 999,
+    billingIncluded: false
   },
   {
     id: 'c-siddhpur',
@@ -466,7 +488,12 @@ export const companies: Company[] = [
     storageUsed: '2.1 GB',
     activeHrUsers: 1,
     monthlyUsage: 58,
-    branchPriceAddon: 999
+    branchPriceAddon: 999,
+    branchLicenseActive: true,
+    branchPortalActive: true,
+    licensedEmployeeLimit: 200,
+    monthlyBranchCost: 999,
+    billingIncluded: false
   }
 ];
 

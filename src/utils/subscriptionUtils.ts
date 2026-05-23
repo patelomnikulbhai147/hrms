@@ -56,7 +56,7 @@ export const calculateSubscriptionStatus = (company: Company): SubscriptionStatu
   return 'Active';
 };
 
-export const calculateSubscriptionAnalytics = (companies: Company[], plans: SubscriptionPlan[]): SubscriptionMetrics => {
+export const calculateSubscriptionAnalytics = (companies: Company[], _plans: SubscriptionPlan[]): SubscriptionMetrics => {
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
   const totalCompanies = parentCompanies.length;
   const totalBranches = companies.filter(c => !!c.parentCompanyId).length;
@@ -88,14 +88,7 @@ export const calculateSubscriptionAnalytics = (companies: Company[], plans: Subs
 
     // Revenue calculation
     if (isActiveOrTrial) {
-      const planObj = plans.find(p => p.name === company.plan);
-      if (planObj) {
-        monthlyRevenue += company.billingCycle === 'Yearly' 
-          ? Math.round(planObj.priceYearly / 12) 
-          : planObj.priceMonthly;
-      } else {
-        monthlyRevenue += company.subscriptionPrice || 0;
-      }
+      monthlyRevenue += company.subscriptionPrice || 0;
     }
   });
 

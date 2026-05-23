@@ -1287,9 +1287,10 @@ export const Companies: React.FC<CompaniesProps> = ({
               <Input
                 label="Max Employee Capacity Limit *"
                 type="number"
-                placeholder="e.g. 200"
+                disabled={true}
                 value={branchForm.employeeCapacity}
-                onChange={e => setBranchForm({ ...branchForm, employeeCapacity: Number(e.target.value) || 200 })}
+                className="bg-gray-50 text-gray-500 font-bold cursor-not-allowed"
+                title="Capacity upgrades must be executed through the Billing tab."
               />
               <Input
                 label="PF Contribution Rate (%)"

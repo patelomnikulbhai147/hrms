@@ -128,6 +128,79 @@ export const Billing: React.FC<BillingProps> = ({
     setBranchModalOpen(true);
   };
 
+  const syncAndRecalculateBilling = (currentCompanies: Company[], parentId: string): Company[] => {
+    const parent = currentCompanies.find(c => c.id === parentId);
+    if (!parent) return currentCompanies;
+
+    const parentPlan = plans.find(p => p.name === parent.plan);
+    const basePlanPrice = parentPlan ? parentPlan.priceMonthly : 12999;
+    const includedBranchLimit = parentPlan ? parentPlan.includedBranchLimit : 2;
+
+    const parentBranches = currentCompanies.filter(c => c.parentCompanyId === parentId);
+
+    let activeLicensedCount = 0;
+
+    const updatedBranches = parentBranches.map(br => {
+      const isLicenseActive = br.branchLicenseActive !== false && br.branchLicenseStatus !== 'Suspended';
+      const isPortalActive = br.status === 'Active' && br.accountStatus !== 'Suspended' && br.branchPortalActive !== false;
+      const isActive = isLicenseActive && isPortalActive;
+
+      let billingIncluded = false;
+      let baseCost = 0;
+
+      if (isActive) {
+        activeLicensedCount++;
+        if (activeLicensedCount <= includedBranchLimit) {
+          billingIncluded = true;
+          baseCost = 0;
+        } else {
+          billingIncluded = false;
+          baseCost = 999;
+        }
+      } else {
+        billingIncluded = false;
+        baseCost = 0;
+      }
+
+      const capacity = br.licensedEmployeeLimit || br.employeeCapacity || 200;
+      let capacityCost = 0;
+      if (capacity === 500) capacityCost = 1499;
+      else if (capacity === 1000) capacityCost = 2999;
+
+      const monthlyCost = isActive ? (baseCost + capacityCost) : 0;
+
+      return {
+        ...br,
+        branchLicenseActive: isLicenseActive,
+        branchPortalActive: isPortalActive,
+        licensedEmployeeLimit: capacity,
+        employeeCapacity: capacity,
+        monthlyBranchCost: monthlyCost,
+        billingIncluded,
+        branchLicenseStatus: isLicenseActive ? 'Active License' as const : 'Suspended' as const,
+        status: isPortalActive ? 'Active' as const : 'Inactive' as const,
+        accountStatus: isPortalActive ? 'Active' as const : 'Suspended' as const,
+      };
+    });
+
+    const totalBranchCost = updatedBranches.reduce((sum, br) => sum + (br.monthlyBranchCost || 0), 0);
+    const unifiedPrice = basePlanPrice + totalBranchCost;
+
+    return currentCompanies.map(c => {
+      if (c.id === parentId) {
+        return {
+          ...c,
+          subscriptionPrice: unifiedPrice
+        };
+      }
+      const updatedBr = updatedBranches.find(br => br.id === c.id);
+      if (updatedBr) {
+        return updatedBr;
+      }
+      return c;
+    });
+  };
+
   const handleRemoveBranch = (branchId: string) => {
     const branch = companies.find(c => c.id === branchId);
     if (!branch) return;
@@ -135,7 +208,6 @@ export const Billing: React.FC<BillingProps> = ({
     const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
     if (!confirmDelete) return;
 
-    // Ask for reassignment or archive
     const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
     
     if (reassign) {
@@ -156,66 +228,136 @@ export const Billing: React.FC<BillingProps> = ({
       onUpdateEmployees(updated);
     }
 
-    // Delete company/branch
     const nextCompanies = companies.filter(c => c.id !== branchId);
-    onUpdateCompanies(nextCompanies);
+    const finalized = syncAndRecalculateBilling(nextCompanies, branch.parentCompanyId || 'c-gcri');
+    onUpdateCompanies(finalized);
     alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
   };
 
   const handleToggleBranchStatus = (branchId: string, current: 'Active' | 'Inactive' | 'Pending') => {
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch || !branch.parentCompanyId) return;
+
     const nextStatus = current === 'Active' ? 'Inactive' : 'Active';
-    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, status: nextStatus, accountStatus: nextStatus === 'Inactive' ? 'Suspended' : 'Active' } : c));
+    const updated = companies.map(c => c.id === branchId ? { 
+      ...c, 
+      status: nextStatus as any, 
+      accountStatus: nextStatus === 'Inactive' ? 'Suspended' : 'Active' as any,
+      branchPortalActive: nextStatus === 'Active'
+    } : c);
+
+    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
+    onUpdateCompanies(finalized);
   };
 
-  const handleBuyBranchLicense = (parentId: string) => {
+  const handleAdjustBranchSlots = (parentId: string, action: 'add' | 'remove') => {
     const parent = companies.find(c => c.id === parentId);
     if (!parent) return;
 
-    const updatedCompanies = companies.map(c => {
-      if (c.id === parentId) {
-        return {
-          ...c,
-          purchasedAdditionalBranches: (c.purchasedAdditionalBranches || 0) + 1
-        };
+    let updatedCompanies = companies;
+    if (action === 'add') {
+      updatedCompanies = companies.map(c => {
+        if (c.id === parentId) {
+          return {
+            ...c,
+            purchasedAdditionalBranches: (c.purchasedAdditionalBranches || 0) + 1
+          };
+        }
+        return c;
+      });
+
+      const newTx: PaymentRecord = {
+        id: `inv-${Date.now()}`,
+        companyId: parent.id,
+        companyName: parent.name,
+        amount: globalBranchPrice,
+        paymentDate: new Date().toISOString().split('T')[0],
+        invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        planType: `${parent.plan} Plan - Branch License Add-On Slot`,
+        paymentMode: 'Card',
+        transactionStatus: 'Success'
+      };
+      onUpdatePayments([newTx, ...payments]);
+      setSuccessMessage(`Additional paid branch license slot purchased successfully!`);
+    } else {
+      const currentPurchased = parent.purchasedAdditionalBranches || 0;
+      if (currentPurchased <= 0) return;
+
+      const parentBranches = companies.filter(c => c.parentCompanyId === parentId);
+      const parentPlan = plans.find(p => p.name === parent.plan);
+      const includedLimit = parentPlan ? parentPlan.includedBranchLimit : 2;
+
+      const newAllowedLimit = includedLimit + currentPurchased - 1;
+      if (parentBranches.length > newAllowedLimit) {
+        alert(`Cannot remove license slot because you currently have ${parentBranches.length} branch(es) deployed. Please delete a branch first.`);
+        return;
       }
-      return c;
-    });
-    
-    const newTx: PaymentRecord = {
-      id: `inv-${Date.now()}`,
-      companyId: parent.id,
-      companyName: parent.name,
-      amount: globalBranchPrice,
-      paymentDate: new Date().toISOString().split('T')[0],
-      invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      planType: `${parent.plan} Plan - Branch License Add-On`,
-      paymentMode: 'Card',
-      transactionStatus: 'Success'
-    };
 
-    onUpdateCompanies(updatedCompanies);
-    onUpdatePayments([newTx, ...payments]);
+      updatedCompanies = companies.map(c => {
+        if (c.id === parentId) {
+          return {
+            ...c,
+            purchasedAdditionalBranches: currentPurchased - 1
+          };
+        }
+        return c;
+      });
+      setSuccessMessage(`Purchased branch license slot removed successfully!`);
+    }
 
-    setSuccessMessage(`Branch License Add-On (₹${globalBranchPrice}) purchased successfully! Deployment quota upgraded.`);
-    setTimeout(() => setSuccessMessage(''), 5000);
+    const finalized = syncAndRecalculateBilling(updatedCompanies, parentId);
+    onUpdateCompanies(finalized);
+    setTimeout(() => setSuccessMessage(''), 4500);
     setPaywallOpen(false);
   };
 
   const handleUpdateBranchCapacity = (branchId: string, cap: number) => {
-    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, employeeCapacity: cap } : c));
-    setSuccessMessage('Branch employee capacity customized successfully.');
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch || !branch.parentCompanyId) return;
+
+    const updated = companies.map(c => {
+      if (c.id === branchId) {
+        return {
+          ...c,
+          licensedEmployeeLimit: cap,
+          employeeCapacity: cap
+        };
+      }
+      return c;
+    });
+
+    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
+    onUpdateCompanies(finalized);
+    setSuccessMessage(`Branch employee capacity adjusted to ${cap} employees.`);
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const handleUpdateBranchRenewal = (branchId: string, date: string) => {
-    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, branchRenewalDate: date } : c));
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch || !branch.parentCompanyId) return;
+
+    const updated = companies.map(c => c.id === branchId ? { ...c, branchRenewalDate: date } : c);
+    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
+    onUpdateCompanies(finalized);
     setSuccessMessage('Branch renewal date adjusted successfully.');
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
   const handleToggleBranchLicenseStatus = (branchId: string, current: string) => {
+    const branch = companies.find(c => c.id === branchId);
+    if (!branch || !branch.parentCompanyId) return;
+
     const nextStatus = current === 'Active License' ? 'Suspended' : 'Active License';
-    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, branchLicenseStatus: nextStatus as any } : c));
+    const nextIsActive = nextStatus === 'Active License';
+
+    const updated = companies.map(c => c.id === branchId ? { 
+      ...c, 
+      branchLicenseStatus: nextStatus as any,
+      branchLicenseActive: nextIsActive
+    } : c);
+
+    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
+    onUpdateCompanies(finalized);
     setSuccessMessage(`Branch license status changed to ${nextStatus}.`);
     setTimeout(() => setSuccessMessage(''), 3000);
   };
@@ -252,7 +394,8 @@ export const Billing: React.FC<BillingProps> = ({
         }
         return c;
       });
-      onUpdateCompanies(updatedCompanies);
+      const finalized = syncAndRecalculateBilling(updatedCompanies, editingBranch.parentCompanyId || 'c-gcri');
+      onUpdateCompanies(finalized);
       alert('Branch updated successfully.');
     } else {
       // Quota limit validation
@@ -314,7 +457,12 @@ export const Billing: React.FC<BillingProps> = ({
         storageUsed: '0.1 GB',
         activeHrUsers: 1,
         monthlyUsage: 10,
-        branchPriceAddon: 999
+        branchPriceAddon: 999,
+        branchLicenseActive: true,
+        branchPortalActive: true,
+        licensedEmployeeLimit: Number(branchForm.employeeCapacity) || 200,
+        monthlyBranchCost: 0,
+        billingIncluded: true
       };
 
       // Auto provision Branch Admin user account!
@@ -331,7 +479,8 @@ export const Billing: React.FC<BillingProps> = ({
       };
 
       onUpdateAccounts([...userAccounts, newAdminUser]);
-      onUpdateCompanies([...companies, newBranchObj]);
+      const finalized = syncAndRecalculateBilling([...companies, newBranchObj], parentCompanyIdForBranch || 'c-gcri');
+      onUpdateCompanies(finalized);
       alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
     }
     
@@ -463,16 +612,19 @@ export const Billing: React.FC<BillingProps> = ({
       transactionStatus: 'Success'
     };
 
-    onUpdateCompanies(prev => prev.map(c => c.id === company.id ? {
+    const updated: Company[] = companies.map(c => c.id === company.id ? {
       ...c,
       plan: chosenPlan,
       billingCycle: chosenCycle,
       subscriptionPrice: calculatedPrice,
       renewalDate: calculatedDate,
-      paymentStatus: 'Paid',
-      accountStatus: 'Active',
-      status: 'Active'
-    } : c));
+      paymentStatus: 'Paid' as const,
+      accountStatus: 'Active' as const,
+      status: 'Active' as const
+    } : c);
+
+    const finalized = syncAndRecalculateBilling(updated, company.id);
+    onUpdateCompanies(finalized);
 
     onUpdatePayments(prevTx => [newRecord, ...prevTx]);
     setSuccessMessage(`Subscription renewed successfully — Next renewal: ${formatDisplayDate(calculatedDate)}`);
@@ -533,18 +685,20 @@ export const Billing: React.FC<BillingProps> = ({
     const selectedPlan = plans.find(p => p.id === selectedPlanId);
     if (!selectedPlan) return;
 
-    onUpdateCompanies(prev => prev.map(c => {
+    const updated: Company[] = companies.map(c => {
       if (c.id === changingPlanCompany.id) {
         return {
           ...c,
           plan: selectedPlan.name as any,
           subscriptionPrice: selectedPlan.priceMonthly,
-          paymentStatus: 'Paid'
+          paymentStatus: 'Paid' as const
         };
       }
       return c;
-    }));
+    });
 
+    const finalized = syncAndRecalculateBilling(updated, changingPlanCompany.id);
+    onUpdateCompanies(finalized);
     setChangingPlanCompany(null);
   };
 
@@ -878,31 +1032,57 @@ export const Billing: React.FC<BillingProps> = ({
                             <Building2 size={16} className="text-indigo-600" />
                             <h4 className="font-bold text-gray-800 text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
                           </div>
-                          
-                          <div className="flex items-center gap-2">
-                            {/* Super Admin Branch license buying option */}
-                            <button
-                              onClick={() => handleBuyBranchLicense(comp.id)}
-                              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold transition-all shadow-xs"
-                            >
-                              <Plus size={13} /> Buy Branch License (₹{globalBranchPrice}/mo)
-                            </button>
-                            <button
-                              onClick={() => handleOpenCreateBranch(comp.id)}
-                              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100"
-                            >
-                              <Plus size={14} /> Deploy Branch Portal
-                            </button>
-                          </div>
                         </div>
 
-                        <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-100/50 text-[11px] text-indigo-800 mb-4 flex items-center justify-between">
-                          <span>
-                            <strong>Quota Details:</strong> Your plan includes <strong>{includedBranchLimit}</strong> branch{includedBranchLimit !== 1 ? 'es' : ''}. You have purchased <strong>{purchasedAdditionalBranches}</strong> additional paid license{purchasedAdditionalBranches !== 1 ? 's' : ''}. Total allowance: <strong>{allowedBranchLimit} branches</strong>. Deployed: <strong>{compBranches.length} branches</strong>.
-                          </span>
-                          <span className="font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
-                            {allowedBranchLimit - compBranches.length} slots free
-                          </span>
+                        {/* Manage Branch Licenses Panel */}
+                        <div className="bg-indigo-50/35 rounded-2xl border border-indigo-100/60 p-4.5 mb-4.5">
+                          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <h5 className="font-bold text-[11px] text-indigo-900 uppercase tracking-wider">Manage Branch License Allocations</h5>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2.5 text-left">
+                                <div>
+                                  <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Included Slots</span>
+                                  <span className="text-xs font-extrabold text-slate-700">{includedBranchLimit} free slots</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] text-indigo-500 font-bold uppercase tracking-wider">Purchased Slots</span>
+                                  <span className="text-xs font-extrabold text-indigo-800">{purchasedAdditionalBranches} paid slots</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total Allowance</span>
+                                  <span className="text-xs font-extrabold text-slate-800">{allowedBranchLimit} branch(es)</span>
+                                </div>
+                                <div>
+                                  <span className="block text-[9px] text-emerald-500 font-bold uppercase tracking-wider">Active Slots</span>
+                                  <span className="text-xs font-extrabold text-emerald-700">
+                                    {compBranches.filter(b => b.branchLicenseActive && b.branchPortalActive).length} / {compBranches.length} deployed
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 self-end lg:self-center">
+                              <button
+                                onClick={() => handleAdjustBranchSlots(comp.id, 'remove')}
+                                disabled={purchasedAdditionalBranches <= 0}
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed text-rose-700 border border-rose-100 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              >
+                                - Remove Slot
+                              </button>
+                              <button
+                                onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
+                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              >
+                                + Add Slot (+₹999/mo)
+                              </button>
+                              <button
+                                onClick={() => handleOpenCreateBranch(comp.id)}
+                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100 cursor-pointer"
+                              >
+                                <Plus size={13} className="inline mr-1" /> Deploy Branch
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
                         {compBranches.length === 0 ? (
@@ -1096,12 +1276,67 @@ export const Billing: React.FC<BillingProps> = ({
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         <span className="text-[10px] text-slate-400 font-bold">Limit ceiling:</span>
-                                        <input 
-                                          type="number"
-                                          defaultValue={capacity}
-                                          onBlur={(e) => handleUpdateBranchCapacity(br.id, Number(e.target.value) || 200)}
-                                          className="w-14 text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-700 text-center focus:outline-none font-bold"
-                                        />
+                                        <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100/60 px-2 py-0.5 rounded-lg">
+                                          {capacity} Employees
+                                        </span>
+                                        
+                                        {/* Capacity Controlled Upgrade Options */}
+                                        <div className="flex items-center gap-1 ml-1.5">
+                                          {capacity === 200 && (
+                                            <>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 500)}
+                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Upgrade limit to 500 employees (+₹1,499/mo)"
+                                              >
+                                                +500
+                                              </button>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
+                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Upgrade limit to 1000 employees (+₹2,999/mo)"
+                                              >
+                                                +1000
+                                              </button>
+                                            </>
+                                          )}
+                                          {capacity === 500 && (
+                                            <>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 200)}
+                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Downgrade limit to 200 employees (Free base capacity)"
+                                              >
+                                                -200
+                                              </button>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
+                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Upgrade limit to 1000 employees (+₹2,999/mo)"
+                                              >
+                                                +1000
+                                              </button>
+                                            </>
+                                          )}
+                                          {capacity === 1000 && (
+                                            <>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 200)}
+                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Downgrade limit to 200 employees (Free base capacity)"
+                                              >
+                                                -200
+                                              </button>
+                                              <button
+                                                onClick={() => handleUpdateBranchCapacity(br.id, 500)}
+                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                title="Downgrade limit to 500 employees (+₹1,499/mo)"
+                                              >
+                                                -500
+                                              </button>
+                                            </>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
 
@@ -1116,14 +1351,43 @@ export const Billing: React.FC<BillingProps> = ({
                   )}
 
                   {/* Invoices and Stats Bar */}
-                  <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-slate-500">
                     <div>
                       Unified price: <strong className="text-slate-800">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
-                      {!isSingleCompanyMode && compBranches.length > includedBranchLimit && (
-                        <span className="ml-2 text-indigo-600 font-bold">
-                          + ₹{((compBranches.length - includedBranchLimit) * globalBranchPrice).toLocaleString('en-IN')}/mo add-ons
-                        </span>
-                      )}
+                      {!isSingleCompanyMode && compBranches.length > 0 && (() => {
+                        const totalBranchUpgradeCost = compBranches.reduce((sum, b) => {
+                          const isLicenseActive = b.branchLicenseActive !== false && b.branchLicenseStatus !== 'Suspended';
+                          const isPortalActive = b.status === 'Active' && b.accountStatus !== 'Suspended' && b.branchPortalActive !== false;
+                          if (!(isLicenseActive && isPortalActive)) return sum;
+
+                          const cap = b.licensedEmployeeLimit || b.employeeCapacity || 200;
+                          let cost = 0;
+                          if (cap === 500) cost = 1499;
+                          else if (cap === 1000) cost = 2999;
+                          return sum + cost;
+                        }, 0);
+
+                        const totalBranchBaseCost = compBranches.reduce((sum, b) => {
+                          if (b.billingIncluded) return sum;
+                          const isLicenseActive = b.branchLicenseActive !== false && b.branchLicenseStatus !== 'Suspended';
+                          const isPortalActive = b.status === 'Active' && b.accountStatus !== 'Suspended' && b.branchPortalActive !== false;
+                          if (isLicenseActive && isPortalActive) {
+                            return sum + 999;
+                          }
+                          return sum;
+                        }, 0);
+
+                        const totalBranchAddonCost = totalBranchBaseCost + totalBranchUpgradeCost;
+
+                        if (totalBranchAddonCost > 0) {
+                          return (
+                            <span className="ml-2 text-indigo-700 bg-indigo-50 border border-indigo-100/50 px-2.5 py-0.5 rounded-full font-bold">
+                              Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div className="flex items-center gap-3">
                       <button
@@ -2118,7 +2382,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <div className="text-lg font-extrabold text-indigo-700">₹{globalBranchPrice}</div>
                     <div className="text-[9px] text-slate-400">/ month</div>
                     <button
-                      onClick={() => handleBuyBranchLicense(paywallParentCompany.id)}
+                      onClick={() => handleAdjustBranchSlots(paywallParentCompany.id, 'add')}
                       className="mt-3.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
                     >
                       Buy Add-On
