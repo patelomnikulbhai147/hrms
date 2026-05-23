@@ -367,11 +367,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">SaaS Control Center</h1>
             <p className="text-sm text-gray-500 mt-0.5">Central subscription intelligence, real-time renewals, and client onboarding</p>
           </div>
-          <div className="text-xs font-semibold px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 flex items-center gap-1.5 shadow-sm">
-            <Clock size={13} />
-
-          </div>
-        </div>
+         
 
         {/* Dynamic Metric Cards (Top cards keeping only important) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -1004,8 +1000,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           key={tab}
                           onClick={() => setRosterTab(tab)}
                           className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${rosterTab === tab
-                              ? 'bg-indigo-600 text-white shadow-sm'
-                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            ? 'bg-indigo-600 text-white shadow-sm'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                             }`}
                         >
                           {tab}
