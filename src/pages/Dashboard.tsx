@@ -369,7 +369,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
           <div className="text-xs font-semibold px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 flex items-center gap-1.5 shadow-sm">
             <Clock size={13} />
-            <span>Mock System Time: 2026-05-20 18:50</span>
+
           </div>
         </div>
 
@@ -735,10 +735,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // Employees on leave today
     const onLeaveToday = scopedEmployees.filter(e => {
       if (e.status === 'On Leave') return true;
-      return scopedLeaves.some(l => 
-        l.employeeId === e.id && 
-        l.status === 'Approved' && 
-        todayStr >= l.fromDate && 
+      return scopedLeaves.some(l =>
+        l.employeeId === e.id &&
+        l.status === 'Approved' &&
+        todayStr >= l.fromDate &&
         todayStr <= l.toDate
       );
     }).length;
@@ -748,10 +748,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (e.status !== 'Active') return false;
       const hasAttendance = scopedAttendance.some(a => a.employeeId === e.id);
       if (hasAttendance) return false;
-      const isOnLeave = scopedLeaves.some(l => 
-        l.employeeId === e.id && 
-        l.status === 'Approved' && 
-        todayStr >= l.fromDate && 
+      const isOnLeave = scopedLeaves.some(l =>
+        l.employeeId === e.id &&
+        l.status === 'Approved' &&
+        todayStr >= l.fromDate &&
         todayStr <= l.toDate
       );
       return !isOnLeave;
@@ -763,7 +763,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       acc[dept] = (acc[dept] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    
+
     const topDepartments = Object.entries(deptCounts)
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
@@ -777,10 +777,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // On Leave Roster
     const onLeaveRoster = scopedEmployees.filter(e => {
       if (e.status === 'On Leave') return true;
-      return scopedLeaves.some(l => 
-        l.employeeId === e.id && 
-        l.status === 'Approved' && 
-        todayStr >= l.fromDate && 
+      return scopedLeaves.some(l =>
+        l.employeeId === e.id &&
+        l.status === 'Approved' &&
+        todayStr >= l.fromDate &&
         todayStr <= l.toDate
       );
     });
@@ -789,11 +789,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const pendingExitRoster = scopedEmployees.filter(e => e.status === 'Inactive' || e.exitDate);
 
     // Filtered list
-    const activeTabRoster = rosterTab === 'Joined' 
-      ? joinedRoster 
-      : rosterTab === 'On Leave' 
-      ? onLeaveRoster 
-      : pendingExitRoster;
+    const activeTabRoster = rosterTab === 'Joined'
+      ? joinedRoster
+      : rosterTab === 'On Leave'
+        ? onLeaveRoster
+        : pendingExitRoster;
 
     const filteredRosterList = activeTabRoster;
 
@@ -1003,11 +1003,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <button
                           key={tab}
                           onClick={() => setRosterTab(tab)}
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${
-                            rosterTab === tab
+                          className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${rosterTab === tab
                               ? 'bg-indigo-600 text-white shadow-sm'
                               : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
-                          }`}
+                            }`}
                         >
                           {tab}
                         </button>
