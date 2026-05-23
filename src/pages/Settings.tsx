@@ -3,8 +3,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
-import { Building2, Palette, BadgeCent, CheckCircle2 } from 'lucide-react';
-import { type Company, type Role } from '../data/mockData';
+import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle } from 'lucide-react';
+import { type Company, type Role, getCompanyDepartments } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import {
   validatePhone,
@@ -26,7 +26,7 @@ export const Settings: React.FC<SettingsProps> = ({
   companies,
   onUpdateCompanies
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding'>('profile');
+  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding' | 'departments'>('profile');
   
   // Find current company context
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
@@ -48,6 +48,9 @@ export const Settings: React.FC<SettingsProps> = ({
     email: currentCompany.email || '',
     address: currentCompany.address || '',
     industry: currentCompany.industry,
+    companyIndustry: currentCompany.companyIndustry || currentCompany.industry || 'Generic',
+    departmentTemplateType: currentCompany.departmentTemplateType || 'Generic',
+    inheritParentDepartments: currentCompany.inheritParentDepartments !== false,
   });
 
   const [phoneCode, setPhoneCode] = useState(initialPhone.code);
@@ -71,6 +74,12 @@ export const Settings: React.FC<SettingsProps> = ({
     themeStyle: currentCompany.themeStyle || 'Modern',
   });
 
+  // Custom Department List management states
+  const [customDepartments, setCustomDepartments] = useState<string[]>([]);
+  const [newDeptInput, setNewDeptInput] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState('');
+
   // Re-sync states when activeCompanyId or company list updates
   useEffect(() => {
     const parts = (currentCompany.phone || '+91 ').split(' ');
@@ -79,6 +88,9 @@ export const Settings: React.FC<SettingsProps> = ({
       email: currentCompany.email || '',
       address: currentCompany.address || '',
       industry: currentCompany.industry,
+      companyIndustry: currentCompany.companyIndustry || currentCompany.industry || 'Generic',
+      departmentTemplateType: currentCompany.departmentTemplateType || 'Generic',
+      inheritParentDepartments: currentCompany.inheritParentDepartments !== false,
     });
     setPhoneCode(parts[0] || '+91');
     setPhoneNum(parts[1] || '');
@@ -99,7 +111,57 @@ export const Settings: React.FC<SettingsProps> = ({
       signatureText: currentCompany.signatureText || '',
       themeStyle: currentCompany.themeStyle || 'Modern',
     });
-  }, [activeCompanyId, currentCompany]);
+
+    // Populate customDepartments list from actual database resolution
+    setCustomDepartments(getCompanyDepartments(currentCompany.id, companies));
+  }, [activeCompanyId, currentCompany, companies]);
+
+  // ─── Department List Management Actions ───
+  const handleAddDepartment = () => {
+    if (!newDeptInput.trim()) return;
+    if (customDepartments.includes(newDeptInput.trim())) {
+      alert('This department already exists.');
+      return;
+    }
+    setCustomDepartments([...customDepartments, newDeptInput.trim()]);
+    setNewDeptInput('');
+  };
+
+  const handleStartEditDepartment = (index: number, val: string) => {
+    setEditingIndex(index);
+    setEditingValue(val);
+  };
+
+  const handleSaveEditDepartment = (index: number) => {
+    if (!editingValue.trim()) return;
+    if (customDepartments.includes(editingValue.trim()) && customDepartments[index] !== editingValue.trim()) {
+      alert('This department name already exists.');
+      return;
+    }
+    const newList = [...customDepartments];
+    newList[index] = editingValue.trim();
+    setCustomDepartments(newList);
+    setEditingIndex(null);
+  };
+
+  const handleRemoveDepartment = (index: number) => {
+    if (confirm('Are you sure you want to remove this department? Employees currently assigned to it will need to be re-allocated.')) {
+      setCustomDepartments(customDepartments.filter((_, idx) => idx !== index));
+    }
+  };
+
+  const handleMoveDepartment = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= customDepartments.length) return;
+
+    const newList = [...customDepartments];
+    // Swap items
+    const temp = newList[index];
+    newList[index] = newList[targetIndex];
+    newList[targetIndex] = temp;
+
+    setCustomDepartments(newList);
+  };
 
   const handleSaveAll = () => {
     if (role !== 'Super Admin' && role !== 'Company Head') {
@@ -128,6 +190,12 @@ export const Settings: React.FC<SettingsProps> = ({
           email: profileForm.email,
           address: profileForm.address,
           industry: profileForm.industry,
+
+          // Dynamic Industry & Templates
+          companyIndustry: profileForm.companyIndustry,
+          departmentTemplateType: profileForm.departmentTemplateType,
+          inheritParentDepartments: profileForm.inheritParentDepartments,
+          customDepartments: customDepartments,
 
           // Payroll settings
           pfRate: parseFloat(payrollForm.pfRate) || 12,
@@ -205,6 +273,15 @@ export const Settings: React.FC<SettingsProps> = ({
           <Palette size={13} />
           Branding & Template Cust
         </button>
+        <button
+          onClick={() => setActiveSubTab('departments')}
+          className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+            activeSubTab === 'departments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <Briefcase size={13} />
+          Manage Departments
+        </button>
       </div>
 
       {/* Layout panels */}
@@ -278,15 +355,62 @@ export const Settings: React.FC<SettingsProps> = ({
                   label="Industry Sector"
                   disabled={!isSuperOrHead}
                   value={profileForm.industry}
-                  onChange={e => setProfileForm({ ...profileForm, industry: e.target.value })}
+                  onChange={e => {
+                    const val = e.target.value;
+                    let templateVal = 'Generic';
+                    if (val === 'Healthcare') templateVal = 'Healthcare';
+                    else if (val === 'IT Company') templateVal = 'IT Company';
+                    else if (val === 'Manufacturing') templateVal = 'Manufacturing';
+                    else if (val === 'Education') templateVal = 'Education';
+                    else if (val === 'Retail') templateVal = 'Retail';
+
+                    setProfileForm({ 
+                      ...profileForm, 
+                      industry: val, 
+                      companyIndustry: val,
+                      departmentTemplateType: templateVal 
+                    });
+                  }}
                   options={[
-                    { value: 'Technology', label: 'Technology / Software' },
-                    { value: 'Finance', label: 'Finance & Banking' },
-                    { value: 'Healthcare', label: 'Healthcare' },
-                    { value: 'Construction', label: 'Construction' },
-                    { value: 'Automotive', label: 'Automotive' }
+                    { value: 'Healthcare', label: 'Healthcare / Hospitals' },
+                    { value: 'IT Company', label: 'IT Company / Software' },
+                    { value: 'Manufacturing', label: 'Manufacturing & Plant' },
+                    { value: 'Education', label: 'Education & Academic' },
+                    { value: 'Retail', label: 'Retail & Store Operations' },
+                    { value: 'Generic', label: 'Generic Corporate' }
                   ]}
                 />
+
+                <Select
+                  label="Statutory Department Template Preset"
+                  disabled={!isSuperOrHead}
+                  value={profileForm.departmentTemplateType}
+                  onChange={e => setProfileForm({ ...profileForm, departmentTemplateType: e.target.value })}
+                  options={[
+                    { value: 'Healthcare', label: 'Healthcare / Hospital Template' },
+                    { value: 'IT Company', label: 'IT Company / Tech Template' },
+                    { value: 'Manufacturing', label: 'Manufacturing / Factory Template' },
+                    { value: 'Education', label: 'Education / Academic Template' },
+                    { value: 'Retail', label: 'Retail / Store Operations Template' },
+                    { value: 'Generic', label: 'Generic / Default Corporate Template' }
+                  ]}
+                />
+
+                {currentCompany.parentCompanyId && (
+                  <div className="flex items-center gap-2 mt-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="inheritParentDepartments"
+                      checked={profileForm.inheritParentDepartments}
+                      disabled={!isSuperOrHead}
+                      onChange={e => setProfileForm({ ...profileForm, inheritParentDepartments: e.target.checked })}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    />
+                    <label htmlFor="inheritParentDepartments" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Inherit parent company department structure
+                    </label>
+                  </div>
+                )}
               </div>
             </Card>
           )}
@@ -436,6 +560,130 @@ export const Settings: React.FC<SettingsProps> = ({
                   value={brandingForm.signatureText}
                   onChange={e => setBrandingForm({ ...brandingForm, signatureText: e.target.value })}
                 />
+              </div>
+            </Card>
+          )}
+
+          {/* TAB 4: Manage Departments */}
+          {activeSubTab === 'departments' && (
+            <Card>
+              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1 pb-1.5 border-b border-gray-100 flex items-center gap-1.5">
+                <Briefcase size={14} className="text-blue-600" />
+                Custom Corporate Department Management
+              </h3>
+              <p className="text-xs text-gray-550 mb-4 leading-relaxed">
+                Add, rename, delete, and change the ordering of your statutory department list. Be sure to click "Apply Company Statutory & Branding Settings" at the bottom to save your edits to the system.
+              </p>
+
+              {profileForm.inheritParentDepartments && currentCompany.parentCompanyId && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-xs text-amber-800">
+                  <AlertCircle size={15} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold">Parent Company Inheritance Active:</span> This branch is currently configured to inherit its department structure directly from the parent company. Customizations below will be ignored unless you uncheck "Inherit parent company department structure" inside the Company Profile sub-tab.
+                  </div>
+                </div>
+              )}
+
+              {/* Add New Department Form */}
+              {isSuperOrHead && (
+                <div className="flex gap-2 mb-4">
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Enter new department name..."
+                      value={newDeptInput}
+                      onChange={e => setNewDeptInput(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    onClick={handleAddDepartment}
+                    className="flex items-center gap-1 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+                  >
+                    <Plus size={14} />
+                    Add
+                  </Button>
+                </div>
+              )}
+
+              {/* Departments List */}
+              <div className="border border-gray-100 rounded-xl divide-y divide-gray-100 overflow-hidden bg-white max-h-[350px] overflow-y-auto shadow-sm">
+                {customDepartments.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-gray-400 font-medium">
+                    No custom departments defined yet. Add some above or use template defaults!
+                  </div>
+                ) : (
+                  customDepartments.map((dept, index) => {
+                    const isEditing = editingIndex === index;
+                    return (
+                      <div key={index} className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+                        {isEditing ? (
+                          <div className="flex-1 flex gap-2 items-center">
+                            <input
+                              type="text"
+                              value={editingValue}
+                              onChange={e => setEditingValue(e.target.value)}
+                              className="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveEditDepartment(index)}
+                              className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold transition-all"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => setEditingIndex(null)}
+                              className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-[10px] font-bold transition-all"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="text-xs font-semibold text-gray-800">{dept}</span>
+                            {isSuperOrHead && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveDepartment(index, 'up')}
+                                  disabled={index === 0}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all"
+                                  title="Move Up"
+                                >
+                                  <ArrowUp size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveDepartment(index, 'down')}
+                                  disabled={index === customDepartments.length - 1}
+                                  className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all"
+                                  title="Move Down"
+                                >
+                                  <ArrowDown size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditDepartment(index, dept)}
+                                  className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-all"
+                                  title="Rename Department"
+                                >
+                                  <Edit3 size={13} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDepartment(index)}
+                                  className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-all"
+                                  title="Remove Department"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </Card>
           )}

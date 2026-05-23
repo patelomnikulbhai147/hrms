@@ -604,6 +604,7 @@ export default function App() {
           <Employees
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
+            companies={companies}
             userAccounts={userAccounts}
             onUpdateAccounts={handleUpdateAccounts}
             employees={employees}

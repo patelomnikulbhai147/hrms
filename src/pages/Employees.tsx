@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Eye, Edit2, Trash2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
@@ -6,8 +6,9 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  type Employee, type EmployeeStatus, type Role,
-  departments, designations, isCompanyIdMatch
+  type Employee, type EmployeeStatus, type Role, type Company,
+  designations, isCompanyIdMatch,
+  getCompanyDepartments, getCompanyIdFromBranchName
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -25,6 +26,7 @@ import { allExcelParsedEmployees } from '../data/excelSeededData';
 interface EmployeesProps {
   role: Role;
   activeCompanyId: string;
+  companies: Company[];
   userAccounts: UserAccount[];
   onUpdateAccounts: (accounts: UserAccount[]) => void;
   employees: Employee[];
@@ -45,6 +47,7 @@ const branchOptions = ['AHMEDABAD', 'BHAVNAGAR', 'RAJKOT', 'SIDDHPUR'];
 export const Employees: React.FC<EmployeesProps> = ({
   role,
   activeCompanyId,
+  companies,
   userAccounts: _userAccounts,
   onUpdateAccounts: _onUpdateAccounts,
   employees,
@@ -195,8 +198,46 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // central company scope filtering
   const companyEmployees = useMemo(() => {
-    return employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
-  }, [employees, activeCompanyId]);
+    return employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+  }, [employees, activeCompanyId, companies]);
+
+  const filterDeptCompanyId = useMemo(() => {
+    return getCompanyIdFromBranchName(branchFilter, activeCompanyId, companies);
+  }, [branchFilter, activeCompanyId, companies]);
+
+  const filterDepartments = useMemo(() => {
+    return getCompanyDepartments(filterDeptCompanyId, companies);
+  }, [filterDeptCompanyId, companies]);
+
+  const formDeptCompanyId = useMemo(() => {
+    return getCompanyIdFromBranchName(form.branchLocation, activeCompanyId, companies);
+  }, [form.branchLocation, activeCompanyId, companies]);
+
+  const formDepartments = useMemo(() => {
+    return getCompanyDepartments(formDeptCompanyId, companies);
+  }, [formDeptCompanyId, companies]);
+
+  const editFormDeptCompanyId = useMemo(() => {
+    return getCompanyIdFromBranchName(editEmp?.branchLocation || 'AHMEDABAD', activeCompanyId, companies);
+  }, [editEmp?.branchLocation, activeCompanyId, companies]);
+
+  const editFormDepartments = useMemo(() => {
+    return getCompanyDepartments(editFormDeptCompanyId, companies);
+  }, [editFormDeptCompanyId, companies]);
+
+  // Keep form department in sync with branch options
+  useEffect(() => {
+    if (formDepartments.length > 0 && !formDepartments.includes(form.department)) {
+      setForm(f => ({ ...f, department: formDepartments[0] }));
+    }
+  }, [formDepartments, form.department]);
+
+  // Keep edit department in sync with branch options
+  useEffect(() => {
+    if (editEmp && editFormDepartments.length > 0 && !editFormDepartments.includes(editEmp.department)) {
+      setEditEmp(e => e ? ({ ...e, department: editFormDepartments[0] }) : null);
+    }
+  }, [editFormDepartments, editEmp?.department]);
 
   // Table Filters
   const filtered = useMemo(() => {
@@ -627,7 +668,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           />
 
           <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            options={[{ value: '', label: 'All Depts' }, ...departments.map(d => ({ value: d, label: d }))]}
+            options={[{ value: '', label: 'All Depts' }, ...filterDepartments.map(d => ({ value: d, label: d }))]}
           />
 
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
@@ -1230,7 +1271,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
-                <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={departments.map(d => ({ value: d, label: d }))} />
+                <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />
@@ -1334,7 +1375,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Select label="Branch Location *" value={editEmp.branchLocation || 'AHMEDABAD'} onChange={e => setEditEmp({ ...editEmp, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
-                  <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={departments.map(d => ({ value: d, label: d }))} />
+                  <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={editFormDepartments.map(d => ({ value: d, label: d }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />

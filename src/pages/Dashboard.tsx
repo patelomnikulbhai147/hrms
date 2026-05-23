@@ -13,7 +13,8 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  isCompanyIdMatch
+  isCompanyIdMatch,
+  getCompanyDepartments
 } from '../data/mockData';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import {
@@ -1140,8 +1141,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                   >
                     <option value="all">All Departments</option>
-                    {topDepartments.map(d => (
-                      <option key={d.name} value={d.name}>{d.name}</option>
+                    {getCompanyDepartments(activeCompanyId, companies).map(deptName => (
+                      <option key={deptName} value={deptName}>{deptName}</option>
                     ))}
                   </select>
                 </div>

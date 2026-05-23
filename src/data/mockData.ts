@@ -70,6 +70,12 @@ export interface Company {
   licensedEmployeeLimit?: number;
   monthlyBranchCost?: number;
   billingIncluded?: boolean;
+
+  // Dynamic Industry Departments Mapping fields
+  companyIndustry?: string;
+  departmentTemplateType?: string;
+  customDepartments?: string[];
+  inheritParentDepartments?: boolean;
 }
 
 export interface Employee {
@@ -293,7 +299,9 @@ export const companies: Company[] = [
     billingCycle: 'Monthly',
     accountStatus: 'Active',
     isHeadOffice: true,
-    purchasedAdditionalBranches: 2
+    purchasedAdditionalBranches: 2,
+    companyIndustry: 'Healthcare',
+    departmentTemplateType: 'Healthcare'
   },
   {
     id: 'c-ahmedabad',
@@ -332,6 +340,9 @@ export const companies: Company[] = [
     branchCode: 'GCRI-AMD',
     isHeadOffice: false,
     branchLicenseStatus: 'Active License',
+    companyIndustry: 'Healthcare',
+    departmentTemplateType: 'Healthcare',
+    inheritParentDepartments: true,
     branchRenewalDate: '2027-05-22',
     employeeCapacity: 1000,
     payrollLoad: 4250000,
@@ -382,6 +393,9 @@ export const companies: Company[] = [
     branchCode: 'GCRI-RJT',
     isHeadOffice: false,
     branchLicenseStatus: 'Active License',
+    companyIndustry: 'Healthcare',
+    departmentTemplateType: 'Healthcare',
+    inheritParentDepartments: true,
     branchRenewalDate: '2027-06-15',
     employeeCapacity: 200,
     payrollLoad: 185000,
@@ -432,6 +446,9 @@ export const companies: Company[] = [
     branchCode: 'GCRI-BHV',
     isHeadOffice: false,
     branchLicenseStatus: 'Active License',
+    companyIndustry: 'Healthcare',
+    departmentTemplateType: 'Healthcare',
+    inheritParentDepartments: true,
     branchRenewalDate: '2027-07-20',
     employeeCapacity: 200,
     payrollLoad: 124000,
@@ -482,6 +499,9 @@ export const companies: Company[] = [
     branchCode: 'GCRI-SDP',
     isHeadOffice: false,
     branchLicenseStatus: 'Active License',
+    companyIndustry: 'Healthcare',
+    departmentTemplateType: 'Healthcare',
+    inheritParentDepartments: true,
     branchRenewalDate: '2027-08-12',
     employeeCapacity: 200,
     payrollLoad: 135000,
@@ -616,6 +636,127 @@ Operations Admin, {{COMPANY_NAME}}`
 // ─── Helper Data ─────────────────────────────────────────────────────────────────
 
 export const departments = ['Engineering', 'HR', 'Management', 'Accounts', 'Operations', 'Finance'];
+
+export const getCompanyDepartments = (companyId: string, companies: Company[]): string[] => {
+  const comp = companies.find(c => c.id === companyId);
+  if (!comp) return departments;
+
+  // If it's a branch and inherits parent departments
+  if (comp.parentCompanyId && (comp.inheritParentDepartments !== false)) {
+    const parent = companies.find(c => c.id === comp.parentCompanyId);
+    if (parent) {
+      return getCompanyDepartments(parent.id, companies);
+    }
+  }
+
+  // If it has custom departments, return them!
+  if (comp.customDepartments && comp.customDepartments.length > 0) {
+    return comp.customDepartments;
+  }
+
+  // Predefined templates
+  const template = comp.departmentTemplateType || comp.companyIndustry || comp.industry || 'Generic';
+  switch (template) {
+    case 'Healthcare':
+    case 'Hospital':
+      return [
+        'Medical Oncology',
+        'Radiation Oncology',
+        'Surgical Oncology',
+        'Nursing',
+        'Pathology',
+        'Radiology',
+        'Pharmacy',
+        'ICU / Critical Care',
+        'Laboratory Services',
+        'Blood Bank',
+        'OPD Services',
+        'Administration',
+        'HR & Compliance',
+        'Accounts & Billing',
+        'Medical Records',
+        'Housekeeping',
+        'Security',
+        'Biomedical Engineering',
+        'Patient Care Services',
+        'IT Support',
+        'Operations'
+      ];
+    case 'IT':
+    case 'IT Company':
+    case 'Technology':
+      return [
+        'Software Engineering',
+        'Product Management',
+        'Quality Assurance',
+        'IT & DevOps',
+        'UX/UI Design',
+        'Sales & Marketing',
+        'Customer Success',
+        'HR & Talent Acquisition',
+        'Operations & Facilities',
+        'Finance & Legal'
+      ];
+    case 'Manufacturing':
+    case 'Factory':
+      return [
+        'Production & Assembly',
+        'Plant Operations',
+        'Quality Control',
+        'Maintenance',
+        'Supply Chain & Logistics',
+        'Procurement',
+        'Health & Safety (EHS)',
+        'Warehouse & Inventory',
+        'R&D & Engineering',
+        'Administration & HR'
+      ];
+    case 'Education':
+      return [
+        'Academic Faculty',
+        'School Administration',
+        'Admissions & Registrar',
+        'Student Services',
+        'Finance & Billing',
+        'Human Resources',
+        'Facilities & Maintenance',
+        'Athletics & Sports',
+        'Library Services',
+        'IT & Educational Tech'
+      ];
+    case 'Retail':
+      return [
+        'Store Operations',
+        'Sales & Customer Service',
+        'Inventory Control',
+        'Merchandising',
+        'Cash & Billing',
+        'Warehouse & Logistics',
+        'Loss Prevention & Security',
+        'Marketing & Promotions',
+        'HR & Training',
+        'Finance & Administration'
+      ];
+    case 'Generic':
+    default:
+      return departments;
+  }
+};
+
+export const getCompanyIdFromBranchName = (branchName: string, activeCompanyId: string, companies: Company[]): string => {
+  if (!branchName) return activeCompanyId;
+  const activeCompany = companies.find(c => c.id === activeCompanyId);
+  if (!activeCompany) return activeCompanyId;
+
+  // Find if there is a branch company belonging to the active company's corporate family
+  const parentId = activeCompany.parentCompanyId || activeCompany.id;
+  const matchedBranch = companies.find(c => 
+    (c.id === parentId || c.parentCompanyId === parentId) && 
+    (c.branchName?.toUpperCase() === branchName.toUpperCase() || c.name.toUpperCase().includes(branchName.toUpperCase()))
+  );
+
+  return matchedBranch ? matchedBranch.id : activeCompanyId;
+};
 export const designations = ['Software Developer', 'Senior Developer', 'Software Lead', 'HR Manager', 'HR Coordinator', 'Operations Manager', 'Operations Director', 'Operations Executive', 'Payroll Officer', 'Senior Accountant', 'Accounts Specialist', 'Admin Executive', 'Office Coordinator'];
 
 export const currentUser: { id: string; name: string; role: Role; employeeId: string; avatar: string; email: string } = {
