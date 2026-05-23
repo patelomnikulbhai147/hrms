@@ -11,7 +11,8 @@ import { Button } from '../components/ui/Button';
 import {
   calculateSubscriptionAnalytics,
   getSubscriptionAlertsList,
-  getDaysRemaining
+  getDaysRemaining,
+  calculateBranchBilling
 } from '../utils/subscriptionUtils';
 
 interface BillingProps {
@@ -129,76 +130,7 @@ export const Billing: React.FC<BillingProps> = ({
   };
 
   const syncAndRecalculateBilling = (currentCompanies: Company[], parentId: string): Company[] => {
-    const parent = currentCompanies.find(c => c.id === parentId);
-    if (!parent) return currentCompanies;
-
-    const parentPlan = plans.find(p => p.name === parent.plan);
-    const basePlanPrice = parentPlan ? parentPlan.priceMonthly : 12999;
-    const includedBranchLimit = parentPlan ? parentPlan.includedBranchLimit : 2;
-
-    const parentBranches = currentCompanies.filter(c => c.parentCompanyId === parentId);
-
-    let activeLicensedCount = 0;
-
-    const updatedBranches = parentBranches.map(br => {
-      const isLicenseActive = br.branchLicenseActive !== false && br.branchLicenseStatus !== 'Suspended';
-      const isPortalActive = br.status === 'Active' && br.accountStatus !== 'Suspended' && br.branchPortalActive !== false;
-      const isActive = isLicenseActive && isPortalActive;
-
-      let billingIncluded = false;
-      let baseCost = 0;
-
-      if (isActive) {
-        activeLicensedCount++;
-        if (activeLicensedCount <= includedBranchLimit) {
-          billingIncluded = true;
-          baseCost = 0;
-        } else {
-          billingIncluded = false;
-          baseCost = 999;
-        }
-      } else {
-        billingIncluded = false;
-        baseCost = 0;
-      }
-
-      const capacity = br.licensedEmployeeLimit || br.employeeCapacity || 200;
-      let capacityCost = 0;
-      if (capacity === 500) capacityCost = 1499;
-      else if (capacity === 1000) capacityCost = 2999;
-
-      const monthlyCost = isActive ? (baseCost + capacityCost) : 0;
-
-      return {
-        ...br,
-        branchLicenseActive: isLicenseActive,
-        branchPortalActive: isPortalActive,
-        licensedEmployeeLimit: capacity,
-        employeeCapacity: capacity,
-        monthlyBranchCost: monthlyCost,
-        billingIncluded,
-        branchLicenseStatus: isLicenseActive ? 'Active License' as const : 'Suspended' as const,
-        status: isPortalActive ? 'Active' as const : 'Inactive' as const,
-        accountStatus: isPortalActive ? 'Active' as const : 'Suspended' as const,
-      };
-    });
-
-    const totalBranchCost = updatedBranches.reduce((sum, br) => sum + (br.monthlyBranchCost || 0), 0);
-    const unifiedPrice = basePlanPrice + totalBranchCost;
-
-    return currentCompanies.map(c => {
-      if (c.id === parentId) {
-        return {
-          ...c,
-          subscriptionPrice: unifiedPrice
-        };
-      }
-      const updatedBr = updatedBranches.find(br => br.id === c.id);
-      if (updatedBr) {
-        return updatedBr;
-      }
-      return c;
-    });
+    return calculateBranchBilling(currentCompanies, parentId, plans).updatedCompanies;
   };
 
   const handleRemoveBranch = (branchId: string) => {

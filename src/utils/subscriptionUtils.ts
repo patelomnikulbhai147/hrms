@@ -37,22 +37,22 @@ export const calculateSubscriptionStatus = (company: Company): SubscriptionStatu
   if (company.accountStatus === 'Suspended') {
     return 'Suspended';
   }
-  
+
   const daysLeft = getDaysRemaining(company.renewalDate);
   const isOverdueState = company.paymentStatus === 'Overdue' || company.paymentStatus === 'Expired';
-  
+
   if (isOverdueState || (daysLeft !== null && daysLeft < 0)) {
     return 'Overdue';
   }
-  
+
   if (company.paymentStatus === 'Trial Active' && daysLeft !== null && daysLeft >= 0 && daysLeft <= 10) {
     return 'Trial Ending';
   }
-  
+
   if (daysLeft !== null && daysLeft >= 0 && daysLeft <= 10) {
     return 'Expiring Soon';
   }
-  
+
   return 'Active';
 };
 
@@ -69,15 +69,15 @@ export const calculateSubscriptionAnalytics = (companies: Company[], _plans: Sub
     if (!company) return;
 
     // Active means accountStatus === 'Active' and paymentStatus is Paid or Trial Active
-    const isActiveOrTrial = company.accountStatus === 'Active' && 
+    const isActiveOrTrial = company.accountStatus === 'Active' &&
       (company.paymentStatus === 'Paid' || company.paymentStatus === 'Trial Active');
-    
+
     if (isActiveOrTrial) {
       activeSubscriptions++;
     }
 
     const status = calculateSubscriptionStatus(company);
-    
+
     if (status === 'Expiring Soon' || status === 'Trial Ending') {
       expiringPlans++;
     }
@@ -173,4 +173,128 @@ export const getSubscriptionAlertsList = (companies: Company[]): SubscriptionAle
     if (alert) alerts.push(alert);
   });
   return alerts;
+};
+
+export interface BranchBillingResult {
+  includedSlots: number;
+  paidSlots: number;
+  activeBranchesCount: number;
+  activeLicensedBranchesCount: number;
+  addOnTotals: number;
+  unifiedMonthlyBilling: number;
+  updatedCompanies: Company[];
+}
+
+export const calculateBranchBilling = (
+  companiesList: Company[],
+  parentId: string,
+  plansList?: SubscriptionPlan[]
+): BranchBillingResult => {
+  const plans = plansList || [
+    { id: 'sp1', name: 'Starter', priceMonthly: 1999, priceYearly: 19999, employeeLimit: 25, hrLimit: 2, storageLimit: '5 GB', payrollAccess: true, documentAccess: false, includedBranchLimit: 0 },
+    { id: 'sp2', name: 'Professional', priceMonthly: 4999, priceYearly: 49999, employeeLimit: 100, hrLimit: 5, storageLimit: '25 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 1 },
+    { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: 9999, hrLimit: 9999, storageLimit: '100 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 2 }
+  ];
+
+  const parent = companiesList.find(c => c.id === parentId);
+  if (!parent) {
+    return {
+      includedSlots: 1,
+      paidSlots: 0,
+      activeBranchesCount: 0,
+      activeLicensedBranchesCount: 0,
+      addOnTotals: 0,
+      unifiedMonthlyBilling: 0,
+      updatedCompanies: companiesList
+    };
+  }
+
+  const parentPlan = plans.find(p => p.name === parent.plan);
+  const basePlanPrice = parentPlan ? parentPlan.priceMonthly : 12999;
+  const includedSlots = parentPlan ? parentPlan.includedBranchLimit : 2;
+
+  const parentBranches = companiesList.filter(c => c.parentCompanyId === parentId);
+
+  let activeLicensedCount = 0;
+  let activeBranchesCount = 0;
+
+  const updatedBranches = parentBranches.map(br => {
+    const isLicenseActive = br.branchLicenseActive !== false && br.branchLicenseStatus !== 'Suspended';
+    const isPortalActive = br.status === 'Active' && br.accountStatus !== 'Suspended' && br.branchPortalActive !== false;
+    const isActive = isLicenseActive && isPortalActive;
+
+    if (isPortalActive) activeBranchesCount++;
+    if (isLicenseActive) activeLicensedCount++;
+
+    let billingIncluded = false;
+    let baseCost = 0;
+
+    if (isActive) {
+      if (activeLicensedCount <= includedSlots) {
+        billingIncluded = true;
+        baseCost = 0;
+      } else {
+        billingIncluded = false;
+        baseCost = 999;
+      }
+    } else {
+      billingIncluded = false;
+      baseCost = 0;
+    }
+
+    const capacity = br.licensedEmployeeLimit || br.employeeCapacity || 200;
+    let capacityCost = 0;
+    if (capacity === 500) capacityCost = 1499;
+    else if (capacity === 1000) capacityCost = 2999;
+
+    const monthlyCost = isActive ? (baseCost + capacityCost) : 0;
+
+    return {
+      ...br,
+      branchLicenseActive: isLicenseActive,
+      branchPortalActive: isPortalActive,
+      licensedEmployeeLimit: capacity,
+      employeeCapacity: capacity,
+      monthlyBranchCost: monthlyCost,
+      billingIncluded,
+      branchLicenseStatus: isLicenseActive ? 'Active License' as const : 'Suspended' as const,
+      status: isPortalActive ? 'Active' as const : 'Inactive' as const,
+      accountStatus: isPortalActive ? 'Active' as const : 'Suspended' as const,
+    };
+  });
+
+  const activeLicensedBranchesCount = activeLicensedCount;
+  const paidSlots = Math.max(0, activeLicensedBranchesCount - includedSlots);
+  const addOnTotals = updatedBranches.reduce((sum, br) => sum + (br.monthlyBranchCost || 0), 0);
+  const unifiedMonthlyBilling = basePlanPrice + addOnTotals;
+
+  const updatedCompanies = companiesList.map(c => {
+    if (c.id === parentId) {
+      return {
+        ...c,
+        subscriptionPrice: unifiedMonthlyBilling
+      };
+    }
+    const updatedBr = updatedBranches.find(br => br.id === c.id);
+    if (updatedBr) {
+      return updatedBr;
+    }
+    return c;
+  });
+
+  // Debug logging
+  console.log(`[central-billing] Recalculating for parent ID: ${parentId}`);
+  console.log(`- Included slots: ${includedSlots}, Paid slots: ${paidSlots}`);
+  console.log(`- Active branches: ${activeBranchesCount}, Active licensed branches: ${activeLicensedBranchesCount}`);
+  console.log(`- Add-on monthly totals: ₹${addOnTotals}, Unified billing monthly total: ₹${unifiedMonthlyBilling}`);
+
+  return {
+    includedSlots,
+    paidSlots,
+    activeBranchesCount,
+    activeLicensedBranchesCount,
+    addOnTotals,
+    unifiedMonthlyBilling,
+    updatedCompanies
+  };
 };

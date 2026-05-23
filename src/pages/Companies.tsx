@@ -50,7 +50,7 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');
-  
+
   // Modals state
   const [addOpen, setAddOpen] = useState(false);
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
@@ -134,7 +134,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
     // Ask for reassignment or archive
     const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
-    
+
     if (reassign) {
       if (onUpdateEmployees) {
         const updated = employees.map(emp => {
@@ -162,7 +162,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     onUpdateCompanies(nextCompanies);
     alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
   };
-  
+
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({
     'c-gcri': true
   });
@@ -173,7 +173,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       [parentId]: !prev[parentId]
     }));
   };
-  
+
   // Dynamic Onboarding state
   const [newCompany, setNewCompany] = useState({
     name: '',
@@ -249,7 +249,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       adminEmail: newCompany.adminEmail,
       phone: `${newCompany.countryCode} ${newCompany.mobileNumber}`,
       industry: newCompany.industry,
-      status: 'Active', 
+      status: 'Active',
       employeeCount: 0,
       joinDate: new Date().toISOString().split('T')[0],
       plan: newCompany.plan === 'Professional' ? 'Professional' : (newCompany.plan === 'Enterprise' ? 'Enterprise' : 'Starter'),
@@ -259,7 +259,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       basicPercent: 50,
       overtimeRate: 1.5,
       profTaxRate: 200,
-      
+
       // Auto-generated branding parameters matching input specifications
       address: newCompany.address,
       email: newCompany.email,
@@ -278,7 +278,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       billingCycle: 'Monthly',
       accountStatus: 'Active'
     };
-    
+
     // Auto-create a Company Head user account for this new company!
     const newHead: UserAccount = {
       id: `u${Date.now()}`,
@@ -295,7 +295,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     onUpdateAccounts([...userAccounts, newHead]);
     onUpdateCompanies([fresh, ...companies]);
     setAddOpen(false);
-    
+
     // Reset state
     setNewCompany({
       name: '',
@@ -333,7 +333,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
       return;
     }
-    
+
     if (editingBranch) {
       // Edit mode
       const updatedCompanies = companies.map(c => {
@@ -417,7 +417,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       onUpdateCompanies([...companies, newBranchObj]);
       alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
     }
-    
+
     setBranchModalOpen(false);
   };
 
@@ -583,7 +583,6 @@ export const Companies: React.FC<CompaniesProps> = ({
               <Th>Company Profile</Th>
               <Th>SaaS Admin Info</Th>
               <Th>Details</Th>
-              <Th>Tier Plan</Th>
               <Th>Status</Th>
               <Th>Actions</Th>
             </tr>
@@ -600,9 +599,9 @@ export const Companies: React.FC<CompaniesProps> = ({
                 const branches = companies.filter(b => b.parentCompanyId === c.id);
                 const hasBranches = branches.length > 0;
                 const isExpanded = expandedParents[c.id];
-                
+
                 // Calculate total combined employees under parent
-                const combinedEmpCount = hasBranches 
+                const combinedEmpCount = hasBranches
                   ? branches.reduce((sum, b) => sum + employees.filter(emp => emp.companyId === b.id).length, 0) + employees.filter(emp => emp.companyId === c.id).length
                   : employees.filter(emp => emp.companyId === c.id).length;
 
@@ -688,7 +687,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                           >
                             Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
                           </button>
-                          
+
                           <button
                             onClick={() => setManageAccountsModal(c)}
                             className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
@@ -696,7 +695,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                           >
                             <KeyRound size={13} />
                           </button>
-                          
+
                           <button
                             onClick={() => handleToggleStatus(c.id, c.status)}
                             className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
@@ -844,7 +843,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       >
         <div className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
           <p className="text-xs text-gray-400">All fields are strictly required. Provisions tenant database and default Company Head credentials.</p>
-          
+
           <div className="grid grid-cols-2 gap-3 text-left">
             <Input
               label="Company Name *"
@@ -1008,7 +1007,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       >
         {manageAccountsModal && (
           <div className="space-y-6">
-            
+
             {/* Table of active logins */}
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Authorized Logins & Status</h4>
@@ -1053,9 +1052,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </button>
                               <button
                                 onClick={() => handleToggleUserActivation(u.id)}
-                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${
-                                  u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                                }`}
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                                  }`}
                               >
                                 {u.status === 'Active' ? 'Disable' : 'Enable'}
                               </button>
@@ -1079,7 +1077,7 @@ export const Companies: React.FC<CompaniesProps> = ({
             {/* Create Officer Form */}
             <div className="border-t border-gray-150 pt-4 space-y-3">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Provision New Corporate Officer</h4>
-              
+
               <div className="grid grid-cols-2 gap-3 text-left">
                 <Input
                   label="Officer Name *"
@@ -1134,11 +1132,11 @@ export const Companies: React.FC<CompaniesProps> = ({
               </div>
 
               <div className="pt-2 text-left">
-                <Button 
-                  onClick={handleCreateOfficer} 
+                <Button
+                  onClick={handleCreateOfficer}
                   disabled={
-                    !officerForm.name || 
-                    !officerForm.email || 
+                    !officerForm.name ||
+                    !officerForm.email ||
                     !officerForm.username ||
                     !!officerErrors.name ||
                     !!officerErrors.email
@@ -1202,8 +1200,8 @@ export const Companies: React.FC<CompaniesProps> = ({
       >
         <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
           <p className="text-xs text-gray-500">
-            {editingBranch 
-              ? "Modify this subsidiary's regional limits, operational capacity, statutory parameters, and local leadership accounts." 
+            {editingBranch
+              ? "Modify this subsidiary's regional limits, operational capacity, statutory parameters, and local leadership accounts."
               : "Registering a new sub-center branches under Gujarat Cancer Research Institute. Generates specialized Branch Admin logins on completion."}
           </p>
 
