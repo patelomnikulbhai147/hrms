@@ -5,19 +5,19 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-blue-600 text-white hover:bg-blue-700 border-transparent',
-  secondary: 'bg-gray-100 text-gray-700 hover:bg-gray-200 border-transparent',
-  danger: 'bg-red-600 text-white hover:bg-red-700 border-transparent',
-  ghost: 'bg-transparent text-gray-600 hover:bg-gray-100 border-transparent',
-  outline: 'bg-white text-gray-700 hover:bg-gray-50 border-gray-300',
-  success: 'bg-emerald-600 text-white hover:bg-emerald-700 border-transparent',
+  primary: 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 hover:shadow-md hover:shadow-blue-500/15 border-transparent',
+  secondary: 'bg-slate-100/90 text-slate-700 hover:bg-slate-200/90 border-transparent',
+  danger: 'bg-gradient-to-r from-red-500 to-rose-600 text-white hover:from-red-600 hover:to-rose-700 hover:shadow-md hover:shadow-red-500/15 border-transparent',
+  ghost: 'bg-transparent text-slate-600 hover:bg-slate-100/80 border-transparent',
+  outline: 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 shadow-sm',
+  success: 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:from-emerald-600 hover:to-teal-700 hover:shadow-md hover:shadow-emerald-500/15 border-transparent',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  xs: 'px-2 py-1 text-xs',
+  xs: 'px-2.5 py-1 text-xs',
   sm: 'px-3 py-1.5 text-sm',
-  md: 'px-4 py-2 text-sm',
-  lg: 'px-5 py-2.5 text-base',
+  md: 'px-4.5 py-2 text-sm',
+  lg: 'px-5.5 py-2.5 text-base',
 };
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -35,7 +35,7 @@ export const Button: React.FC<ButtonProps> = ({
       {...props}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-md border font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-1.5 rounded-lg border font-semibold transition-all duration-200 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
         variantClasses[variant],
         sizeClasses[size],
         className

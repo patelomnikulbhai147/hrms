@@ -4,18 +4,18 @@ import { cn } from '../../utils/cn';
 type BadgeVariant = 'green' | 'red' | 'yellow' | 'blue' | 'gray' | 'orange' | 'purple' | 'indigo' | 'danger' | 'success' | 'warning' | 'amber';
 
 const variantClasses: Record<BadgeVariant, string> = {
-  green: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  red: 'bg-red-50 text-red-700 ring-red-200',
-  danger: 'bg-red-50 text-red-700 ring-red-200',
-  yellow: 'bg-amber-50 text-amber-700 ring-amber-200',
-  amber: 'bg-amber-50 text-amber-700 ring-amber-200',
-  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
-  blue: 'bg-blue-50 text-blue-700 ring-blue-200',
-  gray: 'bg-gray-100 text-gray-600 ring-gray-200',
-  orange: 'bg-orange-50 text-orange-700 ring-orange-200',
-  purple: 'bg-purple-50 text-purple-700 ring-purple-200',
-  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+  green: 'bg-emerald-50/75 text-emerald-700 border border-emerald-200/50',
+  success: 'bg-emerald-50/75 text-emerald-700 border border-emerald-200/50',
+  red: 'bg-rose-50/75 text-rose-700 border border-rose-200/50',
+  danger: 'bg-rose-50/75 text-rose-700 border border-rose-200/50',
+  yellow: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
+  amber: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
+  warning: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
+  blue: 'bg-sky-50/75 text-sky-700 border border-sky-200/50',
+  gray: 'bg-slate-100/70 text-slate-600 border border-slate-200/50',
+  orange: 'bg-orange-50/75 text-orange-700 border border-orange-200/50',
+  purple: 'bg-purple-50/75 text-purple-700 border border-purple-200/50',
+  indigo: 'bg-indigo-50/75 text-indigo-700 border border-indigo-200/50',
 };
 
 interface BadgeProps {
@@ -27,17 +27,24 @@ interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'gray', className, dot }) => {
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset', variantClasses[variant], className)}>
-      {dot && <span className={cn('h-1.5 w-1.5 rounded-full', {
-        'bg-emerald-500': variant === 'green' || variant === 'success',
-        'bg-red-500': variant === 'red' || variant === 'danger',
-        'bg-amber-500': variant === 'yellow' || variant === 'warning' || variant === 'amber',
-        'bg-blue-500': variant === 'blue',
-        'bg-gray-400': variant === 'gray',
-        'bg-orange-500': variant === 'orange',
-        'bg-purple-500': variant === 'purple',
-        'bg-indigo-500': variant === 'indigo',
-      })} />}
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide shadow-sm/5', variantClasses[variant], className)}>
+      {dot && (
+        <span className={cn('h-1.5 w-1.5 rounded-full relative flex-shrink-0', {
+          'bg-emerald-500': variant === 'green' || variant === 'success',
+          'bg-rose-500': variant === 'red' || variant === 'danger',
+          'bg-amber-500': variant === 'yellow' || variant === 'warning' || variant === 'amber',
+          'bg-sky-500': variant === 'blue',
+          'bg-slate-400': variant === 'gray',
+          'bg-orange-500': variant === 'orange',
+          'bg-purple-500': variant === 'purple',
+          'bg-indigo-500': variant === 'indigo',
+        })}>
+          {/* Elegant active pulsate effect */}
+          {(variant === 'green' || variant === 'success' || variant === 'red' || variant === 'danger' || variant === 'yellow' || variant === 'warning') && (
+            <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-current" />
+          )}
+        </span>
+      )}
       {children}
     </span>
   );

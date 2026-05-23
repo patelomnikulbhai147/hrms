@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ShieldCheck, Lock, User, Sparkles, Building2 } from 'lucide-react';
-
 import { Company } from '../data/mockData';
+import { motion } from 'framer-motion';
 
 export interface UserAccount {
   id: string;
@@ -82,45 +82,73 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
-      {/* Background gradients */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
+      {/* Dynamic Animated Glassy Orbs in Background */}
+      <motion.div
+        animate={{
+          scale: [1, 1.25, 1],
+          x: [0, 40, 0],
+          y: [0, -40, 0],
+        }}
+        transition={{
+          duration: 12,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="absolute top-1/4 left-1/4 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl"
+      />
+      <motion.div
+        animate={{
+          scale: [1.25, 1, 1.25],
+          x: [0, -40, 0],
+          y: [0, 40, 0],
+        }}
+        transition={{
+          duration: 15,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl"
+      />
 
       {/* Main card */}
-      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-xl border border-slate-800 rounded-2xl p-6 md:p-8 shadow-2xl relative z-10 space-y-6">
-        
+      <motion.div
+        initial={{ opacity: 0, y: 30, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ type: 'spring', duration: 0.8, bounce: 0.1 }}
+        className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl relative z-10 space-y-6"
+      >
         {/* Header */}
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mx-auto shadow-md shadow-blue-500/20">
-            <Building2 size={24} className="text-white" />
+        <div className="text-center space-y-3">
+          <div className="w-12 h-12 bg-gradient-to-tr from-blue-500 to-indigo-650 rounded-xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
+            <Building2 size={22} className="text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-white tracking-tight">SaaS HRMS Platform</h1>
+            <h1 className="text-xl font-extrabold text-white tracking-tight font-heading">SaaS HRMS Platform</h1>
             <p className="text-xs text-slate-400 mt-1">Operational Multi-Company Workspace</p>
           </div>
         </div>
 
         {/* Demo Quick-Select Panel */}
-        <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5 space-y-2.5">
+        <div className="bg-slate-950/40 border border-slate-850/80 rounded-2xl p-4 space-y-3">
           <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-blue-400 uppercase tracking-wider">
             <Sparkles size={11} className="animate-pulse" />
             <span>SaaS Demo Helper Accounts</span>
           </div>
-          <div className="grid grid-cols-1 gap-1.5">
+          <div className="grid grid-cols-1 gap-2 max-h-[170px] overflow-y-auto pr-1">
             {userAccounts.map((acc) => (
               <button
                 key={acc.id}
                 type="button"
                 onClick={() => handleQuickSelect(acc)}
-                className={`text-[11px] text-left px-2.5 py-1.5 rounded-lg bg-slate-900 border hover:border-blue-500/40 flex items-center justify-between transition-all ${
+                className={`text-[11px] text-left px-3 py-2 rounded-xl bg-slate-900 border hover:border-blue-500/40 flex items-center justify-between transition-all active:scale-[0.98] ${
                   acc.status === 'Disabled' 
-                    ? 'border-red-900/40 text-slate-500 line-through' 
-                    : 'border-slate-800 text-slate-300 hover:text-white'
+                    ? 'border-rose-955/40 text-slate-500 line-through font-medium' 
+                    : 'border-slate-800/60 text-slate-300 hover:text-white hover:bg-slate-800/30'
                 }`}
                 title={acc.status === 'Disabled' ? 'Account Deactivated' : undefined}
               >
-                <span>{acc.name} ({acc.role === 'Super Admin' ? 'Platform Owner' : acc.role})</span>
-                <span className="text-[10px] font-mono text-slate-500">
+                <span className="font-semibold">{acc.name} ({acc.role === 'Super Admin' ? 'Platform Owner' : acc.role})</span>
+                <span className="text-[10px] font-mono text-slate-500 font-bold">
                   {acc.status === 'Disabled' ? 'DEACTIVATED' : `ID: ${acc.username}`}
                 </span>
               </button>
@@ -131,16 +159,16 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
         {/* Login Form */}
         <form onSubmit={handleLoginSubmit} className="space-y-4">
           {error && (
-            <div className="p-2.5 bg-red-950/80 border border-red-800/40 rounded-lg text-[11px] text-red-300 leading-normal">
+            <div className="p-3 bg-rose-950/60 border border-rose-800/30 rounded-xl text-[11px] text-rose-300 font-semibold leading-normal">
               {error}
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="space-y-3.5">
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Login ID / Username</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Login ID / Username</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
                   <User size={13} />
                 </span>
                 <input
@@ -149,15 +177,15 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
                   placeholder="Enter login ID"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
-                  className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none placeholder-slate-600 transition-colors"
+                  className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 placeholder-slate-600 transition-all duration-150"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Access Password</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Access Password</label>
               <div className="relative">
-                <span className="absolute inset-y-0 left-0 pl-2.5 flex items-center text-slate-500">
+                <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
                   <Lock size={13} />
                 </span>
                 <input
@@ -166,7 +194,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
                   placeholder="Enter password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500 rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none placeholder-slate-600 transition-colors"
+                  className="w-full bg-slate-950/50 border border-slate-800 focus:border-blue-500/80 rounded-xl pl-9 pr-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 placeholder-slate-600 transition-all duration-150"
                 />
               </div>
             </div>
@@ -175,18 +203,18 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white rounded-lg shadow-lg shadow-blue-600/10 transition-colors flex items-center justify-center gap-1.5"
+              className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-650 hover:from-blue-500 hover:to-indigo-600 text-xs font-bold text-white rounded-xl shadow-lg shadow-blue-500/15 transition-all duration-200 active:scale-[0.98]"
             >
-              <ShieldCheck size={14} />
+              <ShieldCheck size={14} className="inline mr-1.5" />
               <span>Authenticate Session</span>
             </button>
           </div>
         </form>
 
-        <div className="text-center">
+        <div className="text-center pt-2">
           <p className="text-[10px] text-slate-500 font-mono">Platform Authentication Core v3.3.0</p>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

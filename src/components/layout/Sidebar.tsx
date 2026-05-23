@@ -50,18 +50,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className={cn(
-      'flex flex-col bg-gray-900 text-gray-100 h-full transition-all duration-200 flex-shrink-0 z-20',
-      collapsed ? 'w-14' : 'w-52'
+      'flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 border-r border-slate-800/30 shadow-2xl',
+      collapsed ? 'w-14' : 'w-56'
     )}>
       {/* Logo */}
-      <div className={cn('flex items-center gap-2.5 px-3 py-4 border-b border-gray-800', collapsed && 'justify-center px-0')}>
-        <div className="flex-shrink-0 w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
+      <div className={cn('flex items-center gap-2.5 px-4 py-5 border-b border-slate-800/40', collapsed && 'justify-center px-0')}>
+        <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-tr from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
           <Building2 size={16} className="text-white" />
         </div>
         {!collapsed && (
           <div>
-            <p className="text-sm font-bold text-white leading-tight font-sans">SaaS HRMS</p>
-            <p className="text-[9px] text-gray-400 mt-0.5 uppercase tracking-wider">
+            <p className="text-sm font-extrabold text-white leading-tight font-sans tracking-tight">SaaS HRMS</p>
+            <p className="text-[9px] text-slate-400 mt-0.5 uppercase tracking-wider font-semibold">
               {isMasquerading ? 'Masquerading' : role}
             </p>
           </div>
@@ -70,11 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Prominent Back to Super Admin Button when masquerading */}
       {isMasquerading && (
-        <div className="px-2 py-2 border-b border-gray-800 bg-amber-600/20">
+        <div className="px-3 py-2.5 border-b border-slate-800/40 bg-amber-600/10">
           <button
             onClick={onExitMasquerade}
             className={cn(
-              "w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-xs font-bold bg-amber-600 text-white hover:bg-amber-500 transition-colors shadow-sm",
+              "w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-extrabold bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700 transition-all duration-200 shadow-md shadow-amber-950/40 active:scale-[0.97]",
               collapsed && "justify-center px-0"
             )}
             title="Go Back to Super Admin"
@@ -86,35 +86,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+      <nav className="flex-1 overflow-y-auto py-4 px-2.5 space-y-1">
         {visibleItems.map(item => (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
             className={cn(
-              'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm transition-colors group',
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all duration-250 group active:scale-[0.98]',
               currentPage === item.id
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-400 hover:bg-gray-800 hover:text-gray-100',
-              collapsed && 'justify-center px-0'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/15 border border-blue-500/20'
+                : 'text-slate-400 hover:bg-slate-800/40 hover:text-slate-100 hover:pl-4',
+              collapsed && 'justify-center px-0 hover:pl-0'
             )}
           >
-            <span className="flex-shrink-0">{item.icon}</span>
+            <span className={cn('flex-shrink-0 transition-transform duration-200 group-hover:scale-110', currentPage === item.id && 'text-white')}>{item.icon}</span>
             {!collapsed && (
-              <span className="flex-1 text-left text-xs font-medium">
+              <span className="flex-1 text-left tracking-wide">
                 {item.id === 'payroll' && role === 'Employee' ? 'My Payslips' : item.label}
               </span>
             )}
-            {!collapsed && currentPage === item.id && <ChevronRight size={12} className="text-blue-300" />}
+            {!collapsed && currentPage === item.id && <ChevronRight size={12} className="text-blue-200 animate-pulse" />}
           </button>
         ))}
       </nav>
 
       {/* Footer */}
       {!collapsed && (
-        <div className="px-3 py-3 border-t border-gray-800">
-          <p className="text-[10px] text-gray-500">v3.1.0 — HR SaaS</p>
+        <div className="px-4 py-3 border-t border-slate-800/40 bg-slate-950/20">
+          <p className="text-[10px] text-slate-500 font-medium">v3.1.0 — HR SaaS</p>
         </div>
       )}
     </aside>

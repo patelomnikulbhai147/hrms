@@ -36,6 +36,28 @@ import {
   PieChart,
   Pie
 } from 'recharts';
+import { motion } from 'framer-motion';
+
+const AnimatedCounter: React.FC<{ value: number; duration?: number }> = ({ value, duration = 800 }) => {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    let startTimestamp: number | null = null;
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      setCount(Math.floor(progress * value));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        setCount(value);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [value, duration]);
+
+  return <span>{count.toLocaleString('en-IN')}</span>;
+};
 
 interface DashboardProps {
   role: Role;
@@ -331,17 +353,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // ─── Super Admin Dashboard Overhaul ───
   if (role === 'Super Admin') {
     return (
-      <div className="space-y-6 relative pb-10">
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+        className="space-y-6 relative pb-10"
+      >
 
         {/* Dynamic Expiring Notification Toast Banner */}
         {expiringThisWeekCount > 0 && (
-          <div className="bg-indigo-600/10 border border-indigo-200 backdrop-blur-md rounded-2xl p-4.5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
+          <div className="bg-indigo-650/5 border border-indigo-150 backdrop-blur-md rounded-2xl p-4.5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
             <div className="flex items-center gap-3">
               <div className="p-2.5 bg-indigo-600/15 rounded-xl text-indigo-700">
                 <Bell size={18} className="animate-bounce" />
               </div>
               <div className="text-left">
-                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5 font-heading">
                   Subscription Notice <Sparkles size={13} className="text-amber-500" />
                 </h4>
                 <p className="text-xs text-gray-600 mt-0.5">
@@ -364,88 +391,100 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Title */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight">SaaS Control Center</h1>
+            <h1 className="text-2xl font-extrabold text-gray-900 tracking-tight font-heading">SaaS Control Center</h1>
             <p className="text-sm text-gray-500 mt-0.5">Central subscription intelligence, real-time renewals, and client onboarding</p>
           </div>
         </div>
 
         {/* Dynamic Metric Cards (Top cards keeping only important) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Companies</span>
-              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-                <Building2 size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Companies</span>
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                <Building2 size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{totalCompaniesCount}</h3>
-              <p className="text-xs text-gray-500 mt-1">Tenant spaces registered</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
+                <AnimatedCounter value={totalCompaniesCount} />
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1">Tenant spaces registered</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Branches</span>
-              <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
-                <Building2 size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Branches</span>
+              <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+                <Building2 size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{analytics.totalBranches}</h3>
-              <p className="text-xs text-gray-500 mt-1">Subsidiaries managed</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
+                <AnimatedCounter value={analytics.totalBranches} />
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1">Subsidiaries managed</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Combined Employees</span>
-              <div className="p-2.5 bg-violet-50 text-violet-600 rounded-xl">
-                <Users size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Combined Employees</span>
+              <div className="p-2 bg-violet-50 text-violet-600 rounded-lg">
+                <Users size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{employees.length}</h3>
-              <p className="text-xs text-gray-500 mt-1">Total active workforce</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
+                <AnimatedCounter value={employees.length} />
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1">Total active workforce</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Active Subscriptions</span>
-              <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
-                <CheckCircle2 size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Subscriptions</span>
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                <CheckCircle2 size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{activeSubscriptionsCount}</h3>
-              <p className="text-xs text-emerald-600 font-semibold mt-1">✓ Active Paid & Trial Spaces</p>
+              <h3 className="text-2xl font-extrabold text-slate-905 tracking-tight font-heading">
+                <AnimatedCounter value={activeSubscriptionsCount} />
+              </h3>
+              <p className="text-[10px] text-emerald-600 font-semibold mt-1">✓ Active Spaces</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Renewals Due</span>
-              <div className="p-2.5 bg-amber-50 text-amber-600 rounded-xl">
-                <AlertCircle size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Renewals Due</span>
+              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                <AlertCircle size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">{pendingRenewalsCount}</h3>
-              <p className="text-xs text-amber-600 font-semibold mt-1">⚠ Overdue / Pending</p>
+              <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
+                <AnimatedCounter value={pendingRenewalsCount} />
+              </h3>
+              <p className="text-[10px] text-amber-600 font-semibold mt-1">⚠ Overdue / Pending</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-150 shadow-xs p-5 hover:shadow-md transition-all duration-200">
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Monthly Revenue</span>
-              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
-                <DollarSign size={18} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Revenue</span>
+              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                <DollarSign size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-3xl font-extrabold text-gray-900 tracking-tight">₹{monthlyRevenueVal.toLocaleString('en-IN')}</h3>
-              <p className="text-xs text-gray-500 mt-1">MRR (Synced from plan prices)</p>
+              <h3 className="text-2xl font-extrabold text-indigo-650 tracking-tight font-heading">
+                ₹<AnimatedCounter value={monthlyRevenueVal} />
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-1">MRR (Synced from plan prices)</p>
             </div>
           </div>
         </div>
@@ -714,7 +753,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         )}
 
-      </div>
+      </motion.div>
     );
   }
 
@@ -851,14 +890,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
     };
 
     return (
-      <div className="space-y-4">
+      <motion.div
+        initial={{ opacity: 0, y: 15 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45 }}
+        className="space-y-4"
+      >
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Corporate Operations Control</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
+            <h2 className="text-base font-bold text-slate-800 font-heading">Corporate Operations Control</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Payroll Status:</span>
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Payroll Status:</span>
             <Badge variant={(companyPayrollStatus.status === 'paid' || companyPayrollStatus.status === 'payslip_generated') ? 'green' : 'amber'}>{payrollStatusStr}</Badge>
           </div>
         </div>
@@ -866,30 +910,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard
             label="Total Employees"
-            value={totalEmployees}
-            icon={<Building2 size={16} className="text-indigo-600" />}
-            color="bg-indigo-50"
+            value={<AnimatedCounter value={totalEmployees} />}
+            icon={<Building2 size={16} className="text-indigo-650" />}
+            color="bg-indigo-50/60"
             sub="Registered in directory"
           />
           <StatCard
             label="Active Employees"
-            value={activeEmployeesCount}
+            value={<AnimatedCounter value={activeEmployeesCount} />}
             icon={<CheckCircle2 size={16} className="text-emerald-600" />}
-            color="bg-emerald-50"
+            color="bg-emerald-50/60"
             sub="Active contract roster"
           />
           <StatCard
             label="On Leave Today"
-            value={onLeaveToday}
+            value={<AnimatedCounter value={onLeaveToday} />}
             icon={<Clock size={16} className="text-amber-600" />}
-            color="bg-amber-50"
+            color="bg-amber-50/60"
             sub="Approved leave schedule"
           />
           <StatCard
             label="Attendance Pending"
-            value={attendancePending}
+            value={<AnimatedCounter value={attendancePending} />}
             icon={<AlertCircle size={16} className="text-rose-600" />}
-            color="bg-rose-50"
+            color="bg-rose-50/60"
             sub="Awaiting clock-in today"
           />
         </div>
@@ -1221,7 +1265,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </Card>
         </div>
-      </div>
+      </motion.div>
     );
   }
 
@@ -1231,32 +1275,37 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const activePayrollEntriesCount = scopedPayroll.length;
 
   return (
-    <div className="space-y-4">
+    <motion.div
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45 }}
+      className="space-y-4"
+    >
       <div>
-        <h2 className="text-base font-semibold text-gray-900">HR Operations Dashboard</h2>
-        <p className="text-xs text-gray-500 mt-0.5">Biometrics logs upload, employee credentials verification, and contract draft generators</p>
+        <h2 className="text-base font-bold text-slate-800 font-heading">HR Operations Dashboard</h2>
+        <p className="text-xs text-slate-500 mt-0.5">Biometrics logs upload, employee credentials verification, and contract draft generators</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard
           label="Attendance Biometrics Records"
-          value={biometricsUploadCount}
-          icon={<Clock size={16} className="text-indigo-600" />}
-          color="bg-indigo-50"
+          value={<AnimatedCounter value={biometricsUploadCount} />}
+          icon={<Clock size={16} className="text-indigo-650" />}
+          color="bg-indigo-50/60"
           sub="Biometric log uploads logged"
         />
         <StatCard
           label="Pending Doc Verifications"
-          value={pendingDocsCount}
+          value={<AnimatedCounter value={pendingDocsCount} />}
           icon={<AlertCircle size={16} className="text-amber-600" />}
-          color="bg-amber-50"
+          color="bg-amber-50/60"
           sub="Aadhaar/PAN pending validations"
         />
         <StatCard
           label="Payroll Active Entries"
-          value={activePayrollEntriesCount}
-          icon={<FileText size={16} className="text-blue-600" />}
-          color="bg-blue-50"
+          value={<AnimatedCounter value={activePayrollEntriesCount} />}
+          icon={<FileText size={16} className="text-sky-600" />}
+          color="bg-sky-50/60"
           sub="Current month payroll records"
         />
       </div>
@@ -1340,6 +1389,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </Card>
       </div>
-    </div>
+    </motion.div>
   );
 };
