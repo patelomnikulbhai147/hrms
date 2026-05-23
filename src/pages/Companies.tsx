@@ -108,7 +108,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     setBranchForm({
       name: branch.name,
       branchCode: branch.branchCode || '',
-      location: branch.location || branch.address || '',
+      location: branch.address || '',
       email: branch.email || branch.adminEmail || '',
       phone: branch.phone || '',
       adminName: branch.adminName || '',

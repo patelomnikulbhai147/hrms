@@ -14,7 +14,6 @@ import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { validateName } from '../utils/validation';
 import { type UserAccount } from './Login';
 
 interface LeavesProps {

@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
   XCircle, Edit3, ArrowUpRight, DollarSign, Users,
-  FileText, Download, UserCheck, ChevronRight,
-  Building2, Plus, KeyRound, Trash2, Lock, Mail, Phone, ArrowRight
+  FileText, Download, UserCheck,
+  Building2, Plus, Trash2
 } from 'lucide-react';
-import { Company, SubscriptionPlan, PaymentRecord, Employee, UserAccount } from '../data/mockData';
+import { Company, SubscriptionPlan, PaymentRecord, Employee } from '../data/mockData';
+import { type UserAccount } from './Login';
 import { Button } from '../components/ui/Button';
 import {
   calculateSubscriptionAnalytics,
@@ -41,6 +42,12 @@ export const Billing: React.FC<BillingProps> = ({
   onStartMasquerade
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
+
+  // Paywall, commercial pricing & alert state parameters
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallParentCompany, setPaywallParentCompany] = useState<Company | null>(null);
+  const globalBranchPrice = 999;
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Filters and search states
   const [companySearch, setCompanySearch] = useState('');
@@ -104,7 +111,7 @@ export const Billing: React.FC<BillingProps> = ({
     setBranchForm({
       name: branch.name,
       branchCode: branch.branchCode || '',
-      location: branch.location || branch.address || '',
+      location: branch.address || '',
       email: branch.email || branch.adminEmail || '',
       phone: branch.phone || '',
       adminName: branch.adminName || '',
@@ -160,6 +167,59 @@ export const Billing: React.FC<BillingProps> = ({
     onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, status: nextStatus, accountStatus: nextStatus === 'Inactive' ? 'Suspended' : 'Active' } : c));
   };
 
+  const handleBuyBranchLicense = (parentId: string) => {
+    const parent = companies.find(c => c.id === parentId);
+    if (!parent) return;
+
+    const updatedCompanies = companies.map(c => {
+      if (c.id === parentId) {
+        return {
+          ...c,
+          purchasedAdditionalBranches: (c.purchasedAdditionalBranches || 0) + 1
+        };
+      }
+      return c;
+    });
+    
+    const newTx: PaymentRecord = {
+      id: `inv-${Date.now()}`,
+      companyId: parent.id,
+      companyName: parent.name,
+      amount: globalBranchPrice,
+      paymentDate: new Date().toISOString().split('T')[0],
+      invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      planType: `${parent.plan} Plan - Branch License Add-On`,
+      paymentMode: 'Card',
+      transactionStatus: 'Success'
+    };
+
+    onUpdateCompanies(updatedCompanies);
+    onUpdatePayments([newTx, ...payments]);
+
+    setSuccessMessage(`Branch License Add-On (₹${globalBranchPrice}) purchased successfully! Deployment quota upgraded.`);
+    setTimeout(() => setSuccessMessage(''), 5000);
+    setPaywallOpen(false);
+  };
+
+  const handleUpdateBranchCapacity = (branchId: string, cap: number) => {
+    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, employeeCapacity: cap } : c));
+    setSuccessMessage('Branch employee capacity customized successfully.');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
+  const handleUpdateBranchRenewal = (branchId: string, date: string) => {
+    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, branchRenewalDate: date } : c));
+    setSuccessMessage('Branch renewal date adjusted successfully.');
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
+  const handleToggleBranchLicenseStatus = (branchId: string, current: string) => {
+    const nextStatus = current === 'Active License' ? 'Suspended' : 'Active License';
+    onUpdateCompanies(prev => prev.map(c => c.id === branchId ? { ...c, branchLicenseStatus: nextStatus as any } : c));
+    setSuccessMessage(`Branch license status changed to ${nextStatus}.`);
+    setTimeout(() => setSuccessMessage(''), 3000);
+  };
+
   const handleSaveBranch = () => {
     if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
       alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
@@ -195,6 +255,23 @@ export const Billing: React.FC<BillingProps> = ({
       onUpdateCompanies(updatedCompanies);
       alert('Branch updated successfully.');
     } else {
+      // Quota limit validation
+      const parentCompany = companies.find(c => c.id === (parentCompanyIdForBranch || 'c-gcri'));
+      if (parentCompany) {
+        const parentPlan = plans.find(p => p.name === parentCompany.plan) || plans[2];
+        const includedBranchLimit = parentPlan.includedBranchLimit;
+        const purchasedAdditionalBranches = parentCompany.purchasedAdditionalBranches || 0;
+        const currentBranches = companies.filter(c => c.parentCompanyId === parentCompany.id);
+        
+        if (currentBranches.length >= includedBranchLimit + purchasedAdditionalBranches) {
+          // Block deployment & trigger paywall
+          setPaywallParentCompany(parentCompany);
+          setPaywallOpen(true);
+          setBranchModalOpen(false);
+          return;
+        }
+      }
+
       // Create mode
       const newId = `c-br-${Date.now()}`;
       const newBranchObj: Company = {
@@ -229,7 +306,15 @@ export const Billing: React.FC<BillingProps> = ({
         renewalDate: '2027-12-31',
         subscriptionPrice: 0,
         billingCycle: 'Monthly',
-        accountStatus: 'Active'
+        accountStatus: 'Active',
+        branchLicenseStatus: 'Active License',
+        branchRenewalDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        employeeCapacity: Number(branchForm.employeeCapacity) || 200,
+        payrollLoad: 0,
+        storageUsed: '0.1 GB',
+        activeHrUsers: 1,
+        monthlyUsage: 10,
+        branchPriceAddon: 999
       };
 
       // Auto provision Branch Admin user account!
@@ -256,7 +341,6 @@ export const Billing: React.FC<BillingProps> = ({
   // Form states
   const [newRenewalDate, setNewRenewalDate] = useState('');
   const [selectedPlanId, setSelectedPlanId] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
 
   const [renewalPlan, setRenewalPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
   const [renewalCycle, setRenewalCycle] = useState<'Monthly' | 'Yearly'>('Monthly');
@@ -501,6 +585,12 @@ export const Billing: React.FC<BillingProps> = ({
 
   return (
     <div className="space-y-6">
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-2xl text-xs flex items-center gap-2.5 shadow-sm animate-pulse">
+          <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
+          <span className="font-medium">{successMessage}</span>
+        </div>
+      )}
 
       {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -681,6 +771,12 @@ export const Billing: React.FC<BillingProps> = ({
               const daysLeft = getDaysRemaining(comp.renewalDate);
               const isSoon = daysLeft !== null ? (daysLeft <= 10 && daysLeft >= 0) : false;
 
+              const compPlan = plans.find(p => p.name === comp.plan) || plans[0];
+              const includedBranchLimit = compPlan.includedBranchLimit || 0;
+              const purchasedAdditionalBranches = comp.purchasedAdditionalBranches || 0;
+              const allowedBranchLimit = includedBranchLimit + purchasedAdditionalBranches;
+              const isSingleCompanyMode = allowedBranchLimit === 0;
+
               const statusBadge = () => {
                 switch (comp.paymentStatus) {
                   case 'Paid': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
@@ -742,9 +838,15 @@ export const Billing: React.FC<BillingProps> = ({
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Linked Regional Branches</div>
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subsidiary Branches</div>
                       <div className="mt-1 text-sm font-extrabold text-slate-800">
-                        {compBranches.length} <span className="text-[10px] font-normal text-slate-500">Sub-centers active</span>
+                        {isSingleCompanyMode ? (
+                          <span className="text-slate-400 font-normal text-xs">Disabled (Single Office)</span>
+                        ) : (
+                          <span>
+                            {compBranches.length} <span className="text-[10px] font-normal text-slate-500">Active (Quota: {allowedBranchLimit})</span>
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div>
@@ -756,108 +858,272 @@ export const Billing: React.FC<BillingProps> = ({
                     </div>
                   </div>
 
-                  {/* Branches Directory Panel */}
-                  <div className="mt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <Building2 size={16} className="text-indigo-600" />
-                        <h4 className="font-bold text-gray-800 text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
+                  {/* Dynamic Layout Adaptation */}
+                  {isSingleCompanyMode ? (
+                    <div className="mt-6 p-4 rounded-2xl bg-amber-50 border border-amber-100/60 text-amber-800 flex items-start gap-3">
+                      <AlertTriangle size={18} className="mt-0.5 text-amber-600 flex-shrink-0" />
+                      <div className="text-xs space-y-1">
+                        <div className="font-bold">⭐ Startup Mode Enabled</div>
+                        <p className="text-amber-700/90 leading-relaxed">
+                          Your workspace is operating under a simple Single-Office framework because you are on the <strong>{comp.plan} Plan</strong>. Subsidiary branches, regional billing pipelines, and multi-branch management systems are cleanly hidden. Upgrade your plan to Professional or Enterprise to unlock multi-branch SaaS capabilities instantly!
+                        </p>
                       </div>
-                      <button
-                        onClick={() => handleOpenCreateBranch(comp.id)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-colors"
-                      >
-                        <Plus size={14} /> Deploy Branch Portal
-                      </button>
                     </div>
+                  ) : (
+                    <>
+                      {/* Branches Directory Panel */}
+                      <div className="mt-6 border-t border-slate-100 pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Building2 size={16} className="text-indigo-600" />
+                            <h4 className="font-bold text-gray-800 text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
+                          </div>
+                          
+                          <div className="flex items-center gap-2">
+                            {/* Super Admin Branch license buying option */}
+                            <button
+                              onClick={() => handleBuyBranchLicense(comp.id)}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold transition-all shadow-xs"
+                            >
+                              <Plus size={13} /> Buy Branch License (₹{globalBranchPrice}/mo)
+                            </button>
+                            <button
+                              onClick={() => handleOpenCreateBranch(comp.id)}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100"
+                            >
+                              <Plus size={14} /> Deploy Branch Portal
+                            </button>
+                          </div>
+                        </div>
 
-                    {compBranches.length === 0 ? (
-                      <div className="text-center py-6 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
-                        No branches deployed yet for this workspace. Click "Deploy Branch Portal" to onboard one.
+                        <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-100/50 text-[11px] text-indigo-800 mb-4 flex items-center justify-between">
+                          <span>
+                            <strong>Quota Details:</strong> Your plan includes <strong>{includedBranchLimit}</strong> branch{includedBranchLimit !== 1 ? 'es' : ''}. You have purchased <strong>{purchasedAdditionalBranches}</strong> additional paid license{purchasedAdditionalBranches !== 1 ? 's' : ''}. Total allowance: <strong>{allowedBranchLimit} branches</strong>. Deployed: <strong>{compBranches.length} branches</strong>.
+                          </span>
+                          <span className="font-bold bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-full">
+                            {allowedBranchLimit - compBranches.length} slots free
+                          </span>
+                        </div>
+
+                        {compBranches.length === 0 ? (
+                          <div className="text-center py-8 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+                            No branches deployed yet for this workspace. Click "Deploy Branch Portal" to onboard one.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto border border-slate-100 rounded-2xl shadow-xs">
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
+                                  <th className="px-4 py-3.5">Branch details</th>
+                                  <th className="px-4 py-3.5">Code & Domain</th>
+                                  <th className="px-4 py-3.5">Admin officer</th>
+                                  <th className="px-4 py-3.5">License & Fee</th>
+                                  <th className="px-4 py-3.5">Operational portal status</th>
+                                  <th className="px-4 py-3.5 text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                                {compBranches.map((br, index) => {
+                                  const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
+                                  const isPaidAddon = index >= includedBranchLimit;
+                                  
+                                  const licenseLabel = br.branchLicenseStatus || (isPaidAddon ? 'Active License' : 'Active License');
+                                  const renewalDateStr = br.branchRenewalDate || '2027-05-22';
+                                  const currentLicensePrice = isPaidAddon ? `₹${globalBranchPrice}/mo` : 'Included';
+
+                                  return (
+                                    <tr key={br.id} className="hover:bg-slate-50/50 transition-colors">
+                                      <td className="px-4 py-3.5">
+                                        <div className="font-bold text-slate-900">{br.name}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">{br.address || ''}</div>
+                                      </td>
+                                      <td className="px-4 py-3.5">
+                                        <div className="font-mono text-[10px] text-indigo-600 bg-indigo-50/50 px-1.5 py-0.5 rounded inline-block font-bold">{br.branchCode || 'BR'}</div>
+                                        <div className="text-[10px] text-slate-400 mt-0.5">{br.domain}</div>
+                                      </td>
+                                      <td className="px-4 py-3.5">
+                                        <div className="font-medium text-slate-800">{br.adminName}</div>
+                                        <div className="text-[10px] text-slate-400">{br.adminEmail}</div>
+                                      </td>
+                                      <td className="px-4 py-3.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                            licenseLabel === 'Suspended' 
+                                              ? 'bg-rose-50 text-rose-700 border border-rose-100' 
+                                              : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+                                          }`}>
+                                            {licenseLabel}
+                                          </span>
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 mt-1">Cost: {currentLicensePrice}</div>
+                                      </td>
+                                      <td className="px-4 py-3.5">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isSuspended ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
+                                          {isSuspended ? 'Portal Suspended' : 'Portal Active'}
+                                        </span>
+                                        <div className="text-[9px] text-slate-400 mt-1">Renewal: {formatDisplayDate(renewalDateStr)}</div>
+                                      </td>
+                                      <td className="px-4 py-3.5">
+                                        <div className="flex items-center justify-end gap-1.5">
+                                          <button
+                                            onClick={() => onStartMasquerade(br.id)}
+                                            className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[10px] transition-colors"
+                                          >
+                                            Masquerade
+                                          </button>
+                                          <button
+                                            onClick={() => handleOpenEditBranch(br)}
+                                            className="p-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
+                                            title="Edit Branch Settings"
+                                          >
+                                            <Edit3 size={11} />
+                                          </button>
+                                          
+                                          {/* Super Admin billing switches */}
+                                          <button
+                                            onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
+                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${
+                                              licenseLabel === 'Suspended' 
+                                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' 
+                                                : 'border-amber-200 text-amber-700 hover:bg-amber-50'
+                                            }`}
+                                            title="Lock/Unlock License Status"
+                                          >
+                                            {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
+                                          </button>
+                                          
+                                          <button
+                                            onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
+                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${isSuspended ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
+                                          >
+                                            {isSuspended ? 'Activate Portal' : 'Suspend Portal'}
+                                          </button>
+                                          <button
+                                            onClick={() => handleRemoveBranch(br.id)}
+                                            className="p-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors"
+                                            title="Remove Branch"
+                                          >
+                                            <Trash2 size={11} />
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <div className="overflow-x-auto border border-slate-100 rounded-2xl">
-                        <table className="w-full text-left text-xs border-collapse">
-                          <thead>
-                            <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
-                              <th className="px-4 py-3">Branch Details</th>
-                              <th className="px-4 py-3">Code & Domain</th>
-                              <th className="px-4 py-3">Roster Count</th>
-                              <th className="px-4 py-3">Admin Officer</th>
-                              <th className="px-4 py-3">Statutory Status</th>
-                              <th className="px-4 py-3 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+
+                      {/* Branch Resource Utilization Analytics */}
+                      <div className="mt-8 border-t border-slate-100 pt-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <Users size={16} className="text-emerald-600" />
+                            <h4 className="font-bold text-gray-800 text-sm">Branch Usage Telemetry & Resource Analytics</h4>
+                          </div>
+                        </div>
+
+                        {compBranches.length === 0 ? (
+                          <div className="text-center py-6 text-slate-400 text-xs">
+                            No branch usage analytics available. Onboard portals to monitor live load metrics.
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {compBranches.map(br => {
                               const brEmployeesCount = employees.filter(emp => emp.companyId === br.id).length;
-                              const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
+                              const capacity = br.employeeCapacity || 200;
+                              const capacityPercent = Math.min(100, Math.round((brEmployeesCount / capacity) * 100));
+                              
+                              const activeHr = br.activeHrUsers || 2;
+                              const payroll = br.payrollLoad || 185000;
+                              const storage = br.storageUsed || '3.4 GB';
+                              const rawUsage = br.monthlyUsage || 70;
 
                               return (
-                                <tr key={br.id} className="hover:bg-slate-50/50 transition-colors">
-                                  <td className="px-4 py-3">
-                                    <div className="font-bold text-slate-900">{br.name}</div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">{br.location || br.address}</div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="font-mono text-[10px] text-indigo-600 bg-indigo-50/50 px-1.5 py-0.5 rounded inline-block font-bold">{br.branchCode || 'BR'}</div>
-                                    <div className="text-[10px] text-slate-400 mt-0.5">{br.domain}</div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="font-bold text-slate-900">{brEmployeesCount} <span className="text-[10px] text-slate-400 font-normal">employees</span></div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="font-medium text-slate-800">{br.adminName}</div>
-                                    <div className="text-[10px] text-slate-400">{br.adminEmail}</div>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isSuspended ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
-                                      {isSuspended ? 'Portal Suspended' : 'Portal Active'}
+                                <div key={br.id} className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 hover:bg-slate-50 transition-colors">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="font-bold text-slate-900 text-xs">{br.name} Usage Overview</div>
+                                    <span className="text-[10px] font-extrabold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                                      Usage: {rawUsage}%
                                     </span>
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center justify-end gap-2">
-                                      <button
-                                        onClick={() => onStartMasquerade(br.id)}
-                                        className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px] transition-colors"
-                                      >
-                                        Masquerade
-                                      </button>
-                                      <button
-                                        onClick={() => handleOpenEditBranch(br)}
-                                        className="p-1 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
-                                        title="Edit Branch Settings"
-                                      >
-                                        <Edit3 size={12} />
-                                      </button>
-                                      <button
-                                        onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
-                                        className={`px-2 py-1 border rounded-lg font-bold text-[10px] transition-colors ${isSuspended ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
-                                      >
-                                        {isSuspended ? 'Activate' : 'Suspend'}
-                                      </button>
-                                      <button
-                                        onClick={() => handleRemoveBranch(br.id)}
-                                        className="p-1 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors"
-                                        title="Remove Branch"
-                                      >
-                                        <Trash2 size={12} />
-                                      </button>
+                                  </div>
+
+                                  <div className="space-y-3.5 text-[11px] text-slate-600">
+                                    {/* Capacity Progress Bar */}
+                                    <div>
+                                      <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                                        <span>Workforce Capacity ({brEmployeesCount} / {capacity} staff)</span>
+                                        <span className="font-bold text-slate-700">{capacityPercent}%</span>
+                                      </div>
+                                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                        <div 
+                                          className={`h-full rounded-full transition-all duration-500 ${
+                                            capacityPercent > 85 ? 'bg-rose-500' : capacityPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                                          }`} 
+                                          style={{ width: `${capacityPercent}%` }}
+                                        />
+                                      </div>
                                     </div>
-                                  </td>
-                                </tr>
+
+                                    {/* Sub details metrics */}
+                                    <div className="grid grid-cols-3 gap-2 text-center pt-1">
+                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
+                                        <div className="text-[9px] text-slate-400 uppercase font-bold">HR Administrators</div>
+                                        <div className="font-extrabold text-slate-800 text-xs mt-0.5">{activeHr} accounts</div>
+                                      </div>
+                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
+                                        <div className="text-[9px] text-slate-400 uppercase font-bold">Payroll Volume</div>
+                                        <div className="font-extrabold text-emerald-700 text-xs mt-0.5">₹{payroll.toLocaleString('en-IN')}</div>
+                                      </div>
+                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
+                                        <div className="text-[9px] text-slate-400 uppercase font-bold">Storage Loaded</div>
+                                        <div className="font-extrabold text-slate-800 text-xs mt-0.5">{storage}</div>
+                                      </div>
+                                    </div>
+
+                                    {/* Super Admin Inline adjust capacity input */}
+                                    <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-slate-400 font-bold">Renewal override:</span>
+                                        <input 
+                                          type="date"
+                                          defaultValue={br.branchRenewalDate || '2027-05-22'}
+                                          onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
+                                          className="text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] text-slate-400 font-bold">Limit ceiling:</span>
+                                        <input 
+                                          type="number"
+                                          defaultValue={capacity}
+                                          onBlur={(e) => handleUpdateBranchCapacity(br.id, Number(e.target.value) || 200)}
+                                          className="w-14 text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-700 text-center focus:outline-none font-bold"
+                                        />
+                                      </div>
+                                    </div>
+
+                                  </div>
+                                </div>
                               );
                             })}
-                          </tbody>
-                        </table>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </>
+                  )}
 
                   {/* Invoices and Stats Bar */}
-                  <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                     <div>
                       Unified price: <strong className="text-slate-800">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
+                      {!isSingleCompanyMode && compBranches.length > includedBranchLimit && (
+                        <span className="ml-2 text-indigo-600 font-bold">
+                          + ₹{((compBranches.length - includedBranchLimit) * globalBranchPrice).toLocaleString('en-IN')}/mo add-ons
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <button
@@ -1798,6 +2064,104 @@ export const Billing: React.FC<BillingProps> = ({
                 className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
               >
                 {editingBranch ? 'Save Branch Settings' : 'Deploy Branch Workspace'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ─── MODAL: BRANCH LICENSE UPGRADE PAYWALL ────────────────────────── */}
+      {paywallOpen && paywallParentCompany && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <ShieldAlert size={22} className="animate-pulse" />
+                </span>
+                <div>
+                  <h4 className="font-extrabold text-gray-900 text-base">Subscription Plan Quota Exceeded</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">Scale Your Subsidiary Branch Network</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setPaywallOpen(false)} 
+                className="text-gray-400 hover:text-gray-600 bg-transparent border-none text-base cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="text-center py-4 bg-indigo-50/20 rounded-2xl border border-indigo-100/50">
+                <div className="text-xs text-slate-400 uppercase font-bold tracking-wider">Current Limit Reached</div>
+                <div className="text-4xl font-extrabold text-slate-800 mt-1">
+                  {companies.filter(c => c.parentCompanyId === paywallParentCompany.id).length} / {(plans.find(p => p.name === paywallParentCompany.plan)?.includedBranchLimit || 0) + (paywallParentCompany.purchasedAdditionalBranches || 0)}
+                </div>
+                <div className="text-[11px] text-slate-500 mt-1">Subsidiary branches successfully deployed</div>
+              </div>
+
+              <div className="space-y-4">
+                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">Upgrade Options</h5>
+                
+                {/* Add-on option */}
+                <div className="p-4 border-2 border-indigo-500 rounded-2xl bg-indigo-50/30 flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                      Buy Individual Branch Add-on
+                      <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">Popular</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Instantly increase your subsidiary portal count by <strong>1 branch</strong>. You can configure and deploy immediately. Billed as ₹999/month.
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="text-lg font-extrabold text-indigo-700">₹{globalBranchPrice}</div>
+                    <div className="text-[9px] text-slate-400">/ month</div>
+                    <button
+                      onClick={() => handleBuyBranchLicense(paywallParentCompany.id)}
+                      className="mt-3.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
+                    >
+                      Buy Add-On
+                    </button>
+                  </div>
+                </div>
+
+                {/* Plan Tier Upgrade Option */}
+                <div className="p-4 border border-slate-200 rounded-2xl hover:border-slate-300 transition-colors flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="font-bold text-sm text-slate-800">Change Base Pricing Plan</div>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      Adjust your base corporate tier (Starter: 0 branches, Professional: 1 branch, Enterprise: 2 branches) to scale high-tier boundaries.
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0 self-center">
+                    <button
+                      onClick={() => {
+                        setPaywallOpen(false);
+                        setSelectedPlanId(plans.find(p => p.name === paywallParentCompany.plan)?.id || plans[0].id);
+                        setChangingPlanCompany(paywallParentCompany);
+                      }}
+                      className="px-3.5 py-1.5 border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      Change Plan
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              <div className="text-[10px] text-slate-400 text-center leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-100">
+                🔒 Secured Stripe & Razorpay Payment pipelines. Commercial branches are subject to unified regional security boundaries, automatic compliance checks, and SLA processing guarantees.
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50/50">
+              <button
+                type="button"
+                onClick={() => setPaywallOpen(false)}
+                className="px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Close Window
               </button>
             </div>
           </div>

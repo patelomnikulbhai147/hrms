@@ -52,6 +52,17 @@ export interface Company {
   branchName?: string;
   branchCode?: string;
   isHeadOffice?: boolean;
+
+  // Subscription Add-ons and usage telemetry fields
+  purchasedAdditionalBranches?: number;
+  branchLicenseStatus?: 'Active License' | 'Pending Upgrade' | 'Suspended';
+  branchRenewalDate?: string;
+  employeeCapacity?: number;
+  payrollLoad?: number;
+  storageUsed?: string;
+  activeHrUsers?: number;
+  monthlyUsage?: number;
+  branchPriceAddon?: number;
 }
 
 export interface Employee {
@@ -217,6 +228,7 @@ export interface SubscriptionPlan {
   storageLimit: string;
   payrollAccess: boolean;
   documentAccess: boolean;
+  includedBranchLimit: number;
 }
 
 export interface PaymentRecord {
@@ -273,7 +285,8 @@ export const companies: Company[] = [
     subscriptionPrice: 12999,
     billingCycle: 'Monthly',
     accountStatus: 'Active',
-    isHeadOffice: true
+    isHeadOffice: true,
+    purchasedAdditionalBranches: 2
   },
   {
     id: 'c-ahmedabad',
@@ -310,7 +323,15 @@ export const companies: Company[] = [
     parentCompanyId: 'c-gcri',
     branchName: 'Ahmedabad',
     branchCode: 'GCRI-AMD',
-    isHeadOffice: false
+    isHeadOffice: false,
+    branchLicenseStatus: 'Active License',
+    branchRenewalDate: '2027-05-22',
+    employeeCapacity: 1000,
+    payrollLoad: 4250000,
+    storageUsed: '45.2 GB',
+    activeHrUsers: 4,
+    monthlyUsage: 94,
+    branchPriceAddon: 0
   },
   {
     id: 'c-rajkot',
@@ -347,7 +368,15 @@ export const companies: Company[] = [
     parentCompanyId: 'c-gcri',
     branchName: 'Rajkot',
     branchCode: 'GCRI-RJT',
-    isHeadOffice: false
+    isHeadOffice: false,
+    branchLicenseStatus: 'Active License',
+    branchRenewalDate: '2027-06-15',
+    employeeCapacity: 200,
+    payrollLoad: 185000,
+    storageUsed: '3.4 GB',
+    activeHrUsers: 2,
+    monthlyUsage: 72,
+    branchPriceAddon: 999
   },
   {
     id: 'c-bhavnagar',
@@ -384,7 +413,15 @@ export const companies: Company[] = [
     parentCompanyId: 'c-gcri',
     branchName: 'Bhavnagar',
     branchCode: 'GCRI-BHV',
-    isHeadOffice: false
+    isHeadOffice: false,
+    branchLicenseStatus: 'Active License',
+    branchRenewalDate: '2027-07-20',
+    employeeCapacity: 200,
+    payrollLoad: 124000,
+    storageUsed: '1.8 GB',
+    activeHrUsers: 2,
+    monthlyUsage: 64,
+    branchPriceAddon: 999
   },
   {
     id: 'c-siddhpur',
@@ -421,7 +458,15 @@ export const companies: Company[] = [
     parentCompanyId: 'c-gcri',
     branchName: 'Siddhpur',
     branchCode: 'GCRI-SDP',
-    isHeadOffice: false
+    isHeadOffice: false,
+    branchLicenseStatus: 'Active License',
+    branchRenewalDate: '2027-08-12',
+    employeeCapacity: 200,
+    payrollLoad: 135000,
+    storageUsed: '2.1 GB',
+    activeHrUsers: 1,
+    monthlyUsage: 58,
+    branchPriceAddon: 999
   }
 ];
 

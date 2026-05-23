@@ -49,9 +49,9 @@ const defaultUsers: UserAccount[] = [
 ];
 
 const defaultPlans: SubscriptionPlan[] = [
-  { id: 'sp1', name: 'Starter', priceMonthly: 1999, priceYearly: 19999, employeeLimit: 25, hrLimit: 2, storageLimit: '5 GB', payrollAccess: true, documentAccess: false },
-  { id: 'sp2', name: 'Professional', priceMonthly: 4999, priceYearly: 49999, employeeLimit: 100, hrLimit: 5, storageLimit: '25 GB', payrollAccess: true, documentAccess: true },
-  { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: 9999, hrLimit: 9999, storageLimit: '100 GB', payrollAccess: true, documentAccess: true }
+  { id: 'sp1', name: 'Starter', priceMonthly: 1999, priceYearly: 19999, employeeLimit: 25, hrLimit: 2, storageLimit: '5 GB', payrollAccess: true, documentAccess: false, includedBranchLimit: 0 },
+  { id: 'sp2', name: 'Professional', priceMonthly: 4999, priceYearly: 49999, employeeLimit: 100, hrLimit: 5, storageLimit: '25 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 1 },
+  { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: 9999, hrLimit: 9999, storageLimit: '100 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 2 }
 ];
 
 const defaultPayments: PaymentRecord[] = [];
@@ -98,130 +98,12 @@ export const SAFE_COMPANY_FALLBACK: any = {
   accountStatus: 'Active'
 };
 
-const seedDataForCompany = (companyId: string, companyName: string) => {
-  const seededEmployees: Employee[] = [
-    {
-      id: `emp-${companyId}-1`,
-      employeeId: `EMP-${companyId.toUpperCase()}-01`,
-      companyId,
-      name: 'Arjun Mehta',
-      email: `arjun.mehta@${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'company'}.com`,
-      phone: '+91 98123 45671',
-      department: 'Engineering',
-      designation: 'Senior Developer',
-      role: 'Staff',
-      status: 'Active',
-      joinDate: '2025-03-10',
-      location: 'Mumbai, India',
-      avatar: 'AM',
-      salary: 950000,
-      manager: 'Company Head'
-    },
-    {
-      id: `emp-${companyId}-2`,
-      employeeId: `EMP-${companyId.toUpperCase()}-02`,
-      companyId,
-      name: 'Kavita Rao',
-      email: `kavita.rao@${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'company'}.com`,
-      phone: '+91 98123 45672',
-      department: 'Human Resources',
-      designation: 'HR Specialist',
-      role: 'Staff',
-      status: 'Active',
-      joinDate: '2025-06-15',
-      location: 'Bangalore, India',
-      avatar: 'KR',
-      salary: 620000,
-      manager: 'Company Head'
-    },
-    {
-      id: `emp-${companyId}-3`,
-      employeeId: `EMP-${companyId.toUpperCase()}-03`,
-      companyId,
-      name: 'Siddharth Nair',
-      email: `siddharth.nair@${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'company'}.com`,
-      phone: '+91 98123 45673',
-      department: 'Sales',
-      designation: 'Account Executive',
-      role: 'Staff',
-      status: 'Active',
-      joinDate: '2025-08-01',
-      location: 'Delhi, India',
-      avatar: 'SN',
-      salary: 780000,
-      manager: 'Company Head'
-    },
-    {
-      id: `emp-${companyId}-4`,
-      employeeId: `EMP-${companyId.toUpperCase()}-04`,
-      companyId,
-      name: 'Nisha Desai',
-      email: `nisha.desai@${companyName.toLowerCase().replace(/[^a-z0-9]/g, '') || 'company'}.com`,
-      phone: '+91 98123 45674',
-      department: 'Finance',
-      designation: 'Finance Lead',
-      role: 'Staff',
-      status: 'Active',
-      joinDate: '2025-11-20',
-      location: 'Pune, India',
-      avatar: 'ND',
-      salary: 850000,
-      manager: 'Company Head'
-    }
-  ];
 
-  const seededLeaves: LeaveRequest[] = [
-    {
-      id: `l-seeded-${companyId}-1`,
-      companyId,
-      employeeId: `emp-${companyId}-2`,
-      employeeName: 'Kavita Rao',
-      department: 'Human Resources',
-      leaveType: 'Sick',
-      fromDate: '2026-05-18',
-      toDate: '2026-05-19',
-      days: 2,
-      reason: 'Suffering from seasonal fever. Medical certificate submitted.',
-      status: 'Approved',
-      appliedOn: '2026-05-17'
-    },
-    {
-      id: `l-seeded-${companyId}-2`,
-      companyId,
-      employeeId: `emp-${companyId}-3`,
-      employeeName: 'Siddharth Nair',
-      department: 'Sales',
-      leaveType: 'Casual',
-      fromDate: '2026-05-24',
-      toDate: '2026-05-26',
-      days: 3,
-      reason: 'Attending family function out of town.',
-      status: 'Pending',
-      appliedOn: '2026-05-20'
-    }
-  ];
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const seededAttendance: AttendanceRecord[] = seededEmployees.map((emp, idx) => ({
-    id: `a-seeded-${companyId}-${idx}`,
-    companyId,
-    employeeId: emp.id,
-    employeeName: emp.name,
-    department: emp.department,
-    date: todayStr,
-    clockIn: idx === 2 ? '09:45' : '09:12',
-    clockOut: idx === 1 ? '17:00' : '18:15',
-    hoursWorked: idx === 2 ? 7.5 : 9.0,
-    status: idx === 2 ? 'Late' : (idx === 1 ? 'Half Day' : 'Present')
-  }));
-
-  return { seededEmployees, seededLeaves, seededAttendance };
-};
 
 export default function App() {
   // Auto-migration: check if browser has cached the old mock database or is missing our new branch seeding, and clear it for a clean slate
   if (typeof window !== 'undefined') {
-    const realMigrated = localStorage.getItem('hrms_real_migration_v3');
+    const realMigrated = localStorage.getItem('hrms_real_migration_v4');
     if (!realMigrated) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
@@ -232,7 +114,7 @@ export default function App() {
       localStorage.removeItem('hrms_documents');
       localStorage.removeItem('hrms_payments');
       localStorage.removeItem('hrms_active_company_id');
-      localStorage.setItem('hrms_real_migration_v3', 'true');
+      localStorage.setItem('hrms_real_migration_v4', 'true');
       window.location.reload();
     }
   }
@@ -808,6 +690,8 @@ export default function App() {
             payroll={payroll}
             documents={documents}
             plans={plans}
+            notifications={notifications}
+            onUpdateNotifications={setNotifications}
             onUpdateCompanies={handleUpdateCompanies}
             onUpdatePayments={handleUpdatePayments}
             onUpdateEmployees={handleUpdateEmployees}

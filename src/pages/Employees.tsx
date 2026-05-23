@@ -70,7 +70,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tabs in drawer
-  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address'>('personal');
 
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
@@ -577,7 +577,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const mapped = allExcelParsedEmployees.map(emp => ({
       ...emp,
       companyId: activeCompanyId,
-      role: 'Staff',
+      role: 'Employee' as Role,
       status: (emp.status || 'Active') as any
     }));
     onUpdateEmployees([...mapped, ...employees]);

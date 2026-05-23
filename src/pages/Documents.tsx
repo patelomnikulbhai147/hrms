@@ -4,7 +4,7 @@ import {
   Award,
   Plus, Edit, Trash2, ZoomIn, ZoomOut, Sparkles, Sliders, Palette, Printer,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, Table2, User, Landmark, Tag, Info,
-  Upload, Check, ShieldCheck, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Eye, EyeOff, FileCheck
+  Upload, Check, ShieldCheck, ChevronLeft, ChevronRight, Eye
 } from 'lucide-react';
 import {
   type Employee,
@@ -208,12 +208,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   });
 
   // Local compliance override & filtering states
-  const [localEmpOverrides, setLocalEmpOverrides] = useState<Record<string, Partial<Employee>>>({});
-  const [complianceSearch, setComplianceSearch] = useState('');
-  const [complianceStatusFilter, setComplianceStatusFilter] = useState('');
-  const [compliancePage, setCompliancePage] = useState(1);
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
-  const itemsPerPage = 5;
 
   // Dossier list redesigned states
   const [dossierSearch, setDossierSearch] = useState('');

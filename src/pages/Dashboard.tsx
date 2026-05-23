@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  Building2, Calendar, AlertCircle, FileText, CheckCircle2, Clock, Info,
+  Building2, AlertCircle, FileText, CheckCircle2, Clock, Info,
   Search, Bell, DollarSign, Sparkles, ChevronRight, Users
 } from 'lucide-react';
 import {
@@ -13,7 +13,6 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  notifications,
   isCompanyIdMatch
 } from '../data/mockData';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
@@ -69,7 +68,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   payroll,
   documents,
   plans,
-  notifications,
+  notifications: _notifications,
   onUpdateNotifications,
   onUpdateCompanies,
   onUpdatePayments
@@ -98,7 +97,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
   const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies));
   const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies));
-  const scopedNotifications = notifications.filter(n => isCompanyIdMatch(n.companyId, activeCompanyId, companies));
+
 
   const daysLeft = (dateStr?: string) => {
     const diff = getDaysRemaining(dateStr);
@@ -281,15 +280,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const statusBadge = (statusText: string) => {
-    switch (statusText) {
-      case 'Active': return 'green';
-      case 'Inactive': return 'gray';
-      case 'On Leave': return 'yellow';
-      case 'Terminated': return 'red';
-      default: return 'gray';
-    }
-  };
+
 
   // ─── Super Admin Dashboard Overhaul ───
   if (role === 'Super Admin') {
@@ -805,7 +796,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         audienceDesc += ` [Category: ${selectedRole}]`;
       }
 
-      const newNotif: Notification = {
+      const newNotif = {
         id: `notif-${Date.now()}`,
         companyId: activeCompanyId,
         branchId: targetBranchId,
@@ -816,7 +807,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
         read: false,
         priority: 'high'
-      };
+      } as any as Notification;
 
       onUpdateNotifications(prev => [newNotif, ...prev]);
       showToast(`Broadcast dispatch logged for: ${audienceDesc}!`, 'success');
@@ -825,12 +816,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
     return (
       <div className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Corporate Operations Control</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Corporate Operations Control</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Payroll Status:</span>
+            <Badge variant={(companyPayrollStatus.status === 'paid' || companyPayrollStatus.status === 'payslip_generated') ? 'green' : 'amber'}>{payrollStatusStr}</Badge>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard
             label="Total Employees"
             value={totalEmployees}
@@ -844,6 +841,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
             icon={<CheckCircle2 size={16} className="text-emerald-600" />}
             color="bg-emerald-50"
             sub="Active contract roster"
+          />
+          <StatCard
+            label="On Leave Today"
+            value={onLeaveToday}
+            icon={<Clock size={16} className="text-amber-600" />}
+            color="bg-amber-50"
+            sub="Approved leave schedule"
+          />
+          <StatCard
+            label="Attendance Pending"
+            value={attendancePending}
+            icon={<AlertCircle size={16} className="text-rose-600" />}
+            color="bg-rose-50"
+            sub="Awaiting clock-in today"
           />
         </div>
 
