@@ -62,16 +62,16 @@ export const Topbar: React.FC<TopbarProps> = ({
     <div className="flex flex-col flex-shrink-0 z-30 sticky top-0">
       {/* Masquerade Alert Banner */}
       {isMasquerading && (
-        <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-amber-950 px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-md">
+        <div className="bg-amber-950/30 backdrop-blur-md border-b border-amber-500/20 text-amber-300 px-4 py-1.5 text-xs font-bold flex items-center justify-between gap-3 shadow-lg select-none">
           <div className="flex items-center gap-2">
-            <ShieldAlert size={15} className="animate-bounce" />
-            <span>Active Masquerade: Managing HR environment for <strong>{currentCompany?.name}</strong>.</span>
+            <ShieldAlert size={14} className="animate-pulse text-amber-400" />
+            <span className="tracking-tight text-[11px]">Active Tenant Masquerade: Viewing HR workspace for <strong className="text-white">{currentCompany?.name}</strong></span>
           </div>
           <button
             onClick={onExitMasquerade}
-            className="bg-amber-955 hover:bg-amber-900 text-white px-3 py-1 rounded-lg transition-all text-[10px] font-bold shadow active:scale-95"
+            className="bg-amber-500/10 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 px-2.5 py-0.5 rounded-lg transition-all text-[9px] font-extrabold uppercase tracking-wider shadow active:scale-95"
           >
-            Exit Masquerade
+            Exit Session
           </button>
         </div>
       )}
