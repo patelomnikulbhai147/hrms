@@ -13,9 +13,9 @@ export const Card: React.FC<CardProps> = ({ children, className, padding = true,
   <div
     id={id}
     className={cn(
-      'bg-white rounded-xl border border-slate-200/80 shadow-sm transition-all duration-300',
-      onClick && 'cursor-pointer hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-300 hover:-translate-y-0.5 active:scale-[0.99]',
-      padding && 'p-5',
+      'bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm transition-all duration-300',
+      onClick && 'cursor-pointer hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-200 hover:-translate-y-1 active:scale-[0.99]',
+      padding && 'p-5.5',
       className
     )}
     onClick={onClick}
@@ -34,14 +34,14 @@ interface StatCardProps {
 }
 
 export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color, sub }) => (
-  <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm p-5 flex items-start gap-4 hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-300 hover:-translate-y-0.5 transition-all duration-300">
-    <div className={cn('p-3 rounded-lg flex-shrink-0 text-white shadow-sm shadow-current/10', color)}>
+  <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5.5 flex items-start gap-4 hover:shadow-md hover:shadow-slate-200/50 hover:border-slate-200 hover:-translate-y-1 transition-all duration-300">
+    <div className={cn('p-3.5 rounded-xl flex-shrink-0 text-white shadow-sm', color)}>
       {icon}
     </div>
     <div className="min-w-0">
-      <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold text-slate-900 mt-1 font-heading">{value}</p>
-      {sub && <p className="text-xs text-slate-400 mt-1 font-medium">{sub}</p>}
+      <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">{label}</p>
+      <p className="text-2xl font-extrabold text-slate-800 mt-1.5 font-heading tracking-tight">{value}</p>
+      {sub && <p className="text-xs text-slate-550 mt-1 font-medium">{sub}</p>}
     </div>
   </div>
 );

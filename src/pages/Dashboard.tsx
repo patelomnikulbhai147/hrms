@@ -398,7 +398,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Dynamic Metric Cards (Top cards keeping only important) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Companies</span>
               <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
@@ -413,7 +413,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Branches</span>
               <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
@@ -428,7 +428,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Combined Employees</span>
               <div className="p-2 bg-violet-50 text-violet-600 rounded-lg">
@@ -443,7 +443,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Subscriptions</span>
               <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
@@ -458,7 +458,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Renewals Due</span>
               <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
@@ -473,7 +473,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
+          <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Revenue</span>
               <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
