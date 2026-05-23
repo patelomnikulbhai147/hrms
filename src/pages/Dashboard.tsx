@@ -104,6 +104,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
     setSelectedBranch(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
   }, [activeCompanyId, isParentCompany]);
 
+  useEffect(() => {
+    if (companies.length > 0 && role !== 'Super Admin' && !currentCompany) {
+      onNavigate('companies');
+    }
+  }, [companies, role, currentCompany, onNavigate]);
+
   // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
   const scopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
   const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
