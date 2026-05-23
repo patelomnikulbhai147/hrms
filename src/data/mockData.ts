@@ -233,13 +233,28 @@ export interface Notification {
   priority: 'high' | 'medium' | 'low';
 }
 
+export const PLAN_LIMITS = {
+  Starter: {
+    employees: 100,
+    hrAdmins: 3
+  },
+  Professional: {
+    employees: 1000,
+    hrAdmins: 15
+  },
+  Enterprise: {
+    employees: 'Unlimited' as const,
+    hrAdmins: 'Unlimited' as const
+  }
+};
+
 export interface SubscriptionPlan {
   id: string;
   name: string;
   priceMonthly: number;
   priceYearly: number;
-  employeeLimit: number;
-  hrLimit: number;
+  employeeLimit: number | 'Unlimited';
+  hrLimit: number | 'Unlimited';
   storageLimit: string;
   payrollAccess: boolean;
   documentAccess: boolean;

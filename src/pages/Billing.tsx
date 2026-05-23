@@ -144,7 +144,7 @@ export const Billing: React.FC<BillingProps> = ({
     if (!confirmDelete) return;
 
     const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
-    
+
     if (reassign) {
       const updated = employees.map(emp => {
         if (emp.companyId === branchId) {
@@ -174,9 +174,9 @@ export const Billing: React.FC<BillingProps> = ({
     if (!branch || !branch.parentCompanyId) return;
 
     const nextStatus = current === 'Active' ? 'Inactive' : 'Active';
-    const updated = companies.map(c => c.id === branchId ? { 
-      ...c, 
-      status: nextStatus as any, 
+    const updated = companies.map(c => c.id === branchId ? {
+      ...c,
+      status: nextStatus as any,
       accountStatus: nextStatus === 'Inactive' ? 'Suspended' : 'Active' as any,
       branchPortalActive: nextStatus === 'Active'
     } : c);
@@ -246,8 +246,8 @@ export const Billing: React.FC<BillingProps> = ({
     const nextStatus = current === 'Active License' ? 'Suspended' : 'Active License';
     const nextIsActive = nextStatus === 'Active License';
 
-    const updated = companies.map(c => c.id === branchId ? { 
-      ...c, 
+    const updated = companies.map(c => c.id === branchId ? {
+      ...c,
       branchLicenseStatus: nextStatus as any,
       branchLicenseActive: nextIsActive
     } : c);
@@ -263,7 +263,7 @@ export const Billing: React.FC<BillingProps> = ({
       alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
       return;
     }
-    
+
     if (editingBranch) {
       // Edit mode
       const updatedCompanies = companies.map(c => {
@@ -362,7 +362,7 @@ export const Billing: React.FC<BillingProps> = ({
       onUpdateCompanies(finalized);
       alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
     }
-    
+
     setBranchModalOpen(false);
   };
 
@@ -556,7 +556,30 @@ export const Billing: React.FC<BillingProps> = ({
   const handleSavePlanSettings = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPlan) return;
-    onUpdatePlans(prev => prev.map(p => p.id === editingPlan.id ? editingPlan : p));
+
+    const finalizedPlan = { ...editingPlan };
+    if (finalizedPlan.name === 'Enterprise') {
+      finalizedPlan.employeeLimit = 'Unlimited';
+      finalizedPlan.hrLimit = 'Unlimited';
+    } else {
+      if (finalizedPlan.name === 'Starter') {
+        if (!finalizedPlan.employeeLimit || finalizedPlan.employeeLimit === 'Unlimited' || finalizedPlan.employeeLimit <= 0) {
+          finalizedPlan.employeeLimit = 100;
+        }
+        if (!finalizedPlan.hrLimit || finalizedPlan.hrLimit === 'Unlimited' || finalizedPlan.hrLimit <= 0) {
+          finalizedPlan.hrLimit = 3;
+        }
+      } else if (finalizedPlan.name === 'Professional') {
+        if (!finalizedPlan.employeeLimit || finalizedPlan.employeeLimit === 'Unlimited' || finalizedPlan.employeeLimit <= 0) {
+          finalizedPlan.employeeLimit = 1000;
+        }
+        if (!finalizedPlan.hrLimit || finalizedPlan.hrLimit === 'Unlimited' || finalizedPlan.hrLimit <= 0) {
+          finalizedPlan.hrLimit = 15;
+        }
+      }
+    }
+
+    onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? finalizedPlan : p));
     setEditingPlan(null);
   };
 
@@ -951,7 +974,7 @@ export const Billing: React.FC<BillingProps> = ({
                                 </div>
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-2 self-end lg:self-center">
                               <button
                                 onClick={() => handleAdjustBranchSlots(comp.id, 'remove')}
@@ -997,7 +1020,7 @@ export const Billing: React.FC<BillingProps> = ({
                                 {compBranches.map((br, index) => {
                                   const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
                                   const isPaidAddon = index >= includedBranchLimit;
-                                  
+
                                   const licenseLabel = br.branchLicenseStatus || (isPaidAddon ? 'Active License' : 'Active License');
                                   const renewalDateStr = br.branchRenewalDate || '2027-05-22';
                                   const currentLicensePrice = isPaidAddon ? `₹${globalBranchPrice}/mo` : 'Included';
@@ -1018,11 +1041,10 @@ export const Billing: React.FC<BillingProps> = ({
                                       </td>
                                       <td className="px-4 py-3.5">
                                         <div className="flex items-center gap-1.5">
-                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                            licenseLabel === 'Suspended' 
-                                              ? 'bg-rose-50 text-rose-700 border border-rose-100' 
+                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${licenseLabel === 'Suspended'
+                                              ? 'bg-rose-50 text-rose-700 border border-rose-100'
                                               : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                          }`}>
+                                            }`}>
                                             {licenseLabel}
                                           </span>
                                         </div>
@@ -1049,20 +1071,19 @@ export const Billing: React.FC<BillingProps> = ({
                                           >
                                             <Edit3 size={11} />
                                           </button>
-                                          
+
                                           {/* Super Admin billing switches */}
                                           <button
                                             onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
-                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${
-                                              licenseLabel === 'Suspended' 
-                                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' 
+                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${licenseLabel === 'Suspended'
+                                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
                                                 : 'border-amber-200 text-amber-700 hover:bg-amber-50'
-                                            }`}
+                                              }`}
                                             title="Lock/Unlock License Status"
                                           >
                                             {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
                                           </button>
-                                          
+
                                           <button
                                             onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
                                             className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${isSuspended ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
@@ -1106,7 +1127,7 @@ export const Billing: React.FC<BillingProps> = ({
                               const brEmployeesCount = employees.filter(emp => emp.companyId === br.id).length;
                               const capacity = br.employeeCapacity || 200;
                               const capacityPercent = Math.min(100, Math.round((brEmployeesCount / capacity) * 100));
-                              
+
                               const activeHr = br.activeHrUsers || 2;
                               const payroll = br.payrollLoad || 185000;
                               const storage = br.storageUsed || '3.4 GB';
@@ -1129,10 +1150,9 @@ export const Billing: React.FC<BillingProps> = ({
                                         <span className="font-bold text-slate-700">{capacityPercent}%</span>
                                       </div>
                                       <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                                        <div 
-                                          className={`h-full rounded-full transition-all duration-500 ${
-                                            capacityPercent > 85 ? 'bg-rose-500' : capacityPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
-                                          }`} 
+                                        <div
+                                          className={`h-full rounded-full transition-all duration-500 ${capacityPercent > 85 ? 'bg-rose-500' : capacityPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                                            }`}
                                           style={{ width: `${capacityPercent}%` }}
                                         />
                                       </div>
@@ -1158,7 +1178,7 @@ export const Billing: React.FC<BillingProps> = ({
                                     <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                                       <div className="flex items-center gap-1.5">
                                         <span className="text-[10px] text-slate-400 font-bold">Renewal override:</span>
-                                        <input 
+                                        <input
                                           type="date"
                                           defaultValue={br.branchRenewalDate || '2027-05-22'}
                                           onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
@@ -1170,7 +1190,7 @@ export const Billing: React.FC<BillingProps> = ({
                                         <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100/60 px-2 py-0.5 rounded-lg">
                                           {capacity} Employees
                                         </span>
-                                        
+
                                         {/* Capacity Controlled Upgrade Options */}
                                         <div className="flex items-center gap-1 ml-1.5">
                                           {capacity === 200 && (
@@ -1297,11 +1317,11 @@ export const Billing: React.FC<BillingProps> = ({
                 <ul className="mt-6 space-y-3.5 text-sm text-gray-600 border-t border-gray-50 pt-5">
                   <li className="flex items-center gap-2.5">
                     <Users size={16} className="text-blue-500" />
-                    <span>Up to <strong>{plan.employeeLimit === 9999 ? 'Unlimited' : plan.employeeLimit}</strong> Active Employees</span>
+                    <span>Up to <strong>{plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit}</strong> Active Employees</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <UserCheck size={16} className="text-blue-500" />
-                    <span>Up to <strong>{plan.hrLimit === 9999 ? 'Unlimited' : plan.hrLimit}</strong> HR Admins</span>
+                    <span>Up to <strong>{plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit}</strong> HR Admins</span>
                   </li>
                   <li className="flex items-center gap-2.5">
                     <CreditCard size={16} className="text-blue-500" />
@@ -1563,7 +1583,7 @@ export const Billing: React.FC<BillingProps> = ({
                 >
                   {plans.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} — ₹{p.priceMonthly}/mo (Max {p.employeeLimit === 9999 ? 'Unlimited' : p.employeeLimit} employees)
+                      {p.name} — ₹{p.priceMonthly}/mo (Max {p.employeeLimit === 'Unlimited' ? 'Unlimited' : p.employeeLimit} employees)
                     </option>
                   ))}
                 </select>
@@ -1841,23 +1861,41 @@ export const Billing: React.FC<BillingProps> = ({
                   <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide">
                     Employee Capacity Limit
                   </label>
-                  <input
-                    type="number"
-                    value={editingPlan.employeeLimit}
-                    onChange={(e) => setEditingPlan({ ...editingPlan, employeeLimit: Number(e.target.value) })}
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  {editingPlan.name === 'Enterprise' ? (
+                    <input
+                      type="text"
+                      disabled
+                      value="Unlimited"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-gray-50 text-gray-400 font-bold outline-none cursor-not-allowed"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={editingPlan.employeeLimit === 'Unlimited' ? '' : editingPlan.employeeLimit}
+                      onChange={(e) => setEditingPlan({ ...editingPlan, employeeLimit: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide">
                     HR Admin Limit
                   </label>
-                  <input
-                    type="number"
-                    value={editingPlan.hrLimit}
-                    onChange={(e) => setEditingPlan({ ...editingPlan, hrLimit: Number(e.target.value) })}
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  {editingPlan.name === 'Enterprise' ? (
+                    <input
+                      type="text"
+                      disabled
+                      value="Unlimited"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-gray-50 text-gray-400 font-bold outline-none cursor-not-allowed"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={editingPlan.hrLimit === 'Unlimited' ? '' : editingPlan.hrLimit}
+                      onChange={(e) => setEditingPlan({ ...editingPlan, hrLimit: e.target.value === '' ? 0 : Number(e.target.value) })}
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -2007,7 +2045,7 @@ export const Billing: React.FC<BillingProps> = ({
               {/* General details */}
               <div className="space-y-4">
                 <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">1. General Subsidiary Profiles</h5>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">Branch Name</label>
@@ -2081,7 +2119,7 @@ export const Billing: React.FC<BillingProps> = ({
               {/* Threshold limits */}
               <div className="space-y-4 border-t border-slate-100 pt-5">
                 <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">2. Regional Limits & Settings</h5>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 mb-1">Employee Capacity Limit</label>
@@ -2130,7 +2168,7 @@ export const Billing: React.FC<BillingProps> = ({
               {/* Statutory parameters */}
               <div className="space-y-4 border-t border-slate-100 pt-5">
                 <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">3. Statutory Payroll Parameters Override</h5>
-                
+
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-gray-500 mb-1">PF Contribution Rate (%)</label>
@@ -2216,8 +2254,8 @@ export const Billing: React.FC<BillingProps> = ({
                   <p className="text-xs text-gray-500 mt-0.5">Scale Your Subsidiary Branch Network</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setPaywallOpen(false)} 
+              <button
+                onClick={() => setPaywallOpen(false)}
                 className="text-gray-400 hover:text-gray-600 bg-transparent border-none text-base cursor-pointer"
               >
                 ✕
@@ -2235,7 +2273,7 @@ export const Billing: React.FC<BillingProps> = ({
 
               <div className="space-y-4">
                 <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">Upgrade Options</h5>
-                
+
                 {/* Add-on option */}
                 <div className="p-4 border-2 border-indigo-500 rounded-2xl bg-indigo-50/30 flex items-start justify-between gap-3">
                   <div className="space-y-1">

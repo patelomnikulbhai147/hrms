@@ -27,7 +27,8 @@ import {
   Document,
   SubscriptionPlan,
   PaymentRecord,
-  Notification
+  Notification,
+  PLAN_LIMITS
 } from './data/mockData';
 import { allExcelParsedEmployees } from './data/excelSeededData';
 import { calculateBranchBilling } from './utils/subscriptionUtils';
@@ -50,9 +51,9 @@ const defaultUsers: UserAccount[] = [
 ];
 
 const defaultPlans: SubscriptionPlan[] = [
-  { id: 'sp1', name: 'Starter', priceMonthly: 1999, priceYearly: 19999, employeeLimit: 25, hrLimit: 2, storageLimit: '5 GB', payrollAccess: true, documentAccess: false, includedBranchLimit: 0 },
-  { id: 'sp2', name: 'Professional', priceMonthly: 4999, priceYearly: 49999, employeeLimit: 100, hrLimit: 5, storageLimit: '25 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 1 },
-  { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: 9999, hrLimit: 9999, storageLimit: '100 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 2 }
+  { id: 'sp1', name: 'Starter', priceMonthly: 1999, priceYearly: 19999, employeeLimit: PLAN_LIMITS.Starter.employees, hrLimit: PLAN_LIMITS.Starter.hrAdmins, storageLimit: '5 GB', payrollAccess: true, documentAccess: false, includedBranchLimit: 0 },
+  { id: 'sp2', name: 'Professional', priceMonthly: 4999, priceYearly: 49999, employeeLimit: PLAN_LIMITS.Professional.employees, hrLimit: PLAN_LIMITS.Professional.hrAdmins, storageLimit: '25 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 1 },
+  { id: 'sp3', name: 'Enterprise', priceMonthly: 12999, priceYearly: 129999, employeeLimit: PLAN_LIMITS.Enterprise.employees, hrLimit: PLAN_LIMITS.Enterprise.hrAdmins, storageLimit: '100 GB', payrollAccess: true, documentAccess: true, includedBranchLimit: 2 }
 ];
 
 const defaultPayments: PaymentRecord[] = [];
@@ -228,7 +229,41 @@ export default function App() {
   // Persistent SaaS plans state
   const [plans, setPlans] = useState<SubscriptionPlan[]>(() => {
     const raw = localStorage.getItem('hrms_plans');
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      try {
+        const parsed: SubscriptionPlan[] = JSON.parse(raw);
+        let updated = false;
+        const sanitized = parsed.map(plan => {
+          const limits = PLAN_LIMITS[plan.name as keyof typeof PLAN_LIMITS];
+          if (limits) {
+            if (plan.employeeLimit !== limits.employees || plan.hrLimit !== limits.hrAdmins) {
+              updated = true;
+              return {
+                ...plan,
+                employeeLimit: limits.employees,
+                hrLimit: limits.hrAdmins
+              };
+            }
+          }
+          return plan;
+        });
+
+        const hasAll = defaultPlans.every(dp => sanitized.some(p => p.name === dp.name));
+        if (updated || !hasAll) {
+          const merged = defaultPlans.map(dp => {
+            const existing = sanitized.find(p => p.name === dp.name);
+            return existing ? { ...existing, employeeLimit: PLAN_LIMITS[existing.name as keyof typeof PLAN_LIMITS].employees, hrLimit: PLAN_LIMITS[existing.name as keyof typeof PLAN_LIMITS].hrAdmins } : dp;
+          });
+          localStorage.setItem('hrms_plans', JSON.stringify(merged));
+          return merged;
+        }
+
+        return sanitized;
+      } catch (e) {
+        localStorage.setItem('hrms_plans', JSON.stringify(defaultPlans));
+        return defaultPlans;
+      }
+    }
     localStorage.setItem('hrms_plans', JSON.stringify(defaultPlans));
     return defaultPlans;
   });
