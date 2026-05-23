@@ -211,7 +211,7 @@ export const calculateBranchBilling = (
 
   const parentPlan = plans.find(p => p.name === parent.plan);
   const basePlanPrice = parentPlan ? parentPlan.priceMonthly : 12999;
-  const includedSlots = parentPlan ? parentPlan.includedBranchLimit : 2;
+  const includedSlots = 1;
 
   const parentBranches = companiesList.filter(c => c.parentCompanyId === parentId);
 
@@ -221,33 +221,23 @@ export const calculateBranchBilling = (
   const updatedBranches = parentBranches.map(br => {
     const isLicenseActive = br.branchLicenseActive !== false && br.branchLicenseStatus !== 'Suspended';
     const isPortalActive = br.status === 'Active' && br.accountStatus !== 'Suspended' && br.branchPortalActive !== false;
-    const isActive = isLicenseActive && isPortalActive;
 
     if (isPortalActive) activeBranchesCount++;
-    if (isLicenseActive) activeLicensedCount++;
+    activeLicensedCount++;
 
     let billingIncluded = false;
     let baseCost = 0;
 
-    if (isActive) {
-      if (activeLicensedCount <= includedSlots) {
-        billingIncluded = true;
-        baseCost = 0;
-      } else {
-        billingIncluded = false;
-        baseCost = 999;
-      }
+    if (activeLicensedCount <= includedSlots) {
+      billingIncluded = true;
+      baseCost = 0;
     } else {
       billingIncluded = false;
-      baseCost = 0;
+      baseCost = 999;
     }
 
     const capacity = br.licensedEmployeeLimit || br.employeeCapacity || 200;
-    let capacityCost = 0;
-    if (capacity === 500) capacityCost = 1499;
-    else if (capacity === 1000) capacityCost = 2999;
-
-    const monthlyCost = isActive ? (baseCost + capacityCost) : 0;
+    const monthlyCost = baseCost;
 
     return {
       ...br,
@@ -263,9 +253,9 @@ export const calculateBranchBilling = (
     };
   });
 
-  const activeLicensedBranchesCount = activeLicensedCount;
-  const paidSlots = Math.max(0, activeLicensedBranchesCount - includedSlots);
-  const addOnTotals = updatedBranches.reduce((sum, br) => sum + (br.monthlyBranchCost || 0), 0);
+  const activeLicensedBranchesCount = parentBranches.length;
+  const paidSlots = Math.max(0, parentBranches.length - includedSlots);
+  const addOnTotals = paidSlots * 999;
   const unifiedMonthlyBilling = basePlanPrice + addOnTotals;
 
   const updatedCompanies = companiesList.map(c => {

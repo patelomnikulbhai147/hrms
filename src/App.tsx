@@ -30,6 +30,7 @@ import {
   Notification
 } from './data/mockData';
 import { allExcelParsedEmployees } from './data/excelSeededData';
+import { calculateBranchBilling } from './utils/subscriptionUtils';
 
 const pageTitles: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -41,7 +42,7 @@ const pageTitles: Record<PageId, string> = {
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
-  billing: 'SaaS Subscriptions',
+  billing: 'Billing & Subscriptions'
 };
 
 const defaultUsers: UserAccount[] = [
@@ -85,11 +86,11 @@ export const SAFE_COMPANY_FALLBACK: any = {
   address: '',
   email: '',
   primaryColor: '#3b82f6',
-  headerText: 'GLOBAL COMPANY WORKSPACE',
-  footerText: '',
-  signatureText: '',
+  headerText: 'GLOBAL SYSTEM INTEGRATION',
+  footerText: 'Powering Enterprise Productivity',
+  signatureText: 'Authorized Signatory',
   themeStyle: 'Modern',
-  paymentStatus: 'Paid',
+  paymentStatus: 'Trial Active',
   renewalDate: '',
   gstNumber: '',
   billingAddress: '',
@@ -103,7 +104,7 @@ export const SAFE_COMPANY_FALLBACK: any = {
 export default function App() {
   // Auto-migration: check if browser has cached the old mock database or is missing our new branch seeding, and clear it for a clean slate
   if (typeof window !== 'undefined') {
-    const realMigrated = localStorage.getItem('hrms_real_migration_v4');
+    const realMigrated = localStorage.getItem('hrms_real_migration_v6');
     if (!realMigrated) {
       localStorage.removeItem('hrms_accounts');
       localStorage.removeItem('hrms_companies');
@@ -114,7 +115,7 @@ export default function App() {
       localStorage.removeItem('hrms_documents');
       localStorage.removeItem('hrms_payments');
       localStorage.removeItem('hrms_active_company_id');
-      localStorage.setItem('hrms_real_migration_v4', 'true');
+      localStorage.setItem('hrms_real_migration_v6', 'true');
       window.location.reload();
     }
   }
@@ -134,25 +135,54 @@ export default function App() {
     if (raw) {
       try {
         const parsed: Company[] = JSON.parse(raw);
-        // sanitize renewalDate fields that may be invalid
+        // sanitize renewalDate fields and pre-seed monthly/yearly pricing
         const sanitized = parsed.map(c => {
-          if (!c.renewalDate) return c;
+          const planObj = defaultPlans.find(p => p.name === c.plan);
+          const basePriceMonthly = planObj ? planObj.priceMonthly : (c.plan === 'Enterprise' ? 12999 : (c.plan === 'Professional' ? 4999 : 1999));
+          const basePriceYearly = planObj ? planObj.priceYearly : (c.plan === 'Enterprise' ? 129999 : (c.plan === 'Professional' ? 49999 : 19999));
+
+          const nextCompany = {
+            ...c,
+            priceMonthly: c.priceMonthly || basePriceMonthly,
+            priceYearly: c.priceYearly || basePriceYearly
+          };
+
+          if (!c.renewalDate) return nextCompany;
           const d = new Date(c.renewalDate);
           if (isNaN(d.getTime())) {
-            return { ...c, renewalDate: '' };
+            return { ...nextCompany, renewalDate: '' };
           }
-          return c;
+          return nextCompany;
         });
-        // persist sanitized back
-        localStorage.setItem('hrms_companies', JSON.stringify(sanitized));
-        return sanitized;
+        // validate and recalculate billing for the parent company
+        const billingResult = calculateBranchBilling(sanitized, 'c-gcri', defaultPlans);
+        localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
+        return billingResult.updatedCompanies;
       } catch (e) {
-        localStorage.setItem('hrms_companies', JSON.stringify(defaultCompanies));
-        return defaultCompanies;
+        const preCalculated = defaultCompanies.map(c => {
+          const planObj = defaultPlans.find(p => p.name === c.plan);
+          return {
+            ...c,
+            priceMonthly: planObj ? planObj.priceMonthly : 12999,
+            priceYearly: planObj ? planObj.priceYearly : 129999
+          };
+        });
+        const billingResult = calculateBranchBilling(preCalculated, 'c-gcri', defaultPlans);
+        localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
+        return billingResult.updatedCompanies;
       }
     }
-    localStorage.setItem('hrms_companies', JSON.stringify(defaultCompanies));
-    return defaultCompanies;
+    const preCalculated = defaultCompanies.map(c => {
+      const planObj = defaultPlans.find(p => p.name === c.plan);
+      return {
+        ...c,
+        priceMonthly: planObj ? planObj.priceMonthly : 12999,
+        priceYearly: planObj ? planObj.priceYearly : 129999
+      };
+    });
+    const billingResult = calculateBranchBilling(preCalculated, 'c-gcri', defaultPlans);
+    localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
+    return billingResult.updatedCompanies;
   });
 
   // Persistent employees state
@@ -261,8 +291,9 @@ export default function App() {
 
   const handleUpdateCompanies = (updater: Company[] | ((prev: Company[]) => Company[])) => {
     const next = typeof updater === 'function' ? updater(companies) : updater;
-    setCompanies(next);
-    localStorage.setItem('hrms_companies', JSON.stringify(next));
+    const billingResult = calculateBranchBilling(next, 'c-gcri', plans);
+    setCompanies(billingResult.updatedCompanies);
+    localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {

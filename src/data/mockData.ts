@@ -44,6 +44,8 @@ export interface Company {
   gstNumber?: string;
   billingAddress?: string;
   subscriptionPrice: number;
+  priceMonthly?: number;
+  priceYearly?: number;
   billingCycle: 'Monthly' | 'Yearly';
   accountStatus: 'Active' | 'Suspended';
 

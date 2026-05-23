@@ -324,7 +324,21 @@ export const Companies: React.FC<CompaniesProps> = ({
 
   const handleSavePlan = () => {
     if (!editPlanModal) return;
-    onUpdateCompanies(companies.map(c => c.id === editPlanModal.id ? { ...c, plan: newPlan } : c));
+    const selectedPlan = plans.find(p => p.name === newPlan);
+    const updated = companies.map(c => {
+      if (c.id === editPlanModal.id) {
+        return {
+          ...c,
+          plan: newPlan,
+          priceMonthly: selectedPlan ? selectedPlan.priceMonthly : c.priceMonthly,
+          priceYearly: selectedPlan ? selectedPlan.priceYearly : c.priceYearly,
+          subscriptionPrice: selectedPlan ? selectedPlan.priceMonthly : c.subscriptionPrice,
+          paymentStatus: 'Paid' as const
+        };
+      }
+      return c;
+    });
+    onUpdateCompanies(updated);
     setEditPlanModal(null);
   };
 
@@ -658,20 +672,6 @@ export const Companies: React.FC<CompaniesProps> = ({
                         </div>
                       </Td>
 
-                      {/* Plan */}
-                      <Td>
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant={c.plan === 'Enterprise' ? 'purple' : (c.plan === 'Professional' ? 'blue' : 'gray')}>{c.plan}</Badge>
-                          <button
-                            onClick={() => { setEditPlanModal(c); setNewPlan(c.plan); }}
-                            className="p-1 hover:bg-gray-150 rounded text-gray-400 hover:text-gray-700"
-                            title="Edit Plan"
-                          >
-                            <Edit size={11} />
-                          </button>
-                        </div>
-                      </Td>
-
                       {/* Status */}
                       <Td>
                         <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
@@ -709,7 +709,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                     {/* Collapsible Nested Roster for branches */}
                     {hasBranches && isExpanded && (
                       <tr>
-                        <td colSpan={6} className="bg-slate-50/45 p-4 border-l-4 border-indigo-600">
+                        <td colSpan={5} className="bg-slate-50/45 p-4 border-l-4 border-indigo-600">
                           <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                             <div className="bg-slate-100/50 px-4 py-2 border-b border-gray-200/60 flex items-center justify-between">
                               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
@@ -729,7 +729,6 @@ export const Companies: React.FC<CompaniesProps> = ({
                                   <th className="py-2.5 px-4">Branch Code & Name</th>
                                   <th className="py-2.5 px-4">SaaS Admin Info</th>
                                   <th className="py-2.5 px-4">Staff Count</th>
-                                  <th className="py-2.5 px-4">Tier Plan</th>
                                   <th className="py-2.5 px-4">Status</th>
                                   <th className="py-2.5 px-4 text-right">Branch Actions</th>
                                 </tr>
@@ -756,17 +755,6 @@ export const Companies: React.FC<CompaniesProps> = ({
                                       </td>
                                       <td className="py-2 px-4 font-bold text-blue-700 font-sans">
                                         {branchEmpCount} Staff
-                                      </td>
-                                      <td className="py-2 px-4">
-                                        <div className="flex items-center gap-1">
-                                          <Badge variant={b.plan === 'Enterprise' ? 'purple' : 'blue'}>{b.plan}</Badge>
-                                          <button
-                                            onClick={() => { setEditPlanModal(b); setNewPlan(b.plan); }}
-                                            className="p-0.5 hover:bg-gray-100 rounded text-gray-400"
-                                          >
-                                            <Edit size={10} />
-                                          </button>
-                                        </div>
                                       </td>
                                       <td className="py-2 px-4">
                                         <Badge variant={statusBadge(b.status)} dot>{b.status}</Badge>

@@ -47,6 +47,9 @@ export const Billing: React.FC<BillingProps> = ({
   // Paywall, commercial pricing & alert state parameters
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallParentCompany, setPaywallParentCompany] = useState<Company | null>(null);
+  if (paywallParentCompany === undefined) {
+    setPaywallParentCompany(null);
+  }
   const globalBranchPrice = 999;
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -186,61 +189,22 @@ export const Billing: React.FC<BillingProps> = ({
     const parent = companies.find(c => c.id === parentId);
     if (!parent) return;
 
-    let updatedCompanies = companies;
     if (action === 'add') {
-      updatedCompanies = companies.map(c => {
-        if (c.id === parentId) {
-          return {
-            ...c,
-            purchasedAdditionalBranches: (c.purchasedAdditionalBranches || 0) + 1
-          };
-        }
-        return c;
-      });
-
-      const newTx: PaymentRecord = {
-        id: `inv-${Date.now()}`,
-        companyId: parent.id,
-        companyName: parent.name,
-        amount: globalBranchPrice,
-        paymentDate: new Date().toISOString().split('T')[0],
-        invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-        planType: `${parent.plan} Plan - Branch License Add-On Slot`,
-        paymentMode: 'Card',
-        transactionStatus: 'Success'
-      };
-      onUpdatePayments([newTx, ...payments]);
-      setSuccessMessage(`Additional paid branch license slot purchased successfully!`);
-    } else {
-      const currentPurchased = parent.purchasedAdditionalBranches || 0;
-      if (currentPurchased <= 0) return;
-
-      const parentBranches = companies.filter(c => c.parentCompanyId === parentId);
-      const parentPlan = plans.find(p => p.name === parent.plan);
-      const includedLimit = parentPlan ? parentPlan.includedBranchLimit : 2;
-
-      const newAllowedLimit = includedLimit + currentPurchased - 1;
-      if (parentBranches.length > newAllowedLimit) {
-        alert(`Cannot remove license slot because you currently have ${parentBranches.length} branch(es) deployed. Please delete a branch first.`);
-        return;
-      }
-
-      updatedCompanies = companies.map(c => {
-        if (c.id === parentId) {
-          return {
-            ...c,
-            purchasedAdditionalBranches: currentPurchased - 1
-          };
-        }
-        return c;
-      });
-      setSuccessMessage(`Purchased branch license slot removed successfully!`);
+      handleOpenCreateBranch(parentId);
+      return;
     }
 
-    const finalized = syncAndRecalculateBilling(updatedCompanies, parentId);
-    onUpdateCompanies(finalized);
-    setTimeout(() => setSuccessMessage(''), 4500);
-    setPaywallOpen(false);
+    const parentBranches = companies.filter(c => c.parentCompanyId === parentId);
+    if (parentBranches.length <= 1) {
+      alert("No additional paid slots are currently active to remove. The base plan includes 1 free branch slot automatically.");
+      return;
+    }
+
+    const lastBranch = parentBranches[parentBranches.length - 1];
+    const confirmRemove = confirm(`To remove a branch license slot, the corresponding deployed branch must be deleted.\n\nAre you sure you want to remove the last deployed branch "${lastBranch.branchName || lastBranch.name}" to release the slot?`);
+    if (!confirmRemove) return;
+
+    handleRemoveBranch(lastBranch.id);
   };
 
   const handleUpdateBranchCapacity = (branchId: string, cap: number) => {
@@ -330,23 +294,6 @@ export const Billing: React.FC<BillingProps> = ({
       onUpdateCompanies(finalized);
       alert('Branch updated successfully.');
     } else {
-      // Quota limit validation
-      const parentCompany = companies.find(c => c.id === (parentCompanyIdForBranch || 'c-gcri'));
-      if (parentCompany) {
-        const parentPlan = plans.find(p => p.name === parentCompany.plan) || plans[2];
-        const includedBranchLimit = parentPlan.includedBranchLimit;
-        const purchasedAdditionalBranches = parentCompany.purchasedAdditionalBranches || 0;
-        const currentBranches = companies.filter(c => c.parentCompanyId === parentCompany.id);
-        
-        if (currentBranches.length >= includedBranchLimit + purchasedAdditionalBranches) {
-          // Block deployment & trigger paywall
-          setPaywallParentCompany(parentCompany);
-          setPaywallOpen(true);
-          setBranchModalOpen(false);
-          return;
-        }
-      }
-
       // Create mode
       const newId = `c-br-${Date.now()}`;
       const newBranchObj: Company = {
@@ -544,11 +491,14 @@ export const Billing: React.FC<BillingProps> = ({
       transactionStatus: 'Success'
     };
 
+    const targetPlan = plans.find(p => p.name === chosenPlan);
     const updated: Company[] = companies.map(c => c.id === company.id ? {
       ...c,
       plan: chosenPlan,
       billingCycle: chosenCycle,
       subscriptionPrice: calculatedPrice,
+      priceMonthly: targetPlan ? targetPlan.priceMonthly : c.priceMonthly,
+      priceYearly: targetPlan ? targetPlan.priceYearly : c.priceYearly,
       renewalDate: calculatedDate,
       paymentStatus: 'Paid' as const,
       accountStatus: 'Active' as const,
@@ -622,6 +572,8 @@ export const Billing: React.FC<BillingProps> = ({
         return {
           ...c,
           plan: selectedPlan.name as any,
+          priceMonthly: selectedPlan.priceMonthly,
+          priceYearly: selectedPlan.priceYearly,
           subscriptionPrice: selectedPlan.priceMonthly,
           paymentStatus: 'Paid' as const
         };
@@ -857,11 +809,10 @@ export const Billing: React.FC<BillingProps> = ({
               const daysLeft = getDaysRemaining(comp.renewalDate);
               const isSoon = daysLeft !== null ? (daysLeft <= 10 && daysLeft >= 0) : false;
 
-              const compPlan = plans.find(p => p.name === comp.plan) || plans[0];
-              const includedBranchLimit = compPlan.includedBranchLimit || 0;
-              const purchasedAdditionalBranches = comp.purchasedAdditionalBranches || 0;
+              const includedBranchLimit = 1;
+              const purchasedAdditionalBranches = Math.max(compBranches.length - includedBranchLimit, 0);
               const allowedBranchLimit = includedBranchLimit + purchasedAdditionalBranches;
-              const isSingleCompanyMode = allowedBranchLimit === 0;
+              const isSingleCompanyMode = false;
 
               const statusBadge = () => {
                 switch (comp.paymentStatus) {
@@ -887,6 +838,14 @@ export const Billing: React.FC<BillingProps> = ({
                           <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">Parent Company</span>
                         </div>
                         <p className="text-sm text-gray-500 mt-0.5">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
+                      </div>
+
+                      {/* Subscription Tier restored in top metrics/info section */}
+                      <div className="ml-6 pl-6 border-l border-slate-100 text-left">
+                        <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subscription Tier</div>
+                        <div className="mt-1 flex items-center gap-2">
+                          {getPlanBadge(comp.plan)}
+                        </div>
                       </div>
                     </div>
 
@@ -1287,29 +1246,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <div>
                       Unified price: <strong className="text-slate-800">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
                       {!isSingleCompanyMode && compBranches.length > 0 && (() => {
-                        const totalBranchUpgradeCost = compBranches.reduce((sum, b) => {
-                          const isLicenseActive = b.branchLicenseActive !== false && b.branchLicenseStatus !== 'Suspended';
-                          const isPortalActive = b.status === 'Active' && b.accountStatus !== 'Suspended' && b.branchPortalActive !== false;
-                          if (!(isLicenseActive && isPortalActive)) return sum;
-
-                          const cap = b.licensedEmployeeLimit || b.employeeCapacity || 200;
-                          let cost = 0;
-                          if (cap === 500) cost = 1499;
-                          else if (cap === 1000) cost = 2999;
-                          return sum + cost;
-                        }, 0);
-
-                        const totalBranchBaseCost = compBranches.reduce((sum, b) => {
-                          if (b.billingIncluded) return sum;
-                          const isLicenseActive = b.branchLicenseActive !== false && b.branchLicenseStatus !== 'Suspended';
-                          const isPortalActive = b.status === 'Active' && b.accountStatus !== 'Suspended' && b.branchPortalActive !== false;
-                          if (isLicenseActive && isPortalActive) {
-                            return sum + 999;
-                          }
-                          return sum;
-                        }, 0);
-
-                        const totalBranchAddonCost = totalBranchBaseCost + totalBranchUpgradeCost;
+                        const totalBranchAddonCost = Math.max(compBranches.length - 1, 0) * 999;
 
                         if (totalBranchAddonCost > 0) {
                           return (
