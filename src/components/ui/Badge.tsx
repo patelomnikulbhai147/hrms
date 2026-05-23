@@ -4,18 +4,18 @@ import { cn } from '../../utils/cn';
 type BadgeVariant = 'green' | 'red' | 'yellow' | 'blue' | 'gray' | 'orange' | 'purple' | 'indigo' | 'danger' | 'success' | 'warning' | 'amber';
 
 const variantClasses: Record<BadgeVariant, string> = {
-  green: 'bg-emerald-50/75 text-emerald-700 border border-emerald-200/50',
-  success: 'bg-emerald-50/75 text-emerald-700 border border-emerald-200/50',
-  red: 'bg-rose-50/75 text-rose-700 border border-rose-200/50',
-  danger: 'bg-rose-50/75 text-rose-700 border border-rose-200/50',
-  yellow: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
-  amber: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
-  warning: 'bg-amber-50/75 text-amber-700 border border-amber-200/50',
-  blue: 'bg-sky-50/75 text-sky-700 border border-sky-200/50',
-  gray: 'bg-slate-100/70 text-slate-600 border border-slate-200/50',
-  orange: 'bg-orange-50/75 text-orange-700 border border-orange-200/50',
-  purple: 'bg-purple-50/75 text-purple-700 border border-purple-200/50',
-  indigo: 'bg-indigo-50/75 text-indigo-700 border border-indigo-200/50',
+  green: 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/25',
+  success: 'bg-emerald-500/10 text-emerald-450 border border-emerald-500/25',
+  red: 'bg-rose-500/10 text-rose-450 border border-rose-500/25',
+  danger: 'bg-rose-500/10 text-rose-450 border border-rose-500/25',
+  yellow: 'bg-amber-500/10 text-amber-400 border border-amber-500/25',
+  amber: 'bg-amber-500/10 text-amber-400 border border-amber-500/25',
+  warning: 'bg-amber-500/10 text-amber-400 border border-amber-500/25',
+  blue: 'bg-blue-500/10 text-blue-400 border border-blue-500/25',
+  gray: 'bg-slate-800/60 text-slate-300 border border-slate-700/50',
+  orange: 'bg-orange-500/10 text-orange-400 border border-orange-500/25',
+  purple: 'bg-purple-500/10 text-purple-400 border border-purple-500/25',
+  indigo: 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/25',
 };
 
 interface BadgeProps {
@@ -27,13 +27,13 @@ interface BadgeProps {
 
 export const Badge: React.FC<BadgeProps> = ({ children, variant = 'gray', className, dot }) => {
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide shadow-sm/5', variantClasses[variant], className)}>
+    <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider shadow-sm select-none', variantClasses[variant], className)}>
       {dot && (
         <span className={cn('h-1.5 w-1.5 rounded-full relative flex-shrink-0', {
           'bg-emerald-500': variant === 'green' || variant === 'success',
           'bg-rose-500': variant === 'red' || variant === 'danger',
           'bg-amber-500': variant === 'yellow' || variant === 'warning' || variant === 'amber',
-          'bg-sky-500': variant === 'blue',
+          'bg-blue-500': variant === 'blue',
           'bg-slate-400': variant === 'gray',
           'bg-orange-500': variant === 'orange',
           'bg-purple-500': variant === 'purple',
