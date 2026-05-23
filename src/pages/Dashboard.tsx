@@ -57,24 +57,43 @@ interface DashboardProps {
   onUpdatePayroll?: (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => void;
 }
 
+const Loading: React.FC = () => (
+  <div className="flex flex-col items-center justify-center min-h-[400px] p-6 bg-white rounded-2xl shadow-sm border border-gray-100 animate-pulse text-center">
+    <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-650 rounded-full animate-spin mb-4" />
+    <p className="text-xs text-gray-500 font-bold tracking-wide">Hydrating Secure SaaS Environment...</p>
+  </div>
+);
+
 export const Dashboard: React.FC<DashboardProps> = ({
   role,
   onNavigate,
   activeCompanyId,
   onStartMasquerade,
-  companies,
-  employees,
-  attendance,
-  leaves,
-  payroll,
-  documents,
-  plans,
+  companies: rawCompanies,
+  employees: rawEmployees,
+  attendance: rawAttendance,
+  leaves: rawLeaves,
+  payroll: rawPayroll,
+  documents: rawDocuments,
+  plans: rawPlans,
   notifications: _notifications,
   onUpdateNotifications,
   onUpdateCompanies,
   onUpdatePayments
 }) => {
   const todayStr = '2026-05-20'; // Anchor mock date
+
+  // Fallback defaults for safety (Shadowing original variables to prevent runtime crashes)
+  const companies = rawCompanies || [];
+  const employees = rawEmployees || [];
+  const attendance = rawAttendance || [];
+  const leaves = rawLeaves || [];
+  const payroll = rawPayroll || [];
+  const documents = rawDocuments || [];
+  const plans = rawPlans || [];
+
+  // Find current company context first to prevent TDZ error
+  const currentCompany = companies.find(c => c.id === activeCompanyId);
 
   // Toast feedback state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
@@ -300,16 +319,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
 
-  // Find current company context
-  const currentCompany = companies.find(c => c.id === activeCompanyId);
-  
-  if (!companies.length || !employees.length || (role !== 'Super Admin' && !currentCompany)) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] p-6 bg-white rounded-2xl shadow-sm border border-gray-100 animate-pulse text-center">
-        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-650 rounded-full animate-spin mb-4" />
-        <p className="text-xs text-gray-500 font-bold tracking-wide">Hydrating Secure SaaS Environment...</p>
-      </div>
-    );
+  // Loading Guards
+  if (!companies.length || !employees.length) {
+    return <Loading />;
+  }
+
+  if (role !== 'Super Admin' && !currentCompany) {
+    return <Loading />;
   }
 
   // ─── Super Admin Dashboard Overhaul ───

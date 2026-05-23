@@ -7,8 +7,7 @@ import {
 import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role, type Company,
-  designations, isCompanyIdMatch,
-  getCompanyDepartments, getCompanyIdFromBranchName
+  isCompanyIdMatch
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
