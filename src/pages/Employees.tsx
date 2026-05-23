@@ -201,29 +201,68 @@ export const Employees: React.FC<EmployeesProps> = ({
     return employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
   }, [employees, activeCompanyId, companies]);
 
-  const filterDeptCompanyId = useMemo(() => {
-    return getCompanyIdFromBranchName(branchFilter, activeCompanyId, companies);
-  }, [branchFilter, activeCompanyId, companies]);
-
   const filterDepartments = useMemo(() => {
-    return getCompanyDepartments(filterDeptCompanyId, companies);
-  }, [filterDeptCompanyId, companies]);
-
-  const formDeptCompanyId = useMemo(() => {
-    return getCompanyIdFromBranchName(form.branchLocation, activeCompanyId, companies);
-  }, [form.branchLocation, activeCompanyId, companies]);
+    const set = new Set<string>();
+    const branchEmps = employees.filter(e => {
+      const matchComp = isCompanyIdMatch(e.companyId, activeCompanyId, companies);
+      const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
+      return matchComp && matchBranch;
+    });
+    branchEmps.forEach(e => {
+      if (e.department) set.add(e.department.trim().toUpperCase());
+      if (e.designation) set.add(e.designation.trim().toUpperCase());
+    });
+    return Array.from(set).sort();
+  }, [employees, activeCompanyId, companies, branchFilter]);
 
   const formDepartments = useMemo(() => {
-    return getCompanyDepartments(formDeptCompanyId, companies);
-  }, [formDeptCompanyId, companies]);
-
-  const editFormDeptCompanyId = useMemo(() => {
-    return getCompanyIdFromBranchName(editEmp?.branchLocation || 'AHMEDABAD', activeCompanyId, companies);
-  }, [editEmp?.branchLocation, activeCompanyId, companies]);
+    const set = new Set<string>();
+    const branchName = form.branchLocation;
+    const branchEmps = employees.filter(e => 
+      isCompanyIdMatch(e.companyId, activeCompanyId, companies) &&
+      (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
+    );
+    branchEmps.forEach(e => {
+      if (e.department) set.add(e.department.trim());
+    });
+    if (set.size === 0) {
+      set.add('Clinical');
+      set.add('Nursing');
+      set.add('Administration');
+    }
+    return Array.from(set).sort();
+  }, [employees, form.branchLocation, activeCompanyId, companies]);
 
   const editFormDepartments = useMemo(() => {
-    return getCompanyDepartments(editFormDeptCompanyId, companies);
-  }, [editFormDeptCompanyId, companies]);
+    const set = new Set<string>();
+    const branchName = editEmp?.branchLocation;
+    const branchEmps = employees.filter(e => 
+      isCompanyIdMatch(e.companyId, activeCompanyId, companies) &&
+      (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
+    );
+    branchEmps.forEach(e => {
+      if (e.department) set.add(e.department.trim());
+    });
+    if (set.size === 0) {
+      set.add('Clinical');
+      set.add('Nursing');
+      set.add('Administration');
+    }
+    return Array.from(set).sort();
+  }, [employees, editEmp?.branchLocation, activeCompanyId, companies]);
+
+  const dynamicDesignations = useMemo(() => {
+    const set = new Set<string>();
+    companyEmployees.forEach(e => {
+      if (e.designation) set.add(e.designation.trim());
+    });
+    if (set.size === 0) {
+      set.add('DATA ENTRY OPERATOR');
+      set.add('STAFF NURSE');
+      set.add('RADIOTHERAPY TECHNICIAN');
+    }
+    return Array.from(set).sort();
+  }, [companyEmployees]);
 
   // Keep form department in sync with branch options
   useEffect(() => {
@@ -248,7 +287,9 @@ export const Employees: React.FC<EmployeesProps> = ({
         e.email.toLowerCase().includes(q) ||
         e.employeeId.toLowerCase().includes(q) ||
         (e.designation || '').toLowerCase().includes(q);
-      const matchDept = !deptFilter || e.department === deptFilter;
+      const matchDept = !deptFilter || 
+        (e.department || '').trim().toUpperCase() === deptFilter.toUpperCase() ||
+        (e.designation || '').trim().toUpperCase() === deptFilter.toUpperCase();
       const matchStatus = !statusFilter || e.status === statusFilter;
       const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
       return matchSearch && matchDept && matchStatus && matchBranch;
@@ -1274,7 +1315,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />
+                <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} />
                 <Select label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
               </div>
               <div className="grid grid-cols-3 gap-3">
@@ -1378,7 +1419,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={editFormDepartments.map(d => ({ value: d, label: d }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={designations.map(d => ({ value: d, label: d }))} />
+                  <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} />
                   <Select label="Employment Class *" value={editEmp.category || 'Skilled'} onChange={e => setEditEmp({ ...editEmp, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">

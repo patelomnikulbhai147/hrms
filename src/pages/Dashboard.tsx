@@ -93,6 +93,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
 
+  const isParentCompany = activeCompanyId === 'c-gcri';
+  const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all-gcri' : 'branch');
+  const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
+  const [selectedDept, setSelectedDept] = useState('all');
+  const [selectedRole, setSelectedRole] = useState('all');
+
+  useEffect(() => {
+    setSelectedAudience(isParentCompany ? 'all-gcri' : 'branch');
+    setSelectedBranch(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
+  }, [activeCompanyId, isParentCompany]);
+
   // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
   const scopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
   const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
@@ -282,6 +293,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
   };
 
 
+
+  // Find current company context
+  const currentCompany = companies.find(c => c.id === activeCompanyId);
+  
+  if (!companies.length || !employees.length || (role !== 'Super Admin' && !currentCompany)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] p-6 bg-white rounded-2xl shadow-sm border border-gray-100 animate-pulse text-center">
+        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-650 rounded-full animate-spin mb-4" />
+        <p className="text-xs text-gray-500 font-bold tracking-wide">Hydrating Secure SaaS Environment...</p>
+      </div>
+    );
+  }
 
   // ─── Super Admin Dashboard Overhaul ───
   if (role === 'Super Admin') {
@@ -683,12 +706,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const activeEmployeesCount = scopedEmployees.filter(e => e.status === 'Active').length;
 
     const branches = companies.filter(b => b.parentCompanyId === 'c-gcri');
-    const isParentCompany = activeCompanyId === 'c-gcri';
-
-    const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all-gcri' : 'branch');
-    const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
-    const [selectedDept, setSelectedDept] = useState('all');
-    const [selectedRole, setSelectedRole] = useState('all');
 
     // Filter leaves for this company (supports parent + branches)
     const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies));
