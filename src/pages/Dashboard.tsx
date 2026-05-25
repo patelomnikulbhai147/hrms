@@ -22,6 +22,7 @@ import {
   getSubscriptionAlertsList,
   getDaysRemaining
 } from '../utils/subscriptionUtils';
+import { getUniqueEmployees } from '../utils/deduplication';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Badge } from '../components/ui/Badge';
@@ -107,7 +108,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   // Fallback defaults for safety (Shadowing original variables to prevent runtime crashes)
   const companies = rawCompanies || [];
-  const employees = rawEmployees || [];
+  const employees = getUniqueEmployees(rawEmployees || []);
   const attendance = rawAttendance || [];
   const leaves = rawLeaves || [];
   const payroll = rawPayroll || [];

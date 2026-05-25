@@ -21,6 +21,7 @@ import {
 } from '../utils/validation';
 import { type UserAccount } from './Login';
 import { allExcelParsedEmployees } from '../data/excelSeededData';
+import { getUniqueEmployees } from '../utils/deduplication';
 
 interface EmployeesProps {
   role: Role;
@@ -197,7 +198,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // central company scope filtering
   const companyEmployees = useMemo(() => {
-    return employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+    return getUniqueEmployees(employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies)));
   }, [employees, activeCompanyId, companies]);
 
   const filterDepartments = useMemo(() => {

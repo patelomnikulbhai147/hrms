@@ -19,6 +19,7 @@ import { Modal } from '../components/ui/Modal';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
+import { getUniqueEmployees } from '../utils/deduplication';
 
 interface CompaniesProps {
   _role: Role;
@@ -50,6 +51,8 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');
+
+  const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
 
   // Modals state
   const [addOpen, setAddOpen] = useState(false);
@@ -137,7 +140,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
     if (reassign) {
       if (onUpdateEmployees) {
-        const updated = employees.map(emp => {
+        const updated = uniqueEmployees.map(emp => {
           if (emp.companyId === branchId) {
             return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
           }
@@ -147,7 +150,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       }
     } else {
       if (onUpdateEmployees) {
-        const updated = employees.map(emp => {
+        const updated = uniqueEmployees.map(emp => {
           if (emp.companyId === branchId) {
             return { ...emp, status: 'Inactive' as const };
           }
@@ -616,8 +619,8 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                 // Calculate total combined employees under parent
                 const combinedEmpCount = hasBranches
-                  ? branches.reduce((sum, b) => sum + employees.filter(emp => emp.companyId === b.id).length, 0) + employees.filter(emp => emp.companyId === c.id).length
-                  : employees.filter(emp => emp.companyId === c.id).length;
+                  ? branches.reduce((sum, b) => sum + uniqueEmployees.filter(emp => emp.companyId === b.id).length, 0) + uniqueEmployees.filter(emp => emp.companyId === c.id).length
+                  : uniqueEmployees.filter(emp => emp.companyId === c.id).length;
 
                 return (
                   <React.Fragment key={c.id}>
@@ -735,7 +738,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </thead>
                               <tbody className="divide-y divide-slate-700/50 text-[11px] text-slate-300">
                                 {branches.map(b => {
-                                  const branchEmpCount = employees.filter(emp => emp.companyId === b.id).length;
+                                  const branchEmpCount = uniqueEmployees.filter(emp => emp.companyId === b.id).length;
                                   return (
                                     <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
                                       <td className="py-2 px-4">

@@ -15,6 +15,7 @@ import {
   getDaysRemaining,
   calculateBranchBilling
 } from '../utils/subscriptionUtils';
+import { getUniqueEmployees } from '../utils/deduplication';
 
 interface BillingProps {
   companies: Company[];
@@ -43,6 +44,8 @@ export const Billing: React.FC<BillingProps> = ({
   onUpdateAccounts,
   onStartMasquerade
 }) => {
+  const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
+
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
 
   // Paywall, commercial pricing & alert state parameters
@@ -147,7 +150,7 @@ export const Billing: React.FC<BillingProps> = ({
     const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
 
     if (reassign) {
-      const updated = employees.map(emp => {
+      const updated = uniqueEmployees.map(emp => {
         if (emp.companyId === branchId) {
           return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
         }
@@ -155,7 +158,7 @@ export const Billing: React.FC<BillingProps> = ({
       });
       onUpdateEmployees(updated);
     } else {
-      const updated = employees.map(emp => {
+      const updated = uniqueEmployees.map(emp => {
         if (emp.companyId === branchId) {
           return { ...emp, status: 'Inactive' as const };
         }
@@ -1144,7 +1147,8 @@ export const Billing: React.FC<BillingProps> = ({
                         ) : (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {compBranches.map(br => {
-                              const brEmployeesCount = employees.filter(emp => emp.companyId === br.id).length;
+                              const uniqueEmployees = getUniqueEmployees(employees);
+                              const brEmployeesCount = uniqueEmployees.filter(emp => emp.companyId === br.id).length;
                               const capacity = br.employeeCapacity || 200;
                               const capacityPercent = Math.min(100, Math.round((brEmployeesCount / capacity) * 100));
 

@@ -20,6 +20,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
+import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 
 interface DocumentsProps {
   role: Role;
@@ -194,8 +195,10 @@ export const Documents: React.FC<DocumentsProps> = ({
   const [activeTab, setActiveTab] = useState<'compliance' | 'letters'>('compliance');
 
   // Scoped lists derived reactively (supports parent company branch rollups)
-  const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
-  const list = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId));
+  const uniqueEmployees = getUniqueEmployees(employees);
+  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const uniqueDocuments = getUniqueRecords(documents, [d => d.id]); // Documents have unique IDs but might be duplicated in state
+  const list = uniqueDocuments.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId));
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
 
   // Compliance state

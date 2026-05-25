@@ -15,6 +15,7 @@ import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
+import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 
 interface LeavesProps {
   role: Role;
@@ -104,16 +105,19 @@ export const Leaves: React.FC<LeavesProps> = ({
     return Math.max(1, Math.floor(diff / 86400000) + 1);
   };
 
+  const uniqueEmployees = useMemo(() => getUniqueEmployees(_employees), [_employees]);
+  const uniqueLeaves = useMemo(() => getUniqueRecords(leaves, [l => l.id]), [leaves]);
+
   // 1. Role-based isolation & scoping
   const companyLeaves = useMemo(() => {
-    const isCompany = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
+    const isCompany = uniqueLeaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
     if (role === 'Employee') {
       return isCompany.filter(
         l => l.employeeId === authProfile?.employeeId || l.employeeName.toLowerCase() === authProfile?.name?.toLowerCase()
       );
     }
     return isCompany;
-  }, [leaves, activeCompanyId, role, authProfile]);
+  }, [uniqueLeaves, activeCompanyId, role, authProfile]);
 
   const filtered = useMemo(() => {
     return companyLeaves.filter(l => {
@@ -124,7 +128,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       
       let matchBranch = true;
       if (branchFilter) {
-        const emp = _employees.find(e => e.id === l.employeeId || e.name.toLowerCase() === l.employeeName.toLowerCase());
+        const emp = uniqueEmployees.find(e => e.id === l.employeeId || e.name.toLowerCase() === l.employeeName.toLowerCase());
         matchBranch = emp ? (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase() : false;
       }
       
@@ -134,9 +138,9 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
-    const companyEmployees = _employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+    const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
     return companyEmployees.map(emp => {
-      const empLeaves = leaves.filter(
+      const empLeaves = uniqueLeaves.filter(
         l => (l.employeeId === emp.id || l.employeeName.toLowerCase() === emp.name.toLowerCase()) && 
              isCompanyIdMatch(l.companyId, activeCompanyId) &&
              l.status === 'Approved'
@@ -163,12 +167,12 @@ export const Leaves: React.FC<LeavesProps> = ({
         lastLeave
       };
     });
-  }, [leaves, _employees, activeCompanyId]);
+  }, [uniqueLeaves, uniqueEmployees, activeCompanyId]);
 
   // 2b. Real-time Allowed vs Used Balance calculations for the currently selected employee in Log modal
   const selectedEmpLeaves = useMemo(() => {
     if (!selectedEmp) return null;
-    const empLeaves = leaves.filter(
+    const empLeaves = uniqueLeaves.filter(
       l => (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && 
            isCompanyIdMatch(l.companyId, activeCompanyId) &&
            l.status === 'Approved'
@@ -188,7 +192,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       totalUsed,
       remaining
     };
-  }, [leaves, selectedEmp, activeCompanyId]);
+  }, [uniqueLeaves, selectedEmp, activeCompanyId]);
 
   // 3. Dynamic top metric card counts
   const totalCount = companyLeaves.length;
@@ -623,7 +627,7 @@ export const Leaves: React.FC<LeavesProps> = ({
               <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
                 {(() => {
                   const q = searchQuery.toLowerCase().trim();
-                  const matches = _employees.filter(emp => {
+                  const matches = uniqueEmployees.filter(emp => {
                     if (!isCompanyIdMatch(emp.companyId, activeCompanyId)) return false;
                     if (!q) return true; // show all under current tenant when focused
                     return (

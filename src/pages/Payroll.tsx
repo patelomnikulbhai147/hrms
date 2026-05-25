@@ -28,6 +28,7 @@ import {
   calculatePayrollStats
 } from '../utils/PayrollWorkflowEngine';
 import { type UserAccount } from './Login';
+import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 
 interface PayrollProps {
   role: Role;
@@ -83,8 +84,10 @@ export const Payroll: React.FC<PayrollProps> = ({
     return `••••${val.slice(-3)}`;
   };
 
+  const uniqueEmployees = useMemo(() => getUniqueEmployees(employees), [employees]);
+
   const getFullEmployee = (empId: string) => {
-    return employees.find(e => e.employeeId === empId || e.id === empId);
+    return uniqueEmployees.find(e => e.employeeId === empId || e.id === empId);
   };
 
   // Dynamic Edit Form State
@@ -100,7 +103,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   });
 
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
-  const companyEmployees = useMemo(() => employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId)), [employees, activeCompanyId]);
+  const companyEmployees = useMemo(() => uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId)), [uniqueEmployees, activeCompanyId]);
 
   useEffect(() => {
     const stored = localStorage.getItem(`hrms_payroll_logs_${activeCompanyId}`);
@@ -195,10 +198,11 @@ export const Payroll: React.FC<PayrollProps> = ({
   }, [activeCompanyId, companyEmployees, monthFilter, payroll, currentCompany, onUpdatePayroll, role]);
 
   const scopedRecords = useMemo(() => {
+    const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
     if (role === 'Employee' && authProfile?.employeeId) {
-      return payroll.filter(p => p.employeeId === authProfile.employeeId);
+      return uniquePayroll.filter(p => p.employeeId === authProfile.employeeId);
     }
-    return payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
+    return uniquePayroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
   }, [payroll, role, activeCompanyId, authProfile]);
 
   const filtered = useMemo(() => scopedRecords.filter(r => {

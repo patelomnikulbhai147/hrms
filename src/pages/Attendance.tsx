@@ -13,6 +13,7 @@ import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
+import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 
 interface AttendanceProps {
   role: Role;
@@ -42,8 +43,9 @@ export const Attendance: React.FC<AttendanceProps> = ({
   const [uploadModal, setUploadModal] = useState(false);
 
   // Dynamically initialize and sync attendance records for all company employees for the selectedDate
+  const uniqueEmployees = getUniqueEmployees(employees);
   useEffect(() => {
-    const activeCompanyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+    const activeCompanyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
     let updatedAttendance = [...attendance];
     let changed = false;
 
@@ -70,9 +72,10 @@ export const Attendance: React.FC<AttendanceProps> = ({
     if (changed) {
       onUpdateAttendance(updatedAttendance);
     }
-  }, [activeCompanyId, selectedDate, employees, attendance]);
+  }, [activeCompanyId, selectedDate, uniqueEmployees, attendance]);
 
-  const scopedRecords = attendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
+  const scopedRecords = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
 
   const filtered = scopedRecords.filter(a => {
     const matchDate = a.date === selectedDate;

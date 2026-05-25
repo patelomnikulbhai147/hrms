@@ -15,6 +15,7 @@ import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
+import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 
 interface ReportsProps {
   role: Role;
@@ -41,10 +42,14 @@ export const Reports: React.FC<ReportsProps> = ({
   const [deptFilter, setDeptFilter] = useState('');
 
   // Scoped datasets derived from reactive props (supports parent company branch rollups)
-  const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
-  const companyAttendance = attendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
-  const companyPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
-  const companyLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
+  const uniqueEmployees = getUniqueEmployees(employees);
+  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
+  const companyAttendance = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
+  const companyPayroll = uniquePayroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
+  const uniqueLeaves = getUniqueRecords(leaves, [l => l.id]);
+  const companyLeaves = uniqueLeaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
 
   // Load active company branding
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
