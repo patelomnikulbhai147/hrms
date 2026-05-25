@@ -332,50 +332,71 @@ table {
 }
 
 
+
 /* ──────────────────────────────────────────────────────────────────
    🌟 SaaS Visual Layer Overrides for Premium Enterprise Light Mode
    ────────────────────────────────────────────────────────────────── */
 
+/* Global Body / App Background */
+html[data-theme="light"] body {
+  background-color: #f6f8fa !important;
+  color: #0f172a !important;
+}
+
 /* 1. Surfaces & Elevation */
-/* Primary Cards and Inputs */
+/* Primary Cards and Inputs (Clean white with premium soft shadows) */
 html[data-theme="light"] .bg-slate-900\/40,
 html[data-theme="light"] .bg-slate-900,
 html[data-theme="light"] .bg-slate-950 {
   background-color: #ffffff !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0,0,0,0.05) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03), 0 8px 24px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,1) !important;
+  border-color: #e2e8f0 !important;
 }
 
-/* Secondary Surfaces (Sub-cards, Table headers, specific buttons) */
+/* Secondary Surfaces (Sub-cards, Table headers) */
 html[data-theme="light"] .bg-slate-900\/20,
 html[data-theme="light"] .bg-slate-800\/60,
-html[data-theme="light"] .bg-slate-800 {
+html[data-theme="light"] .bg-slate-800,
+html[data-theme="light"] .bg-slate-900\/60 {
   background-color: #f1f5f9 !important;
-  box-shadow: none !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.01) !important;
+  border-color: #e2e8f0 !important;
 }
 
-/* Transparent glass utilities specific to dark mode need clean fallback */
+/* Glass utilities (Topbar/Navbar) */
 html[data-theme="light"] .bg-slate-950\/45,
 html[data-theme="light"] .bg-slate-950\/40 {
-  background-color: rgba(255, 255, 255, 0.85) !important;
+  background-color: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02) !important;
 }
 
 /* 2. Typography Hierarchy */
-/* Primary Text (Headings, Values) */
+/* Primary Text */
 html[data-theme="light"] .text-slate-100,
 html[data-theme="light"] .text-slate-200 {
-  color: #0f172a !important;
+  color: #111827 !important;
 }
 
-/* Secondary Text (Subtitles, Labels) */
+/* Secondary Text */
 html[data-theme="light"] .text-slate-300,
 html[data-theme="light"] .text-slate-400 {
-  color: #475569 !important;
+  color: #4b5563 !important;
 }
 
 /* Muted Text / Placeholders */
 html[data-theme="light"] .text-slate-500,
 html[data-theme="light"] .placeholder-slate-500::placeholder {
-  color: #64748b !important;
+  color: #6b7280 !important;
+}
+
+/* Intelligent Text White Overrides */
+/* Only override text-white if it's NOT inside a button gradient or badge */
+html[data-theme="light"] :not(.bg-gradient-to-r):not(.from-blue-600):not(.from-emerald-600):not(.bg-indigo-600) > .text-white,
+html[data-theme="light"] .text-white:not(.from-blue-600):not(.from-emerald-600):not(.bg-indigo-600):not(.rounded-full) {
+  color: #111827 !important;
 }
 
 /* 3. Borders & Separators */
@@ -383,63 +404,90 @@ html[data-theme="light"] .border-slate-800\/80,
 html[data-theme="light"] .border-slate-800,
 html[data-theme="light"] .border-slate-700\/60,
 html[data-theme="light"] .border-slate-700 {
-  border-color: #e2e8f0 !important;
+  border-color: #e5e7eb !important;
 }
 
 html[data-theme="light"] .divide-slate-800\/80 > :not([hidden]) ~ :not([hidden]),
 html[data-theme="light"] .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]),
 html[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
 html[data-theme="light"] .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
-  border-color: #e2e8f0 !important;
+  border-color: #e5e7eb !important;
 }
 
 /* 4. Interactive States (Hover/Focus) */
 /* Table Rows */
+html[data-theme="light"] tr {
+  border-bottom: 1px solid #f3f4f6 !important;
+}
 html[data-theme="light"] tr:hover {
-  background-color: rgba(59, 130, 246, 0.04) !important;
+  background-color: rgba(59, 130, 246, 0.05) !important;
 }
 
 /* Button & Card Hovers */
 html[data-theme="light"] .hover\:bg-slate-800\/60:hover,
 html[data-theme="light"] .hover\:bg-slate-800\/90:hover,
 html[data-theme="light"] .hover\:bg-slate-850\/45:hover {
-  background-color: #e2e8f0 !important;
+  background-color: #e5e7eb !important;
+  border-color: #d1d5db !important;
+  color: #111827 !important;
 }
 
 html[data-theme="light"] .hover\:bg-slate-900\/40:hover {
-  background-color: #f8fafc !important;
+  background-color: #f9fafb !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05) !important;
+  border-color: #d1d5db !important;
 }
 
-/* Fix specific hover text colors on ghost/outline buttons */
+/* Specific ghost button text hovers */
 html[data-theme="light"] .text-slate-400.hover\:text-white:hover,
 html[data-theme="light"] .text-slate-300.hover\:text-white:hover,
 html[data-theme="light"] .text-slate-200.hover\:text-white:hover {
-  color: #0f172a !important;
+  color: #111827 !important;
 }
 
 html[data-theme="light"] .hover\:border-slate-700:hover {
   border-color: #cbd5e1 !important;
 }
 
-/* Sidebar Specific Overrides for Light Mode */
-/* Make Sidebar clean enterprise white */
+/* Sidebar Specific Overrides */
 html[data-theme="light"] aside,
-html[data-theme="light"] nav {
-  border-right-color: #e2e8f0 !important;
+html[data-theme="light"] aside.bg-\[\#080b11\] {
+  background-color: #ffffff !important;
+  border-right: 1px solid #e5e7eb !important;
+  box-shadow: 1px 0 10px rgba(0,0,0,0.02) !important;
+}
+html[data-theme="light"] aside .border-b.border-slate-900\/60,
+html[data-theme="light"] aside .border-t.border-slate-900\/60 {
+  border-color: #e5e7eb !important;
+}
+html[data-theme="light"] aside .bg-slate-950\/20 {
+  background-color: #f8fafc !important;
+}
+html[data-theme="light"] aside .text-white {
+  color: #111827 !important;
+}
+html[data-theme="light"] aside .bg-gradient-to-tr.from-blue-600.to-indigo-600 .text-white {
+  color: #ffffff !important;
 }
 
 /* 5. Inputs & Focus Rings */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #111827 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+}
 html[data-theme="light"] input:focus,
 html[data-theme="light"] select:focus,
 html[data-theme="light"] textarea:focus {
   background-color: #ffffff !important;
   border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 1px 2px rgba(0,0,0,0.02) !important;
 }
 
-/* Topbar Background */
-html[data-theme="light"] header.bg-slate-950\/40 {
-  background-color: rgba(255, 255, 255, 0.85) !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+/* Analytics Cards Subtleties */
+html[data-theme="light"] .shadow-indigo-500\/10 {
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08) !important;
 }
