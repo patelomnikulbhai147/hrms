@@ -805,12 +805,6 @@ export const Settings: React.FC<SettingsProps> = ({
 
           </div>
 
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-blue-805 text-[10px] leading-relaxed flex items-start gap-1.5">
-            <CheckCircle2 size={13} className="text-blue-600 flex-shrink-0 mt-0.5" />
-            <p>
-              Branding guidelines are fully dynamic. Saving will immediately restyle all Offer Letters, relievings, and employee Payslips!
-            </p>
-          </div>
         </Card>
 
       </div>
