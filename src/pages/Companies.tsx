@@ -475,9 +475,28 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert('Error: Please resolve validation errors before saving.');
       return;
     }
-    const exists = userAccounts.some(u => u.username.toLowerCase() === officerForm.username.toLowerCase());
-    if (exists) {
-      alert('Error: This Login ID is already taken.');
+    const existingUser = userAccounts.find(u => u.username.toLowerCase() === officerForm.username.toLowerCase());
+    if (existingUser) {
+      if (existingUser.accessibleCompanyIds && existingUser.accessibleCompanyIds.includes(manageAccountsModal.id)) {
+        alert('Error: This user already has access to this workspace.');
+        return;
+      }
+      
+      const updated = userAccounts.map(u => {
+        if (u.id === existingUser.id) {
+          const currentIds = u.accessibleCompanyIds || [u.companyId];
+          return {
+            ...u,
+            accessibleCompanyIds: [...new Set([...currentIds, manageAccountsModal.id])]
+          };
+        }
+        return u;
+      });
+      
+      onUpdateAccounts(updated);
+      setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
+      setOfficerErrors({});
+      alert(`Existing user detected — additional branch/company access granted to ${manageAccountsModal.name}.`);
       return;
     }
 
@@ -489,6 +508,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       passwordStr: officerForm.password || 'welcome123',
       role: officerForm.role,
       companyId: manageAccountsModal.id,
+      accessibleCompanyIds: [manageAccountsModal.id],
       status: 'Active',
       avatar: officerForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
