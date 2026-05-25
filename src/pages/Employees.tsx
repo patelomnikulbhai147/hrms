@@ -7,7 +7,7 @@ import {
 import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role, type Company,
-  isCompanyIdMatch
+  isCompanyIdMatch, getCompanyIdFromBranchName
 } from '../data/mockData';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -376,7 +376,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const newEmp: Employee = {
       id: `emp-gcri-${form.employeeId}`,
       employeeId: form.employeeId.trim(),
-      companyId: activeCompanyId,
+      companyId: getCompanyIdFromBranchName(form.branchLocation || '', activeCompanyId, companies),
       name: form.name,
       email: form.email,
       phone: `${form.countryCode} ${form.mobileNumber}`,
@@ -440,6 +440,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const updated: Employee = {
       ...editEmp,
+      companyId: getCompanyIdFromBranchName(editEmp.branchLocation || '', activeCompanyId, companies),
       phone: `${editCountryCode} ${editMobileNumber}`,
       location: `${capitalize(editEmp.branchLocation || 'Ahmedabad')}, Gujarat`,
     };
@@ -588,7 +589,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             const parsedEmp = {
               id: `emp-gcri-${empCode}`,
               employeeId: empCode,
-              companyId: activeCompanyId,
+              companyId: getCompanyIdFromBranchName(sheetName, activeCompanyId, companies),
               name: fullName,
               email: email,
               phone: cleanExcelValue(row[17]),
