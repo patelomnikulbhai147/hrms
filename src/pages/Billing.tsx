@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cn } from '../utils/cn';
 import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
   XCircle, Edit3, ArrowUpRight, DollarSign, Users,
@@ -647,120 +648,129 @@ export const Billing: React.FC<BillingProps> = ({
   return (
     <div className="space-y-6">
       {successMessage && (
-        <div className="p-4 bg-emerald-50 border border-emerald-250 text-emerald-800 rounded-2xl text-xs flex items-center gap-2.5 shadow-sm animate-pulse">
-          <CheckCircle2 size={16} className="text-emerald-600 flex-shrink-0" />
-          <span className="font-medium">{successMessage}</span>
+        <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-2xl text-xs flex items-center gap-2.5 shadow-[0_0_15px_rgba(16,185,129,0.1)] animate-pulse">
+          <CheckCircle2 size={16} className="text-emerald-400 flex-shrink-0" />
+          <span className="font-semibold">{successMessage}</span>
         </div>
       )}
 
       {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <div className="bg-gradient-to-tr from-white to-slate-50 p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
-          <div className="flex items-start justify-between text-gray-500">
+        <div className="neon-glass-card glow-card-border-purple p-5 rounded-3xl flex flex-col justify-between">
+          <div className="flex items-start justify-between text-slate-400">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Monthly Recurring Revenue</div>
-              <div className="mt-2 text-3xl font-extrabold text-gray-900">₹{mrr.toLocaleString('en-IN')}</div>
-              <div className="mt-1 text-sm text-gray-500">Projected monthly run-rate</div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Monthly Recurring Revenue</div>
+              <div className="mt-2 text-3xl font-extrabold text-white tracking-tight">₹{mrr.toLocaleString('en-IN')}</div>
+              <div className="mt-1 text-xs text-slate-400">Projected monthly run-rate</div>
             </div>
-            <div className="text-blue-600 bg-blue-50 rounded-lg p-2">
-              <DollarSign size={22} />
+            <div className="text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-2.5 shadow-[0_0_15px_rgba(99,102,241,0.15)]">
+              <DollarSign size={20} />
             </div>
           </div>
           <div className="mt-4 flex items-center gap-3">
-            <div className="text-sm font-semibold text-green-600 flex items-center gap-2">
-              <ArrowUpRight size={14} /> <span>+12.4%</span>
+            <div className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+              <ArrowUpRight size={12} /> <span>+12.4%</span>
             </div>
-            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
-              <div className="h-2 bg-green-400 rounded-full" style={{ width: '46%' }} />
+            <div className="flex-1 bg-white/5 rounded-full h-1.5 overflow-hidden">
+              <div className="h-full bg-emerald-500 rounded-full" style={{ width: '46%' }} />
             </div>
-            <div className="text-xs text-gray-400">vs last month</div>
+            <div className="text-[10px] text-slate-500">vs last month</div>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
-          <div className="flex items-start justify-between text-gray-500">
+        <div className="neon-glass-card p-5 rounded-3xl flex flex-col justify-between">
+          <div className="flex items-start justify-between text-slate-400">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total SaaS Revenue</div>
-              <div className="mt-2 text-2xl font-bold text-gray-900">₹{totalRevenue.toLocaleString('en-IN')}</div>
-              <div className="mt-1 text-sm text-gray-500">All processed transactions</div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Total SaaS Revenue</div>
+              <div className="mt-2 text-3xl font-extrabold text-white tracking-tight">₹{totalRevenue.toLocaleString('en-IN')}</div>
+              <div className="mt-1 text-xs text-slate-400">All processed transactions</div>
             </div>
-            <div className="text-emerald-600 bg-emerald-50 rounded-lg p-2">
+            <div className="text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
               <ArrowUpRight size={20} />
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
-          <div className="flex items-start justify-between text-gray-500">
+        <div className="neon-glass-card p-5 rounded-3xl flex flex-col justify-between">
+          <div className="flex items-start justify-between text-slate-400">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active Subscriptions</div>
-              <div className="mt-2 text-2xl font-bold text-gray-900">{activePlansCount} <span className="text-sm font-medium text-gray-400">/ {parentCompanies.length}</span></div>
-              <div className="mt-1 text-sm text-gray-500">Paid or trial workspaces</div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Active Subscriptions</div>
+              <div className="mt-2 text-3xl font-extrabold text-white tracking-tight">
+                {activePlansCount} <span className="text-sm font-medium text-slate-500">/ {parentCompanies.length}</span>
+              </div>
+              <div className="mt-1 text-xs text-slate-400">Paid or trial workspaces</div>
             </div>
-            <div className="text-indigo-600 bg-indigo-50 rounded-lg p-2">
+            <div className="text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-xl p-2.5 shadow-[0_0_15px_rgba(59,130,246,0.15)]">
               <UserCheck size={20} />
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl shadow-md border border-gray-100 flex flex-col justify-between">
-          <div className="flex items-start justify-between text-gray-500">
+        <div className="neon-glass-card glow-card-border-red p-5 rounded-3xl flex flex-col justify-between">
+          <div className="flex items-start justify-between text-slate-400">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pending / Overdue</div>
-              <div className="mt-2 text-2xl font-bold text-gray-900">{pendingPaymentsCount}</div>
-              <div className="mt-1 text-sm text-rose-500 font-medium">Requires immediate renewal</div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Pending / Overdue</div>
+              <div className="mt-2 text-3xl font-extrabold text-white tracking-tight">{pendingPaymentsCount}</div>
+              <div className="mt-1 text-xs text-rose-400 font-medium">Requires immediate renewal</div>
             </div>
-            <div className="text-amber-600 bg-amber-50 rounded-lg p-2">
+            <div className="text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 shadow-[0_0_15px_rgba(244,63,94,0.15)] animate-pulse">
               <AlertTriangle size={20} />
             </div>
           </div>
         </div>
-
       </div>
 
       {/* ─── Premium Tab Bar ────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex flex-wrap gap-2">
+      <div className="bg-slate-950/40 border border-white/5 backdrop-blur-xl rounded-2xl p-2 flex flex-wrap gap-2">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'overview'
-            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
+          className={cn(
+            "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
+            activeTab === 'overview'
+              ? 'gradient-btn-indigo text-white shadow-lg shadow-indigo-500/25'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          )}
         >
-          <Building2 size={16} />
+          <Building2 size={14} />
           Company Billing & Accounts
         </button>
         <button
           onClick={() => setActiveTab('plans')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'plans'
-            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
+          className={cn(
+            "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
+            activeTab === 'plans'
+              ? 'gradient-btn-indigo text-white shadow-lg shadow-indigo-500/25'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          )}
         >
-          <CreditCard size={16} />
+          <CreditCard size={14} />
           Subscription Plans
         </button>
         <button
           onClick={() => setActiveTab('payments')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${activeTab === 'payments'
-            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
+          className={cn(
+            "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
+            activeTab === 'payments'
+              ? 'gradient-btn-indigo text-white shadow-lg shadow-indigo-500/25'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          )}
         >
-          <FileText size={16} />
+          <FileText size={14} />
           Payment Transactions
         </button>
         <button
           onClick={() => setActiveTab('alerts')}
-          className={`px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2 relative ${activeTab === 'alerts'
-            ? 'bg-blue-600 text-white shadow-md shadow-blue-100'
-            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-            }`}
+          className={cn(
+            "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 relative cursor-pointer",
+            activeTab === 'alerts'
+              ? 'gradient-btn-indigo text-white shadow-lg shadow-indigo-500/25'
+              : 'text-slate-400 hover:bg-white/5 hover:text-white'
+          )}
         >
-          <ShieldAlert size={16} />
+          <ShieldAlert size={14} />
           Renewal Alerts
           {alertCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full text-[10px] flex items-center justify-center font-bold animate-pulse">
+            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full text-[9px] flex items-center justify-center font-black animate-pulse shadow-[0_0_8px_rgba(244,63,94,0.5)]">
               {alertCount}
             </span>
           )}
@@ -769,30 +779,30 @@ export const Billing: React.FC<BillingProps> = ({
 
       {/* ─── TAB CONTENT: OVERVIEW (COMPANIES GRID/TABLE) ────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="neon-glass-card rounded-3xl border border-white/5 overflow-hidden">
 
           {/* Controls */}
-          <div className="p-6 border-b border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="p-6 border-b border-white/5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex-1 max-w-xl relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
-                <Search size={16} />
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                <Search size={14} />
               </span>
               <input
                 type="text"
                 placeholder="Search companies, domain, or admin..."
                 value={companySearch}
                 onChange={(e) => setCompanySearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full pl-9 pr-4 py-2.5 glass-search-input rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
               />
             </div>
 
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <Filter size={16} className="text-gray-400" />
+                <Filter size={14} className="text-slate-400" />
                 <select
                   value={planFilter}
                   onChange={(e) => setPlanFilter(e.target.value)}
-                  className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none bg-white text-gray-600"
+                  className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-indigo-500/50 cursor-pointer"
                 >
                   <option value="">All Plans</option>
                   {plans.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
@@ -802,7 +812,7 @@ export const Billing: React.FC<BillingProps> = ({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none bg-white text-gray-600"
+                className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-indigo-500/50 cursor-pointer"
               >
                 <option value="">All Statuses</option>
                 <option value="Paid">Paid</option>
@@ -814,9 +824,9 @@ export const Billing: React.FC<BillingProps> = ({
 
               <Button
                 onClick={handleExportPayments}
-                className="py-2 px-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-semibold rounded-xl text-sm flex items-center gap-2"
+                className="py-2 px-3 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Download size={14} /> Export
+                <Download size={12} /> Export
               </Button>
             </div>
           </div>
@@ -839,52 +849,52 @@ export const Billing: React.FC<BillingProps> = ({
 
               const statusBadge = () => {
                 switch (comp.paymentStatus) {
-                  case 'Paid': return 'bg-emerald-50 text-emerald-700 border border-emerald-100';
-                  case 'Pending': return 'bg-amber-50 text-amber-700 border border-amber-100';
-                  case 'Overdue': return 'bg-rose-50 text-rose-700 border border-rose-100';
-                  case 'Trial Active': return 'bg-sky-50 text-sky-700 border border-sky-100';
-                  default: return 'bg-gray-100 text-gray-700 border border-gray-200';
+                  case 'Paid': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.15)]';
+                  case 'Pending': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.15)]';
+                  case 'Overdue': return 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.15)]';
+                  case 'Trial Active': return 'bg-sky-500/10 text-sky-400 border border-sky-500/20 shadow-[0_0_8px_rgba(14,165,233,0.15)]';
+                  default: return 'bg-slate-800/50 text-slate-400 border border-slate-700/50';
                 }
               };
 
               return (
-                <div key={comp.id} className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow">
+                <div key={comp.id} className="neon-glass-card p-6 border border-white/5 rounded-3xl hover:shadow-[0_0_30px_rgba(99,102,241,0.08)] transition-all duration-300 relative overflow-hidden mb-6 text-left">
                   {/* Parent Company Header */}
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-white/5">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-sm" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md border border-white/10" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>
                         {comp.logo}
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-xl font-bold text-gray-900">{comp.name}</h3>
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 uppercase tracking-wider">Parent Company</span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="text-xl font-extrabold text-white tracking-tight">{comp.name}</h3>
+                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 uppercase tracking-wider">Parent Company</span>
                         </div>
-                        <p className="text-sm text-gray-500 mt-0.5">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
+                        <p className="text-xs text-slate-450 mt-1">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
                       </div>
 
                       {/* Subscription Tier restored in top metrics/info section */}
-                      <div className="ml-6 pl-6 border-l border-slate-100 text-left">
-                        <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subscription Tier</div>
+                      <div className="ml-6 pl-6 border-l border-white/5 text-left">
+                        <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Subscription Tier</div>
                         <div className="mt-1 flex items-center gap-2">
                           {getPlanBadge(comp.plan)}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-bold ${statusBadge()}`}>
                         {comp.paymentStatus}
                       </span>
                       <button
                         onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
-                        className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                        className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                       >
                         Change Plan
                       </button>
                       <button
                         onClick={() => handleQuickExtend(comp.id)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-lg cursor-pointer hover:shadow-emerald-500/20"
                       >
                         Renew Subscription
                       </button>
@@ -892,47 +902,47 @@ export const Billing: React.FC<BillingProps> = ({
                   </div>
 
                   {/* High-Fidelity Combined Summary Grid */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-slate-50/50 rounded-2xl px-5 mt-5 border border-slate-100/50">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-white/5 rounded-2xl px-5 mt-5 border border-white/5">
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subscription Tier</div>
+                      <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Subscription Plan</div>
                       <div className="mt-1 flex items-center gap-2">
                         {getPlanBadge(comp.plan)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Combined Workforce</div>
-                      <div className="mt-1 text-sm font-extrabold text-slate-800">
-                        {totalWorkforce} <span className="text-[10px] font-normal text-slate-500">Employees (Head Office: {parentEmployeesCount})</span>
+                      <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Combined Workforce</div>
+                      <div className="mt-1 text-sm font-extrabold text-white">
+                        {totalWorkforce} <span className="text-[10px] font-normal text-slate-400">Employees (Head Office: {parentEmployeesCount})</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Subsidiary Branches</div>
-                      <div className="mt-1 text-sm font-extrabold text-slate-800">
+                      <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Subsidiary Branches</div>
+                      <div className="mt-1 text-sm font-extrabold text-white">
                         {isSingleCompanyMode ? (
                           <span className="text-slate-400 font-normal text-xs">Disabled (Single Office)</span>
                         ) : (
                           <span>
-                            {compBranches.length} <span className="text-[10px] font-normal text-slate-500">Active (Quota: {allowedBranchLimit})</span>
+                            {compBranches.length} <span className="text-[10px] font-normal text-slate-400">Active (Quota: {allowedBranchLimit})</span>
                           </span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Consolidated Renewal</div>
-                      <div className="mt-1 text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Consolidated Renewal</div>
+                      <div className="mt-1 text-xs font-bold text-white flex items-center gap-1.5">
                         <span>{formatDisplayDate(comp.renewalDate) || '—'}</span>
-                        {isSoon && <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">Expires in {daysLeft}d</span>}
+                        {isSoon && <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.15)] animate-pulse">Expires in {daysLeft}d</span>}
                       </div>
                     </div>
                   </div>
 
                   {/* Dynamic Layout Adaptation */}
                   {isSingleCompanyMode ? (
-                    <div className="mt-6 p-4 rounded-2xl bg-amber-50 border border-amber-100/60 text-amber-800 flex items-start gap-3">
-                      <AlertTriangle size={18} className="mt-0.5 text-amber-600 flex-shrink-0" />
+                    <div className="mt-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 flex items-start gap-3">
+                      <AlertTriangle size={18} className="mt-0.5 text-amber-400 flex-shrink-0" />
                       <div className="text-xs space-y-1">
                         <div className="font-bold">⭐ Startup Mode Enabled</div>
-                        <p className="text-amber-700/90 leading-relaxed">
+                        <p className="text-amber-450 leading-relaxed">
                           Your workspace is operating under a simple Single-Office framework because you are on the <strong>{comp.plan} Plan</strong>. Subsidiary branches, regional billing pipelines, and multi-branch management systems are cleanly hidden. Upgrade your plan to Professional or Enterprise to unlock multi-branch SaaS capabilities instantly!
                         </p>
                       </div>
@@ -940,58 +950,58 @@ export const Billing: React.FC<BillingProps> = ({
                   ) : (
                     <>
                       {/* Branches Directory Panel */}
-                      <div className="mt-6 border-t border-slate-100 pt-6">
+                      <div className="mt-6 border-t border-white/5 pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <Building2 size={16} className="text-indigo-600" />
-                            <h4 className="font-bold text-gray-800 text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
+                            <Building2 size={16} className="text-indigo-400" />
+                            <h4 className="font-extrabold text-white text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
                           </div>
                         </div>
 
                         {/* Manage Branch Licenses Panel */}
-                        <div className="bg-indigo-50/35 rounded-2xl border border-indigo-100/60 p-4.5 mb-4.5">
+                        <div className="bg-indigo-950/20 rounded-2xl border border-indigo-500/10 p-4.5 mb-4.5">
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                             <div className="flex-1">
-                              <h5 className="font-bold text-[11px] text-indigo-900 uppercase tracking-wider">Manage Branch License Allocations</h5>
+                              <h5 className="font-extrabold text-[10px] text-indigo-300 uppercase tracking-wider">Manage Branch License Allocations</h5>
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2.5 text-left">
                                 <div>
-                                  <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Included Slots</span>
-                                  <span className="text-xs font-extrabold text-slate-700">{includedBranchLimit} free slots</span>
+                                  <span className="block text-[8px] text-slate-450 font-extrabold uppercase tracking-wider">Included Slots</span>
+                                  <span className="text-xs font-extrabold text-slate-200">{includedBranchLimit} free slots</span>
                                 </div>
                                 <div>
-                                  <span className="block text-[9px] text-indigo-500 font-bold uppercase tracking-wider">Purchased Slots</span>
-                                  <span className="text-xs font-extrabold text-indigo-800">{purchasedAdditionalBranches} paid slots</span>
+                                  <span className="block text-[8px] text-indigo-400 font-extrabold uppercase tracking-wider">Purchased Slots</span>
+                                  <span className="text-xs font-extrabold text-indigo-300">{purchasedAdditionalBranches} paid slots</span>
                                 </div>
                                 <div>
-                                  <span className="block text-[9px] text-slate-400 font-bold uppercase tracking-wider">Total Allowance</span>
-                                  <span className="text-xs font-extrabold text-slate-800">{allowedBranchLimit} branch(es)</span>
+                                  <span className="block text-[8px] text-slate-450 font-extrabold uppercase tracking-wider">Total Allowance</span>
+                                  <span className="text-xs font-extrabold text-slate-200">{allowedBranchLimit} branch(es)</span>
                                 </div>
                                 <div>
-                                  <span className="block text-[9px] text-emerald-500 font-bold uppercase tracking-wider">Active Slots</span>
-                                  <span className="text-xs font-extrabold text-emerald-700">
+                                  <span className="block text-[8px] text-emerald-400 font-extrabold uppercase tracking-wider">Active Slots</span>
+                                  <span className="text-xs font-extrabold text-emerald-400">
                                     {compBranches.filter(b => b.branchLicenseActive && b.branchPortalActive).length} / {compBranches.length} deployed
                                   </span>
                                 </div>
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2 self-end lg:self-center">
+                            <div className="flex items-center gap-2 self-end lg:self-center flex-wrap">
                               <button
                                 onClick={() => handleAdjustBranchSlots(comp.id, 'remove')}
                                 disabled={purchasedAdditionalBranches <= 0}
-                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 disabled:cursor-not-allowed text-rose-700 border border-rose-100 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
                               >
                                 - Remove Slot
                               </button>
                               <button
                                 onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
-                                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-100 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
                               >
                                 + Add Slot (+₹999/mo)
                               </button>
                               <button
                                 onClick={() => handleOpenCreateBranch(comp.id)}
-                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-100 cursor-pointer"
+                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
                               >
                                 <Plus size={13} className="inline mr-1" /> Deploy Branch
                               </button>
@@ -1000,125 +1010,135 @@ export const Billing: React.FC<BillingProps> = ({
                         </div>
 
                         {compBranches.length === 0 ? (
-                          <div className="text-center py-8 border border-dashed border-slate-200 rounded-2xl text-slate-400 text-xs">
+                          <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-slate-400 text-xs bg-slate-900/20">
                             No branches deployed yet for this workspace. Click "Deploy Branch Portal" to onboard one.
                           </div>
                         ) : (
-                          <div className="overflow-x-auto border border-slate-100 rounded-2xl shadow-xs">
-                            <table className="w-full text-left text-xs border-collapse">
-                              <thead>
-                                <tr className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
-                                  <th className="px-4 py-3.5">Branch details</th>
-                                  <th className="px-4 py-3.5">Code & Domain</th>
-                                  <th className="px-4 py-3.5">Admin officer</th>
-                                  <th className="px-4 py-3.5">License & Fee</th>
-                                  <th className="px-4 py-3.5">Operational portal status</th>
-                                  <th className="px-4 py-3.5 text-right">Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                                {compBranches.map((br, index) => {
-                                  const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
-                                  const isPaidAddon = index >= includedBranchLimit;
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {compBranches.map((br, index) => {
+                              const isSuspended = br.status === 'Inactive' || br.accountStatus === 'Suspended';
+                              const isPaidAddon = index >= includedBranchLimit;
 
-                                  const licenseLabel = br.branchLicenseStatus || (isPaidAddon ? 'Active License' : 'Active License');
-                                  const renewalDateStr = br.branchRenewalDate || '2027-05-22';
-                                  const currentLicensePrice = isPaidAddon ? `₹${globalBranchPrice}/mo` : 'Included';
+                              const licenseLabel = br.branchLicenseStatus || (isPaidAddon ? 'Active License' : 'Active License');
+                              const renewalDateStr = br.branchRenewalDate || '2027-05-22';
+                              const currentLicensePrice = isPaidAddon ? `₹${globalBranchPrice}/mo` : 'Included';
 
-                                  return (
-                                    <tr key={br.id} className="hover:bg-slate-50/50 transition-colors">
-                                      <td className="px-4 py-3.5">
-                                        <div className="font-bold text-slate-900">{br.name}</div>
-                                        <div className="text-[10px] text-slate-400 mt-0.5">{br.address || ''}</div>
-                                      </td>
-                                      <td className="px-4 py-3.5">
-                                        <div className="font-mono text-[10px] text-indigo-600 bg-indigo-50/50 px-1.5 py-0.5 rounded inline-block font-bold">{br.branchCode || 'BR'}</div>
-                                        <div className="text-[10px] text-slate-400 mt-0.5">{br.domain}</div>
-                                      </td>
-                                      <td className="px-4 py-3.5">
-                                        <div className="font-medium text-slate-800">{br.adminName}</div>
-                                        <div className="text-[10px] text-slate-400">{br.adminEmail}</div>
-                                      </td>
-                                      <td className="px-4 py-3.5">
-                                        <div className="flex items-center gap-1.5">
-                                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${licenseLabel === 'Suspended'
-                                              ? 'bg-rose-50 text-rose-700 border border-rose-100'
-                                              : 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-                                            }`}>
-                                            {licenseLabel}
-                                          </span>
-                                        </div>
-                                        <div className="text-[9px] text-slate-400 mt-1">Cost: {currentLicensePrice}</div>
-                                      </td>
-                                      <td className="px-4 py-3.5">
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${isSuspended ? 'bg-rose-50 text-rose-700 border border-rose-100' : 'bg-emerald-50 text-emerald-700 border border-emerald-100'}`}>
-                                          {isSuspended ? 'Portal Suspended' : 'Portal Active'}
+                              return (
+                                <div key={br.id} className="neon-glass-card-sub rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+                                  <div className="flex flex-col justify-between h-full gap-4">
+                                    {/* Top row */}
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex items-center gap-2.5">
+                                        <span className="font-extrabold text-indigo-300 bg-indigo-500/10 border border-indigo-500/25 px-2 py-0.5 rounded text-[10px] uppercase font-sans tracking-wider shadow-[0_0_8px_rgba(99,102,241,0.15)]">
+                                          {br.branchCode || 'BR'}
                                         </span>
-                                        <div className="text-[9px] text-slate-400 mt-1">Renewal: {formatDisplayDate(renewalDateStr)}</div>
-                                      </td>
-                                      <td className="px-4 py-3.5">
-                                        <div className="flex items-center justify-end gap-1.5">
-                                          <button
-                                            onClick={() => onStartMasquerade(br.id)}
-                                            className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg font-bold text-[10px] transition-colors"
-                                          >
-                                            Masquerade
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenEditBranch(br)}
-                                            className="p-1.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-lg transition-colors"
-                                            title="Edit Branch Settings"
-                                          >
-                                            <Edit3 size={11} />
-                                          </button>
-
-                                          {/* Super Admin billing switches */}
-                                          <button
-                                            onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
-                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${licenseLabel === 'Suspended'
-                                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                                                : 'border-amber-200 text-amber-700 hover:bg-amber-50'
-                                              }`}
-                                            title="Lock/Unlock License Status"
-                                          >
-                                            {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
-                                          </button>
-
-                                          <button
-                                            onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
-                                            className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors ${isSuspended ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50' : 'border-rose-200 text-rose-700 hover:bg-rose-50'}`}
-                                          >
-                                            {isSuspended ? 'Activate Portal' : 'Suspend Portal'}
-                                          </button>
-                                          <button
-                                            onClick={() => handleRemoveBranch(br.id)}
-                                            className="p-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg transition-colors"
-                                            title="Remove Branch"
-                                          >
-                                            <Trash2 size={11} />
-                                          </button>
+                                        <div>
+                                          <h5 className="font-extrabold text-white text-sm">{br.name}</h5>
+                                          <p className="text-[10px] text-slate-450">{br.domain}</p>
                                         </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                                      </div>
+
+                                      <div className="flex flex-col items-end gap-1.5">
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                          licenseLabel === 'Suspended'
+                                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25 shadow-[0_0_6px_rgba(244,63,94,0.15)]'
+                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 shadow-[0_0_6px_rgba(16,185,129,0.15)]'
+                                        }`}>
+                                          🛡️ {licenseLabel}
+                                        </span>
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold ${
+                                          isSuspended
+                                            ? 'bg-rose-500/10 text-rose-400 border border-rose-500/25'
+                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25'
+                                        }`}>
+                                          🌐 {isSuspended ? 'Portal Suspended' : 'Portal Active'}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Middle Lead and Price info */}
+                                    <div className="grid grid-cols-2 gap-3 text-left py-2.5 border-t border-b border-white/5 text-[11px] text-slate-400 bg-white/[0.02] -mx-5 px-5">
+                                      <div>
+                                        <span className="block text-[8px] font-extrabold text-slate-450 uppercase tracking-wider">Admin Officer</span>
+                                        <span className="font-bold text-slate-200 mt-0.5 block truncate" title={br.adminName}>{br.adminName}</span>
+                                        <span className="text-[10px] text-slate-500 block truncate" title={br.adminEmail}>{br.adminEmail}</span>
+                                      </div>
+                                      <div>
+                                        <span className="block text-[8px] font-extrabold text-slate-450 uppercase tracking-wider">License Cost & Renewal</span>
+                                        <span className="font-bold text-slate-200 mt-0.5 block truncate">{currentLicensePrice}</span>
+                                        <span className="text-[10px] text-slate-500 block truncate">Next: {formatDisplayDate(renewalDateStr)}</span>
+                                      </div>
+                                    </div>
+
+                                    {/* Footer actions */}
+                                    <div className="flex items-center justify-between gap-2 pt-1.5">
+                                      <button
+                                        onClick={() => onStartMasquerade(br.id)}
+                                        className="gradient-btn-indigo px-3 py-1.5 rounded-lg font-bold text-[10px] text-white cursor-pointer shadow-md transition-all"
+                                      >
+                                        Masquerade
+                                      </button>
+
+                                      <div className="flex items-center gap-1">
+                                        <button
+                                          onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
+                                          className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
+                                            licenseLabel === 'Suspended'
+                                              ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                                              : 'border-amber-500/25 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+                                          }`}
+                                          title="Lock/Unlock License Status"
+                                        >
+                                          {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
+                                        </button>
+
+                                        <button
+                                          onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
+                                          className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
+                                            isSuspended
+                                              ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                                              : 'border-rose-500/25 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20'
+                                          }`}
+                                        >
+                                          {isSuspended ? 'Activate Portal' : 'Suspend Portal'}
+                                        </button>
+
+                                        <button
+                                          onClick={() => handleOpenEditBranch(br)}
+                                          className="action-icon-btn p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-400 hover:text-white cursor-pointer"
+                                          title="Edit Branch Settings"
+                                        >
+                                          <Edit3 size={11} />
+                                        </button>
+
+                                        <button
+                                          onClick={() => handleRemoveBranch(br.id)}
+                                          className="action-icon-btn-delete p-1.5 rounded-lg border border-rose-500/10 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                                          title="Remove Branch"
+                                        >
+                                          <Trash2 size={11} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
 
                       {/* Branch Resource Utilization Analytics */}
-                      <div className="mt-8 border-t border-slate-100 pt-6">
+                      <div className="mt-8 border-t border-white/5 pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <Users size={16} className="text-emerald-600" />
-                            <h4 className="font-bold text-gray-800 text-sm">Branch Usage Telemetry & Resource Analytics</h4>
+                            <Users size={16} className="text-emerald-400" />
+                            <h4 className="font-extrabold text-white text-sm">Branch Usage Telemetry & Resource Analytics</h4>
                           </div>
                         </div>
 
                         {compBranches.length === 0 ? (
-                          <div className="text-center py-6 text-slate-400 text-xs">
+                          <div className="text-center py-6 text-slate-500 text-xs">
                             No branch usage analytics available. Onboard portals to monitor live load metrics.
                           </div>
                         ) : (
@@ -1134,24 +1154,24 @@ export const Billing: React.FC<BillingProps> = ({
                               const rawUsage = br.monthlyUsage || 70;
 
                               return (
-                                <div key={br.id} className="border border-slate-100 rounded-2xl p-4 bg-slate-50/30 hover:bg-slate-50 transition-colors">
+                                <div key={br.id} className="neon-glass-card-sub rounded-2xl p-4 transition-all duration-300">
                                   <div className="flex items-center justify-between mb-3">
-                                    <div className="font-bold text-slate-900 text-xs">{br.name} Usage Overview</div>
-                                    <span className="text-[10px] font-extrabold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
+                                    <div className="font-bold text-white text-xs">{br.name} Usage Overview</div>
+                                    <span className="text-[10px] font-extrabold bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.15)]">
                                       Usage: {rawUsage}%
                                     </span>
                                   </div>
 
-                                  <div className="space-y-3.5 text-[11px] text-slate-600">
+                                  <div className="space-y-3.5 text-[11px] text-slate-350">
                                     {/* Capacity Progress Bar */}
                                     <div>
                                       <div className="flex justify-between text-[10px] text-slate-400 mb-1">
                                         <span>Workforce Capacity ({brEmployeesCount} / {capacity} staff)</span>
-                                        <span className="font-bold text-slate-700">{capacityPercent}%</span>
+                                        <span className="font-bold text-slate-200">{capacityPercent}%</span>
                                       </div>
-                                      <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                      <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
                                         <div
-                                          className={`h-full rounded-full transition-all duration-500 ${capacityPercent > 85 ? 'bg-rose-500' : capacityPercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'
+                                          className={`h-full rounded-full transition-all duration-500 ${capacityPercent > 85 ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.3)]' : capacityPercent > 60 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.3)]' : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]'
                                             }`}
                                           style={{ width: `${capacityPercent}%` }}
                                         />
@@ -1160,51 +1180,51 @@ export const Billing: React.FC<BillingProps> = ({
 
                                     {/* Sub details metrics */}
                                     <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
-                                        <div className="text-[9px] text-slate-400 uppercase font-bold">HR Administrators</div>
-                                        <div className="font-extrabold text-slate-800 text-xs mt-0.5">{activeHr} accounts</div>
+                                      <div className="bg-white/5 border border-white/5 p-2 rounded-xl">
+                                        <div className="text-[8px] text-slate-450 uppercase font-extrabold">HR Administrators</div>
+                                        <div className="font-extrabold text-slate-200 text-xs mt-0.5">{activeHr} accounts</div>
                                       </div>
-                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
-                                        <div className="text-[9px] text-slate-400 uppercase font-bold">Payroll Volume</div>
-                                        <div className="font-extrabold text-emerald-700 text-xs mt-0.5">₹{payroll.toLocaleString('en-IN')}</div>
+                                      <div className="bg-white/5 border border-white/5 p-2 rounded-xl">
+                                        <div className="text-[8px] text-slate-450 uppercase font-extrabold">Payroll Volume</div>
+                                        <div className="font-extrabold text-emerald-400 text-xs mt-0.5">₹{payroll.toLocaleString('en-IN')}</div>
                                       </div>
-                                      <div className="bg-white border border-slate-100 p-2 rounded-xl">
-                                        <div className="text-[9px] text-slate-400 uppercase font-bold">Storage Loaded</div>
-                                        <div className="font-extrabold text-slate-800 text-xs mt-0.5">{storage}</div>
+                                      <div className="bg-white/5 border border-white/5 p-2 rounded-xl">
+                                        <div className="text-[8px] text-slate-450 uppercase font-extrabold">Storage Loaded</div>
+                                        <div className="font-extrabold text-slate-200 text-xs mt-0.5">{storage}</div>
                                       </div>
                                     </div>
 
                                     {/* Super Admin Inline adjust capacity input */}
-                                    <div className="flex items-center justify-between border-t border-slate-100 pt-3">
+                                    <div className="flex items-center justify-between border-t border-white/5 pt-3">
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-[10px] text-slate-400 font-bold">Renewal override:</span>
+                                        <span className="text-[9px] text-slate-450 font-extrabold uppercase">Renewal override:</span>
                                         <input
                                           type="date"
                                           defaultValue={br.branchRenewalDate || '2027-05-22'}
                                           onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
-                                          className="text-[10px] border border-slate-200 rounded px-1 py-0.5 bg-white text-slate-700 focus:outline-none"
+                                          className="text-[10px] border border-white/10 rounded px-1.5 py-0.5 bg-slate-900 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer"
                                         />
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-[10px] text-slate-400 font-bold">Limit ceiling:</span>
-                                        <span className="text-[10px] font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-100/60 px-2 py-0.5 rounded-lg">
-                                          {capacity} Employees
+                                        <span className="text-[9px] text-slate-450 font-extrabold uppercase">Limit:</span>
+                                        <span className="text-[10px] font-extrabold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-lg">
+                                          {capacity} staff
                                         </span>
 
                                         {/* Capacity Controlled Upgrade Options */}
-                                        <div className="flex items-center gap-1 ml-1.5">
+                                        <div className="flex items-center gap-1 ml-1">
                                           {capacity === 200 && (
                                             <>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 500)}
-                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Upgrade limit to 500 employees (+₹1,499/mo)"
                                               >
                                                 +500
                                               </button>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
-                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Upgrade limit to 1000 employees (+₹2,999/mo)"
                                               >
                                                 +1000
@@ -1215,14 +1235,14 @@ export const Billing: React.FC<BillingProps> = ({
                                             <>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Downgrade limit to 200 employees (Free base capacity)"
                                               >
                                                 -200
                                               </button>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
-                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Upgrade limit to 1000 employees (+₹2,999/mo)"
                                               >
                                                 +1000
@@ -1233,14 +1253,14 @@ export const Billing: React.FC<BillingProps> = ({
                                             <>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Downgrade limit to 200 employees (Free base capacity)"
                                               >
                                                 -200
                                               </button>
                                               <button
                                                 onClick={() => handleUpdateBranchCapacity(br.id, 500)}
-                                                className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                 title="Downgrade limit to 500 employees (+₹1,499/mo)"
                                               >
                                                 -500
@@ -1262,15 +1282,15 @@ export const Billing: React.FC<BillingProps> = ({
                   )}
 
                   {/* Invoices and Stats Bar */}
-                  <div className="mt-6 pt-4 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-slate-500">
+                  <div className="mt-6 pt-4 border-t border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-slate-400">
                     <div>
-                      Unified price: <strong className="text-slate-800">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
+                      Unified price: <strong className="text-white">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
                       {!isSingleCompanyMode && compBranches.length > 0 && (() => {
                         const totalBranchAddonCost = Math.max(compBranches.length - 1, 0) * 999;
 
                         if (totalBranchAddonCost > 0) {
                           return (
-                            <span className="ml-2 text-indigo-700 bg-indigo-50 border border-indigo-100/50 px-2.5 py-0.5 rounded-full font-bold">
+                            <span className="ml-2 text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full font-bold shadow-[0_0_8px_rgba(99,102,241,0.1)]">
                               Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
                             </span>
                           );
@@ -1281,11 +1301,11 @@ export const Billing: React.FC<BillingProps> = ({
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setShowInvoiceModal(comp)}
-                        className="text-indigo-600 hover:text-indigo-800 font-bold transition-colors"
+                        className="text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer"
                       >
                         View Latest Payment Receipt
                       </button>
-                      <span className="text-slate-300">|</span>
+                      <span className="text-white/10">|</span>
                       <span>Next renewal: {formatDisplayDate(comp.renewalDate)}</span>
                     </div>
                   </div>
@@ -1298,76 +1318,132 @@ export const Billing: React.FC<BillingProps> = ({
 
       {/* ─── TAB CONTENT: PLANS MANAGEMENT ───────────────────────────────────── */}
       {activeTab === 'plans' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {plans.map(plan => (
-            <div key={plan.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-lg transition-all duration-300">
-              <div>
-                <div className="flex justify-between items-start">
-                  <h4 className="text-xl font-bold text-gray-800">{plan.name}</h4>
-                  <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-semibold rounded-full">
-                    SaaS Tier
-                  </span>
-                </div>
-                <div className="mt-4 flex items-baseline">
-                  <span className="text-4xl font-extrabold text-gray-800">₹{plan.priceMonthly}</span>
-                  <span className="text-gray-400 text-sm ml-1">/ month</span>
+        <div className="space-y-6">
+          {plans.map(plan => {
+            let planColor = '#3b82f6';
+            let planIcon = <Users size={24} />;
+            let isEnterprise = plan.name === 'Enterprise';
+
+            if (plan.name === 'Professional') {
+              planColor = '#8b5cf6';
+              planIcon = <CreditCard size={24} />;
+            } else if (isEnterprise) {
+              planColor = '#10b981';
+              planIcon = <CheckCircle2 size={24} />;
+            }
+
+            return (
+              <div key={plan.id} className="neon-glass-card p-6 border border-white/5 rounded-3xl hover:shadow-[0_0_30px_rgba(99,102,241,0.08)] transition-all duration-300 relative overflow-hidden text-left">
+                {/* Plan Header */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-white/5">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white shadow-md border border-white/10" style={{ backgroundColor: planColor }}>
+                      {planIcon}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xl font-extrabold text-white tracking-tight">{plan.name}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 uppercase tracking-wider">
+                          {isEnterprise ? '👑 Enterprise' : 'SaaS Tier'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-450 mt-1">SaaS Platform Subscription Tier</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6 flex-wrap">
+                    <div className="text-right hidden sm:block">
+                      <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Monthly Billing</div>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-2xl font-extrabold text-white">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
+                        <span className="text-[10px] text-slate-400">/mo</span>
+                      </div>
+                    </div>
+                    
+                    <button
+                      onClick={() => setEditingPlan(plan)}
+                      className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Edit3 size={13} /> Adjust Thresholds
+                    </button>
+                  </div>
                 </div>
 
-                {/* Plan parameters */}
-                <ul className="mt-6 space-y-3.5 text-sm text-gray-600 border-t border-gray-50 pt-5">
-                  <li className="flex items-center gap-2.5">
-                    <Users size={16} className="text-blue-500" />
-                    <span>Up to <strong>{plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit}</strong> Active Employees</span>
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <UserCheck size={16} className="text-blue-500" />
-                    <span>Up to <strong>{plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit}</strong> HR Admins</span>
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <CreditCard size={16} className="text-blue-500" />
-                    <span><strong>{plan.storageLimit}</strong> Secure Document Vault</span>
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <CheckCircle2 size={16} className={plan.payrollAccess ? 'text-emerald-500' : 'text-gray-300'} />
-                    <span className={plan.payrollAccess ? 'text-gray-700' : 'text-gray-400 line-through'}>
-                      Payroll Processing & Payslips
-                    </span>
-                  </li>
-                  <li className="flex items-center gap-2.5">
-                    <CheckCircle2 size={16} className={plan.documentAccess ? 'text-emerald-500' : 'text-gray-300'} />
-                    <span className={plan.documentAccess ? 'text-gray-700' : 'text-gray-400 line-through'}>
-                      HR Templates & Letter Systems
-                    </span>
-                  </li>
-                </ul>
-              </div>
+                {/* High-Fidelity Combined Summary Grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-white/5 rounded-2xl px-5 mt-5 border border-white/5">
+                  <div>
+                    <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Included Workforce</div>
+                    <div className="mt-1 text-sm font-extrabold text-white flex items-center gap-1.5">
+                      <Users size={13} className="text-indigo-400" />
+                      {plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit} <span className="text-[10px] font-normal text-slate-400">Active Employees</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Management Quota</div>
+                    <div className="mt-1 text-sm font-extrabold text-white flex items-center gap-1.5">
+                      <UserCheck size={13} className="text-indigo-400" />
+                      {plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit} <span className="text-[10px] font-normal text-slate-400">HR Admins</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Secure Storage</div>
+                    <div className="mt-1 text-sm font-extrabold text-white flex items-center gap-1.5">
+                      <CreditCard size={13} className="text-indigo-400" />
+                      {plan.storageLimit} <span className="text-[10px] font-normal text-slate-400">Vault</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[9px] uppercase font-extrabold text-slate-450 tracking-wider">Payroll Processing</div>
+                    <div className="mt-1 text-sm font-extrabold flex items-center gap-1.5">
+                      {plan.payrollAccess ? (
+                        <>
+                          <CheckCircle2 size={13} className="text-emerald-400" />
+                          <span className="text-white">Active</span>
+                        </>
+                      ) : (
+                        <>
+                          <XCircle size={13} className="text-slate-500" />
+                          <span className="text-slate-400">Unavailable</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-              <div className="mt-8">
-                <Button
-                  onClick={() => setEditingPlan(plan)}
-                  className="w-full py-2.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl font-bold flex items-center justify-center gap-2 transition-all"
-                >
-                  <Edit3 size={15} />
-                  Adjust Plan Thresholds
-                </Button>
+                {/* Additional Features Panel */}
+                <div className="mt-5 pt-5 border-t border-white/5 flex flex-wrap items-center justify-between gap-4">
+                  <div className="text-xs font-bold text-slate-350 flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className={plan.documentAccess ? 'text-emerald-400' : 'text-slate-600'} />
+                    <span className={plan.documentAccess ? 'text-slate-300' : 'text-slate-500 line-through'}>
+                      Advanced HR Templates & Letter Systems Included
+                    </span>
+                  </div>
+                  
+                  <div className="text-right sm:hidden">
+                    <div className="mt-1 flex items-baseline gap-1">
+                      <span className="text-lg font-extrabold text-white">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
+                      <span className="text-[10px] text-slate-400">/mo</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* ─── TAB CONTENT: TRANSACTION HISTORIES ──────────────────────────────── */}
       {activeTab === 'payments' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div className="neon-glass-card rounded-3xl border border-white/5 overflow-hidden">
+          <div className="p-6 border-b border-white/5 flex items-center justify-between flex-wrap gap-4 text-left">
             <div>
-              <h4 className="font-bold text-gray-800">SaaS Transaction History</h4>
-              <p className="text-xs text-gray-400">Exportable payment receipts ledger</p>
+              <h4 className="font-extrabold text-white text-lg">SaaS Transaction History</h4>
+              <p className="text-xs text-slate-400 mt-0.5">Exportable payment receipts ledger</p>
             </div>
 
             <Button
               onClick={handleExportPayments}
-              className="py-2 px-4 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
+              className="py-2 px-4 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Download size={14} />
               Export Records (CSV)
@@ -1375,9 +1451,9 @@ export const Billing: React.FC<BillingProps> = ({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <tr className="bg-slate-950/40 border-b border-white/5 text-xs font-semibold text-slate-455 uppercase tracking-wider">
                   <th className="py-4 px-6">Invoice ID</th>
                   <th className="py-4 px-6">Company Name</th>
                   <th className="py-4 px-6">Pricing Tier</th>
@@ -1387,33 +1463,33 @@ export const Billing: React.FC<BillingProps> = ({
                   <th className="py-4 px-6 text-right">Gateway Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 text-sm text-gray-600">
+              <tbody className="divide-y divide-white/5 text-sm text-slate-350 bg-transparent">
                 {payments.map(pay => (
-                  <tr key={pay.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="py-4 px-6 font-mono text-xs font-semibold text-gray-500">
+                  <tr key={pay.id} className="hover:bg-white/[0.02] transition-colors">
+                    <td className="py-4 px-6 font-mono text-xs font-semibold text-indigo-400">
                       {pay.invoiceNumber}
                     </td>
-                    <td className="py-4 px-6 font-semibold text-gray-800">
+                    <td className="py-4 px-6 font-bold text-white">
                       {pay.companyName}
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-4 px-6 text-xs text-slate-300">
                       {pay.planType}
                     </td>
-                    <td className="py-4 px-6 text-xs text-gray-400">
+                    <td className="py-4 px-6 text-xs text-slate-450">
                       {pay.paymentDate}
                     </td>
                     <td className="py-4 px-6">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs font-medium">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-800/50 text-slate-300 border border-white/5 text-xs font-medium">
                         {pay.paymentMode}
                       </span>
                     </td>
-                    <td className="py-4 px-6 font-bold text-gray-800">
+                    <td className="py-4 px-6 font-extrabold text-white">
                       ₹{pay.amount.toLocaleString('en-IN')}
                     </td>
                     <td className="py-4 px-6 text-right">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold ${pay.transactionStatus === 'Success' ? 'bg-emerald-50 text-emerald-700' :
-                        pay.transactionStatus === 'Failed' ? 'bg-rose-50 text-rose-700' :
-                          'bg-gray-100 text-gray-700'
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${pay.transactionStatus === 'Success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.15)]' :
+                        pay.transactionStatus === 'Failed' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.15)]' :
+                          'bg-slate-800/50 text-slate-400 border-slate-700/50'
                         }`}>
                         {pay.transactionStatus === 'Success' ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                         {pay.transactionStatus}
