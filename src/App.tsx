@@ -197,7 +197,7 @@ export default function App() {
     const uniqueEmployees: Employee[] = [];
     const seen = new Set<string>();
     for (const emp of loaded) {
-      const key = `${emp.companyId}-${emp.employeeId}`;
+      const key = emp.employeeId;
       if (!seen.has(key)) {
         seen.add(key);
         uniqueEmployees.push(emp);

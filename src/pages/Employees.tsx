@@ -314,7 +314,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const nameErr = validateName(form.name).error;
     const emailErr = validateEmail(form.email).error;
     const phoneErr = validatePhone(form.mobileNumber).error;
-    const empIdErr = validateEmployeeId(form.employeeId, companyEmployees).error;
+    const empIdErr = validateEmployeeId(form.employeeId, employees).error;
     const salaryErr = validateSalary(form.salary).error;
 
     const activeErrors: Record<string, string> = {
@@ -556,7 +556,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             }
 
             // Check duplicate against existing AND newly parsed rows
-            const isDup = companyEmployees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase()) ||
+            const isDup = employees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase()) ||
                           allRows.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
             if (isDup) {
               dupCount++;
@@ -664,7 +664,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     // Deduplicate to avoid accidental repeated seed additions
     const newEmployees = mapped.filter(m => 
-      !employees.some(e => e.employeeId === m.employeeId && e.companyId === m.companyId)
+      !employees.some(e => e.employeeId === m.employeeId)
     );
 
     if (newEmployees.length === 0) {
