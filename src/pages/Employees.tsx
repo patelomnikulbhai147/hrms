@@ -843,7 +843,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
                 </div>
 
-                <div className="border-t border-slate-150 pt-3.5 space-y-3 p-1">
+                <div className="border-t border-slate-700/50 pt-3.5 space-y-3 p-1">
                   <div>
                     <p className="text-[10px] text-gray-400">Present Residential Address</p>
                     <p className="font-semibold text-slate-800 mt-1 leading-relaxed bg-slate-50 p-2 rounded border border-slate-200">{viewEmp.presentAddress || 'No present address recorded.'}</p>
@@ -897,7 +897,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
                 </div>
 
-                <div className="border-t border-slate-150 pt-3.5">
+                <div className="border-t border-slate-700/50 pt-3.5">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-[10px] text-gray-400">Monthly Basic Salary</p>
@@ -955,7 +955,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3 p-1">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Photo Card */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Passport Photo</span>
@@ -965,25 +965,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Primary photo identification</p>
 
-                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                      <div className="my-3 flex justify-center bg-slate-900/40 border-2 border-dashed border-slate-700/50 rounded-lg h-20 items-center overflow-hidden transition-all">
                         {viewEmp.photoUpload ? (
                           <img src={viewEmp.photoUpload} alt="Passport Photo" className="h-full object-contain rounded" />
                         ) : (
-                          <div className="text-center text-slate-400 py-2">
-                            <Users size={20} className="mx-auto text-slate-300 block" />
+                          <div className="text-center text-slate-500 py-2">
+                            <Users size={20} className="mx-auto text-slate-500 opacity-60 block mb-1" />
                             <span className="text-[9px]">No photo uploaded</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.photoUpload ? (
                         <>
-                          <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Replace
                           </button>
                         </>
@@ -997,7 +997,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* Aadhaar Card */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Aadhaar Card</span>
@@ -1007,28 +1007,28 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Government identification scanner</p>
 
-                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                      <div className="my-3 flex justify-center bg-slate-900/40 border-2 border-dashed border-slate-700/50 rounded-lg h-20 items-center overflow-hidden transition-all">
                         {viewEmp.aadhaarUpload ? (
                           <div className="text-center text-emerald-600 py-2">
                             <ShieldCheck size={20} className="mx-auto text-emerald-500" />
                             <a href={viewEmp.aadhaarUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
                           </div>
                         ) : (
-                          <div className="text-center text-slate-400 py-2">
-                            <FileSpreadsheet size={20} className="mx-auto text-slate-300 block" />
+                          <div className="text-center text-slate-500 py-2">
+                            <FileSpreadsheet size={20} className="mx-auto text-slate-500 opacity-60 block mb-1" />
                             <span className="text-[9px]">Pending compliance upload</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.aadhaarUpload ? (
                         <>
-                          <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Replace
                           </button>
                         </>
@@ -1042,7 +1042,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* PAN Card */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">PAN Card</span>
@@ -1052,28 +1052,28 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Tax division registration card</p>
 
-                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                      <div className="my-3 flex justify-center bg-slate-900/40 border-2 border-dashed border-slate-700/50 rounded-lg h-20 items-center overflow-hidden transition-all">
                         {viewEmp.panUpload ? (
                           <div className="text-center text-emerald-600 py-2">
                             <ShieldCheck size={20} className="mx-auto text-emerald-500" />
                             <a href={viewEmp.panUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
                           </div>
                         ) : (
-                          <div className="text-center text-slate-400 py-2">
-                            <FileSpreadsheet size={20} className="mx-auto text-slate-300 block" />
+                          <div className="text-center text-slate-500 py-2">
+                            <FileSpreadsheet size={20} className="mx-auto text-slate-500 opacity-60 block mb-1" />
                             <span className="text-[9px]">Pending compliance upload</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.panUpload ? (
                         <>
-                          <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Replace
                           </button>
                         </>
@@ -1087,7 +1087,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* Signature Scan */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col justify-between hover:shadow-xs transition">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Signature</span>
@@ -1097,25 +1097,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                       <p className="text-[9px] text-slate-400 mt-0.5">Official signature record</p>
 
-                      <div className="my-3 flex justify-center bg-white p-2 rounded-lg border border-slate-100 h-20 items-center overflow-hidden">
+                      <div className="my-3 flex justify-center bg-slate-900/40 border-2 border-dashed border-slate-700/50 rounded-lg h-20 items-center overflow-hidden transition-all">
                         {viewEmp.signatureUpload ? (
                           <img src={viewEmp.signatureUpload} alt="Signature Record" className="h-full object-contain rounded" />
                         ) : (
-                          <div className="text-center text-slate-400 py-2">
-                            <Edit2 size={20} className="mx-auto text-slate-300 block" />
+                          <div className="text-center text-slate-500 py-2">
+                            <Edit2 size={20} className="mx-auto text-slate-500 opacity-60 block mb-1" />
                             <span className="text-[9px]">No signature uploaded</span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-150">
+                    <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.signatureUpload ? (
                         <>
-                          <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-white hover:bg-slate-100 border border-slate-250 text-slate-700 rounded text-[9px] font-bold transition">
+                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Replace
                           </button>
                         </>
@@ -1189,10 +1189,10 @@ export const Employees: React.FC<EmployeesProps> = ({
           </div>
 
           {/* Quick Mock Trigger */}
-          <div className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+          <div className="flex items-center justify-between p-2.5 bg-slate-900/20 border border-slate-700/50 rounded-lg">
             <div>
-              <p className="font-bold text-slate-800">Quick-Load Excel Seeding (834 Rows)</p>
-              <p className="text-[10px] text-slate-500">Populates the HRMS dynamically with the full parsed real master roster.</p>
+              <p className="font-bold text-slate-200">Quick-Load Excel Seeding (834 Rows)</p>
+              <p className="text-[10px] text-slate-400">Populates the HRMS dynamically with the full parsed real master roster.</p>
             </div>
             <Button variant="outline" size="sm" onClick={loadSeededMockExcel}>
               Load Seeded Dataset
@@ -1205,13 +1205,13 @@ export const Employees: React.FC<EmployeesProps> = ({
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleExcelDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${isDragOver ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50/50'
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all shadow-sm ${isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700/50 hover:border-blue-500/50 bg-slate-900/20 hover:bg-slate-800/40'
               }`}
           >
             <input type="file" ref={fileInputRef} onChange={handleExcelSelect} accept=".xlsx,.xls" className="hidden" />
-            <FileSpreadsheet className="mx-auto text-slate-400 mb-2" size={32} />
-            <p className="font-bold text-slate-700">Drag & Drop Employee Master File Here</p>
-            <p className="text-[10px] text-gray-400 mt-1">Accepts standard .xlsx and .xls sheets up to 10MB</p>
+            <FileSpreadsheet className="mx-auto text-slate-500 opacity-60 mb-2" size={32} />
+            <p className="font-bold text-slate-200">Drag & Drop Employee Master File Here</p>
+            <p className="text-[10px] text-slate-400 mt-1">Accepts standard .xlsx and .xls sheets up to 10MB</p>
           </div>
 
           {/* Execution logs */}
@@ -1352,7 +1352,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
                 <Input label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} />
               </div>
-              <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+              <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
                 <Input label="Bank Name" placeholder="e.g. State Bank of India" value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} />
                 <Input label="Account Number" value={form.accountNumber} onChange={e => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} />
                 <Input label="IFSC Code" placeholder="e.g. SBIN0001234" value={form.ifsc} onChange={e => setForm({ ...form, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />
@@ -1442,7 +1442,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} />
                   <Input label="Manager" value={editEmp.manager} onChange={e => setEditEmp({ ...editEmp, manager: e.target.value })} />
                 </div>
-                <div className="border-t border-slate-150 pt-2 grid grid-cols-2 gap-3">
+                <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
                   <Input label="Exit Date" type="date" value={editEmp.exitDate || ''} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} />
                   <Input label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} />
                 </div>
@@ -1460,7 +1460,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
                   <Input label="ESIC IP Number" value={editEmp.esic || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} />
                 </div>
-                <div className="border-t border-slate-150 pt-2 grid grid-cols-3 gap-3">
+                <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
                   <Input label="Bank Name" value={editEmp.bankName || ''} onChange={e => setEditEmp({ ...editEmp, bankName: e.target.value })} />
                   <Input label="Account Number" value={editEmp.accountNumber || ''} onChange={e => setEditEmp({ ...editEmp, accountNumber: e.target.value.replace(/\D/g, '') })} />
                   <Input label="IFSC Code" value={editEmp.ifsc || ''} onChange={e => setEditEmp({ ...editEmp, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />

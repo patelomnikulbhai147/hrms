@@ -519,27 +519,31 @@ export const Settings: React.FC<SettingsProps> = ({
                     value={brandingForm.logoText}
                     onChange={e => setBrandingForm({ ...brandingForm, logoText: e.target.value.toUpperCase().slice(0, 3) })}
                   />
-                <div className="pt-2 pb-1 border-t border-gray-100">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Company Brand Logo (Image) *</label>
+                <div className="pt-3 pb-2 border-t border-slate-800/60 mt-2">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Company Brand Logo (Image) *</label>
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 overflow-hidden relative group">
+                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-700/60 hover:border-blue-500/60 flex items-center justify-center bg-slate-900/40 hover:bg-slate-800/60 overflow-hidden relative group transition-all shadow-md">
                       {brandingForm.logoImage ? (
                         <img src={brandingForm.logoImage} alt="Brand Logo" className="w-full h-full object-contain p-1" />
                       ) : (
-                        <div className="text-gray-400 font-bold text-[10px] text-center px-2">{brandingForm.logoText || 'NO LOGO'}</div>
+                        <div className="flex flex-col items-center justify-center text-slate-500 group-hover:text-blue-400 transition-colors">
+                          <UploadCloud size={16} className="mb-0.5 opacity-60 group-hover:opacity-100" />
+                          <span className="text-[7px] font-bold uppercase tracking-wider">Upload</span>
+                        </div>
                       )}
                       {isSuperOrHead && (
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                          <label className="cursor-pointer p-2">
-                            <UploadCloud size={16} className="text-white" />
+                        <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-[2px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <label className="cursor-pointer p-2 w-full h-full flex flex-col items-center justify-center">
+                            <UploadCloud size={14} className="text-white mb-0.5" />
+                            <span className="text-[7px] text-white font-bold uppercase tracking-wider">Change</span>
                             <input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleLogoUpload} />
                           </label>
                         </div>
                       )}
                     </div>
                     <div className="flex-1">
-                      <p className="text-xs font-semibold text-gray-700">Upload Premium Visual Logo</p>
-                      <p className="text-[10px] text-gray-500 mt-1">Recommended: Transparent PNG or SVG. Max size: 1MB.</p>
+                      <p className="text-xs font-semibold text-slate-200">Upload Premium Visual Logo</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Recommended: Transparent PNG or SVG. Max size: 1MB.</p>
                       {isSuperOrHead && brandingForm.logoImage && (
                         <button onClick={() => setBrandingForm(p => ({ ...p, logoImage: '' }))} type="button" className="text-[10px] text-rose-600 font-bold mt-1.5 hover:underline">
                           Remove Image & Use Text
