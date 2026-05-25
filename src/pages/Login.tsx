@@ -149,8 +149,12 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
                     onClick={() => onLogin(pendingUser, compId)}
                     className="w-full p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900/80 flex items-center gap-3 transition-all active:scale-[0.98] group"
                   >
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white text-xs shadow-md" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>
-                      {comp.logo || comp.name.substring(0, 2).toUpperCase()}
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white text-xs shadow-md overflow-hidden bg-slate-900" style={!comp.logoImage ? { backgroundColor: comp.primaryColor || '#3b82f6' } : {}}>
+                      {comp.logoImage ? (
+                        <img src={comp.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
+                      ) : (
+                        comp.logo || comp.name.substring(0, 2).toUpperCase()
+                      )}
                     </div>
                     <div className="text-left flex-1 min-w-0">
                       <p className="text-sm font-bold text-slate-100 truncate">{comp.name}</p>

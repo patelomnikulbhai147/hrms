@@ -3,7 +3,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
-import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle } from 'lucide-react';
+import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud } from 'lucide-react';
 import { type Company, type Role, getCompanyDepartments } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import {
@@ -67,6 +67,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const [brandingForm, setBrandingForm] = useState({
     logoText: currentCompany.logo,
+    logoImage: currentCompany.logoImage || '',
     primaryColor: currentCompany.primaryColor || '#3b82f6',
     headerText: currentCompany.headerText || '',
     footerText: currentCompany.footerText || '',
@@ -105,6 +106,7 @@ export const Settings: React.FC<SettingsProps> = ({
     });
     setBrandingForm({
       logoText: currentCompany.logo,
+      logoImage: currentCompany.logoImage || '',
       primaryColor: currentCompany.primaryColor || '#3b82f6',
       headerText: currentCompany.headerText || '',
       footerText: currentCompany.footerText || '',
@@ -115,6 +117,24 @@ export const Settings: React.FC<SettingsProps> = ({
     // Populate customDepartments list from actual database resolution
     setCustomDepartments(getCompanyDepartments(currentCompany.id, companies));
   }, [activeCompanyId, currentCompany, companies]);
+
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 1024 * 1024) {
+      alert("Image size must be less than 1MB to ensure fast loading.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setBrandingForm(prev => ({ ...prev, logoImage: base64 }));
+    };
+    reader.readAsDataURL(file);
+  };
 
   // ─── Department List Management Actions ───
   const handleAddDepartment = () => {
@@ -206,6 +226,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
           // Branding settings
           logo: brandingForm.logoText,
+          logoImage: brandingForm.logoImage,
           primaryColor: brandingForm.primaryColor,
           headerText: brandingForm.headerText,
           footerText: brandingForm.footerText,
@@ -498,6 +519,36 @@ export const Settings: React.FC<SettingsProps> = ({
                     value={brandingForm.logoText}
                     onChange={e => setBrandingForm({ ...brandingForm, logoText: e.target.value.toUpperCase().slice(0, 3) })}
                   />
+                <div className="pt-2 pb-1 border-t border-gray-100">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Company Brand Logo (Image) *</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-gray-300 flex items-center justify-center bg-gray-50 overflow-hidden relative group">
+                      {brandingForm.logoImage ? (
+                        <img src={brandingForm.logoImage} alt="Brand Logo" className="w-full h-full object-contain p-1" />
+                      ) : (
+                        <div className="text-gray-400 font-bold text-[10px] text-center px-2">{brandingForm.logoText || 'NO LOGO'}</div>
+                      )}
+                      {isSuperOrHead && (
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <label className="cursor-pointer p-2">
+                            <UploadCloud size={16} className="text-white" />
+                            <input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleLogoUpload} />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-gray-700">Upload Premium Visual Logo</p>
+                      <p className="text-[10px] text-gray-500 mt-1">Recommended: Transparent PNG or SVG. Max size: 1MB.</p>
+                      {isSuperOrHead && brandingForm.logoImage && (
+                        <button onClick={() => setBrandingForm(p => ({ ...p, logoImage: '' }))} type="button" className="text-[10px] text-rose-600 font-bold mt-1.5 hover:underline">
+                          Remove Image & Use Text
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                   <Select
                     label="Document Theme Layout"
                     disabled={!isSuperOrHead}
@@ -717,8 +768,14 @@ export const Settings: React.FC<SettingsProps> = ({
                 <p className="text-[8px] text-gray-400 mt-0.5">{profileForm.address || 'Company Address'}</p>
                 <p className="text-[8px] text-gray-400 mt-0.5">Phone: {phoneCode} {phoneNum} · Email: {profileForm.email}</p>
               </div>
-              <div className="w-7 h-7 rounded text-white flex items-center justify-center font-bold text-[10px]" style={{ backgroundColor: brandingForm.primaryColor }}>
-                {brandingForm.logoText}
+              <div className="flex items-center justify-center">
+                {brandingForm.logoImage ? (
+                  <img src={brandingForm.logoImage} alt="Logo" className="max-h-8 object-contain" />
+                ) : (
+                  <div className="w-7 h-7 rounded text-white flex items-center justify-center font-bold text-[10px]" style={{ backgroundColor: brandingForm.primaryColor }}>
+                    {brandingForm.logoText}
+                  </div>
+                )}
               </div>
             </div>
 

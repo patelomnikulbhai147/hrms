@@ -21,6 +21,7 @@ export interface Company {
   joinDate: string;
   plan: 'Starter' | 'Professional' | 'Enterprise';
   logo: string;
+  logoImage?: string;
   
   // Scoped Payroll settings
   pfRate: number; // e.g. 12%
