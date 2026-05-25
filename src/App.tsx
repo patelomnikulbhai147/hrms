@@ -554,6 +554,18 @@ export default function App() {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('hrms_theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('hrms_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
   const handleLogin = (profile: UserAccount) => {
     setAuthProfile(profile);
     setIsAuthenticated(true);
@@ -797,7 +809,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#080b11] overflow-hidden font-sans antialiased text-slate-100">
+    <div className="flex h-screen overflow-hidden font-sans antialiased">
       <Sidebar
         currentPage={currentPage}
         onNavigate={handleNavigate}
@@ -822,9 +834,11 @@ export default function App() {
           companies={companies}
           notifications={notifications}
           onUpdateNotifications={handleUpdateNotifications}
+          theme={theme}
+          toggleTheme={toggleTheme}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 bg-[#080b11]">
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div

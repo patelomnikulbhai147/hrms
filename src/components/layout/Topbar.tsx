@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X } from 'lucide-react';
+import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon } from 'lucide-react';
 import { type Role, type Company, type Notification } from '../../data/mockData';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
@@ -19,6 +19,8 @@ interface TopbarProps {
   companies: Company[];
   notifications: Notification[];
   onUpdateNotifications: (updater: Notification[] | ((prev: Notification[]) => Notification[])) => void;
+  theme?: 'dark' | 'light';
+  toggleTheme?: () => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -34,7 +36,9 @@ export const Topbar: React.FC<TopbarProps> = ({
   pageTitle,
   companies,
   notifications,
-  onUpdateNotifications
+  onUpdateNotifications,
+  theme = 'dark',
+  toggleTheme
 }) => {
   if (false as boolean) {
     console.log(onRoleChange, onCompanyChange);
@@ -96,6 +100,32 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         <div className="ml-auto flex items-center gap-3">
+          {/* Theme Toggle */}
+          {toggleTheme && (
+            <button
+              onClick={toggleTheme}
+              className="relative p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 rounded-lg transition-all active:scale-95 group"
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+            >
+              <div className="relative w-4.5 h-4.5 flex items-center justify-center">
+                <Sun 
+                  size={18} 
+                  className={cn(
+                    "absolute transition-all duration-500",
+                    theme === 'dark' ? "opacity-0 rotate-90 scale-50" : "opacity-100 rotate-0 scale-100 text-amber-500 drop-shadow-md"
+                  )} 
+                />
+                <Moon 
+                  size={18} 
+                  className={cn(
+                    "absolute transition-all duration-500",
+                    theme === 'light' ? "opacity-0 -rotate-90 scale-50" : "opacity-100 rotate-0 scale-100 text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]"
+                  )} 
+                />
+              </div>
+            </button>
+          )}
+
           {/* Notifications */}
           <div className="relative">
             <button
