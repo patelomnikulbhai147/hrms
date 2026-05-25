@@ -29,7 +29,8 @@ import {
   SubscriptionPlan,
   PaymentRecord,
   Notification,
-  PLAN_LIMITS
+  PLAN_LIMITS,
+  getCompanyIdFromBranchName
 } from './data/mockData';
 import { allExcelParsedEmployees } from './data/excelSeededData';
 import { calculateBranchBilling } from './utils/subscriptionUtils';
@@ -193,13 +194,28 @@ export default function App() {
     let loaded = defaultEmployees;
     if (raw) loaded = JSON.parse(raw);
 
-    // Auto-deduplicate on load to fix accidental double-adds
+    // Auto-deduplicate on load to fix accidental double-adds and migrate branch mapping
     const uniqueEmployees: Employee[] = [];
     const seen = new Set<string>();
-    for (const emp of loaded) {
+    for (let emp of loaded) {
       const key = emp.employeeId;
       if (!seen.has(key)) {
         seen.add(key);
+        // MIGRATION PATCH: Fix stale localStorage data mapped only to parent 'c-gcri'
+        if (emp.companyId === 'c-gcri') {
+          let derivedName = emp.branchLocation || '';
+          if (!derivedName && emp.location) {
+             const locParts = emp.location.split(',');
+             derivedName = locParts[0].trim();
+          }
+          if (derivedName) {
+            // Re-resolve the companyId using the branch name mapping
+            const resolvedId = getCompanyIdFromBranchName(derivedName, 'c-gcri', defaultCompanies);
+            if (resolvedId && resolvedId !== 'c-gcri') {
+              emp = { ...emp, companyId: resolvedId };
+            }
+          }
+        }
         uniqueEmployees.push(emp);
       }
     }
