@@ -587,9 +587,9 @@ export const Companies: React.FC<CompaniesProps> = ({
 
       {/* Grid directory */}
       <Card padding={false}>
-        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant Directory</span>
-          <span className="text-xs text-gray-400 font-medium">{filtered.length} clients registered</span>
+        <div className="px-4 py-2.5 border-b border-slate-800/80 flex items-center justify-between">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tenant Directory</span>
+          <span className="text-xs text-slate-500 font-medium">{filtered.length} clients registered</span>
         </div>
         <Table>
           <Thead>
@@ -621,30 +621,30 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                 return (
                   <React.Fragment key={c.id}>
-                    <Tr className={hasBranches ? "bg-slate-50/30 hover:bg-slate-50/60 font-medium" : ""}>
+                    <Tr className={hasBranches ? "bg-slate-800/30 hover:bg-slate-800/50 font-medium" : ""}>
                       {/* Company Profile */}
                       <Td>
                         <div className="flex items-center gap-2.5">
                           {hasBranches && (
                             <button
                               onClick={() => toggleExpandParent(c.id)}
-                              className="p-1 hover:bg-gray-200 rounded text-gray-450 hover:text-gray-700 transition-transform duration-200"
+                              className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-200 transition-transform duration-200"
                               style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
                             >
                               <ChevronRight size={14} />
                             </button>
                           )}
-                          <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6' }}>
+                          <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6', borderColor: `${c.primaryColor || '#3b82f6'}40` }}>
                             {c.logo}
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
-                              <h4 className="text-xs font-bold text-gray-900">{c.name}</h4>
+                              <h4 className="text-xs font-bold text-slate-200">{c.name}</h4>
                               {hasBranches && (
                                 <Badge variant="indigo" className="scale-90 origin-left">Parent Company</Badge>
                               )}
                             </div>
-                            <span className="text-[10px] text-gray-400 hover:underline cursor-pointer">{c.domain}</span>
+                            <span className="text-[10px] text-slate-500 hover:underline cursor-pointer">{c.domain}</span>
                           </div>
                         </div>
                       </Td>
@@ -652,8 +652,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                       {/* SaaS Admin Info */}
                       <Td>
                         <div className="space-y-0.5">
-                          <p className="text-xs font-semibold text-gray-700">{c.adminName}</p>
-                          <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
+                          <p className="text-xs font-semibold text-slate-300">{c.adminName}</p>
+                          <div className="flex flex-col gap-0.5 text-[10px] text-slate-500">
                             <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
                             <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
                           </div>
@@ -662,12 +662,12 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                       {/* Details */}
                       <Td>
-                        <div className="text-[10px] text-gray-500 space-y-0.5">
-                          <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
+                        <div className="text-[10px] text-slate-400 space-y-0.5">
+                          <p>Sector: <span className="font-semibold text-slate-300">{c.industry}</span></p>
                           <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
                           <p>
                             {hasBranches ? 'Combined Staff: ' : 'Employees: '}
-                            <span className="font-bold text-blue-700">{combinedEmpCount}</span>
+                            <span className="font-bold text-indigo-400">{combinedEmpCount}</span>
                           </p>
                         </div>
                       </Td>
@@ -683,14 +683,14 @@ export const Companies: React.FC<CompaniesProps> = ({
                           <button
                             onClick={() => onStartMasquerade(c.id)}
                             className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
-                            style={{ backgroundColor: c.primaryColor || '#3b82f6' }}
+                            style={{ backgroundColor: c.primaryColor || '#4f46e5' }}
                           >
                             Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
                           </button>
 
                           <button
                             onClick={() => setManageAccountsModal(c)}
-                            className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
                             title="Manage Credentials"
                           >
                             <KeyRound size={13} />
@@ -698,7 +698,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                           <button
                             onClick={() => handleToggleStatus(c.id, c.status)}
-                            className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
+                            className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
                           >
                             {c.status === 'Active' ? 'Suspend' : 'Activate'}
                           </button>
@@ -709,15 +709,15 @@ export const Companies: React.FC<CompaniesProps> = ({
                     {/* Collapsible Nested Roster for branches */}
                     {hasBranches && isExpanded && (
                       <tr>
-                        <td colSpan={5} className="bg-slate-50/45 p-4 border-l-4 border-indigo-600">
-                          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                            <div className="bg-slate-100/50 px-4 py-2 border-b border-gray-200/60 flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
+                        <td colSpan={5} className="bg-slate-900/40 p-4 border-l-4 border-indigo-500">
+                          <div className="rounded-xl border border-slate-700/80 bg-slate-800/50 overflow-hidden shadow-sm">
+                            <div className="bg-slate-900/60 px-4 py-2 border-b border-slate-700/60 flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
                               <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-400 font-medium">{branches.length} branches resolved</span>
+                                <span className="text-[10px] text-slate-500 font-medium">{branches.length} branches resolved</span>
                                 <button
                                   onClick={() => handleOpenCreateBranch(c.id)}
-                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                  className="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
                                 >
                                   <Plus size={10} /> Create Branch
                                 </button>
@@ -725,7 +725,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                             </div>
                             <table className="w-full text-left border-collapse">
                               <thead>
-                                <tr className="bg-slate-50/30 border-b border-gray-150 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                                <tr className="bg-slate-900/40 border-b border-slate-700/80 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                                   <th className="py-2.5 px-4">Branch Code & Name</th>
                                   <th className="py-2.5 px-4">SaaS Admin Info</th>
                                   <th className="py-2.5 px-4">Staff Count</th>
@@ -733,27 +733,27 @@ export const Companies: React.FC<CompaniesProps> = ({
                                   <th className="py-2.5 px-4 text-right">Branch Actions</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-100 text-[11px] text-gray-600">
+                              <tbody className="divide-y divide-slate-700/50 text-[11px] text-slate-300">
                                 {branches.map(b => {
                                   const branchEmpCount = employees.filter(emp => emp.companyId === b.id).length;
                                   return (
-                                    <tr key={b.id} className="hover:bg-slate-50/30 transition-colors">
+                                    <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
                                       <td className="py-2 px-4">
                                         <div className="flex items-center gap-2">
-                                          <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px] font-sans">
+                                          <span className="font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[10px] font-sans">
                                             {b.branchCode || 'BR'}
                                           </span>
                                           <div>
-                                            <p className="font-bold text-gray-900">{b.branchName || b.name}</p>
-                                            <p className="text-[9px] text-gray-400">{b.domain}</p>
+                                            <p className="font-bold text-slate-200">{b.branchName || b.name}</p>
+                                            <p className="text-[9px] text-slate-500">{b.domain}</p>
                                           </div>
                                         </div>
                                       </td>
                                       <td className="py-2 px-4">
-                                        <p className="font-medium text-gray-800">{b.adminName}</p>
-                                        <p className="text-[9px] text-gray-455">{b.adminEmail}</p>
+                                        <p className="font-medium text-slate-300">{b.adminName}</p>
+                                        <p className="text-[9px] text-slate-500">{b.adminEmail}</p>
                                       </td>
-                                      <td className="py-2 px-4 font-bold text-blue-700 font-sans">
+                                      <td className="py-2 px-4 font-bold text-indigo-400 font-sans">
                                         {branchEmpCount} Staff
                                       </td>
                                       <td className="py-2 px-4">
@@ -764,34 +764,34 @@ export const Companies: React.FC<CompaniesProps> = ({
                                           <button
                                             onClick={() => onStartMasquerade(b.id)}
                                             className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
-                                            style={{ backgroundColor: b.primaryColor || '#3b82f6' }}
+                                            style={{ backgroundColor: b.primaryColor || '#4f46e5' }}
                                           >
                                             Manage Branch
                                           </button>
                                           <button
                                             onClick={() => setManageAccountsModal(b)}
-                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-blue-600"
+                                            className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
                                             title="Credentials"
                                           >
                                             <KeyRound size={11} />
                                           </button>
                                           <button
                                             onClick={() => handleOpenEditBranch(b)}
-                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-indigo-650"
+                                            className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
                                             title="Edit Branch Settings"
                                           >
                                             <Edit size={11} />
                                           </button>
                                           <button
                                             onClick={() => handleRemoveBranch(b.id)}
-                                            className="p-1 bg-rose-50 border border-rose-150 rounded text-rose-650 hover:text-rose-700 hover:bg-rose-100"
+                                            className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
                                             title="Remove Branch"
                                           >
                                             <Trash2 size={11} />
                                           </button>
                                           <button
                                             onClick={() => handleToggleStatus(b.id, b.status)}
-                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-650' : 'text-emerald-600'}`}
+                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
                                           >
                                             {b.status === 'Active' ? 'Suspend' : 'Activate'}
                                           </button>
