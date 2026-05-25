@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon } from 'lucide-react';
+import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon, Building2 } from 'lucide-react';
 import { type Role, type Company, type Notification } from '../../data/mockData';
 import { type UserAccount } from '../../pages/Login';
 import { Badge } from '../ui/Badge';
