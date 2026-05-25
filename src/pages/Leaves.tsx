@@ -324,77 +324,77 @@ export const Leaves: React.FC<LeavesProps> = ({
   return (
     <div className="space-y-4 font-sans text-left">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Leave Tracker</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
+          <h2 className="text-xl font-extrabold text-white tracking-tight">Leave Tracker</h2>
+          <p className="text-xs text-slate-400 mt-1">
             Log and track employee leave rosters and scheduled company absences
           </p>
         </div>
         {isHR && (
-          <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+          <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
             Log Leave Absence
           </Button>
         )}
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total Requests" value={totalCount} icon={<Calendar size={16} className="text-blue-600" />} color="bg-blue-50" />
-        <StatCard label="Sick Leave Days" value={sickDaysTotal} icon={<Clock size={16} className="text-red-500" />} color="bg-red-50" />
-        <StatCard label="Casual Leave Days" value={casualDaysTotal} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
-        <StatCard label="On Leave Today" value={onLeaveTodayCount} icon={<Calendar size={16} className="text-purple-600" />} color="bg-purple-50" />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <StatCard label="Total Requests" value={totalCount} icon={<Calendar size={20} className="text-blue-400" />} color="bg-blue-500/10 border border-blue-500/20" />
+        <StatCard label="Sick Leave Days" value={sickDaysTotal} icon={<Clock size={20} className="text-rose-400" />} color="bg-rose-500/10 border border-rose-500/20" />
+        <StatCard label="Casual Leave Days" value={casualDaysTotal} icon={<CheckCircle2 size={20} className="text-emerald-400" />} color="bg-emerald-500/10 border border-emerald-500/20" />
+        <StatCard label="On Leave Today" value={onLeaveTodayCount} icon={<Calendar size={20} className="text-purple-400" />} color="bg-purple-500/10 border border-purple-500/20" />
       </div>
 
       {/* Leave Analytics Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="p-4 border border-slate-100 shadow-sm bg-slate-50/50">
-          <div className="flex items-center gap-2 mb-3">
-            <BarChart3 size={16} className="text-blue-600" />
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Leave Analytics Summary</h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <Card className="p-5 border border-white/5 bg-slate-900/40 backdrop-blur-xl shadow-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <BarChart3 size={16} className="text-indigo-400" />
+            <h3 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Leave Analytics Summary</h3>
           </div>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-              <p className="text-[10px] text-gray-400 font-medium">Most Used Leave Category</p>
-              <p className="font-bold text-gray-900 mt-0.5">{analytics.mostUsedType}</p>
+            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
+              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Most Used Leave Category</p>
+              <p className="font-bold text-white mt-1.5">{analytics.mostUsedType}</p>
             </div>
-            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-              <p className="text-[10px] text-gray-400 font-medium">Top High-Absence Department</p>
-              <p className="font-bold text-gray-900 mt-0.5">{analytics.topDept}</p>
+            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
+              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Top High-Absence Department</p>
+              <p className="font-bold text-white mt-1.5">{analytics.topDept}</p>
             </div>
-            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-              <p className="text-[10px] text-gray-400 font-medium">Highest Absence Employee</p>
-              <p className="font-bold text-gray-900 mt-0.5">{analytics.topEmployee}</p>
+            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
+              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Highest Absence Employee</p>
+              <p className="font-bold text-white mt-1.5">{analytics.topEmployee}</p>
             </div>
-            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-              <p className="text-[10px] text-gray-400 font-medium">Cycle Approved Count</p>
-              <p className="font-bold text-gray-900 mt-0.5">{analytics.monthlySummary}</p>
+            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
+              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Cycle Approved Count</p>
+              <p className="font-bold text-white mt-1.5">{analytics.monthlySummary}</p>
             </div>
           </div>
         </Card>
 
         {/* Dynamic Allowed Rules details panel */}
-        <Card className="p-4 border border-slate-100 shadow-sm bg-slate-50/50">
-          <div className="flex items-center gap-2 mb-3">
-            <Award size={16} className="text-emerald-600" />
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Corporate Allowed Leave Caps</h3>
+        <Card className="p-5 border border-white/5 bg-slate-900/40 backdrop-blur-xl shadow-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <Award size={16} className="text-emerald-400" />
+            <h3 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Corporate Allowed Leave Caps</h3>
           </div>
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between py-1 border-b border-gray-150">
-              <span className="text-gray-600 font-medium">Sick Leave Cap (Annual)</span>
-              <span className="font-bold text-gray-800">8 Days</span>
+          <div className="space-y-2.5 text-xs">
+            <div className="flex items-center justify-between py-1 border-b border-white/5">
+              <span className="text-slate-400 font-medium">Sick Leave Cap (Annual)</span>
+              <span className="font-bold text-white">8 Days</span>
             </div>
-            <div className="flex items-center justify-between py-1 border-b border-gray-150">
-              <span className="text-gray-600 font-medium">Casual Leave Cap (Annual)</span>
-              <span className="font-bold text-gray-800">6 Days</span>
+            <div className="flex items-center justify-between py-1 border-b border-white/5">
+              <span className="text-slate-400 font-medium">Casual Leave Cap (Annual)</span>
+              <span className="font-bold text-white">6 Days</span>
             </div>
-            <div className="flex items-center justify-between py-1 border-b border-gray-150">
-              <span className="text-gray-600 font-medium">Annual Leave Cap (Annual)</span>
-              <span className="font-bold text-gray-800">4 Days</span>
+            <div className="flex items-center justify-between py-1 border-b border-white/5">
+              <span className="text-slate-400 font-medium">Annual Leave Cap (Annual)</span>
+              <span className="font-bold text-white">4 Days</span>
             </div>
-            <div className="flex items-center justify-between py-1 bg-emerald-50 px-2 rounded font-semibold text-emerald-800">
-              <span>Total Allowed Absence Pool</span>
-              <span>18 Days per Annum</span>
+            <div className="flex items-center justify-between py-2 bg-emerald-500/10 px-3 rounded-xl border border-emerald-500/20 font-bold text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] mt-2">
+              <span className="uppercase tracking-wider text-[10px]">Total Allowed Absence Pool</span>
+              <span className="text-xs">18 Days per Annum</span>
             </div>
           </div>
         </Card>
@@ -442,7 +442,7 @@ export const Leaves: React.FC<LeavesProps> = ({
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-8 text-sm text-gray-400">No leave records registered</td></tr>
+              <tr><td colSpan={8} className="text-center py-12 text-sm text-slate-500">No leave records registered</td></tr>
             ) : (
               filtered.map(l => {
                 const empSummary = employeeLeaveSummaries.find(
@@ -450,34 +450,34 @@ export const Leaves: React.FC<LeavesProps> = ({
                 );
                 return (
                   <React.Fragment key={l.id}>
-                    <Tr className="hover:bg-gray-50/50">
+                    <Tr className="hover:bg-white/[0.02] transition-colors border-b border-white/5">
                       <Td>
                         <button
                           onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)}
-                          className="p-1 hover:bg-gray-100 rounded text-gray-500"
+                          className="p-1 hover:bg-white/10 rounded-lg text-slate-400 transition-colors cursor-pointer"
                           title="Toggle Allowed vs Used Balances"
                         >
                           {expandedRowId === l.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                         </button>
                       </Td>
                       <Td>
-                        <div onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)} className="cursor-pointer">
-                          <p className="text-xs font-semibold text-gray-900 hover:text-blue-600 transition">{l.employeeName}</p>
-                          <p className="text-[10px] text-gray-400">{l.department}</p>
+                        <div onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)} className="cursor-pointer group">
+                          <p className="text-xs font-bold text-white group-hover:text-indigo-400 transition-colors">{l.employeeName}</p>
+                          <p className="text-[10px] text-slate-450 mt-0.5">{l.department}</p>
                         </div>
                       </Td>
                       <Td><Badge variant={l.leaveType === 'Sick' ? 'danger' : l.leaveType === 'Casual' ? 'success' : 'blue'}>{l.leaveType}</Badge></Td>
-                      <Td><span className="text-xs font-medium text-gray-700">{l.fromDate}</span></Td>
-                      <Td><span className="text-xs font-medium text-gray-700">{l.toDate}</span></Td>
-                      <Td><span className="text-xs font-bold text-gray-900">{l.days}d</span></Td>
+                      <Td><span className="text-xs font-medium text-slate-300">{l.fromDate}</span></Td>
+                      <Td><span className="text-xs font-medium text-slate-300">{l.toDate}</span></Td>
+                      <Td><span className="text-xs font-extrabold text-white">{l.days}d</span></Td>
                       <Td>
                         <Badge variant={statusBadge(l.status)} dot>{l.status}</Badge>
                       </Td>
                       <Td>
-                        <div className="flex items-center gap-1.5 text-[10px] font-sans">
+                        <div className="flex items-center gap-2 text-[10px] font-sans">
                           <button
                             onClick={() => setViewLeave(l)}
-                            className="px-2 py-0.5 bg-gray-150 hover:bg-gray-200 text-gray-700 font-bold rounded"
+                            className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 font-bold rounded-lg transition-colors cursor-pointer"
                             title="View Reason Details"
                           >
                             View
@@ -486,7 +486,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                             <>
                               <button
                                 onClick={() => setEditLeave(l)}
-                                className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded"
+                                className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg transition-colors cursor-pointer"
                                 title="Edit Request Details"
                               >
                                 Edit
@@ -495,13 +495,13 @@ export const Leaves: React.FC<LeavesProps> = ({
                                 <>
                                   <button
                                     onClick={() => handleQuickStatus(l.id, 'Approved')}
-                                    className="px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold rounded"
+                                    className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 font-bold rounded-lg transition-colors cursor-pointer"
                                   >
                                     Approve
                                   </button>
                                   <button
                                     onClick={() => handleQuickStatus(l.id, 'Rejected')}
-                                    className="px-2 py-0.5 bg-red-50 hover:bg-red-100 text-red-600 font-bold rounded"
+                                    className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 font-bold rounded-lg transition-colors cursor-pointer"
                                   >
                                     Reject
                                   </button>
@@ -510,7 +510,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                               {l.status === 'Approved' && (
                                 <button
                                   onClick={() => handleQuickStatus(l.id, 'Cancelled')}
-                                  className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold rounded"
+                                  className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400 font-bold rounded-lg transition-colors cursor-pointer"
                                 >
                                   Cancel
                                 </button>
@@ -522,28 +522,28 @@ export const Leaves: React.FC<LeavesProps> = ({
                     </Tr>
                     {/* Expandable leave breakdown and statistics card row */}
                     {expandedRowId === l.id && (
-                      <tr className="bg-slate-50/50">
-                        <td colSpan={8} className="px-6 py-3.5 border-t border-b border-gray-150">
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5 text-left text-xs">
-                            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-                              <p className="text-[10px] text-gray-500 font-medium">Sick Leaves Used</p>
-                              <p className="text-xs font-bold text-red-600 mt-1">{empSummary?.sickUsed || 0} / {ALLOWED_SICK} days</p>
+                      <tr className="bg-slate-900/30">
+                        <td colSpan={8} className="px-6 py-4 border-b border-white/5">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-left text-xs">
+                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
+                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Sick Leaves Used</p>
+                              <p className="text-xs font-bold text-rose-400 mt-1.5">{empSummary?.sickUsed || 0} / {ALLOWED_SICK} days</p>
                             </div>
-                            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-                              <p className="text-[10px] text-gray-500 font-medium">Casual Leaves Used</p>
-                              <p className="text-xs font-bold text-emerald-600 mt-1">{empSummary?.casualUsed || 0} / {ALLOWED_CASUAL} days</p>
+                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
+                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Casual Leaves Used</p>
+                              <p className="text-xs font-bold text-emerald-400 mt-1.5">{empSummary?.casualUsed || 0} / {ALLOWED_CASUAL} days</p>
                             </div>
-                            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-                              <p className="text-[10px] text-gray-500 font-medium">Annual Leaves Used</p>
-                              <p className="text-xs font-bold text-blue-600 mt-1">{empSummary?.annualUsed || 0} / {ALLOWED_ANNUAL} days</p>
+                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
+                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Annual Leaves Used</p>
+                              <p className="text-xs font-bold text-blue-400 mt-1.5">{empSummary?.annualUsed || 0} / {ALLOWED_ANNUAL} days</p>
                             </div>
-                            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-                              <p className="text-[10px] text-gray-500 font-medium">Dynamic Absence Pool</p>
-                              <p className="text-xs font-bold text-gray-900 mt-1">Used: {empSummary?.totalUsed || 0} | Rem: {empSummary?.remaining || 0} days</p>
+                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
+                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Dynamic Absence Pool</p>
+                              <p className="text-xs font-bold text-white mt-1.5">Used: {empSummary?.totalUsed || 0} | Rem: {empSummary?.remaining || 0} days</p>
                             </div>
-                            <div className="bg-white p-2.5 rounded-lg border border-gray-150 shadow-sm">
-                              <p className="text-[10px] text-gray-500 font-medium">Last Absence Taken</p>
-                              <p className="text-xs font-semibold text-gray-800 mt-1">{empSummary?.lastLeave || 'None'}</p>
+                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
+                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Last Absence Taken</p>
+                              <p className="text-xs font-semibold text-slate-300 mt-1.5">{empSummary?.lastLeave || 'None'}</p>
                             </div>
                           </div>
                         </td>
