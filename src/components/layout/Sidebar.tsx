@@ -116,8 +116,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer */}
       {!collapsed && (
-        <div className="px-4 py-3 border-t border-slate-900/60 bg-slate-950/20 relative z-10">
-          <p className="text-[9px] text-slate-600 font-extrabold uppercase tracking-wider">v3.1.0 — HR SaaS</p>
+        <div className="px-4 py-3 border-t border-slate-900/60 bg-slate-950/20 relative z-10 flex flex-col gap-3">
+          <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-wider">v3.1.0 — HR SaaS</p>
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-5 bg-slate-800 rounded-full p-0.5 flex items-center relative cursor-pointer border border-slate-700 shadow-inner">
+              <div className="w-4 h-4 bg-slate-400 rounded-full absolute left-0.5 transition-all"></div>
+              <div className="w-full flex justify-between px-1 text-[8px] text-slate-500 relative z-10 pointer-events-none">
+                <span>☀️</span>
+                <span>🌙</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </aside>

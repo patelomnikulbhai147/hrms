@@ -942,8 +942,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
             {/* Branch Staff allocations */}
             <Card className="lg:col-span-5">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100 flex items-center gap-1.5">
-                <Building2 size={14} className="text-indigo-650" />
+              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/80 flex items-center gap-1.5">
+                <Building2 size={14} className="text-indigo-400" />
                 <span>Branch-wise Staff Allocation</span>
               </h3>
               <div className="space-y-4">
@@ -953,13 +953,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   return (
                     <div key={b.id} className="group">
                       <div className="flex justify-between text-[11px] font-bold mb-1">
-                        <span className="text-gray-800 font-semibold">{b.branchName || b.name}</span>
-                        <span className="text-indigo-700 font-extrabold">{count} Staff ({Math.round(pct)}%)</span>
+                        <span className="text-slate-200 font-semibold">{b.branchName || b.name}</span>
+                        <span className="text-indigo-400 font-extrabold">{count} Staff ({Math.round(pct)}%)</span>
                       </div>
-                      <div className="w-full bg-gray-150 h-2 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-800/50 h-2 rounded-full overflow-hidden border border-slate-800">
                         <div
                           style={{ width: `${pct}%` }}
-                          className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                          className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
                         />
                       </div>
                     </div>
@@ -970,12 +970,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             {/* Branch Payroll Rollups */}
             <Card padding={false} className="lg:col-span-7">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign size={14} className="text-emerald-650" />
+              <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
+                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <DollarSign size={14} className="text-slate-400" />
                   <span>Branch Payroll Rollup Analytics</span>
                 </h3>
-                <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded font-extrabold">Consolidated Financials</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-extrabold">Consolidated Financials</span>
               </div>
               <Table>
                 <Thead>
@@ -994,17 +994,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     const derivedStatus = deriveCompanyPayrollStatus(b.id, payroll);
 
                     return (
-                      <Tr key={b.id} className="hover:bg-slate-50/50">
+                      <Tr key={b.id} className="hover:bg-slate-800/30">
                         <Td>
                           <div className="flex items-center gap-2">
-                            <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[9px] font-sans">
+                            <span className="font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[9px] font-sans">
                               {b.branchCode || 'BR'}
                             </span>
-                            <span className="font-semibold text-gray-900">{b.branchName || b.name}</span>
+                            <span className="font-semibold text-slate-200">{b.branchName || b.name}</span>
                           </div>
                         </Td>
-                        <Td><span className="text-xs font-bold text-slate-700">{count} staff members</span></Td>
-                        <Td><span className="text-xs font-extrabold text-slate-800">₹{totalSalary.toLocaleString('en-IN')}</span></Td>
+                        <Td><span className="text-xs font-bold text-slate-400">{count} staff members</span></Td>
+                        <Td><span className="text-xs font-extrabold text-slate-200">₹{totalSalary.toLocaleString('en-IN')}</span></Td>
                         <Td>
                           <Badge variant={derivedStatus.status ? 'green' : 'yellow'}>
                             {derivedStatus.status ? 'Processed' : 'Draft'}
@@ -1022,30 +1022,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 space-y-3">
             <Card padding={false}>
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+              <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Workforce Analytics & Roster Insights</h3>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Real-time branch statistics, department spread, and dynamic joinees feed</p>
+                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workforce Analytics & Roster Insights</h3>
+                  <p className="text-[10px] text-slate-500 mt-0.5">Real-time branch statistics, department spread, and dynamic joinees feed</p>
                 </div>
-                <button onClick={() => onNavigate('employees')} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition-colors">
+                <button onClick={() => onNavigate('employees')} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 transition-colors">
                   <span>View Full Directory</span>
                   <ChevronRight size={12} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-gray-100 min-h-[300px]">
+              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-slate-800/80 min-h-[300px]">
                 {/* LEFT SIDE: Employee Feed & Tabs (Columns: 3/5) */}
                 <div className="md:col-span-3 p-4 flex flex-col justify-between">
                   <div>
                     {/* Tab Selection */}
-                    <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2 mb-3.5">
+                    <div className="flex items-center gap-1.5 pb-2 mb-3.5">
                       {(['Joined', 'On Leave', 'Pending Exit'] as const).map((tab) => (
                         <button
                           key={tab}
                           onClick={() => setRosterTab(tab)}
-                          className={`px-2.5 py-1 text-[10px] font-bold rounded-lg transition-all ${rosterTab === tab
-                            ? 'bg-indigo-600 text-white shadow-sm'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${rosterTab === tab
+                            ? 'bg-gradient-to-r from-blue-600/90 to-indigo-600/90 text-white shadow-lg shadow-blue-500/20'
+                            : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                             }`}
                         >
                           {tab}
@@ -1056,40 +1056,40 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     {/* Compact Roster Feed List */}
                     <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                       {filteredRosterList.length === 0 ? (
-                        <div className="text-center py-12 text-xs text-gray-400 font-medium">
+                        <div className="text-center py-12 text-xs text-slate-500 font-medium">
                           No employees matching filter criteria
                         </div>
                       ) : (
                         filteredRosterList.slice(0, 5).map((e) => (
                           <div
                             key={e.id}
-                            className="flex items-center justify-between p-2.5 hover:bg-slate-50 rounded-xl transition-all border border-slate-100 bg-white"
+                            className="flex items-center justify-between p-2.5 hover:bg-slate-800/40 rounded-xl transition-all border border-slate-800/60 bg-slate-900/40"
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-650 font-sans flex-shrink-0">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-[10px] font-extrabold text-white font-sans flex-shrink-0 shadow-lg shadow-indigo-500/20">
                                 {e.name.substring(0, 2).toUpperCase()}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-bold text-gray-800 truncate">{e.name}</p>
-                                <p className="text-[10px] text-gray-450 truncate">
-                                  {e.designation} • <span className="font-semibold text-gray-500">{e.branchLocation || e.location || 'Ahmedabad'}</span>
+                                <p className="text-xs font-bold text-slate-200 truncate">{e.name}</p>
+                                <p className="text-[10px] text-slate-400 truncate">
+                                  {e.designation} • <span className="font-semibold text-slate-500">{e.branchLocation || e.location || 'Ahmedabad'}</span>
                                 </p>
                               </div>
                             </div>
                             <div className="text-right flex-shrink-0 pl-2">
                               {rosterTab === 'Joined' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded">
-                                  Joined {e.joinDate}
+                                <span className="text-[9px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded">
+                                  Joined NA
                                 </span>
                               )}
                               {rosterTab === 'On Leave' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-amber-50 text-amber-700 font-bold rounded">
+                                <span className="text-[9px] px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold rounded">
                                   Absence Logged
                                 </span>
                               )}
                               {rosterTab === 'Pending Exit' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-rose-50 text-rose-700 font-bold rounded">
-                                  Exit Pending
+                                <span className="text-[9px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded">
+                                  Joined LEFT
                                 </span>
                               )}
                             </div>
@@ -1102,7 +1102,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   {filteredRosterList.length > 5 && (
                     <button
                       onClick={() => onNavigate('employees')}
-                      className="w-full mt-3 text-center text-[9px] font-bold text-indigo-600 hover:text-indigo-800 transition-colors uppercase tracking-wider py-1.5 border-t border-gray-150"
+                      className="w-full mt-3 text-center text-[9px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-wider py-1.5 border-t border-slate-800/80"
                     >
                       View All {filteredRosterList.length} Roster Records
                     </button>
@@ -1110,14 +1110,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 {/* RIGHT SIDE: Dynamic Insights & Department Distribution (Columns: 2/5) */}
-                <div className="md:col-span-2 p-4 bg-slate-50/30 flex flex-col justify-center">
+                <div className="md:col-span-2 p-4 flex flex-col justify-center">
                   {/* Department distribution */}
                   <div className="space-y-3.5">
-                    <div className="border-b border-gray-100 pb-2">
-                      <h4 className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">
+                    <div className="pb-2">
+                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
                         Department Spread
                       </h4>
-                      <p className="text-[8px] text-gray-400 mt-0.5">Distribution across key corporate divisions</p>
+                      <p className="text-[8px] text-slate-500 mt-0.5">Distribution across key corporate divisions</p>
                     </div>
                     <div className="space-y-3">
                       {topDepartments.map((dept) => {
@@ -1125,13 +1125,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         return (
                           <div key={dept.name} className="group">
                             <div className="flex justify-between text-[9px] font-bold mb-1">
-                              <span className="text-gray-700 truncate max-w-[120px] transition-colors group-hover:text-indigo-600">{dept.name}</span>
-                              <span className="text-gray-450">{dept.count} ({Math.round(pct)}%)</span>
+                              <span className="text-slate-300 truncate max-w-[120px] transition-colors group-hover:text-indigo-400">{dept.name}</span>
+                              <span className="text-slate-300">{dept.count} ({Math.round(pct)}%)</span>
                             </div>
-                            <div className="w-full bg-gray-150 h-1.5 rounded-full overflow-hidden">
+                            <div className="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden">
                               <div
                                 style={{ width: `${pct}%` }}
-                                className="bg-indigo-600 h-full rounded-full transition-all duration-500"
+                                className="bg-indigo-600 h-full rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"
                               />
                             </div>
                           </div>
@@ -1145,13 +1145,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           <Card>
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 pb-2 border-b border-gray-100 flex items-center gap-1">
-              <Bell size={13} className="text-indigo-600" />
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/80 flex items-center gap-1.5">
+              <Bell size={14} className="text-purple-400" />
               <span>Send Broadcast Notification</span>
             </h3>
             <div className="space-y-3.5">
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                   Target Audience Scope
                 </label>
                 <select
@@ -1169,7 +1169,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       }
                     }
                   }}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                  className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                 >
                   {isParentCompany && (
                     <option value="all-gcri">GCRI (All Staff across all centers)</option>
@@ -1191,13 +1191,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               {selectedAudience === 'branch' && isParentCompany && (
                 <div className="animate-fade-in text-left">
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                     Target Branch Regional Center
                   </label>
                   <select
                     value={selectedBranch}
                     onChange={e => setSelectedBranch(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
+                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
                   >
                     {branches.map(b => (
                       <option key={b.id} value={b.id}>
@@ -1210,13 +1210,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
               <div className="grid grid-cols-2 gap-2 text-left">
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                     Target Department
                   </label>
                   <select
                     value={selectedDept}
                     onChange={e => setSelectedDept(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                   >
                     <option value="all">All Departments</option>
                     {getCompanyDepartments(activeCompanyId, companies).map(deptName => (
@@ -1226,13 +1226,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                     Target Role Category
                   </label>
                   <select
                     value={selectedRole}
                     onChange={e => setSelectedRole(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none bg-gray-50 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
+                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                   >
                     <option value="all">All Categories</option>
                     <option value="Doctor">Doctors Only</option>
@@ -1243,7 +1243,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                   Notification Message
                 </label>
                 <textarea
@@ -1251,13 +1251,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onChange={e => setBroadcastMsg(e.target.value)}
                   placeholder="Type broadcast message to all scoped roster devices..."
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-white resize-none"
+                  className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none"
                 />
               </div>
 
               <button
                 onClick={handleSendBroadcast}
-                className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-1.5"
+                className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)] flex items-center justify-center gap-1.5"
               >
                 <Bell size={13} />
                 <span>Dispatch Broadcast</span>
