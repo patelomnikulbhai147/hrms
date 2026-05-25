@@ -11,6 +11,7 @@ export interface UserAccount {
   passwordStr: string;
   role: 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee';
   companyId: string;
+  accessibleCompanyIds?: string[];
   status: 'Active' | 'Disabled';
   avatar: string;
   employeeId?: string;
@@ -19,13 +20,15 @@ export interface UserAccount {
 interface LoginProps {
   userAccounts: UserAccount[];
   companies: Company[];
-  onLogin: (user: UserAccount) => void;
+  onLogin: (user: UserAccount, selectedCompanyId?: string) => void;
 }
 
 export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [pendingUser, setPendingUser] = useState<UserAccount | null>(null);
+
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +74,14 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
     }
 
     // Success
-    onLogin(matched);
+    // Check if user has multiple workspaces assigned
+    if (matched.accessibleCompanyIds && matched.accessibleCompanyIds.length > 1) {
+      setPendingUser(matched);
+      return;
+    }
+    
+    // Single workspace or Super Admin
+    onLogin(matched, matched.companyId);
   };
 
   const handleQuickSelect = (acc: UserAccount) => {
@@ -117,6 +127,52 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
         transition={{ type: 'spring', duration: 0.8, bounce: 0.1 }}
         className="w-full max-w-md bg-slate-900/60 backdrop-blur-xl border border-slate-800/80 rounded-3xl p-6 md:p-8 shadow-2xl relative z-10 space-y-6"
       >
+        {pendingUser ? (
+          <div className="space-y-5">
+            <div className="text-center space-y-3">
+              <div className="w-12 h-12 bg-gradient-to-tr from-indigo-500 to-purple-650 rounded-xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-500/20">
+                <Building2 size={22} className="text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-extrabold text-white tracking-tight font-heading">Choose Workspace</h1>
+                <p className="text-xs text-slate-400 mt-1">Select a company or branch to manage</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+              {pendingUser.accessibleCompanyIds?.map(compId => {
+                const comp = companies.find(c => c.id === compId);
+                if (!comp) return null;
+                return (
+                  <button
+                    key={compId}
+                    onClick={() => onLogin(pendingUser, compId)}
+                    className="w-full p-3 rounded-xl bg-slate-950/50 border border-slate-800 hover:border-indigo-500/50 hover:bg-slate-900/80 flex items-center gap-3 transition-all active:scale-[0.98] group"
+                  >
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white text-xs shadow-md" style={{ backgroundColor: comp.primaryColor || '#3b82f6' }}>
+                      {comp.logo || comp.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="text-left flex-1 min-w-0">
+                      <p className="text-sm font-bold text-slate-100 truncate">{comp.name}</p>
+                      <p className="text-[10px] text-slate-400 truncate">{comp.isHeadOffice ? 'Parent Headquarters' : comp.branchName ? `Branch: ${comp.branchName}` : 'Corporate Workspace'}</p>
+                    </div>
+                    <div className="text-slate-500 group-hover:text-indigo-400 transition-colors">
+                      <Sparkles size={14} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            
+            <div className="pt-2 text-center">
+               <button onClick={() => setPendingUser(null)} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                 Cancel & Return to Login
+               </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Header */}
         {/* Header */}
         <div className="text-center space-y-3">
           <div className="w-12 h-12 bg-gradient-to-tr from-blue-500 to-indigo-650 rounded-xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20 active:scale-95 transition-all">
@@ -214,6 +270,8 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
         <div className="text-center pt-2">
           <p className="text-[10px] text-slate-500 font-mono">Platform Authentication Core v3.3.0</p>
         </div>
+        </>
+        )}
       </motion.div>
     </div>
   );

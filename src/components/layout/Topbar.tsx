@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon } from 'lucide-react';
 import { type Role, type Company, type Notification } from '../../data/mockData';
+import { type UserAccount } from '../../pages/Login';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,6 +22,7 @@ interface TopbarProps {
   onUpdateNotifications: (updater: Notification[] | ((prev: Notification[]) => Notification[])) => void;
   theme?: 'dark' | 'light';
   toggleTheme?: () => void;
+  authProfile?: UserAccount | null;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -38,7 +40,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   notifications,
   onUpdateNotifications,
   theme = 'dark',
-  toggleTheme
+  toggleTheme,
+  authProfile
 }) => {
   if (false as boolean) {
     console.log(onRoleChange, onCompanyChange);
@@ -100,6 +103,41 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         <div className="ml-auto flex items-center gap-3">
+          
+          {/* Workspace Switcher */}
+          {authProfile?.accessibleCompanyIds && authProfile.accessibleCompanyIds.length > 1 && (
+            <div className="relative group mr-2">
+              <button className="flex items-center gap-2 bg-slate-900/60 hover:bg-slate-800/80 border border-slate-700/50 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-200 transition-all shadow-md">
+                <Building2 size={14} className="text-blue-400" />
+                <span className="hidden md:inline-block max-w-[120px] truncate">{companies.find(c => c.id === activeCompanyId)?.name || 'Workspace'}</span>
+                <ChevronDown size={12} className="text-slate-400 group-hover:text-white transition-colors" />
+              </button>
+              
+              <div className="absolute right-0 top-full mt-2 w-56 bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 overflow-hidden">
+                <div className="px-3 py-2 border-b border-slate-800 bg-slate-950/50">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Switch Workspace</p>
+                </div>
+                <div className="max-h-[250px] overflow-y-auto p-1">
+                  {authProfile.accessibleCompanyIds.map(compId => {
+                    const comp = companies.find(c => c.id === compId);
+                    if (!comp) return null;
+                    const isActive = compId === activeCompanyId;
+                    return (
+                      <button
+                        key={compId}
+                        onClick={() => onCompanyChange && onCompanyChange(compId)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-between transition-colors ${isActive ? 'bg-blue-600/10 text-blue-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+                      >
+                        <span className="truncate pr-2">{comp.name}</span>
+                        {isActive && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Theme Toggle */}
           {toggleTheme && (
             <button

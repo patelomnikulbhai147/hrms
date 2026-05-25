@@ -58,6 +58,9 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [addOpen, setAddOpen] = useState(false);
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
+  const [workspaceAssignUser, setWorkspaceAssignUser] = useState<UserAccount | null>(null);
+  const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
+
   const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
 
   // Branch Management state
@@ -442,6 +445,27 @@ export const Companies: React.FC<CompaniesProps> = ({
   const companyUsers = manageAccountsModal
     ? userAccounts.filter(u => u.companyId === manageAccountsModal.id)
     : [];
+
+  const handleOpenWorkspaceAssign = (user: UserAccount) => {
+    setWorkspaceAssignUser(user);
+    setSelectedWorkspaces(user.accessibleCompanyIds || [user.companyId]);
+  };
+
+  const handleSaveWorkspaces = () => {
+    if (!workspaceAssignUser) return;
+    const updated = userAccounts.map(u => {
+      if (u.id === workspaceAssignUser.id) {
+        return {
+          ...u,
+          accessibleCompanyIds: selectedWorkspaces,
+          companyId: selectedWorkspaces.length > 0 ? selectedWorkspaces[0] : u.companyId
+        };
+      }
+      return u;
+    });
+    onUpdateAccounts(updated);
+    setWorkspaceAssignUser(null);
+  };
 
   const handleCreateOfficer = () => {
     if (!manageAccountsModal) return;
@@ -1035,6 +1059,13 @@ export const Companies: React.FC<CompaniesProps> = ({
                           <Td>
                             <div className="flex items-center gap-1.5">
                               <button
+                                onClick={() => handleOpenWorkspaceAssign(u)}
+                                className="p-1 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded"
+                                title="Manage Workspaces"
+                              >
+                                <Building2 size={12} />
+                              </button>
+                              <button
                                 onClick={() => handleResetUserPassword(u.id)}
                                 className="p-1 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded"
                                 title="Reset Password"
@@ -1347,6 +1378,50 @@ export const Companies: React.FC<CompaniesProps> = ({
                 Receive automatic critical biometric and compliance alerts
               </label>
             </div>
+          </div>
+        </div>
+      </Modal>
+      {/* Workspace Assignment Modal */}
+      <Modal
+        open={!!workspaceAssignUser}
+        onClose={() => setWorkspaceAssignUser(null)}
+        title={`Manage Workspaces: ${workspaceAssignUser?.name}`}
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setWorkspaceAssignUser(null)}>Cancel</Button>
+            <Button onClick={handleSaveWorkspaces}>Save Permissions</Button>
+          </>
+        }
+      >
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+          <p className="text-xs text-gray-500">
+            Select which companies and branches this user can access. They will be able to seamlessly switch between these workspaces.
+          </p>
+          <div className="space-y-2 border border-gray-100 rounded-xl overflow-hidden">
+            {companies.map(comp => (
+              <label key={comp.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+                <input 
+                  type="checkbox" 
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                  checked={selectedWorkspaces.includes(comp.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedWorkspaces([...selectedWorkspaces, comp.id]);
+                    } else {
+                      setSelectedWorkspaces(selectedWorkspaces.filter(id => id !== comp.id));
+                    }
+                  }}
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    {comp.name}
+                    {comp.isHeadOffice && <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">HQ</span>}
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{comp.branchName ? `Branch: ${comp.branchName}` : 'Parent Company'}</p>
+                </div>
+              </label>
+            ))}
           </div>
         </div>
       </Modal>

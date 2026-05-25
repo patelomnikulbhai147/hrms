@@ -566,13 +566,13 @@ export default function App() {
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
-  const handleLogin = (profile: UserAccount) => {
+  const handleLogin = (profile: UserAccount, selectedCompanyId?: string) => {
     setAuthProfile(profile);
     setIsAuthenticated(true);
     localStorage.setItem('hrms_auth', 'true');
     localStorage.setItem('hrms_profile', JSON.stringify(profile));
     setRole(profile.role);
-    const initialCompanyId = profile.companyId || 'c-gcri';
+    const initialCompanyId = selectedCompanyId || profile.companyId || 'c-gcri';
     setActiveCompanyId(initialCompanyId);
     localStorage.setItem('hrms_active_company_id', initialCompanyId);
     setCurrentPage('dashboard');
@@ -836,6 +836,7 @@ export default function App() {
           onUpdateNotifications={handleUpdateNotifications}
           theme={theme}
           toggleTheme={toggleTheme}
+          authProfile={authProfile}
         />
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
