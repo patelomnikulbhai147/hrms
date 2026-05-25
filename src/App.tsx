@@ -190,9 +190,22 @@ export default function App() {
   // Persistent employees state
   const [employees, setEmployees] = useState<Employee[]>(() => {
     const raw = localStorage.getItem('hrms_employees');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_employees', JSON.stringify(defaultEmployees));
-    return defaultEmployees;
+    let loaded = defaultEmployees;
+    if (raw) loaded = JSON.parse(raw);
+
+    // Auto-deduplicate on load to fix accidental double-adds
+    const uniqueEmployees: Employee[] = [];
+    const seen = new Set<string>();
+    for (const emp of loaded) {
+      const key = `${emp.companyId}-${emp.employeeId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueEmployees.push(emp);
+      }
+    }
+    
+    localStorage.setItem('hrms_employees', JSON.stringify(uniqueEmployees));
+    return uniqueEmployees;
   });
 
   // Persistent attendance records state

@@ -555,8 +555,9 @@ export const Employees: React.FC<EmployeesProps> = ({
               fullName = 'Unknown Employee';
             }
 
-            // Check duplicate
-            const isDup = companyEmployees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
+            // Check duplicate against existing AND newly parsed rows
+            const isDup = companyEmployees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase()) ||
+                          allRows.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
             if (isDup) {
               dupCount++;
               continue;
@@ -654,15 +655,24 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   const loadSeededMockExcel = () => {
     // Quick load all parsed Excel records from static storage for seamless testing
-    const count = allExcelParsedEmployees.length;
     const mapped = allExcelParsedEmployees.map(emp => ({
       ...emp,
       companyId: activeCompanyId,
       role: 'Employee' as Role,
       status: (emp.status || 'Active') as any
     }));
-    onUpdateEmployees([...mapped, ...employees]);
-    alert(`Instantly populated database with ALL ${count} real employee profiles from the Excel master!`);
+
+    // Deduplicate to avoid accidental repeated seed additions
+    const newEmployees = mapped.filter(m => 
+      !employees.some(e => e.employeeId === m.employeeId && e.companyId === m.companyId)
+    );
+
+    if (newEmployees.length === 0) {
+      alert('All enterprise seed records are already populated in this branch!');
+    } else {
+      onUpdateEmployees([...newEmployees, ...employees]);
+      alert(`Instantly populated database with ${newEmployees.length} real employee profiles from the Excel master!`);
+    }
     setImportOpen(false);
   };
 
