@@ -330,3 +330,116 @@ table {
   background: rgba(244, 63, 94, 0.15) !important;
   color: #fb7185 !important;
 }
+
+
+/* ──────────────────────────────────────────────────────────────────
+   🌟 SaaS Visual Layer Overrides for Premium Enterprise Light Mode
+   ────────────────────────────────────────────────────────────────── */
+
+/* 1. Surfaces & Elevation */
+/* Primary Cards and Inputs */
+html[data-theme="light"] .bg-slate-900\/40,
+html[data-theme="light"] .bg-slate-900,
+html[data-theme="light"] .bg-slate-950 {
+  background-color: #ffffff !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0,0,0,0.05) !important;
+}
+
+/* Secondary Surfaces (Sub-cards, Table headers, specific buttons) */
+html[data-theme="light"] .bg-slate-900\/20,
+html[data-theme="light"] .bg-slate-800\/60,
+html[data-theme="light"] .bg-slate-800 {
+  background-color: #f1f5f9 !important;
+  box-shadow: none !important;
+}
+
+/* Transparent glass utilities specific to dark mode need clean fallback */
+html[data-theme="light"] .bg-slate-950\/45,
+html[data-theme="light"] .bg-slate-950\/40 {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* 2. Typography Hierarchy */
+/* Primary Text (Headings, Values) */
+html[data-theme="light"] .text-slate-100,
+html[data-theme="light"] .text-slate-200 {
+  color: #0f172a !important;
+}
+
+/* Secondary Text (Subtitles, Labels) */
+html[data-theme="light"] .text-slate-300,
+html[data-theme="light"] .text-slate-400 {
+  color: #475569 !important;
+}
+
+/* Muted Text / Placeholders */
+html[data-theme="light"] .text-slate-500,
+html[data-theme="light"] .placeholder-slate-500::placeholder {
+  color: #64748b !important;
+}
+
+/* 3. Borders & Separators */
+html[data-theme="light"] .border-slate-800\/80,
+html[data-theme="light"] .border-slate-800,
+html[data-theme="light"] .border-slate-700\/60,
+html[data-theme="light"] .border-slate-700 {
+  border-color: #e2e8f0 !important;
+}
+
+html[data-theme="light"] .divide-slate-800\/80 > :not([hidden]) ~ :not([hidden]),
+html[data-theme="light"] .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]),
+html[data-theme="light"] .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html[data-theme="light"] .divide-slate-700 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e2e8f0 !important;
+}
+
+/* 4. Interactive States (Hover/Focus) */
+/* Table Rows */
+html[data-theme="light"] tr:hover {
+  background-color: rgba(59, 130, 246, 0.04) !important;
+}
+
+/* Button & Card Hovers */
+html[data-theme="light"] .hover\:bg-slate-800\/60:hover,
+html[data-theme="light"] .hover\:bg-slate-800\/90:hover,
+html[data-theme="light"] .hover\:bg-slate-850\/45:hover {
+  background-color: #e2e8f0 !important;
+}
+
+html[data-theme="light"] .hover\:bg-slate-900\/40:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Fix specific hover text colors on ghost/outline buttons */
+html[data-theme="light"] .text-slate-400.hover\:text-white:hover,
+html[data-theme="light"] .text-slate-300.hover\:text-white:hover,
+html[data-theme="light"] .text-slate-200.hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] .hover\:border-slate-700:hover {
+  border-color: #cbd5e1 !important;
+}
+
+/* Sidebar Specific Overrides for Light Mode */
+/* Make Sidebar clean enterprise white */
+html[data-theme="light"] aside,
+html[data-theme="light"] nav {
+  border-right-color: #e2e8f0 !important;
+}
+
+/* 5. Inputs & Focus Rings */
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus {
+  background-color: #ffffff !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+
+/* Topbar Background */
+html[data-theme="light"] header.bg-slate-950\/40 {
+  background-color: rgba(255, 255, 255, 0.85) !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
+}
