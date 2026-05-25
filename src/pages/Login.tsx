@@ -3,6 +3,17 @@ import { ShieldCheck, Lock, User, Sparkles, Building2 } from 'lucide-react';
 import { Company } from '../data/mockData';
 import { motion } from 'framer-motion';
 
+export interface ModulePermissions {
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  export: boolean;
+  approve: boolean;
+}
+
+export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users';
+
 export interface UserAccount {
   id: string;
   name: string;
@@ -15,6 +26,8 @@ export interface UserAccount {
   status: 'Active' | 'Disabled';
   avatar: string;
   employeeId?: string;
+  moduleAccess?: Record<AppModules, boolean>;
+  permissions?: Record<AppModules, ModulePermissions>;
 }
 
 interface LoginProps {

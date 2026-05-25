@@ -2,13 +2,14 @@ import React from 'react';
 import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
-  FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard
+  FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck
 } from 'lucide-react';
 import type { Role } from '../../data/mockData';
+import type { UserAccount, AppModules } from '../../pages/Login';
 
 export type PageId =
   | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
-  | 'documents' | 'reports' | 'settings' | 'billing';
+  | 'documents' | 'reports' | 'settings' | 'billing' | 'users';
 
 interface NavItem {
   id: PageId;
@@ -27,6 +28,7 @@ const navItems: NavItem[] = [
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
+  { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
 ];
 
 interface SidebarProps {
@@ -38,6 +40,7 @@ interface SidebarProps {
   onExitMasquerade?: () => void;
   theme?: 'dark' | 'light';
   toggleTheme?: () => void;
+  authProfile?: UserAccount | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -48,9 +51,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMasquerading,
   onExitMasquerade,
   theme = 'dark',
-  toggleTheme
+  toggleTheme,
+  authProfile
 }) => {
-  const visibleItems = navItems.filter(item => item.roles.includes(role));
+  const visibleItems = navItems.filter(item => {
+    // RBAC Explicit Access Check
+    if (authProfile?.moduleAccess && authProfile.moduleAccess[item.id as AppModules] !== undefined) {
+      return authProfile.moduleAccess[item.id as AppModules];
+    }
+    // Fallback to Role-based defaults
+    return item.roles.includes(role);
+  });
 
   return (
     <aside className={cn(

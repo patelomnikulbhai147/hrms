@@ -12,7 +12,8 @@ import { Documents } from './pages/Documents';
 import { Reports } from './pages/Reports';
 import { Settings } from './pages/Settings';
 import { Billing } from './pages/Billing';
-import { Login, type UserAccount } from './pages/Login';
+import { Users } from './pages/Users';
+import { Login, type UserAccount, type AppModules } from './pages/Login';
 import {
   Role,
   Company,
@@ -45,7 +46,8 @@ const pageTitles: Record<PageId, string> = {
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
-  billing: 'Billing & Subscriptions'
+  billing: 'Billing & Subscriptions',
+  users: 'User Management'
 };
 
 const defaultUsers: UserAccount[] = [
@@ -131,6 +133,12 @@ export default function App() {
     localStorage.setItem('hrms_accounts', JSON.stringify(defaultUsers));
     return defaultUsers;
   });
+
+  const handleUpdateUserAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
+    const next = typeof updater === 'function' ? updater(userAccounts) : updater;
+    setUserAccounts(next);
+    localStorage.setItem('hrms_accounts', JSON.stringify(next));
+  };
 
   // Persistent company list (including address and primaryColor configs!)
   const [companies, setCompanies] = useState<Company[]>(() => {
@@ -637,17 +645,26 @@ export default function App() {
   // Synchronous auto-seeding deactivated for clean SaaS startup environment
 
   useEffect(() => {
+    if (!authProfile) return;
+    
+    // Explicit RBAC Enforcement
+    if (authProfile.moduleAccess && authProfile.moduleAccess[currentPage as AppModules] === false) {
+      setCurrentPage('dashboard');
+      localStorage.setItem('hrms_current_page', 'dashboard');
+      return;
+    }
+
     if (resolvedRole === 'Super Admin' && ['employees', 'leaves', 'payroll', 'documents', 'reports'].includes(currentPage)) {
       setCurrentPage('dashboard');
       localStorage.setItem('hrms_current_page', 'dashboard');
-    } else if ((resolvedRole === 'Company Head' || resolvedRole === 'HR') && ['companies', 'billing'].includes(currentPage)) {
+    } else if ((resolvedRole === 'Company Head' || resolvedRole === 'HR') && ['companies', 'billing', 'users'].includes(currentPage)) {
       setCurrentPage('dashboard');
       localStorage.setItem('hrms_current_page', 'dashboard');
-    } else if (resolvedRole === 'Employee' && currentPage !== 'payroll') {
+    } else if (resolvedRole === 'Employee' && !['payroll', 'settings', 'dashboard'].includes(currentPage)) {
       setCurrentPage('payroll');
       localStorage.setItem('hrms_current_page', 'payroll');
     }
-  }, [resolvedRole, currentPage]);
+  }, [resolvedRole, currentPage, authProfile]);
 
   if (!isAuthenticated || !authProfile) {
     return <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />;
@@ -783,6 +800,15 @@ export default function App() {
             activeCompanyId={resolvedCompanyId}
             companies={companies}
             onUpdateCompanies={handleUpdateCompanies}
+          />
+        );
+
+      case 'users':
+        return (
+          <Users 
+            userAccounts={userAccounts} 
+            companies={companies} 
+            onUpdateAccounts={handleUpdateUserAccounts} 
           />
         );
       default:
