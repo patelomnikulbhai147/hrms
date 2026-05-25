@@ -36,6 +36,8 @@ interface SidebarProps {
   collapsed: boolean;
   isMasquerading?: boolean;
   onExitMasquerade?: () => void;
+  theme?: 'dark' | 'light';
+  toggleTheme?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -44,7 +46,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   role,
   collapsed,
   isMasquerading,
-  onExitMasquerade
+  onExitMasquerade,
+  theme = 'dark',
+  toggleTheme
 }) => {
   const visibleItems = navItems.filter(item => item.roles.includes(role));
 
@@ -119,11 +123,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="px-4 py-3 border-t border-slate-900/60 bg-slate-950/20 relative z-10 flex flex-col gap-3">
           <p className="text-[9px] text-slate-500 font-extrabold uppercase tracking-wider">v3.1.0 — HR SaaS</p>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-5 bg-slate-800 rounded-full p-0.5 flex items-center relative cursor-pointer border border-slate-700 shadow-inner">
-              <div className="w-4 h-4 bg-slate-400 rounded-full absolute left-0.5 transition-all"></div>
-              <div className="w-full flex justify-between px-1 text-[8px] text-slate-500 relative z-10 pointer-events-none">
-                <span>☀️</span>
-                <span>🌙</span>
+            <div 
+              onClick={toggleTheme}
+              className="w-9 h-5 bg-slate-800 rounded-full p-0.5 flex items-center relative cursor-pointer border border-slate-700 shadow-inner hover:border-blue-500/50 transition-all active:scale-95 group"
+            >
+              <div 
+                className={cn(
+                  "w-4 h-4 rounded-full absolute transition-all duration-300 shadow-sm", 
+                  theme === 'light' ? 'left-4 bg-amber-400' : 'left-0.5 bg-slate-300'
+                )}
+              />
+              <div className="w-full flex justify-between px-1 text-[8px] text-slate-500 relative z-10 pointer-events-none transition-opacity">
+                <span className={cn("transition-opacity duration-300", theme === 'light' ? 'opacity-100' : 'opacity-0')}>☀️</span>
+                <span className={cn("transition-opacity duration-300", theme === 'dark' ? 'opacity-100' : 'opacity-0')}>🌙</span>
               </div>
             </div>
           </div>

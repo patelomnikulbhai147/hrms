@@ -598,8 +598,12 @@ export default function App() {
   };
 
   const handleCompanyChange = (companyId: string) => {
-    // Only allow Super Admin to switch active company directly (masquerade overrides)
-    if (resolvedRole !== 'Super Admin') return;
+    // Check if the user is authorized to switch to this company
+    if (resolvedRole !== 'Super Admin' && !isMasquerading) {
+      if (!authProfile?.accessibleCompanyIds?.includes(companyId) && authProfile?.companyId !== companyId) {
+        return;
+      }
+    }
     setActiveCompanyId(companyId);
     localStorage.setItem('hrms_active_company_id', companyId);
     setCurrentPage('dashboard');
@@ -628,9 +632,7 @@ export default function App() {
 
   const resolvedRole = isMasquerading ? 'Company Head' : role;
 
-  const resolvedCompanyId = (authProfile?.role !== 'Super Admin' && !isMasquerading)
-    ? (authProfile?.companyId || 'c-gcri')
-    : activeCompanyId;
+  const resolvedCompanyId = activeCompanyId;
 
   // Synchronous auto-seeding deactivated for clean SaaS startup environment
 
@@ -817,6 +819,8 @@ export default function App() {
         collapsed={sidebarCollapsed}
         isMasquerading={isMasquerading}
         onExitMasquerade={handleExitMasquerade}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
