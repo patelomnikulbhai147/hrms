@@ -5,11 +5,7 @@ import { motion } from 'framer-motion';
 
 export interface ModulePermissions {
   view: boolean;
-  create: boolean;
   edit: boolean;
-  delete: boolean;
-  export: boolean;
-  approve: boolean;
 }
 
 export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users';

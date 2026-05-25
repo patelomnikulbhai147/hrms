@@ -27,11 +27,7 @@ const MODULES_LIST: { id: AppModules; name: string }[] = [
 
 const DEFAULT_PERMISSIONS: ModulePermissions = {
   view: true,
-  create: false,
-  edit: false,
-  delete: false,
-  export: false,
-  approve: false
+  edit: false
 };
 
 export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateAccounts }) => {
@@ -87,6 +83,23 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     
     updatedUser.permissions[moduleId][action] = !updatedUser.permissions[moduleId][action];
     
+    setSelectedUser(updatedUser);
+  };
+
+  const handleToggleWorkspace = (companyId: string) => {
+    if (!selectedUser) return;
+    const updatedUser = { ...selectedUser };
+    const currentIds = updatedUser.accessibleCompanyIds || [updatedUser.companyId];
+    
+    if (currentIds.includes(companyId)) {
+      updatedUser.accessibleCompanyIds = currentIds.filter(id => id !== companyId);
+      // Ensure at least one company remains, fallback to global if all removed
+      if (updatedUser.accessibleCompanyIds.length === 0) {
+         updatedUser.accessibleCompanyIds = [updatedUser.companyId || 'c-gcri'];
+      }
+    } else {
+      updatedUser.accessibleCompanyIds = [...currentIds, companyId];
+    }
     setSelectedUser(updatedUser);
   };
 
@@ -196,18 +209,24 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleToggleStatus(user.id)}
-                          className={cn(
-                            "p-2 rounded-lg transition-colors shadow-sm border",
-                            user.status === 'Active' 
-                              ? "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20" 
-                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                          )}
-                          title={user.status === 'Active' ? 'Disable User' : 'Enable User'}
-                        >
-                          <Power size={16} />
-                        </button>
+                        {user.role !== 'Super Admin' ? (
+                          <button
+                            onClick={() => handleToggleStatus(user.id)}
+                            className={cn(
+                              "p-2 rounded-lg transition-colors shadow-sm border",
+                              user.status === 'Active' 
+                                ? "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20" 
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
+                            )}
+                            title={user.status === 'Active' ? 'Disable User' : 'Enable User'}
+                          >
+                            <Power size={16} />
+                          </button>
+                        ) : (
+                          <div className="p-2 flex items-center justify-center text-slate-500" title="Super Admin is protected">
+                            <ShieldAlert size={16} />
+                          </div>
+                        )}
                         
                         <button
                           onClick={() => handleOpenPermissions(user)}
@@ -271,87 +290,132 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
               </div>
 
               {/* Modal Body - Scrollable */}
-              <div className="p-6 overflow-y-auto flex-1">
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-950/50">
                 
-                {selectedUser.role === 'Super Admin' && (
-                  <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3">
-                    <ShieldAlert className="text-rose-400 shrink-0 mt-0.5" size={18} />
+                {selectedUser.role === 'Super Admin' ? (
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                    <div className="w-20 h-20 bg-gradient-to-tr from-amber-500/20 to-rose-500/20 border border-amber-500/30 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(245,158,11,0.1)]">
+                      <ShieldCheck className="text-amber-400" size={40} />
+                    </div>
+                    <h3 className="text-xl font-black text-white tracking-tight mb-2">Protected System Role</h3>
+                    <p className="text-slate-400 max-w-sm mx-auto leading-relaxed text-sm">
+                      <strong className="text-amber-400 font-bold">Super Admin</strong> has permanent full system access. Permission controls and workspace limits are securely locked to prevent accidental lockouts.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    
+                    {/* Workspace Access Matrix */}
                     <div>
-                      <p className="text-sm font-bold text-rose-400">Super Admin Override</p>
-                      <p className="text-xs text-rose-300/80 mt-1">This user is a Super Admin. They inherently possess full system access regardless of the toggles below. Modifying these permissions will only take effect if their role is downgraded.</p>
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2">
+                          <Building2 size={16} className="text-blue-400" />
+                          Workspace Access
+                        </h3>
+                        <Badge variant="blue">{companies.length} Total</Badge>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                        {companies.map(company => {
+                          const isAssigned = (selectedUser.accessibleCompanyIds || [selectedUser.companyId]).includes(company.id);
+                          return (
+                            <button
+                              key={company.id}
+                              onClick={() => handleToggleWorkspace(company.id)}
+                              className={cn(
+                                "flex items-start gap-3 p-3 rounded-xl border transition-all text-left group",
+                                isAssigned 
+                                  ? "bg-blue-600/10 border-blue-500/30 shadow-inner" 
+                                  : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/50 hover:border-slate-700"
+                              )}
+                            >
+                              <div className={cn(
+                                "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                                isAssigned 
+                                  ? "bg-blue-500 border-blue-500 text-white" 
+                                  : "bg-slate-800 border-slate-600 text-transparent group-hover:border-slate-500"
+                              )}>
+                                <CheckCircle2 size={12} strokeWidth={3} className={cn("transition-transform", isAssigned ? "scale-100" : "scale-0")} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className={cn("text-xs font-bold truncate transition-colors", isAssigned ? "text-blue-300" : "text-slate-300")}>{company.name}</p>
+                                <p className="text-[10px] text-slate-500 truncate mt-0.5">{company.domain || 'Branch Office'}</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-800 to-transparent" />
+
+                    {/* RBAC Modules */}
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2 mb-4">
+                        <Key size={16} className="text-emerald-400" />
+                        Module Permissions
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {MODULES_LIST.map((module) => {
+                          const isEnabled = selectedUser.moduleAccess?.[module.id] ?? true;
+                          const perms = selectedUser.permissions?.[module.id] || DEFAULT_PERMISSIONS;
+                          
+                          return (
+                            <div key={module.id} className={cn(
+                              "rounded-xl border transition-all duration-300 flex flex-col",
+                              isEnabled ? "bg-slate-900/40 border-slate-700/50" : "bg-slate-900/20 border-slate-800/40 opacity-60"
+                            )}>
+                              {/* Module Header Row */}
+                              <div className="p-3.5 flex items-center justify-between border-b border-slate-800/40 bg-slate-800/20">
+                                <span className={cn("font-bold text-sm tracking-tight", isEnabled ? "text-white" : "text-slate-500 line-through decoration-slate-600/50")}>
+                                  {module.name}
+                                </span>
+                                <button
+                                  onClick={() => handleToggleModuleAccess(module.id)}
+                                  className={cn(
+                                    "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
+                                    isEnabled ? "bg-emerald-500" : "bg-slate-700"
+                                  )}
+                                >
+                                  <span className={cn(
+                                    "pointer-events-none inline-block h-3 w-3 mt-[1px] transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                                    isEnabled ? "translate-x-3.5" : "translate-x-0.5"
+                                  )} />
+                                </button>
+                              </div>
+
+                              {/* Granular Permissions */}
+                              {isEnabled && (
+                                <div className="p-3.5 flex items-center gap-3">
+                                  {(['view', 'edit'] as Array<keyof ModulePermissions>).map(action => {
+                                    const hasAction = perms[action];
+                                    return (
+                                      <button
+                                        key={action} 
+                                        onClick={() => handleToggleActionPermission(module.id, action)}
+                                        className={cn(
+                                          "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border",
+                                          hasAction 
+                                            ? "bg-slate-800/80 text-white border-slate-600/50 shadow-sm" 
+                                            : "bg-slate-900/50 text-slate-500 border-slate-800/50 hover:bg-slate-800/50 hover:text-slate-400"
+                                        )}
+                                      >
+                                        <div className={cn(
+                                          "w-1.5 h-1.5 rounded-full",
+                                          hasAction ? (action === 'view' ? 'bg-blue-400' : 'bg-emerald-400') : 'bg-slate-600'
+                                        )} />
+                                        {action}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
-
-                <div className="space-y-4">
-                  {MODULES_LIST.map((module) => {
-                    const isEnabled = selectedUser.moduleAccess?.[module.id] ?? true;
-                    const perms = selectedUser.permissions?.[module.id] || DEFAULT_PERMISSIONS;
-                    
-                    return (
-                      <div key={module.id} className={cn(
-                        "rounded-xl border transition-all duration-300 overflow-hidden",
-                        isEnabled ? "bg-slate-900/30 border-slate-700/50" : "bg-slate-900/10 border-slate-800/40 opacity-75"
-                      )}>
-                        {/* Module Header Row */}
-                        <div className="p-4 flex items-center justify-between border-b border-slate-800/40 bg-slate-900/20">
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => handleToggleModuleAccess(module.id)}
-                              className={cn(
-                                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
-                                isEnabled ? "bg-blue-500" : "bg-slate-700"
-                              )}
-                            >
-                              <span className={cn(
-                                "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                                isEnabled ? "translate-x-4" : "translate-x-0"
-                              )} />
-                            </button>
-                            <span className={cn("font-bold text-sm", isEnabled ? "text-slate-200" : "text-slate-500 line-through decoration-slate-600/50")}>
-                              {module.name}
-                            </span>
-                          </div>
-                          {!isEnabled && (
-                            <Badge variant="red">Access Blocked</Badge>
-                          )}
-                        </div>
-
-                        {/* Granular Permissions (Only show if enabled) */}
-                        {isEnabled && (
-                          <div className="p-4 bg-slate-950/20 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-                            {(['view', 'create', 'edit', 'delete', 'export', 'approve'] as Array<keyof ModulePermissions>).map(action => {
-                              // Some actions don't make sense for all modules, but for generic RBAC we show them
-                              const hasAction = perms[action];
-                              
-                              return (
-                                <label key={action} className="flex items-center gap-2.5 p-2.5 rounded-lg border border-slate-800/60 bg-slate-900/40 cursor-pointer hover:bg-slate-800/60 transition-colors group">
-                                  <div className="relative flex items-center">
-                                    <input
-                                      type="checkbox"
-                                      className="peer sr-only"
-                                      checked={hasAction}
-                                      onChange={() => handleToggleActionPermission(module.id, action)}
-                                    />
-                                    <div className={cn(
-                                      "w-4 h-4 rounded border flex items-center justify-center transition-all",
-                                      hasAction 
-                                        ? "bg-blue-500 border-blue-500 text-white" 
-                                        : "bg-slate-800 border-slate-600 text-transparent group-hover:border-slate-500"
-                                    )}>
-                                      <CheckCircle2 size={12} strokeWidth={3} className={cn("transition-transform", hasAction ? "scale-100" : "scale-0")} />
-                                    </div>
-                                  </div>
-                                  <span className="text-[11px] font-bold text-slate-300 capitalize">{action}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
 
               {/* Modal Footer */}
