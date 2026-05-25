@@ -201,19 +201,17 @@ export default function App() {
       const key = emp.employeeId;
       if (!seen.has(key)) {
         seen.add(key);
-        // MIGRATION PATCH: Fix stale localStorage data mapped only to parent 'c-gcri'
-        if (emp.companyId === 'c-gcri') {
-          let derivedName = emp.branchLocation || '';
-          if (!derivedName && emp.location) {
-             const locParts = emp.location.split(',');
-             derivedName = locParts[0].trim();
-          }
-          if (derivedName) {
-            // Re-resolve the companyId using the branch name mapping
-            const resolvedId = getCompanyIdFromBranchName(derivedName, 'c-gcri', defaultCompanies);
-            if (resolvedId && resolvedId !== 'c-gcri') {
-              emp = { ...emp, companyId: resolvedId };
-            }
+        // MIGRATION PATCH v2: Forcefully correct ANY wrong branch allocations
+        let derivedName = emp.branchLocation || '';
+        if (!derivedName && emp.location) {
+           const locParts = emp.location.split(',');
+           derivedName = locParts[0].trim();
+        }
+        if (derivedName) {
+          // Re-resolve the companyId using the branch name mapping
+          const resolvedId = getCompanyIdFromBranchName(derivedName, 'c-gcri', defaultCompanies);
+          if (resolvedId && resolvedId !== emp.companyId) {
+            emp = { ...emp, companyId: resolvedId };
           }
         }
         uniqueEmployees.push(emp);
