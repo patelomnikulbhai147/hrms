@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { cn } from '../utils/cn';
 import {
   Building2, Plus, Search, KeyRound, Lock, Trash2,
   CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight
@@ -529,27 +530,49 @@ export const Companies: React.FC<CompaniesProps> = ({
     Object.values(errors).some(err => !!err);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">SaaS Company Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
+          <h2 className="text-lg font-extrabold text-white tracking-tight uppercase">SaaS Company Management</h2>
+          <p className="text-xs text-slate-400 mt-0.5 font-medium">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
         </div>
-        <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+        <Button 
+          icon={<Plus size={14} />} 
+          onClick={() => setAddOpen(true)}
+          className="gradient-btn-primary px-5 py-2.5 rounded-xl shadow-lg border-none hover:shadow-[0_0_20px_rgba(123,47,247,0.4)]"
+        >
           Create Company
         </Button>
       </div>
 
       {/* KPI stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Active Companies" value={activeCount} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" sub="Access allowed to portal" />
-        <StatCard label="Suspended Accounts" value={suspendedCount} icon={<XCircle size={16} className="text-red-500" />} color="bg-red-50" sub="Portal entry blocked" />
-        <StatCard label="Total Scoped Tenants" value={parentCompanies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <StatCard 
+          label="Active Companies" 
+          value={activeCount} 
+          icon={<CheckCircle2 size={16} className="text-emerald-400" />} 
+          color="bg-gradient-to-br from-emerald-500/20 to-teal-500/20 text-emerald-400 border border-emerald-500/30 shadow-[0_0_15px_rgba(0,255,163,0.15)]" 
+          sub="Access allowed to portal" 
+        />
+        <StatCard 
+          label="Suspended Accounts" 
+          value={suspendedCount} 
+          icon={<XCircle size={16} className="text-rose-400" />} 
+          color="bg-gradient-to-br from-rose-500/20 to-red-500/20 text-rose-400 border border-rose-500/30 shadow-[0_0_15px_rgba(239,68,68,0.15)]" 
+          sub="Portal entry blocked" 
+        />
+        <StatCard 
+          label="Total Scoped Tenants" 
+          value={parentCompanies.length} 
+          icon={<Building2 size={16} className="text-blue-400" />} 
+          color="bg-gradient-to-br from-blue-500/20 to-indigo-500/20 text-blue-400 border border-blue-500/30 shadow-[0_0_15px_rgba(0,163,255,0.15)]" 
+          sub="Active cloud subscriptions" 
+        />
       </div>
 
       {/* Filters bar */}
-      <Card>
+      <Card className="neon-glass-card border-white/5 shadow-2xl glow-card-border-purple p-5.5">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-48">
             <Input
@@ -557,12 +580,14 @@ export const Companies: React.FC<CompaniesProps> = ({
               value={search}
               onChange={e => setSearch(e.target.value)}
               icon={<Search size={14} />}
+              className="glass-search-input font-medium py-2.5"
             />
           </div>
           <div className="w-40">
             <Select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
+              className="glass-search-input font-medium py-2.5 cursor-pointer"
               options={[
                 { value: '', label: 'All Statuses' },
                 { value: 'Active', label: 'Active' },
@@ -574,6 +599,7 @@ export const Companies: React.FC<CompaniesProps> = ({
             <Select
               value={planFilter}
               onChange={e => setPlanFilter(e.target.value)}
+              className="glass-search-input font-medium py-2.5 cursor-pointer"
               options={[
                 { value: '', label: 'All Plans' },
                 { value: 'Starter', label: 'Starter' },
@@ -586,233 +612,256 @@ export const Companies: React.FC<CompaniesProps> = ({
       </Card>
 
       {/* Grid directory */}
-      <Card padding={false}>
-        <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Tenant Directory</span>
-          <span className="text-xs text-gray-400 font-medium">{filtered.length} clients registered</span>
+      <div className="space-y-4">
+        <div className="px-1 py-1 flex items-center justify-between">
+          <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Tenant Directory</span>
+          <span className="text-xs text-blue-400 font-extrabold glow-text-neon-blue">{filtered.length} clients registered</span>
         </div>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Company Profile</Th>
-              <Th>SaaS Admin Info</Th>
-              <Th>Details</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-sm text-gray-400">
-                  No company records found matching search queries
-                </td>
-              </tr>
-            ) : (
-              filtered.filter(c => !c.parentCompanyId).map(c => {
-                const branches = companies.filter(b => b.parentCompanyId === c.id);
-                const hasBranches = branches.length > 0;
-                const isExpanded = expandedParents[c.id];
 
-                // Calculate total combined employees under parent
-                const combinedEmpCount = hasBranches
-                  ? branches.reduce((sum, b) => sum + employees.filter(emp => emp.companyId === b.id).length, 0) + employees.filter(emp => emp.companyId === c.id).length
-                  : employees.filter(emp => emp.companyId === c.id).length;
+        {filtered.length === 0 ? (
+          <div className="neon-glass-card rounded-2xl p-12 text-center text-sm text-slate-400">
+            No company records found matching search queries
+          </div>
+        ) : (
+          filtered.filter(c => !c.parentCompanyId).map(c => {
+            const branches = companies.filter(b => b.parentCompanyId === c.id);
+            const hasBranches = branches.length > 0;
+            const isExpanded = expandedParents[c.id];
 
-                return (
-                  <React.Fragment key={c.id}>
-                    <Tr className={hasBranches ? "bg-slate-50/30 hover:bg-slate-50/60 font-medium" : ""}>
-                      {/* Company Profile */}
-                      <Td>
+            // Calculate total combined employees under parent
+            const combinedEmpCount = hasBranches
+              ? branches.reduce((sum, b) => sum + employees.filter(emp => emp.companyId === b.id).length, 0) + employees.filter(emp => emp.companyId === c.id).length
+              : employees.filter(emp => emp.companyId === c.id).length;
+
+            return (
+              <React.Fragment key={c.id}>
+                {/* Main Parent Company Card */}
+                <div className="neon-glass-card rounded-2xl p-6 relative overflow-hidden transition-all duration-300">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    {/* Company Profile (Left Section) */}
+                    <div className="flex items-start gap-4">
+                      {hasBranches && (
+                        <button
+                          onClick={() => toggleExpandParent(c.id)}
+                          className="mt-2.5 p-1.5 hover:bg-slate-800/80 rounded-lg text-slate-400 hover:text-white transition-transform duration-200"
+                          style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      )}
+                      
+                      {/* Logo with Gradient Background */}
+                      <div className="w-14 h-14 rounded-xl text-white flex items-center justify-center font-extrabold text-base shadow-lg" 
+                           style={{ background: 'linear-gradient(135deg, #7B2FF7 0%, #2979FF 100%)' }}>
+                        {c.logo}
+                      </div>
+
+                      <div className="space-y-1">
                         <div className="flex items-center gap-2.5">
+                          <h4 className="text-base font-extrabold text-white tracking-tight">{c.name}</h4>
                           {hasBranches && (
-                            <button
-                              onClick={() => toggleExpandParent(c.id)}
-                              className="p-1 hover:bg-gray-200 rounded text-gray-450 hover:text-gray-700 transition-transform duration-200"
-                              style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
-                            >
-                              <ChevronRight size={14} />
-                            </button>
+                            <span className="px-2.5 py-0.5 text-[9px] font-extrabold rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 uppercase tracking-wider shadow-[0_0_8px_rgba(99,102,241,0.2)]">
+                              Parent Company
+                            </span>
                           )}
-                          <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6' }}>
-                            {c.logo}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="text-xs font-bold text-gray-900">{c.name}</h4>
-                              {hasBranches && (
-                                <Badge variant="indigo" className="scale-90 origin-left">Parent Company</Badge>
-                              )}
-                            </div>
-                            <span className="text-[10px] text-gray-400 hover:underline cursor-pointer">{c.domain}</span>
-                          </div>
                         </div>
-                      </Td>
+                        <p className="text-xs font-semibold text-slate-400 hover:underline cursor-pointer transition-colors hover:text-blue-400">
+                          {c.domain}
+                        </p>
+                      </div>
+                    </div>
 
-                      {/* SaaS Admin Info */}
-                      <Td>
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-semibold text-gray-700">{c.adminName}</p>
-                          <div className="flex flex-col gap-0.5 text-[10px] text-gray-400">
-                            <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
-                            <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
-                          </div>
+                    {/* SaaS Admin Info */}
+                    <div className="space-y-1.5 min-w-48">
+                      <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">SaaS Admin Info</span>
+                      <div>
+                        <p className="text-xs font-bold text-slate-200">{c.adminName}</p>
+                        <div className="flex flex-col gap-0.5 mt-0.5 text-[10px] text-slate-400">
+                          <span className="flex items-center gap-1.5 hover:text-blue-400 transition-colors">
+                            <Mail size={11} className="text-slate-500" /> {c.adminEmail}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Phone size={11} className="text-slate-500" /> {c.phone}
+                          </span>
                         </div>
-                      </Td>
+                      </div>
+                    </div>
 
-                      {/* Details */}
-                      <Td>
-                        <div className="text-[10px] text-gray-500 space-y-0.5">
-                          <p>Sector: <span className="font-semibold text-gray-700">{c.industry}</span></p>
-                          <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
-                          <p>
-                            {hasBranches ? 'Combined Staff: ' : 'Employees: '}
-                            <span className="font-bold text-blue-700">{combinedEmpCount}</span>
-                          </p>
-                        </div>
-                      </Td>
+                    {/* Details */}
+                    <div className="space-y-1.5 min-w-44">
+                      <span className="text-[9px] font-extrabold text-slate-500 uppercase tracking-wider block">Details</span>
+                      <div className="text-[11px] text-slate-300 space-y-0.5">
+                        <p>Sector: <span className="font-bold text-white">{c.industry}</span></p>
+                        <p className="flex items-center gap-1 text-slate-400"><Calendar size={11} className="text-slate-500" /> Joined: {c.joinDate}</p>
+                        <p className="font-semibold text-slate-400">
+                          {hasBranches ? 'Combined Staff: ' : 'Employees: '}
+                          <span className="font-extrabold glow-text-neon-blue font-sans text-xs">{combinedEmpCount}</span>
+                        </p>
+                      </div>
+                    </div>
 
-                      {/* Status */}
-                      <Td>
-                        <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
-                      </Td>
+                    {/* Status & Actions */}
+                    <div className="flex flex-row lg:flex-col items-center lg:items-end justify-between lg:justify-start gap-4">
+                      {/* Glowing Status Pill */}
+                      <span className={cn(
+                        "px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 shadow-sm border",
+                        c.status === 'Active' ? 'neon-pill-active' : 'neon-pill-inactive'
+                      )}>
+                        {c.status === 'Active' && <span className="neon-green-dot" />}
+                        {c.status}
+                      </span>
 
-                      {/* Actions */}
-                      <Td>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => onStartMasquerade(c.id)}
-                            className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
-                            style={{ backgroundColor: c.primaryColor || '#3b82f6' }}
-                          >
-                            Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
-                          </button>
+                      {/* Actions buttons */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => onStartMasquerade(c.id)}
+                          className="gradient-btn-primary text-xs px-4 py-2 text-white rounded-xl font-bold transition-all duration-200 inline-flex items-center gap-1 shadow-md cursor-pointer"
+                        >
+                          Manage {hasBranches ? 'All' : ''} <ArrowRight size={11} />
+                        </button>
 
-                          <button
-                            onClick={() => setManageAccountsModal(c)}
-                            className="p-1.5 bg-gray-50 hover:bg-gray-100 text-gray-600 hover:text-blue-600 border border-gray-200 rounded"
-                            title="Manage Credentials"
-                          >
-                            <KeyRound size={13} />
-                          </button>
+                        <button
+                          onClick={() => setManageAccountsModal(c)}
+                          className="action-icon-btn p-2 cursor-pointer"
+                          title="Manage Credentials"
+                        >
+                          <KeyRound size={13} />
+                        </button>
 
-                          <button
-                            onClick={() => handleToggleStatus(c.id, c.status)}
-                            className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-600' : 'text-emerald-600'}`}
-                          >
-                            {c.status === 'Active' ? 'Suspend' : 'Activate'}
-                          </button>
-                        </div>
-                      </Td>
-                    </Tr>
+                        <button
+                          onClick={() => handleToggleStatus(c.id, c.status)}
+                          className={cn(
+                            "px-3 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer",
+                            c.status === 'Active' 
+                              ? 'bg-rose-500/10 border-rose-500/25 text-rose-450 hover:bg-rose-500/20 hover:border-rose-500/50' 
+                              : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/50'
+                          )}
+                        >
+                          {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                    {/* Collapsible Nested Roster for branches */}
-                    {hasBranches && isExpanded && (
-                      <tr>
-                        <td colSpan={5} className="bg-slate-50/45 p-4 border-l-4 border-indigo-600">
-                          <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                            <div className="bg-slate-100/50 px-4 py-2 border-b border-gray-200/60 flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-400 font-medium">{branches.length} branches resolved</span>
+                {/* Collapsible Nested Roster for branches */}
+                {hasBranches && isExpanded && (
+                  <div className="pl-6 border-l-2 border-indigo-500/25 space-y-4 my-2">
+                    <div className="flex items-center justify-between px-1 py-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider font-sans">
+                          GCRI Connected Sub-Branches
+                        </span>
+                        <span className="px-2 py-0.5 text-[9px] font-bold rounded-full bg-slate-800 text-slate-400">
+                          {branches.length} branches resolved
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleOpenCreateBranch(c.id)}
+                        className="gradient-btn-indigo px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer hover:shadow-indigo-500/25"
+                      >
+                        <Plus size={12} /> Create Branch
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {branches.map(b => {
+                        const branchEmpCount = employees.filter(emp => emp.companyId === b.id).length;
+                        return (
+                          <div key={b.id} className="neon-glass-card-sub rounded-2xl p-5 relative overflow-hidden transition-all duration-300">
+                            <div className="flex flex-col justify-between h-full gap-4">
+                              {/* Top row */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                  <span className="font-extrabold text-indigo-300 bg-indigo-500/10 border border-indigo-500/25 px-2 py-0.5 rounded text-[10px] font-sans uppercase tracking-wider shadow-[0_0_8px_rgba(99,102,241,0.15)]">
+                                    {b.branchCode || 'BR'}
+                                  </span>
+                                  <div>
+                                    <h5 className="font-extrabold text-white text-sm">{b.branchName || b.name}</h5>
+                                    <p className="text-[10px] text-slate-450">{b.domain}</p>
+                                  </div>
+                                </div>
+
+                                <span className={cn(
+                                  "px-2.5 py-0.5 rounded-full text-[10px] font-bold inline-flex items-center gap-1 border",
+                                  b.status === 'Active' ? 'neon-pill-active' : 'neon-pill-inactive'
+                                )}>
+                                  {b.status === 'Active' && <span className="neon-green-dot" />}
+                                  {b.status}
+                                </span>
+                              </div>
+
+                              {/* Staff info */}
+                              <div className="flex items-center justify-between border-t border-b border-white/5 py-3">
+                                <div className="space-y-0.5">
+                                  <p className="text-[9px] text-slate-500 uppercase tracking-wider font-extrabold">Local Lead</p>
+                                  <p className="text-xs font-bold text-slate-200">{b.adminName}</p>
+                                  <p className="text-[10px] text-slate-450 font-semibold">{b.adminEmail}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-[9px] text-slate-500 uppercase tracking-wider font-extrabold font-sans">Staff Count</p>
+                                  <span className="text-sm font-extrabold glow-text-neon-blue font-sans">
+                                    {branchEmpCount} Staff
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Actions footer */}
+                              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                                 <button
-                                  onClick={() => handleOpenCreateBranch(c.id)}
-                                  className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                  onClick={() => onStartMasquerade(b.id)}
+                                  className="gradient-btn-indigo text-xs px-3.5 py-2 rounded-xl font-bold transition-all duration-200 inline-flex items-center gap-1 shadow-md cursor-pointer"
                                 >
-                                  <Plus size={10} /> Create Branch
+                                  Manage Branch
                                 </button>
+
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    onClick={() => setManageAccountsModal(b)}
+                                    className="action-icon-btn p-2 cursor-pointer"
+                                    title="Credentials"
+                                  >
+                                    <KeyRound size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEditBranch(b)}
+                                    className="action-icon-btn p-2 cursor-pointer"
+                                    title="Edit Branch Settings"
+                                  >
+                                    <Edit size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleRemoveBranch(b.id)}
+                                    className="action-icon-btn-delete p-2 cursor-pointer"
+                                    title="Remove Branch"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleToggleStatus(b.id, b.status)}
+                                    className={cn(
+                                      "text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-1.5 rounded-lg border transition-colors cursor-pointer",
+                                      b.status === 'Active'
+                                        ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20'
+                                        : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+                                    )}
+                                  >
+                                    {b.status === 'Active' ? 'Suspend' : 'Activate'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
-                            <table className="w-full text-left border-collapse">
-                              <thead>
-                                <tr className="bg-slate-50/30 border-b border-gray-150 text-[9px] font-bold text-gray-400 uppercase tracking-wider">
-                                  <th className="py-2.5 px-4">Branch Code & Name</th>
-                                  <th className="py-2.5 px-4">SaaS Admin Info</th>
-                                  <th className="py-2.5 px-4">Staff Count</th>
-                                  <th className="py-2.5 px-4">Status</th>
-                                  <th className="py-2.5 px-4 text-right">Branch Actions</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100 text-[11px] text-gray-600">
-                                {branches.map(b => {
-                                  const branchEmpCount = employees.filter(emp => emp.companyId === b.id).length;
-                                  return (
-                                    <tr key={b.id} className="hover:bg-slate-50/30 transition-colors">
-                                      <td className="py-2 px-4">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded text-[10px] font-sans">
-                                            {b.branchCode || 'BR'}
-                                          </span>
-                                          <div>
-                                            <p className="font-bold text-gray-900">{b.branchName || b.name}</p>
-                                            <p className="text-[9px] text-gray-400">{b.domain}</p>
-                                          </div>
-                                        </div>
-                                      </td>
-                                      <td className="py-2 px-4">
-                                        <p className="font-medium text-gray-800">{b.adminName}</p>
-                                        <p className="text-[9px] text-gray-455">{b.adminEmail}</p>
-                                      </td>
-                                      <td className="py-2 px-4 font-bold text-blue-700 font-sans">
-                                        {branchEmpCount} Staff
-                                      </td>
-                                      <td className="py-2 px-4">
-                                        <Badge variant={statusBadge(b.status)} dot>{b.status}</Badge>
-                                      </td>
-                                      <td className="py-2 px-4 text-right">
-                                        <div className="inline-flex items-center gap-1.5">
-                                          <button
-                                            onClick={() => onStartMasquerade(b.id)}
-                                            className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
-                                            style={{ backgroundColor: b.primaryColor || '#3b82f6' }}
-                                          >
-                                            Manage Branch
-                                          </button>
-                                          <button
-                                            onClick={() => setManageAccountsModal(b)}
-                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-blue-600"
-                                            title="Credentials"
-                                          >
-                                            <KeyRound size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenEditBranch(b)}
-                                            className="p-1 bg-gray-50 border border-gray-200 rounded text-gray-600 hover:text-indigo-650"
-                                            title="Edit Branch Settings"
-                                          >
-                                            <Edit size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleRemoveBranch(b.id)}
-                                            className="p-1 bg-rose-50 border border-rose-150 rounded text-rose-650 hover:text-rose-700 hover:bg-rose-100"
-                                            title="Remove Branch"
-                                          >
-                                            <Trash2 size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleToggleStatus(b.id, b.status)}
-                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-650' : 'text-emerald-600'}`}
-                                          >
-                                            {b.status === 'Active' ? 'Suspend' : 'Activate'}
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
                           </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })
-            )}
-          </Tbody>
-        </Table>
-      </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })
+        )}
+      </div>
 
       {/* Add Company Modal with Strict Onboarding Fields */}
       <Modal
