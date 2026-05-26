@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
