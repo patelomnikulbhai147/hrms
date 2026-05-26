@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const visibleItems = navItems.filter(item => {
     // Rely completely on our central permission context for view access
     // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices
-    return canView(item.id as AppModules) && item.roles.includes(role);
+    return canView(item.id as AppModules) && (role === 'Super Admin' || item.roles.includes(role));
   });
 
   return (
