@@ -63,6 +63,10 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [offboardStep, setOffboardStep] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Activate/Suspend Toggle State
+  const [statusModalTarget, setStatusModalTarget] = useState<{ id: string, currentStatus: string, name: string, isBranch: boolean } | null>(null);
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false);
+
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
 
   // Modals state
@@ -334,9 +338,39 @@ export const Companies: React.FC<CompaniesProps> = ({
     alert(`Company registered successfully.\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`);
   };
 
-  const handleToggleStatus = (id: string, current: 'Active' | 'Pending' | 'Inactive') => {
-    const nextStatus = current === 'Active' ? 'Inactive' : 'Active';
-    onUpdateCompanies(companies.map(c => c.id === id ? { ...c, status: nextStatus } : c));
+  const openStatusModal = (company: Company) => {
+    setStatusModalTarget({
+      id: company.id,
+      currentStatus: company.status,
+      name: company.name,
+      isBranch: !!company.parentCompanyId
+    });
+  };
+
+  const confirmStatusToggle = () => {
+    if (!statusModalTarget) return;
+    setIsStatusUpdating(true);
+    
+    // Simulate backend sync delay
+    setTimeout(() => {
+      const nextStatus = statusModalTarget.currentStatus === 'Active' ? 'Inactive' : 'Active';
+      
+      const updatedCompanies = companies.map(c => 
+        c.id === statusModalTarget.id ? { ...c, status: nextStatus, accountStatus: nextStatus === 'Active' ? 'Active' : 'Suspended' } as Company : c
+      );
+      
+      // Update state
+      onUpdateCompanies(updatedCompanies);
+      
+      // Audit log tracking
+      const action = nextStatus === 'Active' ? 'Activated' : 'Suspended';
+      const logEntry = `[${new Date().toISOString()}] ${action}: ${statusModalTarget.name} (ID: ${statusModalTarget.id}) by User/Admin.`;
+      const existingLogs = JSON.parse(localStorage.getItem('hrms_audit_logs') || '[]');
+      localStorage.setItem('hrms_audit_logs', JSON.stringify([logEntry, ...existingLogs]));
+      
+      setIsStatusUpdating(false);
+      setStatusModalTarget(null);
+    }, 800);
   };
 
   const handleSavePlan = () => {
@@ -884,8 +918,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleToggleStatus(c.id, c.status)}
-                                className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
+                                onClick={() => openStatusModal(c)}
+                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${c.status === 'Active' ? 'bg-rose-50/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300' : 'bg-emerald-50/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'}`}
                               >
                                 {c.status === 'Active' ? 'Suspend' : 'Activate'}
                               </button>
@@ -992,8 +1026,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                                               </button>
                                             )}
                                             <button
-                                              onClick={() => handleToggleStatus(b.id, b.status)}
-                                              className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
+                                              onClick={() => openStatusModal(b)}
+                                              className={`px-2 py-1 rounded border text-[9px] font-bold shadow-xs transition-all ${b.status === 'Active' ? 'bg-rose-50/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300' : 'bg-emerald-50/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'}`}
                                             >
                                               {b.status === 'Active' ? 'Suspend' : 'Activate'}
                                             </button>
@@ -1706,6 +1740,45 @@ export const Companies: React.FC<CompaniesProps> = ({
         )}
       </Modal>
 
+      {/* Status Toggle Confirmation Modal */}
+      <Modal open={!!statusModalTarget} onClose={() => !isStatusUpdating && setStatusModalTarget(null)} title={statusModalTarget?.currentStatus === 'Active' ? 'Suspend Access Confirmation' : 'Reactivate Access Confirmation'} size="sm">
+        {statusModalTarget && (
+          <div className="space-y-5">
+            <div className={`p-4 rounded-xl border flex items-start gap-3 ${statusModalTarget.currentStatus === 'Active' ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
+              <div className={`mt-0.5 ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-500' : 'text-emerald-500'}`}>
+                {statusModalTarget.currentStatus === 'Active' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
+              </div>
+              <div className="text-sm">
+                <p className={`font-bold ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-800' : 'text-emerald-800'}`}>
+                  {statusModalTarget.currentStatus === 'Active' ? 'Are you sure you want to suspend this workspace?' : 'Are you sure you want to reactivate this workspace?'}
+                </p>
+                <p className={`mt-1 text-xs ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  Target: <strong>{statusModalTarget.name}</strong> ({statusModalTarget.isBranch ? 'Branch' : 'Company'})
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              {statusModalTarget.currentStatus === 'Active'
+                ? 'Suspended workspaces will lose access to employee portals, payroll generation, and daily operations immediately. Data will remain safe, but logins will be blocked.'
+                : 'Reactivating this workspace will instantly restore login access and allow operations, payroll processing, and employee management to resume.'}
+            </p>
+
+            <div className="flex justify-end gap-3 pt-3">
+              <Button variant="outline" onClick={() => setStatusModalTarget(null)} disabled={isStatusUpdating}>
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmStatusToggle}
+                disabled={isStatusUpdating}
+                className={statusModalTarget.currentStatus === 'Active' ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200'}
+              >
+                {isStatusUpdating ? 'Synchronizing...' : (statusModalTarget.currentStatus === 'Active' ? 'Confirm Suspend' : 'Confirm Reactivate')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
