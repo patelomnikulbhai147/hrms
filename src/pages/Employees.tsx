@@ -777,12 +777,6 @@ export const Employees: React.FC<EmployeesProps> = ({
             </button>
           </div>
 
-          {canEdit && (
-            <Button variant="outline" icon={<FileSpreadsheet size={14} />} onClick={handleExport} disabled={isExporting}>
-              {isExporting ? 'Exporting...' : 'Export to Excel'}
-            </Button>
-          )}
-
           {isHR && canEdit && activeMainTab === 'active' && (
             <>
               <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>

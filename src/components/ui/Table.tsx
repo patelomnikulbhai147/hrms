@@ -26,8 +26,8 @@ export const Th: React.FC<{ children: React.ReactNode; className?: string }> = (
   </th>
 );
 
-export const Td: React.FC<{ children: React.ReactNode; className?: string; onClick?: (e: React.MouseEvent) => void }> = ({ children, className, onClick }) => (
-  <td className={cn('px-4 py-3 text-slate-300 whitespace-nowrap text-xs font-semibold', className)} onClick={onClick}>{children}</td>
+export const Td: React.FC<{ children: React.ReactNode; className?: string; onClick?: (e: React.MouseEvent) => void; colSpan?: number }> = ({ children, className, onClick, colSpan }) => (
+  <td colSpan={colSpan} className={cn('px-4 py-3 text-slate-300 whitespace-nowrap text-xs font-semibold', className)} onClick={onClick}>{children}</td>
 );
 
 export const Tr: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (

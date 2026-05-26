@@ -28,7 +28,7 @@ export const Card: React.FC<CardProps> = ({ children, className, padding = true,
 
 interface StatCardProps {
   label: string;
-  value: string | number;
+  value: React.ReactNode;
   icon: React.ReactNode;
   color: string;
   sub?: string;

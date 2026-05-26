@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Calendar, DollarSign, Users, Archive, LogOut } from 'lucide-react';
+import { Download, Calendar, DollarSign, Users, Archive, LogOut, Building2 } from 'lucide-react';
 import {
   type Employee,
   type AttendanceRecord,
