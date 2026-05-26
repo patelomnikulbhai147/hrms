@@ -355,9 +355,19 @@ export const Companies: React.FC<CompaniesProps> = ({
     setTimeout(() => {
       const nextStatus = statusModalTarget.currentStatus === 'Active' ? 'Inactive' : 'Active';
       
-      const updatedCompanies = companies.map(c => 
-        c.id === statusModalTarget.id ? { ...c, status: nextStatus, accountStatus: nextStatus === 'Active' ? 'Active' : 'Suspended' } as Company : c
-      );
+      const updatedCompanies = companies.map(c => {
+        if (c.id === statusModalTarget.id) {
+          return { 
+            ...c, 
+            status: nextStatus, 
+            accountStatus: nextStatus === 'Active' ? 'Active' : 'Suspended',
+            branchPortalActive: nextStatus === 'Active',
+            branchLicenseActive: nextStatus === 'Active',
+            branchLicenseStatus: nextStatus === 'Active' ? 'Active License' : 'Suspended'
+          } as Company;
+        }
+        return c;
+      });
       
       // Update state
       onUpdateCompanies(updatedCompanies);
