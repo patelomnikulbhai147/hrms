@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   Building2, AlertCircle, FileText, CheckCircle2, Clock, Info,
-  Search, Bell, DollarSign, Sparkles, ChevronRight, Users
+  Search, Bell, DollarSign, Sparkles, ChevronRight, Users, Archive
 } from 'lucide-react';
 import {
   type Role,
@@ -169,6 +169,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const analytics = useMemo(() => {
     return calculateSubscriptionAnalytics(companies, plans);
   }, [companies, plans]);
+
+  const globalActiveEmployeesCount = useMemo(() => {
+    return employees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated').length;
+  }, [employees]);
+
+  const globalArchivedEmployeesCount = useMemo(() => {
+    return employees.filter(e => e.status === 'Archived' || e.status === 'Terminated').length;
+  }, [employees]);
 
   const totalCompaniesCount = analytics.totalCompanies;
   const activeSubscriptionsCount = analytics.activeSubscriptions;
@@ -439,7 +447,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="mt-3.5">
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
-                <AnimatedCounter value={employees.length} />
+                <AnimatedCounter value={globalActiveEmployeesCount} />
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">Total active workforce</p>
             </div>
@@ -462,16 +470,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Renewals Due</span>
-              <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
-                <AlertCircle size={16} />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Archived Workforce</span>
+              <div className="p-2 bg-slate-50 text-slate-600 rounded-lg">
+                <Archive size={16} />
               </div>
             </div>
             <div className="mt-3.5">
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
-                <AnimatedCounter value={pendingRenewalsCount} />
+                <AnimatedCounter value={globalArchivedEmployeesCount} />
               </h3>
-              <p className="text-[10px] text-amber-600 font-semibold mt-1">⚠ Overdue / Pending</p>
+              <p className="text-[10px] text-slate-500 font-semibold mt-1">Offboarded / Archived</p>
             </div>
           </div>
 

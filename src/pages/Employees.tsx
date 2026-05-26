@@ -14,6 +14,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
+import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
 import { Input, Select } from '../components/ui/Input';
 import {
   validatePhone, validateName, validateEmail,
@@ -131,6 +132,10 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
+  const [isConfirmingBulk, setIsConfirmingBulk] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -465,6 +470,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const handleDelete = () => {
+    setIsConfirmingDelete(false);
     if (!deleteEmp) return;
     const today = new Date().toISOString().split('T')[0];
     const updated: Employee = {
@@ -499,6 +505,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const handleCompleteOffboarding = () => {
+    setIsConfirmingOffboard(false);
     if (!offboardEmp) return;
     const state = offboardEmp.offboardingState;
     if (!state?.documentClearance || !state?.assetReturn || !state?.payrollSettled || !state?.attendanceCleared || !state?.managerApproved || !state?.hrApproved) {
@@ -531,8 +538,13 @@ export const Employees: React.FC<EmployeesProps> = ({
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
     onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+    setOffboardStep(1);
     setOffboardEmp(null);
-    alert(`Employee ${offboardEmp.name} offboarded and safely archived.`);
+    alert(`Employee ${offboardEmp.name} successfully offboarded and archived.`);
+  };
+
+  const executeCompleteOffboarding = () => {
+    setIsConfirmingOffboard(true);
   };
 
   // Toggling secure field values
@@ -718,6 +730,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const handleBulkCommit = () => {
+    setIsConfirmingBulk(false);
     if (importedRows.length === 0) return;
     onUpdateEmployees([...importedRows, ...employees]);
     setImportedRows([]);
@@ -878,7 +891,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
                           {activeMainTab === 'active' ? (
                             <button
-                              onClick={() => handleStartOffboarding(emp)}
+                              onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
                               className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
                               title="Initiate Offboarding"
                             >
@@ -886,7 +899,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                             </button>
                           ) : (
                             <button
-                              onClick={() => setDeleteEmp(emp)}
+                              onClick={() => { setDeleteEmp(emp); setIsConfirmingDelete(true); }}
                               className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
                               title="Delete Employee"
                             >
@@ -1410,7 +1423,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
                 <Button variant="outline" onClick={() => { setImportedRows([]); setImportLogs([]); }}>Reset Importer</Button>
-                <Button icon={<CheckCircle2 size={12} />} onClick={handleBulkCommit}>Commit Bulk Import</Button>
+                <Button icon={<CheckCircle2 size={12} />} onClick={() => setIsConfirmingBulk(true)}>Commit Bulk Import</Button>
               </div>
             </div>
           )}
@@ -1626,25 +1639,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
-      {/* Delete Confirmation */}
-      <Modal open={!!deleteEmp} onClose={() => setDeleteEmp(null)} title="Confirm Soft-Delete & Archive" size="sm">
-        {deleteEmp && (
-          <div className="space-y-4 text-xs text-left p-1">
-            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-950 rounded-xl flex items-start gap-2 shadow-inner">
-            </div>
-
-            <p className="text-[11px] text-gray-500 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-              Enterprise Safeguard: This record will be soft-deleted (status marked as <span className="font-semibold text-rose-700">Archived</span>) and archived. The employee will be excluded from the active roster and payroll, but remains fully recoverable in the archive.
-            </p>
-
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
-              <Button variant="outline" onClick={() => setDeleteEmp(null)}>Cancel</Button>
-              <Button variant="danger" onClick={handleDelete}>Soft-Delete & Archive</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       {/* Enterprise Offboarding Modal */}
       <Modal open={!!offboardEmp} onClose={() => setOffboardEmp(null)} title="Enterprise Offboarding Workflow" size="lg">
         {offboardEmp && (
@@ -1729,11 +1723,56 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
               <Button variant="outline" onClick={() => setOffboardEmp(null)}>Cancel</Button>
-              <Button onClick={handleCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white">Finalize Offboarding & Archive</Button>
+              <Button onClick={() => setIsConfirmingOffboard(true)} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Employee Record</Button>
             </div>
           </div>
         )}
       </Modal>
+
+      <ActionConfirmationModal
+        isOpen={isConfirmingDelete}
+        onClose={() => setIsConfirmingDelete(false)}
+        onConfirm={handleDelete}
+        title="⚠ Confirm Employee Archival"
+        description={[
+          `Archive the employee record for ${deleteEmp?.name}`,
+          "Remove employee from active dashboards",
+          "Retain payroll and compliance history in Previous Employees"
+        ]}
+        confirmationText="DELETE"
+        confirmButtonText="Archive Employee"
+        isDestructive={true}
+      />
+
+      <ActionConfirmationModal
+        isOpen={isConfirmingOffboard}
+        onClose={() => setIsConfirmingOffboard(false)}
+        onConfirm={handleCompleteOffboarding}
+        title="⚠ Confirm Employee Offboarding"
+        description={[
+          `Finalize offboarding for ${offboardEmp?.name}`,
+          "Employee will be removed from the active workforce",
+          "Employee will be set to Archived status"
+        ]}
+        confirmationText="OFFBOARD"
+        confirmButtonText="Execute Offboarding"
+        isDestructive={true}
+      />
+
+      <ActionConfirmationModal
+        isOpen={isConfirmingBulk}
+        onClose={() => setIsConfirmingBulk(false)}
+        onConfirm={handleBulkCommit}
+        title="⚠ Confirm Bulk Import Execution"
+        description={[
+          `You are about to insert ${importedRows.length} employee records.`,
+          "This will create new master records and default payroll configurations.",
+          "Please ensure the data formatting is absolutely correct."
+        ]}
+        confirmationText="IMPORT"
+        confirmButtonText="Execute Bulk Import"
+        isDestructive={false}
+      />
 
     </div>
   );

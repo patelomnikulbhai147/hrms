@@ -23,6 +23,7 @@ import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
+import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
 import { PayrollWorkflowTable } from '../components/payroll/PayrollWorkflowTable';
 import {
   calculatePayrollStats
@@ -68,6 +69,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [confirmPaymentRecord, setConfirmPaymentRecord] = useState<PayrollRecord | null>(null);
   const [auditLogs, setAuditLogs] = useState<Record<string, AuditLog[]>>({});
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
+  const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
 
   const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('payroll');
@@ -235,6 +237,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   const handleConfirmPayment = () => {
+    setIsConfirmingPayment(false);
     if (!confirmPaymentRecord) return;
     onUpdatePayroll(payroll.map(r => r.id === confirmPaymentRecord.id ? {
       ...r,
@@ -623,6 +626,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             }}
             onPayClick={record => {
               setConfirmPaymentRecord(record);
+              setIsConfirmingPayment(true);
             }}
             onPayslipClick={handleGeneratePayslip}
             onDownload={() => alert('Download feature is connected to client-side compliance services.')}
@@ -668,36 +672,37 @@ export const Payroll: React.FC<PayrollProps> = ({
         )}
       </Modal>
 
-      <Modal
-        open={!!confirmPaymentRecord}
-        onClose={() => setConfirmPaymentRecord(null)}
-        title="Confirm Salary Payment"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setConfirmPaymentRecord(null)}>Cancel</Button>
-            <Button onClick={handleConfirmPayment}>Confirm Payment</Button>
-          </>
-        }
+      <ActionConfirmationModal
+        isOpen={isConfirmingPayment}
+        onClose={() => setIsConfirmingPayment(false)}
+        onConfirm={handleConfirmPayment}
+        title="⚠ Confirm Salary Payment"
+        description={[
+          "Record the completed salary payment details and preserve the transaction reference for compliance.",
+          "Payment amount and transaction method will be securely logged."
+        ]}
+        confirmationText="SETTLE"
+        confirmButtonText="Confirm Payment"
+        isDestructive={false}
       >
         {confirmPaymentRecord && (
           <div className="space-y-4 text-left">
-            <p className="text-sm text-slate-600">Record the completed salary payment details and preserve the transaction reference for compliance.</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Employee</p>
                 <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.employeeName}</p>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Amount</p>
                 <p className="mt-2 text-2xl font-semibold text-slate-900">₹{confirmPaymentRecord.netSalary.toLocaleString('en-IN')}</p>
               </div>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Month</p>
                 <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.month}</p>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
+              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Year</p>
                 <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.year}</p>
               </div>
@@ -723,7 +728,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             </div>
           </div>
         )}
-      </Modal>
+      </ActionConfirmationModal>
 
       {/* Detailed and interactive edit modal for HR/Admin */}
       <Modal

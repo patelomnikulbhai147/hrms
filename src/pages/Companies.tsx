@@ -16,6 +16,7 @@ import {
   validatePercentage
 } from '../utils/validation';
 import { Modal } from '../components/ui/Modal';
+import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
@@ -70,9 +71,10 @@ export const Companies: React.FC<CompaniesProps> = ({
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
   const activeUniqueEmployees = React.useMemo(() => uniqueEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated'), [uniqueEmployees]);
 
-  // Modals state
   const [addOpen, setAddOpen] = useState(false);
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
+  const [viewBranchModal, setViewBranchModal] = useState<Company | null>(null);
+  const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
   const [workspaceAssignUser, setWorkspaceAssignUser] = useState<UserAccount | null>(null);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
@@ -715,8 +717,13 @@ export const Companies: React.FC<CompaniesProps> = ({
       if (c.parentCompanyId === offboardCompany.id) return { ...c, status: 'Archived' };
       return c;
     }));
+    setIsConfirmingOffboard(false);
     setOffboardCompany(null);
     alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
+  };
+
+  const executeCompleteOffboarding = () => {
+    setIsConfirmingOffboard(true);
   };
 
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
@@ -1754,9 +1761,9 @@ export const Companies: React.FC<CompaniesProps> = ({
               </Card>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-              <Button variant="outline" onClick={() => setOffboardCompany(null)}>Cancel</Button>
-              <Button onClick={handleCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Tender & Workforce</Button>
+            <div className="p-5 border-t border-slate-200/60 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
+              <Button onClick={() => setOffboardCompany(null)} variant="outline">Cancel & Keep Active</Button>
+              <Button onClick={executeCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Tender & Workforce</Button>
             </div>
           </div>
         )}
@@ -1801,6 +1808,22 @@ export const Companies: React.FC<CompaniesProps> = ({
           </div>
         )}
       </Modal>
+
+      <ActionConfirmationModal
+        isOpen={isConfirmingOffboard}
+        onClose={() => setIsConfirmingOffboard(false)}
+        onConfirm={handleCompleteOffboarding}
+        title="⚠ Offboard Company Confirmation"
+        description={[
+          "Archive company and all child branches",
+          "Deactivate workforce and set status to Archived",
+          "Move employees to previous employees roster",
+          "Stop payroll processing and all active access"
+        ]}
+        confirmationText="OFFBOARD"
+        confirmButtonText="Execute Offboarding"
+        isDestructive={true}
+      />
     </div>
   );
 };
