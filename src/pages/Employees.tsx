@@ -61,6 +61,13 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+
   const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('employees');
 
@@ -833,7 +840,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             {filtered.length === 0 ? (
               <tr><td colSpan={8} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
-              filtered.map(emp => (
+              filtered.slice((page - 1) * pageSize, page * pageSize).map(emp => (
                 <Tr key={emp.id} className="hover:bg-slate-50/50">
                   <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
                   <Td className="px-2 py-1">
@@ -898,6 +905,35 @@ export const Employees: React.FC<EmployeesProps> = ({
             )}
           </Tbody>
         </Table>
+
+        {/* Pagination Controls */}
+        {filtered.length > pageSize && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl">
+            <span className="text-xs text-slate-500 font-medium">
+              Showing <span className="font-bold text-slate-700">{(page - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-bold text-slate-700">{filtered.length}</span> entries
+            </span>
+            <div className="flex gap-1">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(p => Math.max(1, p - 1))} 
+                disabled={page === 1}
+                className="text-xs py-1 px-3"
+              >
+                Previous
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))} 
+                disabled={page >= Math.ceil(filtered.length / pageSize)}
+                className="text-xs py-1 px-3"
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* View Master Drawer/Modal */}
