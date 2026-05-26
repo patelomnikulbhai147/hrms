@@ -372,7 +372,6 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                                   <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Inherited from Parent</span>
                                 </div>
                               )}
-                              )}
                             </button>
                           );
                         })}

@@ -14,7 +14,7 @@ import { Settings } from './pages/Settings';
 import { Billing } from './pages/Billing';
 import { Users } from './pages/Users';
 import { Login, type UserAccount, type AppModules } from './pages/Login';
-import { PermissionProvider, checkCanView } from './context/PermissionContext';
+import { PermissionProvider, checkCanView, checkCanEdit } from './context/PermissionContext';
 import { ShieldAlert } from 'lucide-react';
 import {
   Role,
@@ -315,12 +315,20 @@ export default function App() {
   });
 
   const handleUpdatePlans = (updater: SubscriptionPlan[] | ((prev: SubscriptionPlan[]) => SubscriptionPlan[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(plans) : updater;
     setPlans(next);
     localStorage.setItem('hrms_plans', JSON.stringify(next));
   };
 
   const handleUpdatePayments = (updater: PaymentRecord[] | ((prev: PaymentRecord[]) => PaymentRecord[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(payments) : updater;
     setPayments(next);
     localStorage.setItem('hrms_payments', JSON.stringify(next));
@@ -344,6 +352,10 @@ export default function App() {
   };
 
   const handleUpdateAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('users', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for User Management.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(userAccounts) : updater;
     setUserAccounts(next);
     localStorage.setItem('hrms_accounts', JSON.stringify(next));
@@ -363,6 +375,10 @@ export default function App() {
   };
 
   const handleUpdateCompanies = (updater: Company[] | ((prev: Company[]) => Company[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('companies', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Companies.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(companies) : updater;
     const billingResult = calculateBranchBilling(next, 'c-gcri', plans);
     setCompanies(billingResult.updatedCompanies);
@@ -370,6 +386,10 @@ export default function App() {
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('employees', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Employees.");
+      return;
+    }
     const nextEmployees = typeof updater === 'function' ? updater(employees) : updater;
     setEmployees(nextEmployees);
     localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
@@ -430,12 +450,20 @@ export default function App() {
   };
 
   const handleUpdateAttendance = (updater: AttendanceRecord[] | ((prev: AttendanceRecord[]) => AttendanceRecord[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('attendance', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Attendance.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(attendance) : updater;
     setAttendance(next);
     localStorage.setItem('hrms_attendance', JSON.stringify(next));
   };
 
   const handleUpdateLeaves = (updater: LeaveRequest[] | ((prev: LeaveRequest[]) => LeaveRequest[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('leaves', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Leave Management.");
+      return;
+    }
     const nextLeaves = typeof updater === 'function' ? updater(leaves) : updater;
     setLeaves(nextLeaves);
     localStorage.setItem('hrms_leaves', JSON.stringify(nextLeaves));
@@ -494,6 +522,10 @@ export default function App() {
   };
 
   const handleUpdatePayroll = (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('payroll', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Payroll.");
+      return;
+    }
     const nextPayroll = typeof updater === 'function' ? updater(payroll) : updater;
     setPayroll(nextPayroll);
     localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
@@ -523,6 +555,10 @@ export default function App() {
   };
 
   const handleUpdateDocuments = (updater: Document[] | ((prev: Document[]) => Document[])) => {
+    if (resolvedRole !== 'Super Admin' && !checkCanEdit('documents', authProfile, resolvedRole)) {
+      alert("Unauthorized: API blocked. You do not have edit permissions for Documents.");
+      return;
+    }
     const next = typeof updater === 'function' ? updater(documents) : updater;
     setDocuments(next);
     localStorage.setItem('hrms_documents', JSON.stringify(next));

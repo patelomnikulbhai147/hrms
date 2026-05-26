@@ -756,12 +756,14 @@ export const Payroll: React.FC<PayrollProps> = ({
                 <Input
                   label="Basic Portion (INR/mo) *"
                   type="number"
+                  disabled={!canEdit}
                   value={editForm.basicSalary}
                   onChange={e => setEditForm({ ...editForm, basicSalary: parseInt(e.target.value) || 0 })}
                 />
                 <Input
                   label="Allowances (INR/mo) *"
                   type="number"
+                  disabled={!canEdit}
                   value={editForm.allowances}
                   onChange={e => setEditForm({ ...editForm, allowances: parseInt(e.target.value) || 0 })}
                 />
@@ -771,18 +773,21 @@ export const Payroll: React.FC<PayrollProps> = ({
                 <Input
                   label="Deductions (INR/mo) *"
                   type="number"
+                  disabled={!canEdit}
                   value={editForm.deductions}
                   onChange={e => setEditForm({ ...editForm, deductions: parseInt(e.target.value) || 0 })}
                 />
                 <Input
                   label="Bonus (INR)"
                   type="number"
+                  disabled={!canEdit}
                   value={editForm.bonus}
                   onChange={e => setEditForm({ ...editForm, bonus: parseInt(e.target.value) || 0 })}
                 />
                 <Input
                   label="Tax Deductions (INR)"
                   type="number"
+                  disabled={!canEdit}
                   value={editForm.tax}
                   onChange={e => setEditForm({ ...editForm, tax: parseInt(e.target.value) || 0 })}
                 />
@@ -791,6 +796,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               <div className="grid gap-3 sm:grid-cols-2">
                 <Select
                   label="Workflow Status"
+                  disabled={!canEdit}
                   value={editForm.status}
                   onChange={e => setEditForm({ ...editForm, status: e.target.value as PayrollStatus })}
                   options={[
@@ -804,6 +810,7 @@ export const Payroll: React.FC<PayrollProps> = ({
                 />
                 <Select
                   label="Payment Status"
+                  disabled={!canEdit}
                   value={editForm.paymentStatus}
                   onChange={e => setEditForm({ ...editForm, paymentStatus: e.target.value as any })}
                   options={[
@@ -817,6 +824,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               <Input
                 label="Verification / Payroll Notes"
                 placeholder="e.g. Approved by Finance Head"
+                disabled={!canEdit}
                 value={editForm.notes}
                 onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
               />
@@ -832,7 +840,7 @@ export const Payroll: React.FC<PayrollProps> = ({
                 </p>
               </div>
 
-              {editForm.paymentStatus !== 'paid' && (
+              {editForm.paymentStatus !== 'paid' && canEdit && (
                 <div className="pt-2 flex justify-end">
                   <button
                     type="button"

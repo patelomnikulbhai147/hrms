@@ -29,14 +29,14 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
 
-  // Check granular action permissions first if they exist
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].view;
-  }
-
-  // If moduleAccess is explicitly defined and set to false, they cannot view
+  // If moduleAccess is explicitly defined and set to false, they cannot view (highest priority)
   if (authProfile.moduleAccess && authProfile.moduleAccess[module] === false) {
     return false;
+  }
+
+  // Then check granular action permissions if they exist
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].view;
   }
   
   // Default fallback if no permissions are set yet

@@ -9,11 +9,6 @@ import {
 import { Company, SubscriptionPlan, PaymentRecord, Employee } from '../data/mockData';
 import { type UserAccount } from './Login';
 import { Button } from '../components/ui/Button';
-import {
-  calculateSubscriptionAnalytics,
-  getSubscriptionAlertsList,
-  getDaysRemaining,
-  calculateBranchBilling
 import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '../utils/subscriptionUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
@@ -2042,14 +2037,16 @@ export const Billing: React.FC<BillingProps> = ({
                   onClick={() => setEditingPlan(null)}
                   className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-bold"
                 >
-                  Cancel
+                  {canEdit ? 'Cancel' : 'Close'}
                 </Button>
-                <Button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
-                >
-                  Save Settings
-                </Button>
+                {canEdit && (
+                  <Button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                  >
+                    Save Settings
+                  </Button>
+                )}
               </div>
             </form>
           </div>

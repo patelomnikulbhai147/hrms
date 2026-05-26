@@ -991,16 +991,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
-                            Replace
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                              Replace
+                            </button>
+                          )}
                         </>
                       ) : (
-                        <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
-                          <Upload size={10} /> Upload
-                        </button>
+                        canEdit && (
+                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                            <Upload size={10} /> Upload
+                          </button>
+                        )
                       )}
-                      <input type="file" id="upload-photoUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'photoUpload')} />
+                      {canEdit && <input type="file" id="upload-photoUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'photoUpload')} />}
                     </div>
                   </div>
 
@@ -1036,16 +1040,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
-                            Replace
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                              Replace
+                            </button>
+                          )}
                         </>
                       ) : (
-                        <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
-                          <Upload size={10} /> Upload
-                        </button>
+                        canEdit && (
+                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                            <Upload size={10} /> Upload
+                          </button>
+                        )
                       )}
-                      <input type="file" id="upload-aadhaarUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'aadhaarUpload')} />
+                      {canEdit && <input type="file" id="upload-aadhaarUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'aadhaarUpload')} />}
                     </div>
                   </div>
 
@@ -1081,16 +1089,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
-                            Replace
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                              Replace
+                            </button>
+                          )}
                         </>
                       ) : (
-                        <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
-                          <Upload size={10} /> Upload
-                        </button>
+                        canEdit && (
+                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                            <Upload size={10} /> Upload
+                          </button>
+                        )
                       )}
-                      <input type="file" id="upload-panUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'panUpload')} />
+                      {canEdit && <input type="file" id="upload-panUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'panUpload')} />}
                     </div>
                   </div>
 
@@ -1123,16 +1135,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
-                            Replace
-                          </button>
+                          {canEdit && (
+                            <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                              Replace
+                            </button>
+                          )}
                         </>
                       ) : (
-                        <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
-                          <Upload size={10} /> Upload
-                        </button>
+                        canEdit && (
+                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                            <Upload size={10} /> Upload
+                          </button>
+                        )
                       )}
-                      <input type="file" id="upload-signatureUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'signatureUpload')} />
+                      {canEdit && <input type="file" id="upload-signatureUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'signatureUpload')} />}
                     </div>
                   </div>
                 </div>
