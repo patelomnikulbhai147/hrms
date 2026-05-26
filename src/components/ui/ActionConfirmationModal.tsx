@@ -46,8 +46,8 @@ export const ActionConfirmationModal: React.FC<ActionConfirmationModalProps> = (
   const isConfirmDisabled = (confirmationText && inputText !== confirmationText) || isLoading;
 
   const colorScheme = isDestructive 
-    ? { icon: 'text-red-500', bg: 'bg-red-50 border-red-100', buttonBg: 'bg-red-600 hover:bg-red-700', buttonRing: 'focus:ring-red-500' }
-    : { icon: 'text-amber-500', bg: 'bg-amber-50 border-amber-100', buttonBg: 'bg-amber-600 hover:bg-amber-700', buttonRing: 'focus:ring-amber-500' };
+    ? { icon: 'text-rose-500', bg: 'bg-rose-500/10 border-rose-500/20', buttonBg: 'bg-rose-600 hover:bg-rose-700', buttonRing: 'focus:ring-rose-500' }
+    : { icon: 'text-amber-500', bg: 'bg-amber-500/10 border-amber-500/20', buttonBg: 'bg-amber-600 hover:bg-amber-700', buttonRing: 'focus:ring-amber-500' };
 
   return (
     <Modal open={isOpen} onClose={isLoading ? () => {} : onClose} title={title}>
@@ -83,7 +83,7 @@ export const ActionConfirmationModal: React.FC<ActionConfirmationModalProps> = (
         {confirmationText && (
           <div className="space-y-2 pt-2 border-t border-slate-100">
             <p className="text-xs font-semibold text-slate-600">
-              To proceed, please type <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-900 border">{confirmationText}</span> below:
+              To proceed, please type <span className="font-mono bg-slate-500/20 px-1.5 py-0.5 rounded text-slate-900 border border-slate-500/30">{confirmationText}</span> below:
             </p>
             <Input
               value={inputText}
