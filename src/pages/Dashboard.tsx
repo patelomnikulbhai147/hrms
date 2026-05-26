@@ -153,7 +153,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [companies, role, currentCompany, onNavigate]);
 
   // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
-  const scopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+  const rawScopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+  const scopedEmployees = rawScopedEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
   const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
   const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies));
   const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies));

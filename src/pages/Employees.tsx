@@ -316,10 +316,11 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
-    const total = companyEmployees.length;
-    const active = companyEmployees.filter(e => e.status === 'Active').length;
-    const verifiedPayroll = companyEmployees.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
-    const pendingExits = companyEmployees.filter(e => e.exitDate && !e.exitReason).length;
+    const activeRoster = companyEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
+    const total = activeRoster.length;
+    const active = activeRoster.filter(e => e.status === 'Active').length;
+    const verifiedPayroll = activeRoster.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
+    const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
     return { total, active, verifiedPayroll, pendingExits };
   }, [companyEmployees]);
 

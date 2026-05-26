@@ -68,6 +68,7 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
 
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
+  const activeUniqueEmployees = React.useMemo(() => uniqueEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated'), [uniqueEmployees]);
 
   // Modals state
   const [addOpen, setAddOpen] = useState(false);
@@ -672,10 +673,13 @@ export const Companies: React.FC<CompaniesProps> = ({
     }
     const today = new Date().toISOString().split('T')[0];
     
-    // Auto cascade employees to archived if they belong to this company
+    // Auto cascade employees to archived if they belong to this company or its branches
     if (onUpdateEmployees) {
+      const branchIds = companies.filter(c => c.parentCompanyId === offboardCompany.id).map(c => c.id);
+      const allLinkedIds = [offboardCompany.id, ...branchIds];
+
       const updatedEmps = employees.map(emp => {
-        if (emp.companyId === offboardCompany.id && emp.status !== 'Archived') {
+        if (allLinkedIds.includes(emp.companyId) && emp.status !== 'Archived') {
           return {
              ...emp,
              status: 'Archived' as const,
@@ -706,9 +710,13 @@ export const Companies: React.FC<CompaniesProps> = ({
         completedOn: new Date().toISOString()
       }
     };
-    onUpdateCompanies(companies.map(c => c.id === offboardCompany.id ? updated : c));
+    onUpdateCompanies(companies.map(c => {
+      if (c.id === offboardCompany.id) return updated;
+      if (c.parentCompanyId === offboardCompany.id) return { ...c, status: 'Archived' };
+      return c;
+    }));
     setOffboardCompany(null);
-    alert(`Company/Branch ${offboardCompany.name} offboarded and safely archived. All linked employees were automatically archived.`);
+    alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
   };
 
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
@@ -841,8 +849,8 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                 // Calculate total combined employees under parent
                 const combinedEmpCount = hasBranches
-                  ? branches.reduce((sum, b) => sum + uniqueEmployees.filter(emp => emp.companyId === b.id).length, 0) + uniqueEmployees.filter(emp => emp.companyId === c.id).length
-                  : uniqueEmployees.filter(emp => emp.companyId === c.id).length;
+                  ? branches.reduce((sum, b) => sum + activeUniqueEmployees.filter(emp => emp.companyId === b.id).length, 0) + activeUniqueEmployees.filter(emp => emp.companyId === c.id).length
+                  : activeUniqueEmployees.filter(emp => emp.companyId === c.id).length;
 
                 return (
                   <React.Fragment key={c.id}>
@@ -974,7 +982,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </thead>
                               <tbody className="divide-y divide-slate-700/50 text-[11px] text-slate-300">
                                 {branches.map(b => {
-                                  const branchEmpCount = uniqueEmployees.filter(emp => emp.companyId === b.id).length;
+                                  const branchEmpCount = activeUniqueEmployees.filter(emp => emp.companyId === b.id).length;
                                   return (
                                     <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
                                       <td className="py-2 px-4">
