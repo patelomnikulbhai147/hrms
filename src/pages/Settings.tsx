@@ -6,6 +6,7 @@ import { PhoneInput } from '../components/ui/PhoneInput';
 import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud } from 'lucide-react';
 import { type Company, type Role, getCompanyDepartments } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
+import { usePermissions } from '../context/PermissionContext';
 import {
   validatePhone,
   validateEmail,
@@ -245,7 +246,9 @@ export const Settings: React.FC<SettingsProps> = ({
     setBrandingForm({ ...brandingForm, primaryColor: hex });
   };
 
-  const isSuperOrHead = role === 'Super Admin' || role === 'Company Head';
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('settings');
+  const isSuperOrHead = (role === 'Super Admin' || role === 'Company Head') && canEdit;
 
   const isSaveDisabled =
     !profileForm.name ||

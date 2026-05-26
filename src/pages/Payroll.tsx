@@ -29,6 +29,7 @@ import {
 } from '../utils/PayrollWorkflowEngine';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface PayrollProps {
   role: Role;
@@ -67,6 +68,9 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [confirmPaymentRecord, setConfirmPaymentRecord] = useState<PayrollRecord | null>(null);
   const [auditLogs, setAuditLogs] = useState<Record<string, AuditLog[]>>({});
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('payroll');
 
   const toggleFieldMask = (empId: string, fieldName: string) => {
     const key = `${empId}-${fieldName}`;
@@ -310,6 +314,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               onDownload={() => alert('Download feature completed. Compliance payslip generated.')}
               onSendClick={handleSendEmail}
               role={role}
+              canEdit={canEdit}
             />
           </div>
         </Card>
@@ -623,6 +628,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             onDownload={() => alert('Download feature is connected to client-side compliance services.')}
             onSendClick={handleSendEmail}
             role={role}
+            canEdit={canEdit}
           />
         </div>
       </Card>
@@ -728,7 +734,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         footer={
           <>
             <Button variant="outline" onClick={() => setViewPayslip(null)}>Close</Button>
-            <Button onClick={handleSavePayrollEdits}>Save Changes</Button>
+            {canEdit && <Button onClick={handleSavePayrollEdits}>Save Changes</Button>}
           </>
         }
       >

@@ -554,9 +554,9 @@ export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, comp
   }
 
   const activeComp = list.find(c => c.id === activeId);
-  if (activeComp && activeComp.id === 'c-gcri') {
+  if (activeComp && (activeComp.id === 'c-gcri' || activeComp.isHeadOffice)) {
     const recordComp = list.find(c => c.id === recordCompanyId);
-    return recordComp?.parentCompanyId === 'c-gcri';
+    return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id || recordComp?.parentCompanyId === 'c-gcri';
   }
   return false;
 };

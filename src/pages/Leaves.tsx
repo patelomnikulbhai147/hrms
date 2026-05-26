@@ -16,6 +16,7 @@ import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface LeavesProps {
   role: Role;
@@ -51,6 +52,9 @@ export const Leaves: React.FC<LeavesProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('leaves');
 
   const todayStr = '2026-05-20'; // Standard system anchor date
 
@@ -335,7 +339,7 @@ export const Leaves: React.FC<LeavesProps> = ({
             Log and track employee leave rosters and scheduled company absences
           </p>
         </div>
-        {isHR && (
+        {isHR && canEdit && (
           <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
             Log Leave Absence
           </Button>
@@ -486,7 +490,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                           >
                             View
                           </button>
-                          {isHR && (
+                          {isHR && canEdit && (
                             <>
                               <button
                                 onClick={() => setEditLeave(l)}
@@ -590,17 +594,19 @@ export const Leaves: React.FC<LeavesProps> = ({
         footer={
           <>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button 
-              onClick={handleApply} 
-              disabled={
-                !selectedEmp || 
-                !form.fromDate || 
-                !form.toDate || 
-                !form.reason
-              }
-            >
-              Log Leave
-            </Button>
+            {canEdit && (
+              <Button 
+                onClick={handleApply} 
+                disabled={
+                  !selectedEmp || 
+                  !form.fromDate || 
+                  !form.toDate || 
+                  !form.reason
+                }
+              >
+                Log Leave
+              </Button>
+            )}
           </>
         }
       >
@@ -733,16 +739,18 @@ export const Leaves: React.FC<LeavesProps> = ({
         footer={
           <>
             <Button variant="outline" onClick={() => setEditLeave(null)}>Cancel</Button>
-            <Button 
-              onClick={handleSaveEdit} 
-              disabled={
-                !editForm.fromDate || 
-                !editForm.toDate || 
-                !editForm.reason
-              }
-            >
-              Save Changes
-            </Button>
+            {canEdit && (
+              <Button 
+                onClick={handleSaveEdit} 
+                disabled={
+                  !editForm.fromDate || 
+                  !editForm.toDate || 
+                  !editForm.reason
+                }
+              >
+                Save Changes
+              </Button>
+            )}
           </>
         }
       >

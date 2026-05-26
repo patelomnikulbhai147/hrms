@@ -20,6 +20,7 @@ import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface CompaniesProps {
   _role: Role;
@@ -47,6 +48,9 @@ export const Companies: React.FC<CompaniesProps> = ({
   if (false as boolean) {
     console.log(_role);
   }
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('companies');
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -583,9 +587,11 @@ export const Companies: React.FC<CompaniesProps> = ({
           <h2 className="text-base font-semibold text-gray-900">SaaS Company Management</h2>
           <p className="text-xs text-gray-500 mt-0.5">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
         </div>
-        <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
-          Create Company
-        </Button>
+        {canEdit && (
+          <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+            Create Company
+          </Button>
+        )}
       </div>
 
       {/* KPI stats */}
@@ -726,30 +732,32 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                       {/* Actions */}
                       <Td>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => onStartMasquerade(c.id)}
-                            className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
-                            style={{ backgroundColor: c.primaryColor || '#4f46e5' }}
-                          >
-                            Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
-                          </button>
+                        {canEdit && (
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onStartMasquerade(c.id)}
+                              className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
+                              style={{ backgroundColor: c.primaryColor || '#4f46e5' }}
+                            >
+                              Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
+                            </button>
 
-                          <button
-                            onClick={() => setManageAccountsModal(c)}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
-                            title="Manage Credentials"
-                          >
-                            <KeyRound size={13} />
-                          </button>
+                            <button
+                              onClick={() => setManageAccountsModal(c)}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
+                              title="Manage Credentials"
+                            >
+                              <KeyRound size={13} />
+                            </button>
 
-                          <button
-                            onClick={() => handleToggleStatus(c.id, c.status)}
-                            className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
-                          >
-                            {c.status === 'Active' ? 'Suspend' : 'Activate'}
-                          </button>
-                        </div>
+                            <button
+                              onClick={() => handleToggleStatus(c.id, c.status)}
+                              className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
+                            >
+                              {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                            </button>
+                          </div>
+                        )}
                       </Td>
                     </Tr>
 
@@ -762,12 +770,14 @@ export const Companies: React.FC<CompaniesProps> = ({
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
                               <div className="flex items-center gap-2">
                                 <span className="text-[10px] text-slate-500 font-medium">{branches.length} branches resolved</span>
-                                <button
-                                  onClick={() => handleOpenCreateBranch(c.id)}
-                                  className="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
-                                >
-                                  <Plus size={10} /> Create Branch
-                                </button>
+                                {canEdit && (
+                                  <button
+                                    onClick={() => handleOpenCreateBranch(c.id)}
+                                    className="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                  >
+                                    <Plus size={10} /> Create Branch
+                                  </button>
+                                )}
                               </div>
                             </div>
                             <table className="w-full text-left border-collapse">
@@ -807,42 +817,44 @@ export const Companies: React.FC<CompaniesProps> = ({
                                         <Badge variant={statusBadge(b.status)} dot>{b.status}</Badge>
                                       </td>
                                       <td className="py-2 px-4 text-right">
-                                        <div className="inline-flex items-center gap-1.5">
-                                          <button
-                                            onClick={() => onStartMasquerade(b.id)}
-                                            className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
-                                            style={{ backgroundColor: b.primaryColor || '#4f46e5' }}
-                                          >
-                                            Manage Branch
-                                          </button>
-                                          <button
-                                            onClick={() => setManageAccountsModal(b)}
-                                            className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
-                                            title="Credentials"
-                                          >
-                                            <KeyRound size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleOpenEditBranch(b)}
-                                            className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
-                                            title="Edit Branch Settings"
-                                          >
-                                            <Edit size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleRemoveBranch(b.id)}
-                                            className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
-                                            title="Remove Branch"
-                                          >
-                                            <Trash2 size={11} />
-                                          </button>
-                                          <button
-                                            onClick={() => handleToggleStatus(b.id, b.status)}
-                                            className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
-                                          >
-                                            {b.status === 'Active' ? 'Suspend' : 'Activate'}
-                                          </button>
-                                        </div>
+                                        {canEdit && (
+                                          <div className="inline-flex items-center gap-1.5">
+                                            <button
+                                              onClick={() => onStartMasquerade(b.id)}
+                                              className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
+                                              style={{ backgroundColor: b.primaryColor || '#4f46e5' }}
+                                            >
+                                              Manage Branch
+                                            </button>
+                                            <button
+                                              onClick={() => setManageAccountsModal(b)}
+                                              className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
+                                              title="Credentials"
+                                            >
+                                              <KeyRound size={11} />
+                                            </button>
+                                            <button
+                                              onClick={() => handleOpenEditBranch(b)}
+                                              className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
+                                              title="Edit Branch Settings"
+                                            >
+                                              <Edit size={11} />
+                                            </button>
+                                            <button
+                                              onClick={() => handleRemoveBranch(b.id)}
+                                              className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
+                                              title="Remove Branch"
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                            <button
+                                              onClick={() => handleToggleStatus(b.id, b.status)}
+                                              className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
+                                            >
+                                              {b.status === 'Active' ? 'Suspend' : 'Activate'}
+                                            </button>
+                                          </div>
+                                        )}
                                       </td>
                                     </tr>
                                   );

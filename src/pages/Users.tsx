@@ -5,6 +5,7 @@ import { type UserAccount, type AppModules, type ModulePermissions } from './Log
 import { type Company } from '../data/mockData';
 import { Badge } from '../components/ui/Badge';
 import { cn } from '../utils/cn';
+import { usePermissions } from '../context/PermissionContext';
 
 interface UsersProps {
   userAccounts: UserAccount[];
@@ -34,6 +35,9 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('users');
+
   // Modal state
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
 
@@ -208,34 +212,36 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                       </Badge>
                     </td>
                     <td className="p-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {user.role !== 'Super Admin' ? (
+                      {canEdit && (
+                        <div className="flex items-center justify-end gap-2">
+                          {user.role !== 'Super Admin' ? (
+                            <button
+                              onClick={() => handleToggleStatus(user.id)}
+                              className={cn(
+                                "p-2 rounded-lg transition-colors shadow-sm border",
+                                user.status === 'Active' 
+                                  ? "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20" 
+                                  : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
+                              )}
+                              title={user.status === 'Active' ? 'Disable User' : 'Enable User'}
+                            >
+                              <Power size={16} />
+                            </button>
+                          ) : (
+                            <div className="p-2 flex items-center justify-center text-slate-500" title="Super Admin is protected">
+                              <ShieldAlert size={16} />
+                            </div>
+                          )}
+                          
                           <button
-                            onClick={() => handleToggleStatus(user.id)}
-                            className={cn(
-                              "p-2 rounded-lg transition-colors shadow-sm border",
-                              user.status === 'Active' 
-                                ? "bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20" 
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20"
-                            )}
-                            title={user.status === 'Active' ? 'Disable User' : 'Enable User'}
+                            onClick={() => handleOpenPermissions(user)}
+                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow shadow-blue-500/20 flex items-center gap-1.5"
                           >
-                            <Power size={16} />
+                            <Key size={14} />
+                            RBAC
                           </button>
-                        ) : (
-                          <div className="p-2 flex items-center justify-center text-slate-500" title="Super Admin is protected">
-                            <ShieldAlert size={16} />
-                          </div>
-                        )}
-                        
-                        <button
-                          onClick={() => handleOpenPermissions(user)}
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-all shadow shadow-blue-500/20 flex items-center gap-1.5"
-                        >
-                          <Key size={14} />
-                          RBAC
-                        </button>
-                      </div>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -316,30 +322,57 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {companies.map(company => {
-                          const isAssigned = (selectedUser.accessibleCompanyIds || [selectedUser.companyId]).includes(company.id);
+                          const directAssigned = (selectedUser.accessibleCompanyIds || [selectedUser.companyId]).includes(company.id);
+                          
+                          // Compute inheritance for selected user
+                          const parentIds = selectedUser.accessibleCompanyIds || [selectedUser.companyId];
+                          let isInherited = false;
+                          for (const pid of parentIds) {
+                            if (!pid) continue;
+                            const parent = companies.find(c => c.id === pid);
+                            if (parent && (pid === 'c-gcri' || parent.isHeadOffice)) {
+                              if (company.parentCompanyId === pid) {
+                                isInherited = true;
+                                break;
+                              }
+                            }
+                          }
+                          
+                          const isAssigned = directAssigned || isInherited;
+                          
                           return (
                             <button
                               key={company.id}
-                              onClick={() => handleToggleWorkspace(company.id)}
+                              onClick={() => !isInherited && handleToggleWorkspace(company.id)}
+                              disabled={isInherited}
                               className={cn(
-                                "flex items-start gap-3 p-3 rounded-xl border transition-all text-left group",
+                                "flex flex-col items-start p-3 rounded-xl border transition-all text-left group relative overflow-hidden",
                                 isAssigned 
-                                  ? "bg-blue-600/10 border-blue-500/30 shadow-inner" 
-                                  : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/50 hover:border-slate-700"
+                                  ? (isInherited ? "bg-emerald-600/10 border-emerald-500/30" : "bg-blue-600/10 border-blue-500/30 shadow-inner") 
+                                  : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/50 hover:border-slate-700",
+                                isInherited && "cursor-default"
                               )}
                             >
-                              <div className={cn(
-                                "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
-                                isAssigned 
-                                  ? "bg-blue-500 border-blue-500 text-white" 
-                                  : "bg-slate-800 border-slate-600 text-transparent group-hover:border-slate-500"
-                              )}>
-                                <CheckCircle2 size={12} strokeWidth={3} className={cn("transition-transform", isAssigned ? "scale-100" : "scale-0")} />
+                              <div className="flex items-start gap-3 w-full">
+                                <div className={cn(
+                                  "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                                  isAssigned 
+                                    ? (isInherited ? "bg-emerald-500 border-emerald-500 text-white" : "bg-blue-500 border-blue-500 text-white") 
+                                    : "bg-slate-800 border-slate-600 text-transparent group-hover:border-slate-500"
+                                )}>
+                                  <CheckCircle2 size={12} strokeWidth={3} className={cn("transition-transform", isAssigned ? "scale-100" : "scale-0")} />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className={cn("text-xs font-bold truncate transition-colors", isAssigned ? (isInherited ? "text-emerald-300" : "text-blue-300") : "text-slate-300")}>{company.name}</p>
+                                  <p className="text-[10px] text-slate-500 truncate mt-0.5">{company.domain || 'Branch Office'}</p>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <p className={cn("text-xs font-bold truncate transition-colors", isAssigned ? "text-blue-300" : "text-slate-300")}>{company.name}</p>
-                                <p className="text-[10px] text-slate-500 truncate mt-0.5">{company.domain || 'Branch Office'}</p>
-                              </div>
+                              {isInherited && (
+                                <div className="mt-2 w-full text-center">
+                                  <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Inherited from Parent</span>
+                                </div>
+                              )}
+                              )}
                             </button>
                           );
                         })}

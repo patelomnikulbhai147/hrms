@@ -21,6 +21,7 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface DocumentsProps {
   role: Role;
@@ -209,6 +210,9 @@ export const Documents: React.FC<DocumentsProps> = ({
     name: '',
     type: 'Aadhaar' as Document['type'],
   });
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('documents');
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
@@ -741,9 +745,11 @@ export const Documents: React.FC<DocumentsProps> = ({
             <div className="w-72">
               <Input placeholder="Search employee documents..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
             </div>
-            <Button onClick={() => setUploadOpen(true)}>
-              Upload Verification Doc
-            </Button>
+            {canEdit && (
+              <Button onClick={() => setUploadOpen(true)}>
+                Upload Verification Doc
+              </Button>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -798,7 +804,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         </Td>
                         <Td>
                           <div className="flex items-center gap-1.5">
-                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR') ? (
+                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit ? (
                               <>
                                 <button
                                   onClick={() => handleToggleStatus(d.id, 'Verified')}
@@ -1158,30 +1164,32 @@ export const Documents: React.FC<DocumentsProps> = ({
                 )}
 
                 {/* Operations Actions Buttons under Card Grid */}
-                <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-slate-100">
-                  <button
-                    onClick={() => openEditModal('edit')}
-                    className="py-1.5 px-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 rounded-xl text-[10px] font-extrabold text-slate-700 transition-all flex items-center justify-center gap-1 shadow-xs"
-                  >
-                    <Edit size={11} className="text-amber-500" />
-                    Edit Style
-                  </button>
-                  <button
-                    onClick={handleDuplicateTemplate}
-                    className="py-1.5 px-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 rounded-xl text-[10px] font-extrabold text-slate-700 transition-all flex items-center justify-center gap-1 shadow-xs"
-                  >
-                    <Plus size={11} className="text-indigo-600" />
-                    Duplicate
-                  </button>
-                  <button
-                    onClick={handleDeleteTemplate}
-                    disabled={templates.filter(t => t.category === currentCategory).length <= 1}
-                    className="py-1.5 px-2 border border-slate-200 hover:border-red-200 hover:bg-red-50 hover:text-red-700 rounded-xl text-[10px] font-extrabold text-slate-750 transition-all flex items-center justify-center gap-1 shadow-xs disabled:opacity-40"
-                  >
-                    <Trash2 size={11} className="text-red-500" />
-                    Delete
-                  </button>
-                </div>
+                {canEdit && (
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-slate-100">
+                    <button
+                      onClick={() => openEditModal('edit')}
+                      className="py-1.5 px-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 rounded-xl text-[10px] font-extrabold text-slate-700 transition-all flex items-center justify-center gap-1 shadow-xs"
+                    >
+                      <Edit size={11} className="text-amber-500" />
+                      Edit Style
+                    </button>
+                    <button
+                      onClick={handleDuplicateTemplate}
+                      className="py-1.5 px-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 rounded-xl text-[10px] font-extrabold text-slate-700 transition-all flex items-center justify-center gap-1 shadow-xs"
+                    >
+                      <Plus size={11} className="text-indigo-600" />
+                      Duplicate
+                    </button>
+                    <button
+                      onClick={handleDeleteTemplate}
+                      disabled={templates.filter(t => t.category === currentCategory).length <= 1}
+                      className="py-1.5 px-2 border border-slate-200 hover:border-red-200 hover:bg-red-50 hover:text-red-700 rounded-xl text-[10px] font-extrabold text-slate-750 transition-all flex items-center justify-center gap-1 shadow-xs disabled:opacity-40"
+                    >
+                      <Trash2 size={11} className="text-red-500" />
+                      Delete
+                    </button>
+                  </div>
+                )}
               </Card>
 
               {/* Roster Auto-fill and Variable Fine-tuning */}
@@ -1277,13 +1285,15 @@ export const Documents: React.FC<DocumentsProps> = ({
 
                   {/* Actions buttons bottom panel */}
                   <div className="mt-4 pt-3.5 border-t border-slate-100 flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => openEditModal('create')}
-                      className="flex-1 text-xs font-bold"
-                    >
-                      Create Custom
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="outline"
+                        onClick={() => openEditModal('create')}
+                        className="flex-1 text-xs font-bold"
+                      >
+                        Create Custom
+                      </Button>
+                    )}
                     <Button
                       onClick={handlePrint}
                       className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow"

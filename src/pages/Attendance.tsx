@@ -14,6 +14,7 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface AttendanceProps {
   role: Role;
@@ -107,7 +108,9 @@ export const Attendance: React.FC<AttendanceProps> = ({
     setMarkModal(null);
   };
 
-  const canApprove = role === 'Company Head' || role === 'HR';
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('attendance');
+  const canApprove = (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit;
 
   return (
     <div className="space-y-4">
@@ -135,10 +138,12 @@ export const Attendance: React.FC<AttendanceProps> = ({
             </div>
             <div className="flex items-center gap-3">
               {clockedIn && <div className="flex items-center gap-1.5 text-emerald-600 text-sm"><Clock size={14} /> Clocked in at {clockInTime}</div>}
-              {!clockedIn ? (
-                <Button icon={<CheckCircle2 size={14} />} variant="success" onClick={handleClockIn}>Clock In</Button>
-              ) : (
-                <Button icon={<XCircle size={14} />} variant="danger" onClick={handleClockOut}>Clock Out</Button>
+              {canEdit && (
+                !clockedIn ? (
+                  <Button icon={<CheckCircle2 size={14} />} variant="success" onClick={handleClockIn}>Clock In</Button>
+                ) : (
+                  <Button icon={<XCircle size={14} />} variant="danger" onClick={handleClockOut}>Clock Out</Button>
+                )
               )}
             </div>
           </div>

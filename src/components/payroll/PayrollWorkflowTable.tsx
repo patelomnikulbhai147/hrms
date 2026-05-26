@@ -16,6 +16,7 @@ interface PayrollWorkflowTableProps {
   onDownload: (record: PayrollRecord) => void;
   onSendClick: (record: PayrollRecord) => void;
   role: Role;
+  canEdit?: boolean;
 }
 
 export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
@@ -28,7 +29,8 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
   onPayslipClick,
   onDownload,
   onSendClick,
-  role
+  role,
+  canEdit = true
 }) => {
   const isEmployee = role === 'Employee';
 
@@ -92,10 +94,10 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                         className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                       >
                         <Eye size={12} />
-                        {isEmployee ? 'View Details' : 'View / Edit'}
+                        {isEmployee || !canEdit ? 'View Details' : 'View / Edit'}
                       </button>
 
-                      {!isEmployee && currentStatus === 'draft' && (
+                      {!isEmployee && canEdit && currentStatus === 'draft' && (
                         <button
                           onClick={() => onPrepare(r)}
                           className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:opacity-95"
@@ -106,7 +108,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                         </button>
                       )}
 
-                      {!isEmployee && currentStatus === 'prepared' && (
+                      {!isEmployee && canEdit && currentStatus === 'prepared' && (
                         <button
                           onClick={() => onVerifyClick(r)}
                           className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-amber-600"
@@ -116,7 +118,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                         </button>
                       )}
 
-                      {!isEmployee && currentStatus !== 'paid' && currentStatus !== 'payslip_generated' && (
+                      {!isEmployee && canEdit && currentStatus !== 'paid' && currentStatus !== 'payslip_generated' && (
                         <button
                           onClick={() => onPayClick(r)}
                           className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-emerald-700"
@@ -126,7 +128,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                         </button>
                       )}
 
-                      {!isEmployee && currentStatus === 'paid' && (
+                      {!isEmployee && canEdit && currentStatus === 'paid' && (
                         <button
                           onClick={() => onPayslipClick(r)}
                           className="inline-flex items-center gap-1 rounded-full bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-indigo-700"

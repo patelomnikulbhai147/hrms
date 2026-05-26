@@ -83,7 +83,16 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
     }
 
     // Success
-    // Check if user has multiple workspaces assigned
+    // Check if user has multiple workspaces assigned (including inherited branches)
+    if (matched.accessibleCompanyIds) {
+      const idSet = new Set<string>();
+      matched.accessibleCompanyIds.forEach(id => {
+        idSet.add(id);
+        companies.filter(c => c.parentCompanyId === id).forEach(b => idSet.add(b.id));
+      });
+      matched.accessibleCompanyIds = Array.from(idSet);
+    }
+
     if (matched.accessibleCompanyIds && matched.accessibleCompanyIds.length > 1) {
       setPendingUser(matched);
       return;

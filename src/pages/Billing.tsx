@@ -14,8 +14,9 @@ import {
   getSubscriptionAlertsList,
   getDaysRemaining,
   calculateBranchBilling
-} from '../utils/subscriptionUtils';
+import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '../utils/subscriptionUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface BillingProps {
   companies: Company[];
@@ -45,6 +46,9 @@ export const Billing: React.FC<BillingProps> = ({
   onStartMasquerade
 }) => {
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('billing');
 
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
 
@@ -889,18 +893,22 @@ export const Billing: React.FC<BillingProps> = ({
                       <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-bold ${statusBadge()}`}>
                         {comp.paymentStatus}
                       </span>
-                      <button
-                        onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
-                        className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                      >
-                        Change Plan
-                      </button>
-                      <button
-                        onClick={() => handleQuickExtend(comp.id)}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-lg cursor-pointer hover:shadow-emerald-500/20"
-                      >
-                        Renew Subscription
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
+                            className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            Change Plan
+                          </button>
+                          <button
+                            onClick={() => handleQuickExtend(comp.id)}
+                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-lg cursor-pointer hover:shadow-emerald-500/20"
+                          >
+                            Renew Subscription
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -989,25 +997,29 @@ export const Billing: React.FC<BillingProps> = ({
                             </div>
 
                             <div className="flex items-center gap-2 self-end lg:self-center flex-wrap">
-                              <button
-                                onClick={() => handleAdjustBranchSlots(comp.id, 'remove')}
-                                disabled={purchasedAdditionalBranches <= 0}
-                                className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                              >
-                                - Remove Slot
-                              </button>
-                              <button
-                                onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
-                                className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                              >
-                                + Add Slot (+₹999/mo)
-                              </button>
-                              <button
-                                onClick={() => handleOpenCreateBranch(comp.id)}
-                                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
-                              >
-                                <Plus size={13} className="inline mr-1" /> Deploy Branch
-                              </button>
+                              {canEdit && (
+                                <>
+                                  <button
+                                    onClick={() => handleAdjustBranchSlots(comp.id, 'remove')}
+                                    disabled={purchasedAdditionalBranches <= 0}
+                                    className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-30 disabled:cursor-not-allowed text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                  >
+                                    - Remove Slot
+                                  </button>
+                                  <button
+                                    onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
+                                    className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                  >
+                                    + Add Slot (+₹999/mo)
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenCreateBranch(comp.id)}
+                                    className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20 cursor-pointer"
+                                  >
+                                    <Plus size={13} className="inline mr-1" /> Deploy Branch
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1083,44 +1095,48 @@ export const Billing: React.FC<BillingProps> = ({
                                       </button>
 
                                       <div className="flex items-center gap-1">
-                                        <button
-                                          onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
-                                          className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
-                                            licenseLabel === 'Suspended'
-                                              ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-                                              : 'border-amber-500/25 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
-                                          }`}
-                                          title="Lock/Unlock License Status"
-                                        >
-                                          {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
-                                        </button>
+                                        {canEdit && (
+                                          <>
+                                            <button
+                                              onClick={() => handleToggleBranchLicenseStatus(br.id, licenseLabel)}
+                                              className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
+                                                licenseLabel === 'Suspended'
+                                                  ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                                                  : 'border-amber-500/25 text-amber-400 bg-amber-500/10 hover:bg-amber-500/20'
+                                              }`}
+                                              title="Lock/Unlock License Status"
+                                            >
+                                              {licenseLabel === 'Suspended' ? 'Enable License' : 'Block License'}
+                                            </button>
 
-                                        <button
-                                          onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
-                                          className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
-                                            isSuspended
-                                              ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-                                              : 'border-rose-500/25 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20'
-                                          }`}
-                                        >
-                                          {isSuspended ? 'Activate Portal' : 'Suspend Portal'}
-                                        </button>
+                                            <button
+                                              onClick={() => handleToggleBranchStatus(br.id, br.status as any)}
+                                              className={`px-2 py-1.5 border rounded-lg font-bold text-[10px] transition-colors cursor-pointer ${
+                                                isSuspended
+                                                  ? 'border-emerald-500/25 text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                                                  : 'border-rose-500/25 text-rose-400 bg-rose-500/10 hover:bg-rose-500/20'
+                                              }`}
+                                            >
+                                              {isSuspended ? 'Activate Portal' : 'Suspend Portal'}
+                                            </button>
 
-                                        <button
-                                          onClick={() => handleOpenEditBranch(br)}
-                                          className="action-icon-btn p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-400 hover:text-white cursor-pointer"
-                                          title="Edit Branch Settings"
-                                        >
-                                          <Edit3 size={11} />
-                                        </button>
+                                            <button
+                                              onClick={() => handleOpenEditBranch(br)}
+                                              className="action-icon-btn p-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-400 hover:text-white cursor-pointer"
+                                              title="Edit Branch Settings"
+                                            >
+                                              <Edit3 size={11} />
+                                            </button>
 
-                                        <button
-                                          onClick={() => handleRemoveBranch(br.id)}
-                                          className="action-icon-btn-delete p-1.5 rounded-lg border border-rose-500/10 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 cursor-pointer"
-                                          title="Remove Branch"
-                                        >
-                                          <Trash2 size={11} />
-                                        </button>
+                                            <button
+                                              onClick={() => handleRemoveBranch(br.id)}
+                                              className="action-icon-btn-delete p-1.5 rounded-lg border border-rose-500/10 bg-rose-500/5 text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                                              title="Remove Branch"
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -1216,62 +1232,64 @@ export const Billing: React.FC<BillingProps> = ({
                                         </span>
 
                                         {/* Capacity Controlled Upgrade Options */}
-                                        <div className="flex items-center gap-1 ml-1">
-                                          {capacity === 200 && (
-                                            <>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 500)}
-                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Upgrade limit to 500 employees (+₹1,499/mo)"
-                                              >
-                                                +500
-                                              </button>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
-                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Upgrade limit to 1000 employees (+₹2,999/mo)"
-                                              >
-                                                +1000
-                                              </button>
-                                            </>
-                                          )}
-                                          {capacity === 500 && (
-                                            <>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Downgrade limit to 200 employees (Free base capacity)"
-                                              >
-                                                -200
-                                              </button>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
-                                                className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Upgrade limit to 1000 employees (+₹2,999/mo)"
-                                              >
-                                                +1000
-                                              </button>
-                                            </>
-                                          )}
-                                          {capacity === 1000 && (
-                                            <>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Downgrade limit to 200 employees (Free base capacity)"
-                                              >
-                                                -200
-                                              </button>
-                                              <button
-                                                onClick={() => handleUpdateBranchCapacity(br.id, 500)}
-                                                className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
-                                                title="Downgrade limit to 500 employees (+₹1,499/mo)"
-                                              >
-                                                -500
-                                              </button>
-                                            </>
-                                          )}
-                                        </div>
+                                        {canEdit && (
+                                          <div className="flex items-center gap-1 ml-1">
+                                            {capacity === 200 && (
+                                              <>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 500)}
+                                                  className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Upgrade limit to 500 employees (+₹1,499/mo)"
+                                                >
+                                                  +500
+                                                </button>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
+                                                  className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Upgrade limit to 1000 employees (+₹2,999/mo)"
+                                                >
+                                                  +1000
+                                                </button>
+                                              </>
+                                            )}
+                                            {capacity === 500 && (
+                                              <>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 200)}
+                                                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Downgrade limit to 200 employees (Free base capacity)"
+                                                >
+                                                  -200
+                                                </button>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 1000)}
+                                                  className="px-1.5 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Upgrade limit to 1000 employees (+₹2,999/mo)"
+                                                >
+                                                  +1000
+                                                </button>
+                                              </>
+                                            )}
+                                            {capacity === 1000 && (
+                                              <>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 200)}
+                                                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Downgrade limit to 200 employees (Free base capacity)"
+                                                >
+                                                  -200
+                                                </button>
+                                                <button
+                                                  onClick={() => handleUpdateBranchCapacity(br.id, 500)}
+                                                  className="px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-350 border border-white/5 rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  title="Downgrade limit to 500 employees (+₹1,499/mo)"
+                                                >
+                                                  -500
+                                                </button>
+                                              </>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
 
@@ -1363,13 +1381,14 @@ export const Billing: React.FC<BillingProps> = ({
                         <span className="text-[10px] text-slate-400">/mo</span>
                       </div>
                     </div>
-                    
-                    <button
-                      onClick={() => setEditingPlan(plan)}
-                      className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
-                    >
-                      <Edit3 size={13} /> Adjust Thresholds
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setEditingPlan(plan)}
+                        className="px-4 py-2 border border-white/10 hover:bg-white/5 text-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Edit3 size={13} /> Adjust Thresholds
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -1587,22 +1606,26 @@ export const Billing: React.FC<BillingProps> = ({
                       View Billing
                     </button>
 
-                    <button
-                      onClick={() => toggleCompanyStatus(comp.id)}
-                      className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${isSusp
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
-                        : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                        }`}
-                    >
-                      {isSusp ? 'Reactivate Access' : 'Suspend Access'}
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => toggleCompanyStatus(comp.id)}
+                        className={`px-3.5 py-2 border rounded-xl text-xs font-bold transition-all cursor-pointer ${isSusp
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-transparent'
+                          : 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                          }`}
+                      >
+                        {isSusp ? 'Reactivate Access' : 'Suspend Access'}
+                      </button>
+                    )}
 
-                    <button
-                      onClick={() => handleQuickExtend(comp.id)}
-                      className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer animate-pulse"
-                    >
-                      Renew Plan
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => handleQuickExtend(comp.id)}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer animate-pulse"
+                      >
+                        Renew Plan
+                      </button>
+                    )}
                   </div>
                 </div>
               );

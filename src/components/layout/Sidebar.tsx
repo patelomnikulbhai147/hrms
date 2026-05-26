@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import type { Role } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
+import { usePermissions } from '../../context/PermissionContext';
 
 export type PageId =
   | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
@@ -54,13 +55,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   toggleTheme,
   authProfile
 }) => {
+  const { canView } = usePermissions();
+
   const visibleItems = navItems.filter(item => {
-    // RBAC Explicit Access Check
-    if (authProfile?.moduleAccess && authProfile.moduleAccess[item.id as AppModules] !== undefined) {
-      return authProfile.moduleAccess[item.id as AppModules];
-    }
-    // Fallback to Role-based defaults
-    return item.roles.includes(role);
+    // Rely completely on our central permission context for view access
+    // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices
+    return canView(item.id as AppModules) && item.roles.includes(role);
   });
 
   return (

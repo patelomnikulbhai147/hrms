@@ -14,6 +14,7 @@ import { Settings } from './pages/Settings';
 import { Billing } from './pages/Billing';
 import { Users } from './pages/Users';
 import { Login, type UserAccount, type AppModules } from './pages/Login';
+import { PermissionProvider } from './context/PermissionContext';
 import {
   Role,
   Company,
@@ -530,10 +531,26 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('hrms_auth') === 'true';
   });
-  const [authProfile, setAuthProfile] = useState<UserAccount | null>(() => {
+  const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>(() => {
     const raw = localStorage.getItem('hrms_profile');
     return raw ? JSON.parse(raw) : null;
   });
+
+  const authProfile = React.useMemo(() => {
+    if (!storedAuthProfile) return null;
+    if (!storedAuthProfile.accessibleCompanyIds || storedAuthProfile.accessibleCompanyIds.length === 0) return storedAuthProfile;
+
+    const idSet = new Set<string>();
+    storedAuthProfile.accessibleCompanyIds.forEach(id => {
+      idSet.add(id);
+      companies.filter(c => c.parentCompanyId === id).forEach(b => idSet.add(b.id));
+    });
+
+    return {
+      ...storedAuthProfile,
+      accessibleCompanyIds: Array.from(idSet)
+    };
+  }, [storedAuthProfile, companies]);
 
   const [currentPage, setCurrentPage] = useState<PageId>(() => {
     const raw = localStorage.getItem('hrms_current_page');
@@ -575,7 +592,7 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
   const handleLogin = (profile: UserAccount, selectedCompanyId?: string) => {
-    setAuthProfile(profile);
+    setStoredAuthProfile(profile);
     setIsAuthenticated(true);
     localStorage.setItem('hrms_auth', 'true');
     localStorage.setItem('hrms_profile', JSON.stringify(profile));
@@ -595,7 +612,7 @@ export default function App() {
     localStorage.removeItem('hrms_current_page');
     localStorage.removeItem('hrms_active_company_id');
     localStorage.removeItem('hrms_is_masquerading');
-    setAuthProfile(null);
+    setStoredAuthProfile(null);
     setIsAuthenticated(false);
     setIsMasquerading(false);
   };
@@ -608,7 +625,19 @@ export default function App() {
   const handleCompanyChange = (companyId: string) => {
     // Check if the user is authorized to switch to this company
     if (resolvedRole !== 'Super Admin' && !isMasquerading) {
-      if (!authProfile?.accessibleCompanyIds?.includes(companyId) && authProfile?.companyId !== companyId) {
+      const allowedIds = authProfile?.accessibleCompanyIds || [authProfile?.companyId];
+      
+      const isAllowed = allowedIds.some(pid => {
+        if (pid === companyId) return true;
+        const parent = companies.find(c => c.id === pid);
+        if (parent && (pid === 'c-gcri' || parent.isHeadOffice)) {
+           const child = companies.find(c => c.id === companyId);
+           return child?.parentCompanyId === pid;
+        }
+        return false;
+      });
+
+      if (!isAllowed) {
         return;
       }
     }
@@ -647,11 +676,14 @@ export default function App() {
   useEffect(() => {
     if (!authProfile) return;
     
-    // Explicit RBAC Enforcement
-    if (authProfile.moduleAccess && authProfile.moduleAccess[currentPage as AppModules] === false) {
-      setCurrentPage('dashboard');
-      localStorage.setItem('hrms_current_page', 'dashboard');
-      return;
+    // Explicit RBAC Enforcement for Modules
+    if (resolvedRole !== 'Super Admin') {
+      const hasModuleAccess = authProfile.moduleAccess ? authProfile.moduleAccess[currentPage as AppModules] : true;
+      if (hasModuleAccess === false) {
+        setCurrentPage('dashboard');
+        localStorage.setItem('hrms_current_page', 'dashboard');
+        return;
+      }
     }
 
     if (resolvedRole === 'Super Admin' && ['employees', 'leaves', 'payroll', 'documents', 'reports'].includes(currentPage)) {
@@ -837,19 +869,20 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans antialiased">
-      <Sidebar
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        role={resolvedRole}
-        collapsed={sidebarCollapsed}
-        isMasquerading={isMasquerading}
-        onExitMasquerade={handleExitMasquerade}
-        theme={theme}
-        toggleTheme={toggleTheme}
-      />
-
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+    <PermissionProvider authProfile={authProfile} role={resolvedRole} companies={companies}>
+      <div className="flex h-screen overflow-hidden font-sans antialiased">
+        <Sidebar
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          role={resolvedRole}
+          collapsed={sidebarCollapsed}
+          isMasquerading={isMasquerading}
+          onExitMasquerade={handleExitMasquerade}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          authProfile={authProfile}
+        />
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           role={resolvedRole}
@@ -886,6 +919,7 @@ export default function App() {
         </main>
       </div>
     </div>
+    </PermissionProvider>
   );
 }
 export { App };

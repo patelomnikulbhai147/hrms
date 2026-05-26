@@ -22,6 +22,7 @@ import {
 import { type UserAccount } from './Login';
 import { allExcelParsedEmployees } from '../data/excelSeededData';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { usePermissions } from '../context/PermissionContext';
 
 interface EmployeesProps {
   role: Role;
@@ -58,6 +59,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
+
+  const { canEdit: canEditModule } = usePermissions();
+  const canEdit = canEditModule('employees');
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
@@ -690,7 +694,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             Real enterprise roster synced across banking, government compliance and payroll modules
           </p>
         </div>
-        {isHR && (
+        {isHR && canEdit && (
           <div className="flex items-center gap-2">
             <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
               Bulk Excel Importer
@@ -777,21 +781,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                         <Eye size={13} />
                       </button>
 
-                      <button
-                        onClick={() => handleStartEdit(emp)}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
-                        title="Edit File"
-                      >
-                        <Edit2 size={13} />
-                      </button>
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => handleStartEdit(emp)}
+                            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                            title="Edit File"
+                          >
+                            <Edit2 size={13} />
+                          </button>
 
-                      <button
-                        onClick={() => setDeleteEmp(emp)}
-                        className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
-                        title="Delete Employee"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                          <button
+                            onClick={() => setDeleteEmp(emp)}
+                            className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
+                            title="Delete Employee"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </Td>
                 </Tr>
@@ -1278,7 +1286,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         footer={
           <>
             <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button onClick={handleAddSubmit}>Save Master File</Button>
+            {canEdit && <Button onClick={handleAddSubmit}>Save Master File</Button>}
           </>
         }
       >
@@ -1382,7 +1390,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         footer={
           <>
             <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            <Button onClick={handleEditSubmit}>Save Master File</Button>
+            {canEdit && <Button onClick={handleEditSubmit}>Save Master File</Button>}
           </>
         }
       >
