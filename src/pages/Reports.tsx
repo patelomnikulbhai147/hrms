@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Download, Calendar, DollarSign, Users } from 'lucide-react';
+import { Download, Calendar, DollarSign, Users, Archive, LogOut } from 'lucide-react';
 import {
   type Employee,
   type AttendanceRecord,
@@ -27,7 +27,7 @@ interface ReportsProps {
   leaves: LeaveRequest[];
 }
 
-type ReportType = 'attendance' | 'payroll' | 'leave';
+type ReportType = 'attendance' | 'payroll' | 'leave' | 'offboarding';
 
 export const Reports: React.FC<ReportsProps> = ({
   activeCompanyId,
@@ -68,6 +68,7 @@ export const Reports: React.FC<ReportsProps> = ({
     { id: 'attendance' as ReportType, label: 'Attendance Report', icon: <Users size={18} className="text-blue-600" />, color: 'bg-blue-50 border-blue-200', desc: 'Daily punch-in summaries and hours' },
     { id: 'payroll' as ReportType, label: 'Payroll Report', icon: <DollarSign size={18} className="text-emerald-600" />, color: 'bg-emerald-50 border-emerald-200', desc: 'Salary processing and pay components' },
     { id: 'leave' as ReportType, label: 'Leave Report', icon: <Calendar size={18} className="text-indigo-600" />, color: 'bg-indigo-50 border-indigo-200', desc: 'Leave requests and pending balances' },
+    { id: 'offboarding' as ReportType, label: 'Offboarding Analytics', icon: <Archive size={18} className="text-amber-600" />, color: 'bg-amber-50 border-amber-200', desc: 'Tender closures & archived workforce' },
   ];
 
   const hexToRgbA = (hex: string, alpha: number) => {
@@ -101,7 +102,7 @@ export const Reports: React.FC<ReportsProps> = ({
       </div>
 
       {/* Report Selector grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         {reportCards.map(r => {
           const isSelected = activeReport === r.id;
           return (
@@ -255,6 +256,48 @@ export const Reports: React.FC<ReportsProps> = ({
                   <Td><span className="text-xs text-gray-500">{l.approvedBy ?? '—'}</span></Td>
                 </Tr>
               ))}
+            </Tbody>
+          </Table>
+        </Card>
+      )}
+
+      {activeReport === 'offboarding' && (
+        <Card padding={false}>
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-xs font-bold text-gray-900">Enterprise Offboarding Analytics & Archived Tenders</h3>
+            <span className="text-[10px] text-gray-400 font-bold uppercase">{currentCompany.name}</span>
+          </div>
+          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-slate-100 bg-slate-50/50">
+            <StatCard label="Archived Tenders/Branches" value={companies.filter(c => c.status === 'Archived').length} icon={<Building2 size={16} className="text-amber-600" />} color="bg-amber-100" />
+            <StatCard label="Archived / Offboarded Personnel" value={uniqueEmployees.filter(e => e.status === 'Archived' || e.status === 'Terminated').length} icon={<LogOut size={16} className="text-rose-600" />} color="bg-rose-100" />
+          </div>
+          <Table>
+            <Thead>
+              <tr>
+                <Th>Employee</Th>
+                <Th>Department</Th>
+                <Th>Final Designation</Th>
+                <Th>Exit Date</Th>
+                <Th>Reason</Th>
+                <Th>Status</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {uniqueEmployees.filter(e => e.status === 'Archived' || e.status === 'Terminated').map(e => (
+                <Tr key={e.id}>
+                  <Td><span className="text-xs font-semibold text-gray-800">{e.name}</span></Td>
+                  <Td><span className="text-xs text-gray-500">{e.department}</span></Td>
+                  <Td><span className="text-xs">{e.designation}</span></Td>
+                  <Td><span className="text-xs font-medium">{e.exitDate || '—'}</span></Td>
+                  <Td><span className="text-[10px] text-slate-500 max-w-[150px] truncate block" title={e.exitReason}>{e.exitReason || 'Tender End'}</span></Td>
+                  <Td><Badge variant="red">{e.status}</Badge></Td>
+                </Tr>
+              ))}
+              {uniqueEmployees.filter(e => e.status === 'Archived' || e.status === 'Terminated').length === 0 && (
+                <Tr>
+                  <Td colSpan={6} className="text-center py-6 text-xs text-slate-400">No archived offboardings logged in the system.</Td>
+                </Tr>
+              )}
             </Tbody>
           </Table>
         </Card>

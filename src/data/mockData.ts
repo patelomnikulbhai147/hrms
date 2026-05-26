@@ -2,7 +2,7 @@
 
 export type Role = 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee';
 
-export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated';
+export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated' | 'Archived';
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
 export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
@@ -16,12 +16,24 @@ export interface Company {
   adminEmail: string;
   phone: string;
   industry: string;
-  status: 'Active' | 'Pending' | 'Inactive';
+  status: 'Active' | 'Pending' | 'Inactive' | 'Expiring Soon' | 'Renewal Pending' | 'Offboarding In Progress' | 'Tender Completed' | 'Archived';
   employeeCount: number;
   joinDate: string;
   plan: 'Starter' | 'Professional' | 'Enterprise';
   logo: string;
   logoImage?: string;
+  
+  // Offboarding Checklists & State
+  offboardingState?: {
+    initiatedOn?: string;
+    payrollVerified?: boolean;
+    invoiceCleared?: boolean;
+    complianceVerified?: boolean;
+    assetCheckCompleted?: boolean;
+    employeesOffboarded?: boolean;
+    financialSettlement?: boolean;
+    completedOn?: string;
+  };
   
   // Scoped Payroll settings
   pfRate: number; // e.g. 12%
@@ -138,6 +150,30 @@ export interface Employee {
   panUpload?: string;
   photoUpload?: string;
   signatureUpload?: string;
+
+  // Lifecycle & Offboarding State
+  offboardingState?: {
+    initiatedOn?: string;
+    documentClearance?: boolean;
+    assetReturn?: boolean;
+    payrollSettled?: boolean;
+    attendanceCleared?: boolean;
+    managerApproved?: boolean;
+    hrApproved?: boolean;
+    completedOn?: string;
+  };
+  
+  // Historical Tracking
+  employmentHistory?: {
+    companyId: string;
+    companyName: string;
+    branchName?: string;
+    role: string;
+    designation: string;
+    startDate: string;
+    endDate: string;
+    reason: string;
+  }[];
 }
 
 export interface AttendanceRecord {

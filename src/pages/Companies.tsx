@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Building2, Plus, Search, KeyRound, Lock, Trash2,
-  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight
+  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight, LogOut, FileSpreadsheet
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
 import { Card, StatCard } from '../components/ui/Card';
@@ -21,6 +21,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+import { exportToExcel } from '../utils/exportUtils';
 
 interface CompaniesProps {
   _role: Role;
@@ -55,6 +56,12 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');
+
+  // Enterprise Lifecycle & Export
+  const [activeMainTab, setActiveMainTab] = useState<'active' | 'archived'>('active');
+  const [offboardCompany, setOffboardCompany] = useState<Company | null>(null);
+  const [offboardStep, setOffboardStep] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
 
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
 
@@ -557,11 +564,104 @@ export const Companies: React.FC<CompaniesProps> = ({
 
   // Filter accounts
   const filtered = companies.filter(c => {
+    const isArchived = c.status === 'Archived';
+    if (activeMainTab === 'active' && isArchived) return false;
+    if (activeMainTab === 'archived' && !isArchived) return false;
+
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.domain.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || c.status === statusFilter;
     const matchPlan = !planFilter || c.plan === planFilter;
     return matchSearch && matchStatus && matchPlan;
   });
+
+  const handleExport = () => {
+    setIsExporting(true);
+    setTimeout(() => {
+      exportToExcel({
+        fileName: activeMainTab === 'active' ? 'Active_Tenders' : 'Archived_Tenders',
+        sheetName: 'Companies',
+        columns: [
+          { header: 'Company/Branch ID', key: 'id', width: 15 },
+          { header: 'Name', key: 'name', width: 30 },
+          { header: 'Email', key: 'email', width: 25 },
+          { header: 'Industry', key: 'industry', width: 20 },
+          { header: 'Join Date', key: 'joinDate', width: 15 },
+          { header: 'Status', key: 'status', width: 15 },
+          { header: 'Plan', key: 'plan', width: 15 }
+        ],
+        data: filtered
+      });
+      setIsExporting(false);
+    }, 500);
+  };
+
+  const handleStartOffboarding = (company: Company) => {
+    if (company.status === 'Archived') {
+       alert("Company is already archived.");
+       return;
+    }
+    setOffboardCompany({
+      ...company,
+      offboardingState: company.offboardingState || {
+        initiatedOn: new Date().toISOString(),
+        payrollVerified: false,
+        invoiceCleared: false,
+        complianceVerified: false,
+        assetCheckCompleted: false,
+        employeesOffboarded: false,
+        financialSettlement: false
+      }
+    });
+    setOffboardStep(1);
+  };
+
+  const handleCompleteOffboarding = () => {
+    if (!offboardCompany) return;
+    const state = offboardCompany.offboardingState;
+    if (!state?.payrollVerified || !state?.invoiceCleared || !state?.complianceVerified || !state?.assetCheckCompleted || !state?.financialSettlement) {
+      alert("Cannot finalize closure: Pending clearances or settlements.");
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Auto cascade employees to archived if they belong to this company
+    if (onUpdateEmployees) {
+      const updatedEmps = employees.map(emp => {
+        if (emp.companyId === offboardCompany.id && emp.status !== 'Archived') {
+          return {
+             ...emp,
+             status: 'Archived' as const,
+             exitDate: today,
+             exitReason: 'Tender/Company Auto-Archived',
+             employmentHistory: [...(emp.employmentHistory || []), {
+               companyId: offboardCompany.id,
+               companyName: offboardCompany.name,
+               branchName: emp.branchLocation,
+               role: emp.role,
+               designation: emp.designation,
+               startDate: emp.joinDate,
+               endDate: today,
+               reason: 'Tender/Contract Completed'
+             }]
+          };
+        }
+        return emp;
+      });
+      onUpdateEmployees(updatedEmps);
+    }
+
+    const updated: Company = {
+      ...offboardCompany,
+      status: 'Archived',
+      offboardingState: {
+        ...state,
+        completedOn: new Date().toISOString()
+      }
+    };
+    onUpdateCompanies(companies.map(c => c.id === offboardCompany.id ? updated : c));
+    setOffboardCompany(null);
+    alert(`Company/Branch ${offboardCompany.name} offboarded and safely archived. All linked employees were automatically archived.`);
+  };
 
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
   const activeCount = parentCompanies.filter(c => c.status === 'Active').length;
@@ -582,16 +682,40 @@ export const Companies: React.FC<CompaniesProps> = ({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-gray-900">SaaS Company Management</h2>
           <p className="text-xs text-gray-500 mt-0.5">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
         </div>
-        {canEdit && (
-          <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
-            Create Company
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Main Tabs */}
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setActiveMainTab('active')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Active Tenders
+            </button>
+            <button
+              onClick={() => setActiveMainTab('archived')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'archived' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Archived Tenders
+            </button>
+          </div>
+          
+          {canEdit && (
+            <Button variant="outline" icon={<FileSpreadsheet size={14} />} onClick={handleExport} disabled={isExporting}>
+              {isExporting ? 'Exporting...' : 'Export to Excel'}
+            </Button>
+          )}
+          
+          {canEdit && activeMainTab === 'active' && (
+            <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+              Create Company
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* KPI stats */}
@@ -750,12 +874,22 @@ export const Companies: React.FC<CompaniesProps> = ({
                               <KeyRound size={13} />
                             </button>
 
-                            <button
-                              onClick={() => handleToggleStatus(c.id, c.status)}
-                              className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
-                            >
-                              {c.status === 'Active' ? 'Suspend' : 'Activate'}
-                            </button>
+                            {activeMainTab === 'active' ? (
+                              <button
+                                onClick={() => handleStartOffboarding(c)}
+                                className="text-[10px] font-semibold text-amber-500 hover:text-amber-400 hover:underline inline-flex items-center gap-1"
+                                title="Initiate Tender Offboarding"
+                              >
+                                <LogOut size={10} /> Offboard
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleToggleStatus(c.id, c.status)}
+                                className={`text-[10px] font-semibold hover:underline ${c.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
+                              >
+                                {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                              </button>
+                            )}
                           </div>
                         )}
                       </Td>
@@ -840,13 +974,23 @@ export const Companies: React.FC<CompaniesProps> = ({
                                             >
                                               <Edit size={11} />
                                             </button>
-                                            <button
-                                              onClick={() => handleRemoveBranch(b.id)}
-                                              className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
-                                              title="Remove Branch"
-                                            >
-                                              <Trash2 size={11} />
-                                            </button>
+                                            {activeMainTab === 'active' ? (
+                                              <button
+                                                onClick={() => handleStartOffboarding(b)}
+                                                className="p-1 bg-amber-500/10 border border-amber-500/20 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 transition-colors"
+                                                title="Initiate Branch Offboarding"
+                                              >
+                                                <LogOut size={11} />
+                                              </button>
+                                            ) : (
+                                              <button
+                                                onClick={() => handleRemoveBranch(b.id)}
+                                                className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
+                                                title="Permanently Delete"
+                                              >
+                                                <Trash2 size={11} />
+                                              </button>
+                                            )}
                                             <button
                                               onClick={() => handleToggleStatus(b.id, b.status)}
                                               className={`text-[9px] font-semibold hover:underline ${b.status === 'Active' ? 'text-red-500' : 'text-emerald-500'}`}
@@ -1474,6 +1618,94 @@ export const Companies: React.FC<CompaniesProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Enterprise Company/Branch Offboarding Modal */}
+      <Modal open={!!offboardCompany} onClose={() => setOffboardCompany(null)} title="Enterprise Company & Tender Offboarding Workflow" size="lg">
+        {offboardCompany && (
+          <div className="space-y-6 text-sm text-left">
+            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="h-12 w-12 rounded-full flex items-center justify-center font-bold text-lg text-white shadow-inner" style={{ backgroundColor: offboardCompany.primaryColor || '#3b82f6' }}>
+                {offboardCompany.logo || offboardCompany.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg text-slate-800">{offboardCompany.name}</h3>
+                <p className="text-slate-500 text-xs">ID: {offboardCompany.id} • Domain: {offboardCompany.domain} • Admin: {offboardCompany.adminName}</p>
+              </div>
+            </div>
+            
+            <div className="bg-amber-50 p-3 rounded-lg border border-amber-200 flex items-start gap-3">
+              <Building2 className="text-amber-600 shrink-0 mt-0.5" size={20} />
+              <div className="text-xs text-amber-800 space-y-1">
+                <p className="font-bold">Important Data Cascade Warning</p>
+                <p>Archiving this company/tender will automatically cascade and mark all associated employees as "Archived" with their professional history permanently preserved. This is a one-way workflow.</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardCompany.offboardingState?.payrollVerified ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Payroll Verified</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">All final employee salaries disbursed.</span>
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.payrollVerified} onChange={e => setOffboardCompany({...offboardCompany, offboardingState: {...offboardCompany.offboardingState, payrollVerified: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardCompany.offboardingState?.invoiceCleared ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">SaaS Invoices Cleared</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">No pending SaaS subscription dues.</span>
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.invoiceCleared} onChange={e => setOffboardCompany({...offboardCompany, offboardingState: {...offboardCompany.offboardingState, invoiceCleared: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardCompany.offboardingState?.complianceVerified ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Govt Compliance Verified</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">PF & ESIC filings marked complete.</span>
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.complianceVerified} onChange={e => setOffboardCompany({...offboardCompany, offboardingState: {...offboardCompany.offboardingState, complianceVerified: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardCompany.offboardingState?.assetCheckCompleted ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Company Assets Returned</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">Hardware and licenses recovered.</span>
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.assetCheckCompleted} onChange={e => setOffboardCompany({...offboardCompany, offboardingState: {...offboardCompany.offboardingState, assetCheckCompleted: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardCompany.offboardingState?.financialSettlement ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Financial Settlement</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">Full & final vendor settlement done.</span>
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.financialSettlement} onChange={e => setOffboardCompany({...offboardCompany, offboardingState: {...offboardCompany.offboardingState, financialSettlement: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setOffboardCompany(null)}>Cancel</Button>
+              <Button onClick={handleCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Tender & Workforce</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
     </div>
   );
 };

@@ -597,7 +597,6 @@ export const Leaves: React.FC<LeavesProps> = ({
             {canEdit && (
               <Button 
                 onClick={handleApply} 
-                onClick={handleApply} 
                 disabled={
                   !canEdit ||
                   !selectedEmp || 

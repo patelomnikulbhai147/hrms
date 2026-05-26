@@ -23,6 +23,7 @@ import { type UserAccount } from './Login';
 import { allExcelParsedEmployees } from '../data/excelSeededData';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+import { exportToExcel } from '../utils/exportUtils';
 
 interface EmployeesProps {
   role: Role;
@@ -83,6 +84,12 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
 
   // Dynamic Leave History filtering for the currently viewed employee
+  
+  // Enterprise Lifecycle & Export
+  const [activeMainTab, setActiveMainTab] = useState<'active' | 'previous'>('active');
+  const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
+  const [offboardStep, setOffboardStep] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
   const empLeavesHistory = useMemo(() => {
     if (!viewEmp) return [];
     return leaves.filter(
@@ -282,28 +289,21 @@ export const Employees: React.FC<EmployeesProps> = ({
     }
   }, [editFormDepartments, editEmp?.department]);
 
-  // Table Filters
   const filtered = useMemo(() => {
-    const list = companyEmployees.filter(e => {
-      const q = search.toLowerCase();
-      const matchSearch = !q ||
-        e.name.toLowerCase().includes(q) ||
-        e.email.toLowerCase().includes(q) ||
-        e.employeeId.toLowerCase().includes(q) ||
-        (e.designation || '').toLowerCase().includes(q);
-      const matchDept = !deptFilter || 
-        (e.department || '').trim().toUpperCase() === deptFilter.toUpperCase() ||
-        (e.designation || '').trim().toUpperCase() === deptFilter.toUpperCase();
-      const matchStatus = !statusFilter || e.status === statusFilter;
-      const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
-      return matchSearch && matchDept && matchStatus && matchBranch;
-    });
+    return companyEmployees.filter(emp => {
+      const isArchived = emp.status === 'Archived' || emp.status === 'Terminated';
+      if (activeMainTab === 'active' && isArchived) return false;
+      if (activeMainTab === 'previous' && !isArchived) return false;
 
-    // Automatically sort employee list by Employee Code in ascending natural order
-    return [...list].sort((a, b) => {
-      return a.employeeId.localeCompare(b.employeeId, undefined, { numeric: true, sensitivity: 'base' });
+      const matchesSearch = emp.name.toLowerCase().includes(search.toLowerCase()) ||
+                            emp.employeeId.toLowerCase().includes(search.toLowerCase()) ||
+                            emp.designation.toLowerCase().includes(search.toLowerCase());
+      const matchesDept = !deptFilter || emp.department === deptFilter || emp.designation === deptFilter;
+      const matchesStatus = !statusFilter || emp.status === statusFilter;
+      const matchesBranch = !branchFilter || (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
+      return matchesSearch && matchesDept && matchesStatus && matchesBranch;
     });
-  }, [companyEmployees, search, deptFilter, statusFilter, branchFilter]);
+  }, [companyEmployees, search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
@@ -459,13 +459,70 @@ export const Employees: React.FC<EmployeesProps> = ({
     const today = new Date().toISOString().split('T')[0];
     const updated: Employee = {
       ...deleteEmp,
-      status: 'Terminated',
+      status: 'Archived',
       exitDate: today,
       exitReason: 'Archived / Soft-Deleted'
     };
     onUpdateEmployees(employees.map(e => e.id === deleteEmp.id ? updated : e));
     setDeleteEmp(null);
     alert(`Employee file for ${deleteEmp.name} soft-deleted and archived successfully.`);
+  };
+
+  const handleStartOffboarding = (emp: Employee) => {
+    if (emp.status === 'Archived' || emp.status === 'Terminated') {
+       alert("Employee is already archived.");
+       return;
+    }
+    setOffboardEmp({
+      ...emp,
+      offboardingState: emp.offboardingState || {
+        initiatedOn: new Date().toISOString(),
+        documentClearance: false,
+        assetReturn: false,
+        payrollSettled: false,
+        attendanceCleared: false,
+        managerApproved: false,
+        hrApproved: false
+      }
+    });
+    setOffboardStep(1);
+  };
+
+  const handleCompleteOffboarding = () => {
+    if (!offboardEmp) return;
+    const state = offboardEmp.offboardingState;
+    if (!state?.documentClearance || !state?.assetReturn || !state?.payrollSettled || !state?.attendanceCleared || !state?.managerApproved || !state?.hrApproved) {
+      alert("Cannot finalize offboarding: Pending clearances or approvals.");
+      return;
+    }
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Add to employment history
+    const historyItem = {
+      companyId: activeCompanyId,
+      companyName: companies.find(c => c.id === activeCompanyId)?.name || 'Unknown',
+      branchName: offboardEmp.branchLocation,
+      role: offboardEmp.role,
+      designation: offboardEmp.designation,
+      startDate: offboardEmp.joinDate,
+      endDate: today,
+      reason: 'Tender/Contract Completed'
+    };
+
+    const updated: Employee = {
+      ...offboardEmp,
+      status: 'Archived',
+      exitDate: today,
+      exitReason: 'Formal Offboarding Completed',
+      offboardingState: {
+        ...state,
+        completedOn: new Date().toISOString()
+      },
+      employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
+    };
+    onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+    setOffboardEmp(null);
+    alert(`Employee ${offboardEmp.name} offboarded and safely archived.`);
   };
 
   // Toggling secure field values
@@ -694,16 +751,40 @@ export const Employees: React.FC<EmployeesProps> = ({
             Real enterprise roster synced across banking, government compliance and payroll modules
           </p>
         </div>
-        {isHR && canEdit && (
-          <div className="flex items-center gap-2">
-            <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
-              Bulk Excel Importer
-            </Button>
-            <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
-              Register Employee
-            </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Main Tabs */}
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            <button
+              onClick={() => setActiveMainTab('active')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Active Roster
+            </button>
+            <button
+              onClick={() => setActiveMainTab('previous')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Previous Employees
+            </button>
           </div>
-        )}
+
+          {canEdit && (
+            <Button variant="outline" icon={<FileSpreadsheet size={14} />} onClick={handleExport} disabled={isExporting}>
+              {isExporting ? 'Exporting...' : 'Export to Excel'}
+            </Button>
+          )}
+
+          {isHR && canEdit && activeMainTab === 'active' && (
+            <>
+              <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
+                Bulk Importer
+              </Button>
+              <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
+                Register
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -791,13 +872,23 @@ export const Employees: React.FC<EmployeesProps> = ({
                             <Edit2 size={13} />
                           </button>
 
-                          <button
-                            onClick={() => setDeleteEmp(emp)}
-                            className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
-                            title="Delete Employee"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          {activeMainTab === 'active' ? (
+                            <button
+                              onClick={() => handleStartOffboarding(emp)}
+                              className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
+                              title="Initiate Offboarding"
+                            >
+                              <LogOut size={13} />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setDeleteEmp(emp)}
+                              className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
+                              title="Delete Employee"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1507,17 +1598,10 @@ export const Employees: React.FC<EmployeesProps> = ({
         {deleteEmp && (
           <div className="space-y-4 text-xs text-left p-1">
             <div className="p-3 bg-amber-50 border border-amber-200 text-amber-950 rounded-xl flex items-start gap-2 shadow-inner">
-              <AlertTriangle className="shrink-0 text-amber-600 mt-0.5 animate-pulse" size={16} />
-              <div>
-                <p className="font-bold text-gray-700">Are you sure you want to remove employee:</p>
-                <p className="text-sm font-extrabold text-slate-900 mt-1 uppercase tracking-wide">
-                  {deleteEmp.name} ?
-                </p>
-              </div>
             </div>
 
             <p className="text-[11px] text-gray-500 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-150">
-              Enterprise Safeguard: This record will be soft-deleted (status marked as <span className="font-semibold text-rose-700">Terminated</span>) and archived. The employee will be excluded from the active roster and payroll, but remains fully recoverable in the database later.
+              Enterprise Safeguard: This record will be soft-deleted (status marked as <span className="font-semibold text-rose-700">Archived</span>) and archived. The employee will be excluded from the active roster and payroll, but remains fully recoverable in the archive.
             </p>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
@@ -1527,6 +1611,97 @@ export const Employees: React.FC<EmployeesProps> = ({
           </div>
         )}
       </Modal>
+
+      {/* Enterprise Offboarding Modal */}
+      <Modal open={!!offboardEmp} onClose={() => setOffboardEmp(null)} title="Enterprise Offboarding Workflow" size="lg">
+        {offboardEmp && (
+          <div className="space-y-6 text-sm text-left">
+            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center font-bold text-lg text-blue-700">
+                {offboardEmp.avatar}
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg text-slate-800">{offboardEmp.name}</h3>
+                <p className="text-slate-500 text-xs">{offboardEmp.employeeId} • {offboardEmp.designation} • {offboardEmp.branchLocation}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.documentClearance ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Documentation Clearance</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">All identity and company documents verified.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.documentClearance} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, documentClearance: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.assetReturn ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Asset Verification</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">ID cards, uniform, and devices returned.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.assetReturn} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, assetReturn: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.payrollSettled ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Payroll Final Settlement</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">No pending salary or dues remaining.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.payrollSettled} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, payrollSettled: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.attendanceCleared ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Leave & Attendance Clearance</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">All shifts and leaves settled in register.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.attendanceCleared} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, attendanceCleared: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.managerApproved ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">Department / Manager Approval</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">Signed off by immediate manager.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.managerApproved} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, managerApproved: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+
+              <Card padding={false} className="overflow-hidden">
+                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
+                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.hrApproved ? 'text-emerald-500' : 'text-slate-300'} />
+                  <span className="font-medium text-slate-700">HR Final Clearance</span>
+                </div>
+                <div className="p-3 text-xs flex justify-between items-center">
+                  <span className="text-slate-500">Final HR administrative review complete.</span>
+                  <input type="checkbox" checked={offboardEmp.offboardingState?.hrApproved} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, hrApproved: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                </div>
+              </Card>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setOffboardEmp(null)}>Cancel</Button>
+              <Button onClick={handleCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white">Finalize Offboarding & Archive</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
     </div>
   );
 };
