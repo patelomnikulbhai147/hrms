@@ -61,12 +61,6 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('employees');
@@ -94,6 +88,14 @@ export const Employees: React.FC<EmployeesProps> = ({
   
   // Enterprise Lifecycle & Export
   const [activeMainTab, setActiveMainTab] = useState<'active' | 'previous'>('active');
+
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+
   const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
   const [offboardStep, setOffboardStep] = useState(1);
   const [isExporting, setIsExporting] = useState(false);
