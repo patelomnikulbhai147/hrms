@@ -357,6 +357,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     // Simulate backend sync delay
     setTimeout(() => {
       const nextStatus = statusModalTarget.currentStatus === 'Active' ? 'Inactive' : 'Active';
+      const isRestoringFromArchive = statusModalTarget.currentStatus === 'Archived';
       
       const updatedCompanies = companies.map(c => {
         if (c.id === statusModalTarget.id) {
@@ -374,6 +375,24 @@ export const Companies: React.FC<CompaniesProps> = ({
       
       // Update state
       onUpdateCompanies(updatedCompanies);
+
+      // Restore employees if reactivating from Archived
+      if (isRestoringFromArchive && onUpdateEmployees) {
+        // Find all branches under this company to restore their employees too
+        const childBranchIds = companies.filter(c => c.parentCompanyId === statusModalTarget.id).map(c => c.id);
+        const relatedCompanyIds = [statusModalTarget.id, ...childBranchIds];
+        
+        const updatedEmployees = employees.map(emp => {
+          if (relatedCompanyIds.includes(emp.companyId) && emp.status === 'Archived') {
+            return {
+              ...emp,
+              status: 'Active' as const,
+            };
+          }
+          return emp;
+        });
+        onUpdateEmployees(updatedEmployees);
+      }
       
       // Audit log tracking
       const action = nextStatus === 'Active' ? 'Activated' : 'Suspended';
@@ -1770,44 +1789,23 @@ export const Companies: React.FC<CompaniesProps> = ({
       </Modal>
 
       {/* Status Toggle Confirmation Modal */}
-      <Modal open={!!statusModalTarget} onClose={() => !isStatusUpdating && setStatusModalTarget(null)} title={statusModalTarget?.currentStatus === 'Active' ? 'Suspend Access Confirmation' : 'Reactivate Access Confirmation'} size="sm">
-        {statusModalTarget && (
-          <div className="space-y-5">
-            <div className={`p-4 rounded-xl border flex items-start gap-3 ${statusModalTarget.currentStatus === 'Active' ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}>
-              <div className={`mt-0.5 ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                {statusModalTarget.currentStatus === 'Active' ? <XCircle size={20} /> : <CheckCircle2 size={20} />}
-              </div>
-              <div className="text-sm">
-                <p className={`font-bold ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-800' : 'text-emerald-800'}`}>
-                  {statusModalTarget.currentStatus === 'Active' ? 'Are you sure you want to suspend this workspace?' : 'Are you sure you want to reactivate this workspace?'}
-                </p>
-                <p className={`mt-1 text-xs ${statusModalTarget.currentStatus === 'Active' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  Target: <strong>{statusModalTarget.name}</strong> ({statusModalTarget.isBranch ? 'Branch' : 'Company'})
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              {statusModalTarget.currentStatus === 'Active'
-                ? 'Suspended workspaces will lose access to employee portals, payroll generation, and daily operations immediately. Data will remain safe, but logins will be blocked.'
-                : 'Reactivating this workspace will instantly restore login access and allow operations, payroll processing, and employee management to resume.'}
-            </p>
-
-            <div className="flex justify-end gap-3 pt-3">
-              <Button variant="outline" onClick={() => setStatusModalTarget(null)} disabled={isStatusUpdating}>
-                Cancel
-              </Button>
-              <Button
-                onClick={confirmStatusToggle}
-                disabled={isStatusUpdating}
-                className={statusModalTarget.currentStatus === 'Active' ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-200' : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200'}
-              >
-                {isStatusUpdating ? 'Synchronizing...' : (statusModalTarget.currentStatus === 'Active' ? 'Confirm Suspend' : 'Confirm Reactivate')}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ActionConfirmationModal
+        isOpen={!!statusModalTarget}
+        onClose={() => !isStatusUpdating && setStatusModalTarget(null)}
+        title={statusModalTarget?.currentStatus === 'Active' ? '⚠ Suspend Access Confirmation' : 'Reactivate Access Confirmation'}
+        description={[
+          statusModalTarget?.currentStatus === 'Active' ? 'Are you sure you want to suspend this workspace?' : 'Are you sure you want to reactivate this workspace?',
+          `Target: ${statusModalTarget?.name} (${statusModalTarget?.isBranch ? 'Branch' : 'Company'})`,
+          statusModalTarget?.currentStatus === 'Active' 
+            ? 'Access to this workspace will be immediately blocked.' 
+            : 'Access to this workspace and its workforce will be fully restored.'
+        ]}
+        confirmationText={statusModalTarget?.currentStatus === 'Active' ? 'SUSPEND' : 'REACTIVATE'}
+        confirmButtonText={isStatusUpdating ? 'Synchronizing...' : (statusModalTarget?.currentStatus === 'Active' ? 'Confirm Suspend' : 'Confirm Reactivate')}
+        isDestructive={statusModalTarget?.currentStatus === 'Active'}
+        isLoading={isStatusUpdating}
+        onConfirm={confirmStatusToggle}
+      />
 
       <ActionConfirmationModal
         isOpen={isConfirmingOffboard}

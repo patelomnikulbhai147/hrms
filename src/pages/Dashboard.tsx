@@ -470,7 +470,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Archived Workforce</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Offboarded Workforce</span>
               <div className="p-2 bg-slate-50 text-slate-600 rounded-lg">
                 <Archive size={16} />
               </div>
