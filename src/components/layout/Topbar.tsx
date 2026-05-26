@@ -43,9 +43,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   toggleTheme,
   authProfile
 }) => {
-  if (false as boolean) {
-    console.log(onRoleChange, onCompanyChange);
-  }
+
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 

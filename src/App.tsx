@@ -316,7 +316,7 @@ export default function App() {
 
   const handleUpdatePlans = (updater: SubscriptionPlan[] | ((prev: SubscriptionPlan[]) => SubscriptionPlan[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
       return;
     }
     const next = typeof updater === 'function' ? updater(plans) : updater;
@@ -326,7 +326,7 @@ export default function App() {
 
   const handleUpdatePayments = (updater: PaymentRecord[] | ((prev: PaymentRecord[]) => PaymentRecord[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
       return;
     }
     const next = typeof updater === 'function' ? updater(payments) : updater;
@@ -353,7 +353,7 @@ export default function App() {
 
   const handleUpdateAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('users', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for User Management.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for User Management.");
       return;
     }
     const next = typeof updater === 'function' ? updater(userAccounts) : updater;
@@ -376,7 +376,7 @@ export default function App() {
 
   const handleUpdateCompanies = (updater: Company[] | ((prev: Company[]) => Company[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('companies', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Companies.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Companies.");
       return;
     }
     const next = typeof updater === 'function' ? updater(companies) : updater;
@@ -387,7 +387,7 @@ export default function App() {
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('employees', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Employees.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Employees.");
       return;
     }
     const nextEmployees = typeof updater === 'function' ? updater(employees) : updater;
@@ -451,7 +451,7 @@ export default function App() {
 
   const handleUpdateAttendance = (updater: AttendanceRecord[] | ((prev: AttendanceRecord[]) => AttendanceRecord[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('attendance', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Attendance.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Attendance.");
       return;
     }
     const next = typeof updater === 'function' ? updater(attendance) : updater;
@@ -461,7 +461,7 @@ export default function App() {
 
   const handleUpdateLeaves = (updater: LeaveRequest[] | ((prev: LeaveRequest[]) => LeaveRequest[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('leaves', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Leave Management.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Leave Management.");
       return;
     }
     const nextLeaves = typeof updater === 'function' ? updater(leaves) : updater;
@@ -523,7 +523,7 @@ export default function App() {
 
   const handleUpdatePayroll = (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('payroll', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Payroll.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Payroll.");
       return;
     }
     const nextPayroll = typeof updater === 'function' ? updater(payroll) : updater;
@@ -556,7 +556,7 @@ export default function App() {
 
   const handleUpdateDocuments = (updater: Document[] | ((prev: Document[]) => Document[])) => {
     if (resolvedRole !== 'Super Admin' && !checkCanEdit('documents', authProfile, resolvedRole)) {
-      alert("Unauthorized: API blocked. You do not have edit permissions for Documents.");
+      showToast("Unauthorized: API blocked. You do not have edit permissions for Documents.");
       return;
     }
     const next = typeof updater === 'function' ? updater(documents) : updater;
@@ -623,6 +623,12 @@ export default function App() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('hrms_theme') as 'dark' | 'light') || 'dark';
   });
+
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -982,6 +988,21 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-5 py-3.5 bg-rose-500 text-white rounded-xl shadow-2xl font-semibold tracking-wide border border-rose-400/50"
+          >
+            <ShieldAlert size={20} className="text-rose-100" />
+            {toastMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
     </PermissionProvider>
   );

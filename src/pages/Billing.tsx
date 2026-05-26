@@ -1216,8 +1216,9 @@ export const Billing: React.FC<BillingProps> = ({
                                         <input
                                           type="date"
                                           defaultValue={br.branchRenewalDate || '2027-05-22'}
+                                          disabled={!canEdit}
                                           onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
-                                          className="text-[10px] border border-white/10 rounded px-1.5 py-0.5 bg-slate-900 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer"
+                                          className="text-[10px] border border-white/10 rounded px-1.5 py-0.5 bg-slate-900 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                       </div>
                                       <div className="flex items-center gap-1.5">

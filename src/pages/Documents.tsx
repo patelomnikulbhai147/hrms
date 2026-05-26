@@ -1537,17 +1537,20 @@ export const Documents: React.FC<DocumentsProps> = ({
         title="Upload Verification Document"
         size="sm"
         footer={
+          canEdit && (
           <>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
             <Button onClick={handleUploadDocument} disabled={!selectedEmpId || !uploadForm.name}>
               Register Document
             </Button>
           </>
+          )
         }
       >
         <div className="space-y-3">
           <Select
             label="Associate with Employee *"
+            disabled={!canEdit}
             value={selectedEmpId}
             onChange={e => setSelectedEmpId(e.target.value)}
             options={[
@@ -1557,6 +1560,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           />
           <Select
             label="Document Verification Type *"
+            disabled={!canEdit}
             value={uploadForm.type}
             onChange={e => setUploadForm({ ...uploadForm, type: e.target.value as Document['type'] })}
             options={[
@@ -1567,6 +1571,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           />
           <Input
             label="Document Filename *"
+            disabled={!canEdit}
             placeholder="e.g. Rajesh_Aadhaar.pdf"
             value={uploadForm.name}
             onChange={e => setUploadForm({ ...uploadForm, name: e.target.value })}
@@ -1583,7 +1588,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         footer={
           <div className="flex justify-between items-center w-full">
             <div>
-              {modalMode === 'edit' && (
+              {modalMode === 'edit' && canEdit && (
                 <Button
                   variant="outline"
                   onClick={() => handleSaveTemplate(true)}
@@ -1595,9 +1600,11 @@ export const Documents: React.FC<DocumentsProps> = ({
             </div>
             <div className="flex gap-2">
               <Button variant="outline" className="font-bold" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
-              <Button onClick={() => handleSaveTemplate(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow">
-                Save Changes
-              </Button>
+              {canEdit && (
+                <Button onClick={() => handleSaveTemplate(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow">
+                  Save Changes
+                </Button>
+              )}
             </div>
           </div>
         }
@@ -1614,6 +1621,7 @@ export const Documents: React.FC<DocumentsProps> = ({
               
               <Input
                 label="Template Display Name *"
+                disabled={!canEdit}
                 value={modalForm.templateName}
                 onChange={e => setModalForm({ ...modalForm, templateName: e.target.value })}
                 placeholder="e.g. Corporate Modern Offer"
@@ -1621,6 +1629,7 @@ export const Documents: React.FC<DocumentsProps> = ({
               
               <Input
                 label="Document Subject Line *"
+                disabled={!canEdit}
                 value={modalForm.subject}
                 onChange={e => setModalForm({ ...modalForm, subject: e.target.value })}
                 placeholder="e.g. Appointment Agreement"
@@ -1635,6 +1644,7 @@ export const Documents: React.FC<DocumentsProps> = ({
 
               <Input
                 label="Branding Company Name"
+                disabled={!canEdit}
                 value={modalForm.companyName}
                 onChange={e => setModalForm({ ...modalForm, companyName: e.target.value })}
               />
@@ -1644,13 +1654,15 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <div className="flex gap-1.5 items-center">
                   <input
                     type="color"
-                    className="w-7 h-7 rounded-lg border border-gray-200 cursor-pointer p-0 overflow-hidden flex-shrink-0"
+                    disabled={!canEdit}
+                    className="w-7 h-7 rounded-lg border border-gray-200 cursor-pointer p-0 overflow-hidden flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                     value={modalForm.primaryColor}
                     onChange={e => setModalForm({ ...modalForm, primaryColor: e.target.value })}
                   />
                   <input
                     type="text"
-                    className="flex-1 text-[11px] border border-gray-200 rounded px-2 py-1.5 font-mono"
+                    disabled={!canEdit}
+                    className="flex-1 text-[11px] border border-gray-200 rounded px-2 py-1.5 font-mono disabled:opacity-40 disabled:cursor-not-allowed"
                     value={modalForm.primaryColor}
                     onChange={e => setModalForm({ ...modalForm, primaryColor: e.target.value })}
                   />
@@ -1660,12 +1672,14 @@ export const Documents: React.FC<DocumentsProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Logo Symbol Text"
+                  disabled={!canEdit}
                   value={modalForm.logoText}
                   onChange={e => setModalForm({ ...modalForm, logoText: e.target.value })}
                   placeholder="e.g. TN"
                 />
                 <Input
                   label="Signature Signee"
+                  disabled={!canEdit}
                   value={modalForm.signatureText}
                   onChange={e => setModalForm({ ...modalForm, signatureText: e.target.value })}
                   placeholder="e.g. MD, Talent Board"
@@ -1675,12 +1689,14 @@ export const Documents: React.FC<DocumentsProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <Input
                   label="Footer Licensing"
+                  disabled={!canEdit}
                   value={modalForm.footerText}
                   onChange={e => setModalForm({ ...modalForm, footerText: e.target.value })}
                   placeholder="e.g. TechNova Corp"
                 />
                 <Input
                   label="Sheet Watermark"
+                  disabled={!canEdit}
                   value={modalForm.watermark}
                   onChange={e => setModalForm({ ...modalForm, watermark: e.target.value })}
                   placeholder="e.g. STRICTLY PRIVATE"
@@ -1715,8 +1731,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                   <button
                     type="button"
                     key={chip.key}
+                    disabled={!canEdit}
                     onClick={() => insertDataChipNode(chip.key, chip.label)}
-                    className="inline-flex items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold bg-white hover:bg-indigo-600 border border-indigo-150 text-indigo-700 hover:text-white transition-all shadow-xs"
+                    className="inline-flex items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold bg-white hover:bg-indigo-600 border border-indigo-150 text-indigo-700 hover:text-white transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <User size={10} className="opacity-70" />
                     {chip.label}

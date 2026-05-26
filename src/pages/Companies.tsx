@@ -1431,13 +1431,29 @@ export const Companies: React.FC<CompaniesProps> = ({
             Select which companies and branches this user can access. They will be able to seamlessly switch between these workspaces.
           </p>
           <div className="space-y-2 border border-gray-100 rounded-xl overflow-hidden">
-            {companies.map(comp => (
-              <label key={comp.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 cursor-pointer border-b border-gray-50 last:border-0 transition-colors">
+            {companies.map(comp => {
+              let isInherited = false;
+              for (const pid of selectedWorkspaces) {
+                if (!pid) continue;
+                const parent = companies.find(c => c.id === pid);
+                if (parent && (pid === 'c-gcri' || parent.isHeadOffice || !parent.parentCompanyId)) {
+                  if (comp.parentCompanyId === pid) {
+                    isInherited = true;
+                    break;
+                  }
+                }
+              }
+              const isAssigned = selectedWorkspaces.includes(comp.id) || isInherited;
+
+              return (
+              <label key={comp.id} className={`flex items-center gap-3 p-3 hover:bg-slate-50 border-b border-gray-50 last:border-0 transition-colors ${isInherited ? 'cursor-default opacity-80 bg-emerald-50/30' : 'cursor-pointer'}`}>
                 <input 
                   type="checkbox" 
-                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
-                  checked={selectedWorkspaces.includes(comp.id)}
+                  className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                  checked={isAssigned}
+                  disabled={isInherited}
                   onChange={(e) => {
+                    if (isInherited) return;
                     if (e.target.checked) {
                       setSelectedWorkspaces([...selectedWorkspaces, comp.id]);
                     } else {
@@ -1449,11 +1465,12 @@ export const Companies: React.FC<CompaniesProps> = ({
                   <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                     {comp.name}
                     {comp.isHeadOffice && <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">HQ</span>}
+                    {isInherited && <span className="text-[9px] bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">Inherited</span>}
                   </p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{comp.branchName ? `Branch: ${comp.branchName}` : 'Parent Company'}</p>
                 </div>
               </label>
-            ))}
+            )})}
           </div>
         </div>
       </Modal>

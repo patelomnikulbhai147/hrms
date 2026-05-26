@@ -330,7 +330,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                           for (const pid of parentIds) {
                             if (!pid) continue;
                             const parent = companies.find(c => c.id === pid);
-                            if (parent && (pid === 'c-gcri' || parent.isHeadOffice)) {
+                            if (parent && (pid === 'c-gcri' || parent.isHeadOffice || !parent.parentCompanyId)) {
                               if (company.parentCompanyId === pid) {
                                 isInherited = true;
                                 break;

@@ -597,7 +597,9 @@ export const Leaves: React.FC<LeavesProps> = ({
             {canEdit && (
               <Button 
                 onClick={handleApply} 
+                onClick={handleApply} 
                 disabled={
+                  !canEdit ||
                   !selectedEmp || 
                   !form.fromDate || 
                   !form.toDate || 
@@ -625,6 +627,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                 setNameError('');
               }}
               onFocus={() => setShowDropdown(true)}
+              disabled={!canEdit}
               error={nameError}
               success={!!selectedEmp}
             />
@@ -714,19 +717,19 @@ export const Leaves: React.FC<LeavesProps> = ({
             </div>
           )}
 
-          <Select label="Leave Category *" value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
-            options={leaveTypes.map(t => ({ value: t, label: t }))}
-          />
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input label="From Date *" type="date" value={form.fromDate} onChange={e => setForm({ ...form, fromDate: e.target.value })} />
-            <Input label="To Date *" type="date" value={form.toDate} onChange={e => setForm({ ...form, toDate: e.target.value })} />
+          <Select label="Leave Category *" disabled={!canEdit} value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
+            options={leaveTypes.map(type => ({ value: type, label: type }))} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="From Date *" type="date" disabled={!canEdit} value={form.fromDate} onChange={e => setForm({ ...form, fromDate: e.target.value })} />
+            <Input label="To Date *" type="date" disabled={!canEdit} value={form.toDate} onChange={e => setForm({ ...form, toDate: e.target.value })} />
           </div>
-          {form.fromDate && form.toDate && (
-            <div className="p-2.5 bg-blue-50 rounded-lg text-xs text-blue-700 font-semibold text-left">
-              Computed Duration: {calcDays(form.fromDate, form.toDate)} day(s)
-            </div>
-          )}
-          <Textarea label="Reason for Leave *" placeholder="Please explain leave reason..." value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
+
+          <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/60 mb-2">
+            <p className="text-xs text-slate-300">Total Duration: <strong className="text-blue-400">{calcDays(form.fromDate, form.toDate)} days</strong></p>
+          </div>
+
+          <Textarea label="Reason for Leave *" disabled={!canEdit} placeholder="Please explain leave reason..." value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
         </div>
       </Modal>
 
@@ -761,22 +764,19 @@ export const Leaves: React.FC<LeavesProps> = ({
               <p className="font-bold text-gray-900 mt-0.5">{editLeave.employeeName} ({editLeave.department})</p>
             </div>
             
-            <Select label="Leave Category *" value={editForm.leaveType} onChange={e => setEditForm({ ...editForm, leaveType: e.target.value as LeaveType })}
-              options={leaveTypes.map(t => ({ value: t, label: t }))}
-            />
-            
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input label="From Date *" type="date" value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} />
-              <Input label="To Date *" type="date" value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} />
+            <Select label="Leave Category *" disabled={!canEdit} value={editForm.leaveType} onChange={e => setEditForm({ ...editForm, leaveType: e.target.value as LeaveType })}
+              options={leaveTypes.map(type => ({ value: type, label: type }))} />
+
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="From Date *" type="date" disabled={!canEdit} value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} />
+              <Input label="To Date *" type="date" disabled={!canEdit} value={editForm.toDate} onChange={e => setEditForm({ ...editForm, toDate: e.target.value })} />
             </div>
 
-            {editForm.fromDate && editForm.toDate && (
-              <div className="p-2.5 bg-blue-50 rounded-lg text-xs text-blue-700 font-semibold text-left">
-                Recalculated Duration: {calcDays(editForm.fromDate, editForm.toDate)} day(s)
-              </div>
-            )}
+            <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/60 mb-2">
+              <p className="text-xs text-slate-300">Total Duration: <strong className="text-blue-400">{calcDays(editForm.fromDate, editForm.toDate)} days</strong></p>
+            </div>
 
-            <Select label="Workflow Status *" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value as LeaveStatus })}
+            <Select label="Workflow Status *" disabled={!canEdit} value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value as LeaveStatus })}
               options={leaveStatuses.map(s => ({ value: s, label: s }))}
             />
 
