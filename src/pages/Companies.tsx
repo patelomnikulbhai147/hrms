@@ -357,10 +357,13 @@ export const Companies: React.FC<CompaniesProps> = ({
     // Simulate backend sync delay
     setTimeout(() => {
       const nextStatus = statusModalTarget.currentStatus === 'Active' ? 'Inactive' : 'Active';
-      const isRestoringFromArchive = statusModalTarget.currentStatus === 'Archived';
+      
+      // Cascade to branches: Find all branches under this company
+      const childBranchIds = companies.filter(c => c.parentCompanyId === statusModalTarget.id).map(c => c.id);
+      const relatedCompanyIds = [statusModalTarget.id, ...childBranchIds];
       
       const updatedCompanies = companies.map(c => {
-        if (c.id === statusModalTarget.id) {
+        if (relatedCompanyIds.includes(c.id)) {
           return { 
             ...c, 
             status: nextStatus, 
@@ -376,12 +379,8 @@ export const Companies: React.FC<CompaniesProps> = ({
       // Update state
       onUpdateCompanies(updatedCompanies);
 
-      // Restore employees if reactivating from Archived
-      if (isRestoringFromArchive && onUpdateEmployees) {
-        // Find all branches under this company to restore their employees too
-        const childBranchIds = companies.filter(c => c.parentCompanyId === statusModalTarget.id).map(c => c.id);
-        const relatedCompanyIds = [statusModalTarget.id, ...childBranchIds];
-        
+      // Forceful Employee Restoration: If company becomes Active, ALL its archived employees should become Active
+      if (nextStatus === 'Active' && onUpdateEmployees) {
         const updatedEmployees = employees.map(emp => {
           if (relatedCompanyIds.includes(emp.companyId) && emp.status === 'Archived') {
             return {
