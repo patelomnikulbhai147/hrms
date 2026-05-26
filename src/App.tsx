@@ -14,7 +14,8 @@ import { Settings } from './pages/Settings';
 import { Billing } from './pages/Billing';
 import { Users } from './pages/Users';
 import { Login, type UserAccount, type AppModules } from './pages/Login';
-import { PermissionProvider } from './context/PermissionContext';
+import { PermissionProvider, checkCanView } from './context/PermissionContext';
+import { ShieldAlert } from 'lucide-react';
 import {
   Role,
   Company,
@@ -538,19 +539,23 @@ export default function App() {
 
   const authProfile = React.useMemo(() => {
     if (!storedAuthProfile) return null;
-    if (!storedAuthProfile.accessibleCompanyIds || storedAuthProfile.accessibleCompanyIds.length === 0) return storedAuthProfile;
+    
+    // Dynamically sync permissions and profile state from the centralized users array
+    const latestProfile = userAccounts.find(u => u.id === storedAuthProfile.id) || storedAuthProfile;
+    
+    if (!latestProfile.accessibleCompanyIds || latestProfile.accessibleCompanyIds.length === 0) return latestProfile;
 
     const idSet = new Set<string>();
-    storedAuthProfile.accessibleCompanyIds.forEach(id => {
+    latestProfile.accessibleCompanyIds.forEach(id => {
       idSet.add(id);
       companies.filter(c => c.parentCompanyId === id).forEach(b => idSet.add(b.id));
     });
 
     return {
-      ...storedAuthProfile,
+      ...latestProfile,
       accessibleCompanyIds: Array.from(idSet)
     };
-  }, [storedAuthProfile, companies]);
+  }, [storedAuthProfile, userAccounts, companies]);
 
   const [currentPage, setCurrentPage] = useState<PageId>(() => {
     const raw = localStorage.getItem('hrms_current_page');
@@ -678,10 +683,20 @@ export default function App() {
     
     // Explicit RBAC Enforcement for Modules
     if (resolvedRole !== 'Super Admin') {
-      const hasModuleAccess = authProfile.moduleAccess ? authProfile.moduleAccess[currentPage as AppModules] : true;
-      if (hasModuleAccess === false) {
-        setCurrentPage('dashboard');
-        localStorage.setItem('hrms_current_page', 'dashboard');
+      const isAllowed = checkCanView(currentPage as AppModules, authProfile, resolvedRole);
+      
+      if (!isAllowed) {
+        // Fallback sequentially to a safe route if the current is blocked
+        if (currentPage !== 'dashboard' && checkCanView('dashboard' as AppModules, authProfile, resolvedRole)) {
+          setCurrentPage('dashboard');
+          localStorage.setItem('hrms_current_page', 'dashboard');
+        } else if (currentPage !== 'settings' && checkCanView('settings' as AppModules, authProfile, resolvedRole)) {
+          setCurrentPage('settings');
+          localStorage.setItem('hrms_current_page', 'settings');
+        } else if (currentPage !== 'payroll' && checkCanView('payroll' as AppModules, authProfile, resolvedRole)) {
+          setCurrentPage('payroll');
+          localStorage.setItem('hrms_current_page', 'payroll');
+        }
         return;
       }
     }
@@ -703,6 +718,19 @@ export default function App() {
   }
 
   const renderPage = () => {
+    // Secondary render-level check to completely block unauthorized rendering
+    if (resolvedRole !== 'Super Admin' && !checkCanView(currentPage as AppModules, authProfile, resolvedRole)) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
+          <div className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center mb-6">
+            <ShieldAlert className="text-rose-600 w-12 h-12" />
+          </div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-2">Access Denied</h2>
+          <p className="text-slate-500 max-w-md">You do not have permission to view the <span className="font-bold text-slate-700">{currentPage}</span> module. Please contact your system administrator if you believe this is an error.</p>
+        </div>
+      );
+    }
+
     switch (currentPage) {
       case 'dashboard':
         return (
