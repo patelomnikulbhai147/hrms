@@ -16,6 +16,7 @@ import { Select } from '../components/ui/Input';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { ExportManagerModal } from '../components/ui/ExportManagerModal';
 
 interface ReportsProps {
   role: Role;
@@ -40,6 +41,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const [activeReport, setActiveReport] = useState<ReportType>('attendance');
   const [monthFilter, setMonthFilter] = useState('June');
   const [deptFilter, setDeptFilter] = useState('');
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   // Scoped datasets derived from reactive props (supports parent company branch rollups)
   const uniqueEmployees = getUniqueEmployees(employees);
@@ -90,7 +92,13 @@ export const Reports: React.FC<ReportsProps> = ({
           <h2 className="text-base font-semibold text-gray-900">Operational Reports</h2>
           <p className="text-xs text-gray-505 mt-0.5">Generate and download compliance reports for <strong>{currentCompany.name}</strong></p>
         </div>
-        <Button variant="outline" icon={<Download size={14} />}>Export All</Button>
+        <Button 
+          icon={<Download size={14} />} 
+          onClick={() => setExportModalOpen(true)}
+          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 shadow-lg shadow-blue-500/20"
+        >
+          Enterprise Export Engine
+        </Button>
       </div>
 
       {/* Summary KPI row */}
@@ -302,6 +310,17 @@ export const Reports: React.FC<ReportsProps> = ({
           </Table>
         </Card>
       )}
+
+      <ExportManagerModal 
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        employees={uniqueEmployees}
+        payroll={uniquePayroll}
+        attendance={uniqueAttendance}
+        leaves={uniqueLeaves}
+        companies={companies}
+        activeCompanyId={activeCompanyId}
+      />
     </div>
   );
 };

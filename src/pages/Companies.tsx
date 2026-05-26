@@ -623,17 +623,21 @@ export const Companies: React.FC<CompaniesProps> = ({
     setTimeout(() => {
       exportToExcel({
         fileName: activeMainTab === 'active' ? 'Active_Tenders' : 'Archived_Tenders',
-        sheetName: 'Companies',
-        columns: [
-          { header: 'Company/Branch ID', key: 'id', width: 15 },
-          { header: 'Name', key: 'name', width: 30 },
-          { header: 'Email', key: 'email', width: 25 },
-          { header: 'Industry', key: 'industry', width: 20 },
-          { header: 'Join Date', key: 'joinDate', width: 15 },
-          { header: 'Status', key: 'status', width: 15 },
-          { header: 'Plan', key: 'plan', width: 15 }
-        ],
-        data: filtered
+        sheets: [
+          {
+            sheetName: 'Companies',
+            columns: [
+              { header: 'Company/Branch ID', key: 'id', width: 15 },
+              { header: 'Name', key: 'name', width: 30 },
+              { header: 'Email', key: 'email', width: 25 },
+              { header: 'Industry', key: 'industry', width: 20 },
+              { header: 'Join Date', key: 'joinDate', width: 15 },
+              { header: 'Status', key: 'status', width: 15 },
+              { header: 'Plan', key: 'plan', width: 15 }
+            ],
+            data: filtered
+          }
+        ]
       });
       setIsExporting(false);
     }, 500);
