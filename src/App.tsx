@@ -742,17 +742,6 @@ export default function App() {
         return;
       }
     }
-
-    if (resolvedRole === 'Super Admin' && ['employees', 'leaves', 'payroll', 'documents', 'reports'].includes(currentPage)) {
-      setCurrentPage('dashboard');
-      localStorage.setItem('hrms_current_page', 'dashboard');
-    } else if ((resolvedRole === 'Company Head' || resolvedRole === 'HR') && ['companies', 'billing', 'users'].includes(currentPage)) {
-      setCurrentPage('dashboard');
-      localStorage.setItem('hrms_current_page', 'dashboard');
-    } else if (resolvedRole === 'Employee' && !['payroll', 'settings', 'dashboard'].includes(currentPage)) {
-      setCurrentPage('payroll');
-      localStorage.setItem('hrms_current_page', 'payroll');
-    }
   }, [resolvedRole, currentPage, authProfile]);
 
   if (!isAuthenticated || !authProfile) {
