@@ -489,32 +489,17 @@ export const Employees: React.FC<EmployeesProps> = ({
        alert("Employee is already archived.");
        return;
     }
-    setOffboardEmp({
-      ...emp,
-      offboardingState: emp.offboardingState || {
-        initiatedOn: new Date().toISOString(),
-        documentClearance: false,
-        assetReturn: false,
-        payrollSettled: false,
-        attendanceCleared: false,
-        managerApproved: false,
-        hrApproved: false
-      }
-    });
-    setOffboardStep(1);
+    setOffboardEmp(emp);
   };
 
-  const handleCompleteOffboarding = () => {
-    setIsConfirmingOffboard(false);
+  const handleCompleteOffboarding = async () => {
     if (!offboardEmp) return;
-    const state = offboardEmp.offboardingState;
-    if (!state?.documentClearance || !state?.assetReturn || !state?.payrollSettled || !state?.attendanceCleared || !state?.managerApproved || !state?.hrApproved) {
-      alert("Cannot finalize offboarding: Pending clearances or approvals.");
-      return;
-    }
+    setIsOffboardingExecuting(true);
+    
+    await new Promise(resolve => setTimeout(resolve, 800));
+
     const today = new Date().toISOString().split('T')[0];
     
-    // Add to employment history
     const historyItem = {
       companyId: activeCompanyId,
       companyName: companies.find(c => c.id === activeCompanyId)?.name || 'Unknown',
@@ -523,7 +508,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       designation: offboardEmp.designation,
       startDate: offboardEmp.joinDate,
       endDate: today,
-      reason: 'Tender/Contract Completed'
+      reason: 'Formal Offboarding'
     };
 
     const updated: Employee = {
@@ -532,19 +517,19 @@ export const Employees: React.FC<EmployeesProps> = ({
       exitDate: today,
       exitReason: 'Formal Offboarding Completed',
       offboardingState: {
-        ...state,
+        initiatedOn: new Date().toISOString(),
         completedOn: new Date().toISOString()
       },
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
     onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
-    setOffboardStep(1);
     setOffboardEmp(null);
-    alert(`Employee ${offboardEmp.name} successfully offboarded and archived.`);
+    setIsOffboardingExecuting(false);
+    alert('Employee successfully archived and removed from active workforce.');
   };
 
   const executeCompleteOffboarding = () => {
-    setIsConfirmingOffboard(true);
+    // Deprecated
   };
 
   // Toggling secure field values
@@ -1639,96 +1624,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
-      {/* Enterprise Offboarding Modal */}
-      <Modal open={!!offboardEmp} onClose={() => setOffboardEmp(null)} title="Enterprise Offboarding Workflow" size="lg">
-        {offboardEmp && (
-          <div className="space-y-6 text-sm text-left">
-            <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center font-bold text-lg text-blue-700">
-                {offboardEmp.avatar}
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg text-slate-800">{offboardEmp.name}</h3>
-                <p className="text-slate-500 text-xs">{offboardEmp.employeeId} • {offboardEmp.designation} • {offboardEmp.branchLocation}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.documentClearance ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">Documentation Clearance</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">All identity and company documents verified.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.documentClearance} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, documentClearance: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.assetReturn ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">Asset Verification</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">ID cards, uniform, and devices returned.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.assetReturn} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, assetReturn: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.payrollSettled ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">Payroll Final Settlement</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">No pending salary or dues remaining.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.payrollSettled} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, payrollSettled: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.attendanceCleared ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">Leave & Attendance Clearance</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">All shifts and leaves settled in register.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.attendanceCleared} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, attendanceCleared: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.managerApproved ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">Department / Manager Approval</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">Signed off by immediate manager.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.managerApproved} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, managerApproved: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-
-              <Card padding={false} className="overflow-hidden">
-                <div className="p-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-                  <CheckCircle2 size={16} className={offboardEmp.offboardingState?.hrApproved ? 'text-emerald-500' : 'text-slate-300'} />
-                  <span className="font-medium text-slate-700">HR Final Clearance</span>
-                </div>
-                <div className="p-3 text-xs flex justify-between items-center">
-                  <span className="text-slate-500">Final HR administrative review complete.</span>
-                  <input type="checkbox" checked={offboardEmp.offboardingState?.hrApproved} onChange={e => setOffboardEmp({...offboardEmp, offboardingState: {...offboardEmp.offboardingState, hrApproved: e.target.checked}})} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
-                </div>
-              </Card>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-              <Button variant="outline" onClick={() => setOffboardEmp(null)}>Cancel</Button>
-              <Button onClick={() => setIsConfirmingOffboard(true)} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Employee Record</Button>
-            </div>
-          </div>
-        )}
-      </Modal>
-
       <ActionConfirmationModal
         isOpen={isConfirmingDelete}
         onClose={() => setIsConfirmingDelete(false)}
@@ -1745,18 +1640,18 @@ export const Employees: React.FC<EmployeesProps> = ({
       />
 
       <ActionConfirmationModal
-        isOpen={isConfirmingOffboard}
-        onClose={() => setIsConfirmingOffboard(false)}
+        isOpen={!!offboardEmp}
+        onClose={() => setOffboardEmp(null)}
         onConfirm={handleCompleteOffboarding}
-        title="⚠ Confirm Employee Offboarding"
+        title="Confirm Employee Offboarding"
         description={[
-          `Finalize offboarding for ${offboardEmp?.name}`,
-          "Employee will be removed from the active workforce",
-          "Employee will be set to Archived status"
+          "Employee will be removed from active workforce",
+          "Employee will move to archived workforce",
+          "Payroll & active access will stop"
         ]}
-        confirmationText="OFFBOARD"
-        confirmButtonText="Execute Offboarding"
+        confirmButtonText="Confirm Offboarding"
         isDestructive={true}
+        isLoading={isOffboardingExecuting}
       />
 
       <ActionConfirmationModal
