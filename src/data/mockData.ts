@@ -161,6 +161,7 @@ export interface Employee {
     managerApproved?: boolean;
     hrApproved?: boolean;
     completedOn?: string;
+    workflowStatus?: 'INITIATED' | 'DOCUMENT_PENDING' | 'PAYROLL_PENDING' | 'ACCESS_REVOCATION_PENDING' | 'HR_APPROVAL_PENDING' | 'COMPLETED' | 'ARCHIVED';
   };
   
   // Historical Tracking
