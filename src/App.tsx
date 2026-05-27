@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { api } from './api/apiClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
@@ -199,38 +200,7 @@ export default function App() {
   });
 
   // Persistent employees state
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    const raw = localStorage.getItem('hrms_employees');
-    let loaded = defaultEmployees;
-    if (raw) loaded = JSON.parse(raw);
-
-    // Auto-deduplicate on load to fix accidental double-adds and migrate branch mapping
-    const uniqueEmployees: Employee[] = [];
-    const seen = new Set<string>();
-    for (let emp of loaded) {
-      const key = emp.employeeId;
-      if (!seen.has(key)) {
-        seen.add(key);
-        // MIGRATION PATCH v2: Forcefully correct ANY wrong branch allocations
-        let derivedName = emp.branchLocation || '';
-        if (!derivedName && emp.location) {
-           const locParts = emp.location.split(',');
-           derivedName = locParts[0].trim();
-        }
-        if (derivedName) {
-          // Re-resolve the companyId using the branch name mapping
-          const resolvedId = getCompanyIdFromBranchName(derivedName, 'c-gcri', defaultCompanies);
-          if (resolvedId && resolvedId !== emp.companyId) {
-            emp = { ...emp, companyId: resolvedId };
-          }
-        }
-        uniqueEmployees.push(emp);
-      }
-    }
-    
-    localStorage.setItem('hrms_employees', JSON.stringify(uniqueEmployees));
-    return uniqueEmployees;
-  });
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   // Persistent attendance records state
   const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {

@@ -460,109 +460,6 @@ export const Employees: React.FC<EmployeesProps> = ({
     }
 
     const updated: Employee = {
-      ...editEmp,
-      companyId: getCompanyIdFromBranchName(editEmp.branchLocation || '', activeCompanyId, companies),
-      phone: `${editCountryCode} ${editMobileNumber}`,
-      location: `${capitalize(editEmp.branchLocation || 'Ahmedabad')}, Gujarat`,
-    };
-
-    onUpdateEmployees(employees.map(e => e.id === editEmp.id ? updated : e));
-    setEditEmp(null);
-    alert('Employee profile saved successfully.');
-  };
-
-  const handleDelete = () => {
-    setIsConfirmingDelete(false);
-    if (!deleteEmp) return;
-    const today = new Date().toISOString().split('T')[0];
-    const updated: Employee = {
-      ...deleteEmp,
-      status: 'Archived',
-      exitDate: today,
-      exitReason: 'Archived / Soft-Deleted'
-    };
-    onUpdateEmployees(employees.map(e => e.id === deleteEmp.id ? updated : e));
-    setDeleteEmp(null);
-    alert(`Employee file for ${deleteEmp.name} soft-deleted and archived successfully.`);
-  };
-
-  const handleStartOffboarding = (emp: Employee) => {
-    if (emp.status === 'Archived' || emp.status === 'Terminated') {
-       alert("Employee is already archived.");
-       return;
-    }
-    setOffboardEmp(emp);
-  };
-
-  const handleConfirmInitialOffboarding = () => {
-    if (!offboardEmp) return;
-    
-    // Set status to INITIATED
-    const updated: Employee = {
-      ...offboardEmp,
-      offboardingState: {
-        ...offboardEmp.offboardingState,
-        workflowStatus: 'INITIATED',
-        initiatedOn: new Date().toISOString()
-      }
-    };
-    onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
-    setOffboardEmp(updated);
-    
-    // Close initial modal, open wizard
-    setIsWizardOpen(true);
-    setWizardStep(1);
-  };
-
-  const handleWizardStepComplete = async (step: number) => {
-    if (!offboardEmp) return;
-    
-    let updatedState = { ...offboardEmp.offboardingState };
-    
-    if (step === 1) {
-      updatedState.documentClearance = true;
-      updatedState.workflowStatus = 'DOCUMENT_PENDING';
-    } else if (step === 2) {
-      updatedState.payrollSettled = true;
-      updatedState.workflowStatus = 'PAYROLL_PENDING';
-    } else if (step === 3) {
-      updatedState.assetReturn = true;
-      updatedState.workflowStatus = 'ACCESS_REVOCATION_PENDING';
-    } else if (step === 4) {
-      updatedState.hrApproved = true;
-      updatedState.workflowStatus = 'HR_APPROVAL_PENDING';
-    }
-    
-    const updated: Employee = {
-      ...offboardEmp,
-      offboardingState: updatedState
-    };
-    
-    onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
-    setOffboardEmp(updated);
-    setWizardStep(step + 1);
-  };
-
-  const handleFinalArchive = async () => {
-    if (!offboardEmp) return;
-    setIsOffboardingExecuting(true);
-    
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const today = new Date().toISOString().split('T')[0];
-    
-    const historyItem = {
-      companyId: activeCompanyId,
-      companyName: companies.find(c => c.id === activeCompanyId)?.name || 'Unknown',
-      branchName: offboardEmp.branchLocation,
-      role: offboardEmp.role,
-      designation: offboardEmp.designation,
-      startDate: offboardEmp.joinDate,
-      endDate: today,
-      reason: 'Formal Offboarding'
-    };
-
-    const updated: Employee = {
       ...offboardEmp,
       status: 'Archived',
       exitDate: today,
@@ -574,7 +471,14 @@ export const Employees: React.FC<EmployeesProps> = ({
       },
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
-    onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+    
+    api.employees.archive(offboardEmp.id).then(() => {
+      onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to update DB, updated locally');
+      onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+    });
     
     setOffboardEmp(null);
     setIsWizardOpen(false);

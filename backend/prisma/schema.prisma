@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// CORE INFRASTRUCTURE
+// ==========================================
+
+model User {
+  id                   String   @id @default(uuid())
+  name                 String
+  email                String   @unique
+  username             String   @unique
+  passwordHash         String
+  role                 String   // e.g. "Super Admin", "Company Head", "HR"
+  companyId            String?
+  accessibleCompanyIds String[]
+  status               String   @default("Active") // "Active", "Disabled"
+  avatar               String?
+  employeeId           String?
+  
+  // Minimal JSON to store modular access if needed
+  permissions          Json?    
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  auditLogs            AuditLog[]
+}
+
+model Company {
+  id                   String   @id @default(uuid())
+  name                 String
+  domain               String?
+  adminName            String?
+  adminEmail           String?
+  phone                String?
+  industry             String?
+  
+  // Statuses
+  status               String   @default("Active") // "Active", "Pending", "Inactive", "Archived"
+  accountStatus        String   @default("Active") // "Active", "Suspended"
+  paymentStatus        String   @default("Paid")   // "Paid", "Pending", "Expired"
+  plan                 String   @default("Starter") // "Starter", "Professional", "Enterprise"
+  
+  employeeCount        Int      @default(0)
+  joinDate             DateTime @default(now())
+  
+  logo                 String?
+  logoImage            String?
+  
+  // Hierarchy
+  isHeadOffice         Boolean  @default(true)
+  parentCompanyId      String?
+  
+  // Offboarding JSON state
+  offboardingState     Json?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  branches             Branch[]
+  employees            Employee[]
+}
+
+model Branch {
+  id                   String   @id @default(uuid())
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id])
+  
+  branchName           String
+  location             String
+  headcount            Int      @default(0)
+  status               String   @default("Active")
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  employees            Employee[]
+}
+
+// ==========================================
+// WORKFORCE MANAGEMENT
+// ==========================================
+
+model Employee {
+  id                   String   @id @default(uuid())
+  employeeId           String   @unique // HRMS-generated ID
+  
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id])
+  branchId             String?
+  branch               Branch?  @relation(fields: [branchId], references: [id])
+  
+  name                 String
+  firstName            String?
+  lastName             String?
+  email                String
+  phone                String?
+  department           String
+  designation          String
+  role                 String   @default("Staff") // "HR", "Finance", "Staff"
+  status               String   @default("Active") // "Active", "Archived", "Terminated"
+  
+  joinDate             DateTime
+  exitDate             DateTime?
+  exitReason           String?
+  
+  location             String?
+  avatar               String?
+  salary               Float    @default(0)
+  manager              String?
+  
+  // Compliance & IDs
+  pan                  String?
+  aadhaar              String?
+  uan                  String?
+  pfNumber             String?
+  esiNumber            String?
+  
+  // Bank Details
+  bankName             String?
+  accountNumber        String?
+  ifsc                 String?
+  
+  // JSON field for workflow state
+  offboardingState     Json?
+  employmentHistory    Json?
+  documents            Json?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  payroll              Payroll[]
+  attendance           Attendance[]
+}
+
+model Payroll {
+  id                   String   @id @default(uuid())
+  employeeId           String
+  employee             Employee @relation(fields: [employeeId], references: [id])
+  
+  month                String   // e.g. "2026-05"
+  basic                Float
+  hra                  Float
+  allowances           Float
+  gross                Float
+  pf                   Float
+  tds                  Float
+  net                  Float
+  
+  status               String   @default("Pending") // "Pending", "Processed", "Paid"
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Attendance {
+  id                   String   @id @default(uuid())
+  employeeId           String
+  employee             Employee @relation(fields: [employeeId], references: [id])
+  
+  date                 DateTime
+  status               String   // "Present", "Absent", "Half Day", "Leave"
+  checkIn              DateTime?
+  checkOut             DateTime?
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+// ==========================================
+// SECURITY & AUDIT
+// ==========================================
+
+model AuditLog {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id])
+  
+  action               String   // "CREATE", "UPDATE", "DELETE", "OFFBOARD"
+  module               String   // "Employee", "Company", "Payroll"
+  targetId             String
+  details              String?  // JSON stringified summary of changes
+  
+  createdAt            DateTime @default(now())
+}

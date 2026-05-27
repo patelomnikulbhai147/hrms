@@ -1,0 +1,14 @@
+[
+  {
+    "id": "u-example",
+    "name": "Super Admin Example",
+    "email": "admin@example.com",
+    "username": "admin",
+    "passwordStr": "admin123",
+    "role": "Super Admin",
+    "companyId": "c-gcri",
+    "accessibleCompanyIds": ["c-gcri"],
+    "status": "Active",
+    "avatar": "https://example.com/avatar.png"
+  }
+]
