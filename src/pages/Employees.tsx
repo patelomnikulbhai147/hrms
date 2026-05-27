@@ -134,7 +134,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
-  const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
+  const [isOffboardingExecuting, setIsOffboardingExecuting] = useState(false);
   const [isConfirmingBulk, setIsConfirmingBulk] = useState(false);
 
   const [form, setForm] = useState({
