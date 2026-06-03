@@ -116,7 +116,7 @@ model Company {
 model Branch {
   id                   String   @id @default(uuid())
   companyId            String
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   
   branchName           String
   location             String?
@@ -139,9 +139,9 @@ model Employee {
   employeeId           String   @unique // HRMS-generated ID
   
   companyId            String
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branchId             String?
-  branch               Branch?  @relation(fields: [branchId], references: [id])
+  branch               Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
   
   name                 String
   firstName            String?
@@ -211,9 +211,9 @@ model Employee {
 model Payroll {
   id                   String   @id @default(uuid())
   companyId            String   @default("c-gcri")
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employeeId           String
-  employee             Employee @relation(fields: [employeeId], references: [id])
+  employee             Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employeeName         String   @default("Unknown")
   department           String   @default("General")
   month                String
@@ -243,9 +243,9 @@ model Payroll {
 model Attendance {
   id                   String   @id @default(uuid())
   companyId            String   @default("c-gcri")
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employeeId           String
-  employee             Employee @relation(fields: [employeeId], references: [id])
+  employee             Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employeeName         String   @default("Unknown")
   department           String   @default("General")
   date                 String   @default("2026-05-20")
@@ -261,9 +261,9 @@ model Attendance {
 model LeaveRequest {
   id                   String   @id @default(uuid())
   companyId            String
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employeeId           String
-  employee             Employee @relation(fields: [employeeId], references: [id])
+  employee             Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   employeeName         String
   department           String
   leaveType            String
@@ -283,7 +283,7 @@ model LeaveRequest {
 model Document {
   id                   String   @id @default(uuid())
   companyId            String
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name                 String
   type                 String
   employeeId           String?
@@ -301,7 +301,7 @@ model Document {
 model PaymentRecord {
   id                   String   @id @default(uuid())
   companyId            String
-  company              Company  @relation(fields: [companyId], references: [id])
+  company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   companyName          String
   planName             String
   amount               Float
