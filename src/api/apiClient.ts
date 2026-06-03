@@ -70,8 +70,19 @@ export const api = {
       });
     },
     archive: async (id: string) => {
+      return await apiFetch(`${BASE_URL}/companies/${id}/archive`, {
+        method: 'PUT',
+        headers: getHeaders()
+      });
+    },
+    hardDelete: async (id: string) => {
       return await apiFetch(`${BASE_URL}/companies/${id}`, {
         method: 'DELETE',
+        headers: getHeaders()
+      });
+    },
+    getDependencies: async (id: string) => {
+      return await apiFetch(`${BASE_URL}/companies/${id}/dependencies`, {
         headers: getHeaders()
       });
     }
@@ -96,7 +107,15 @@ export const api = {
       });
     },
     archive: async (id: string) => {
-      return await apiFetch(`${BASE_URL}/branches/${id}`, {
+      // Company controller handles branch archiving securely too
+      return await apiFetch(`${BASE_URL}/companies/${id}/archive`, {
+        method: 'PUT',
+        headers: getHeaders()
+      });
+    },
+    hardDelete: async (id: string) => {
+      // Company controller handles branch deletion checks
+      return await apiFetch(`${BASE_URL}/companies/${id}`, {
         method: 'DELETE',
         headers: getHeaders()
       });

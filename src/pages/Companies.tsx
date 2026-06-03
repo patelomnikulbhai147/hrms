@@ -63,6 +63,11 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [planFilter, setPlanFilter] = useState('');
+  
+  // Dependency Check & Delete State
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [deleteDependencies, setDeleteDependencies] = useState<{employees: number, branches: number, payrolls: number, attendances: number, documents: number} | null>(null);
+  const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
 
   // Enterprise Lifecycle & Export
   const [activeMainTab, setActiveMainTab] = useState<'active' | 'archived'>('active');
@@ -154,6 +159,22 @@ export const Companies: React.FC<CompaniesProps> = ({
       enableSystemAlerts: true
     });
     setBranchModalOpen(true);
+  };
+
+  const handleDeleteClick = async (company: Company) => {
+    setDeleteTarget(company);
+    setIsCheckingDependencies(true);
+    setDeleteDependencies(null);
+    try {
+      const deps = await api.companies.getDependencies(company.id);
+      setDeleteDependencies(deps);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to check dependencies.');
+      setDeleteTarget(null);
+    } finally {
+      setIsCheckingDependencies(false);
+    }
   };
 
   const handleRemoveBranch = (branchId: string) => {
@@ -1049,6 +1070,13 @@ export const Companies: React.FC<CompaniesProps> = ({
                                 {c.status === 'Active' ? 'Suspend' : 'Activate'}
                               </button>
                             )}
+                            <button
+                              onClick={() => handleDeleteClick(c)}
+                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 rounded transition-colors"
+                              title="Delete/Archive"
+                            >
+                              <Trash2 size={13} />
+                            </button>
                           </div>
                         )}
                       </Td>
@@ -1143,9 +1171,9 @@ export const Companies: React.FC<CompaniesProps> = ({
                                               </button>
                                             ) : (
                                               <button
-                                                onClick={() => handleRemoveBranch(b.id)}
+                                                onClick={() => handleDeleteClick(b)}
                                                 className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
-                                                title="Permanently Delete"
+                                                title="Delete/Archive"
                                               >
                                                 <Trash2 size={11} />
                                               </button>
@@ -1903,6 +1931,80 @@ export const Companies: React.FC<CompaniesProps> = ({
         confirmButtonText="Execute Offboarding"
         isDestructive={true}
       />
+      {/* Dependency Delete/Archive Warning Modal */}
+      {deleteTarget && (
+        <Modal
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          title={`Delete ${deleteTarget.isHeadOffice ? 'Company' : 'Branch'}: ${deleteTarget.name}`}
+          size="sm"
+          footer={
+            isCheckingDependencies ? (
+              <Button disabled>Checking...</Button>
+            ) : deleteDependencies && (deleteDependencies.employees > 0 || deleteDependencies.branches > 0 || deleteDependencies.payrolls > 0 || deleteDependencies.documents > 0) ? (
+              <>
+                <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+                <Button 
+                  onClick={() => {
+                    api.companies.archive(deleteTarget.id).then(() => {
+                      const updated = companies.map(c => {
+                        if (c.id === deleteTarget.id) return { ...c, status: 'Archived', isArchived: true };
+                        if (c.parentCompanyId === deleteTarget.id) return { ...c, status: 'Archived', isArchived: true };
+                        return c;
+                      });
+                      onUpdateCompanies(updated);
+                      setDeleteTarget(null);
+                      alert('Company/Branch archived successfully.');
+                    }).catch(console.error);
+                  }}
+                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  Archive Instead
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+                <Button 
+                  onClick={() => {
+                    api.companies.hardDelete(deleteTarget.id).then(() => {
+                      onUpdateCompanies(companies.filter(c => c.id !== deleteTarget.id));
+                      setDeleteTarget(null);
+                      alert('Permanently deleted successfully.');
+                    }).catch(console.error);
+                  }}
+                  className="bg-rose-500 hover:bg-rose-600 text-white"
+                >
+                  Permanent Delete
+                </Button>
+              </>
+            )
+          }
+        >
+          {isCheckingDependencies ? (
+            <p className="text-sm text-slate-300">Checking for related records...</p>
+          ) : deleteDependencies ? (
+            <div className="space-y-4 text-sm text-slate-300">
+              {(deleteDependencies.employees > 0 || deleteDependencies.branches > 0 || deleteDependencies.payrolls > 0 || deleteDependencies.documents > 0) ? (
+                <>
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 font-medium">
+                    This {deleteTarget.isHeadOffice ? 'company' : 'branch'} cannot be hard deleted because it has existing dependent records.
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1 text-slate-400">
+                    {deleteDependencies.employees > 0 && <li>{deleteDependencies.employees} Employees</li>}
+                    {deleteDependencies.branches > 0 && <li>{deleteDependencies.branches} Branches</li>}
+                    {deleteDependencies.payrolls > 0 && <li>{deleteDependencies.payrolls} Payroll Records</li>}
+                    {deleteDependencies.documents > 0 && <li>{deleteDependencies.documents} Documents</li>}
+                  </ul>
+                  <p>You can choose to <strong>Archive</strong> this {deleteTarget.isHeadOffice ? 'company' : 'branch'} instead, which will preserve the records but suspend access.</p>
+                </>
+              ) : (
+                <p>No dependent records found. Are you sure you want to permanently delete this {deleteTarget.isHeadOffice ? 'company' : 'branch'}?</p>
+              )}
+            </div>
+          ) : null}
+        </Modal>
+      )}
     </div>
   );
 };

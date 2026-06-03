@@ -119,42 +119,88 @@ exports.updateCompany = async (req, res) => {
   }
 };
 
-// Delete/Archive a company
+exports.getCompanyDependencies = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const employees = await prisma.employee.count({ where: { companyId: id } });
+    const branches = await prisma.branch.count({ where: { companyId: id } });
+    const payrolls = await prisma.payroll.count({ where: { companyId: id } });
+    const attendances = await prisma.attendance.count({ where: { companyId: id } });
+    const documents = await prisma.document.count({ where: { companyId: id } });
+    
+    res.json({ employees, branches, payrolls, attendances, documents });
+  } catch (error) {
+    console.error('Error fetching dependencies:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 exports.deleteCompany = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Determine if it's a branch or company
+    // Check if it's a branch or company
+    const branchCheck = await prisma.branch.findUnique({ where: { id } });
+    if (branchCheck) {
+      const employees = await prisma.employee.count({ where: { branchId: id } });
+      if (employees > 0) {
+        return res.status(400).json({ error: 'Cannot hard delete branch with existing employees.' });
+      }
+      await prisma.branch.delete({ where: { id } });
+      return res.json({ message: 'Branch permanently deleted' });
+    }
+
+    const employees = await prisma.employee.count({ where: { companyId: id } });
+    const branches = await prisma.branch.count({ where: { companyId: id } });
+    const payrolls = await prisma.payroll.count({ where: { companyId: id } });
+    const attendances = await prisma.attendance.count({ where: { companyId: id } });
+    const documents = await prisma.document.count({ where: { companyId: id } });
+
+    if (employees > 0 || branches > 0 || payrolls > 0 || attendances > 0 || documents > 0) {
+      return res.status(400).json({ error: 'Cannot hard delete company with existing dependent records. Please archive instead.' });
+    }
+
+    await prisma.company.delete({ where: { id } });
+    res.json({ message: 'Company permanently deleted' });
+  } catch (error) {
+    console.error('Error deleting company:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+exports.archiveCompany = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
     const branchCheck = await prisma.branch.findUnique({ where: { id } });
     if (branchCheck) {
       const branch = await prisma.branch.update({
         where: { id },
-        data: { status: 'Archived' }
+        data: { status: 'Archived', isArchived: true }
       });
-      // Archive employees that still belong to this branch
       await prisma.employee.updateMany({
-        where: { companyId: id },
+        where: { branchId: id },
         data: { status: 'Archived', exitDate: new Date(), exitReason: 'Branch Archived' }
       });
       return res.json({ message: 'Branch archived successfully', company: { ...branch, name: branch.branchName } });
     }
 
+    // Archive company
     const company = await prisma.company.update({
       where: { id },
-      data: { status: 'Archived' }
+      data: { status: 'Archived', isArchived: true }
     });
     
-    // Cascade to child branches
+    // Archive branches
     await prisma.branch.updateMany({
       where: { companyId: id },
-      data: { status: 'Archived' }
+      data: { status: 'Archived', isArchived: true }
     });
     
-    // Find all branches to also archive their employees
     const branches = await prisma.branch.findMany({ where: { companyId: id } });
     const branchIds = branches.map(b => b.id);
     
-    // Archive all employees of the company and its child branches
+    // Archive employees
     await prisma.employee.updateMany({
       where: { companyId: { in: [id, ...branchIds] } },
       data: { status: 'Archived', exitDate: new Date(), exitReason: 'Company Archived' }
@@ -162,7 +208,8 @@ exports.deleteCompany = async (req, res) => {
     
     res.json({ message: 'Company archived successfully', company });
   } catch (error) {
-    console.error('Error deleting company/branch:', error);
+    console.error('Error archiving company:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };
+

@@ -50,6 +50,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
 
   // If masquerading, role is forced to Company Head
   const activeRole = isMasquerading ? 'Company Head' : role;
@@ -112,6 +113,59 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="ml-auto flex items-center gap-3">
           
           {/* Workspace Switcher */}
+          {authProfile && activeRole !== 'Super Admin' && authProfile.accessibleCompanyIds && authProfile.accessibleCompanyIds.length > 1 && !isMasquerading && (
+            <div className="relative">
+              <button
+                onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
+                className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-lg text-xs font-bold text-slate-200 transition-all active:scale-95 shadow-sm"
+              >
+                <Building2 size={14} className="text-indigo-400" />
+                <span className="max-w-[120px] truncate">{currentCompany?.name || 'Switch Workspace'}</span>
+                <ChevronDown size={14} className="text-slate-500" />
+              </button>
+              
+              <AnimatePresence>
+                {workspaceOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-800/80 rounded-2xl shadow-2xl py-2 z-50 overflow-hidden"
+                  >
+                    <div className="px-4 py-2 border-b border-slate-800/80 mb-1">
+                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Switch Workspace</span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                      {authProfile.accessibleCompanyIds.map(id => {
+                        const comp = companies.find(c => c.id === id);
+                        if (!comp) return null;
+                        const isCurrent = id === activeCompanyId;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => {
+                              if (onCompanyChange && !isCurrent) {
+                                onCompanyChange(id);
+                              }
+                              setWorkspaceOpen(false);
+                            }}
+                            className={cn(
+                              "w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-slate-800/60",
+                              isCurrent ? "bg-indigo-500/10 text-indigo-300 font-bold" : "text-slate-300 font-medium"
+                            )}
+                          >
+                            <span className="truncate pr-2">{comp.name}</span>
+                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
           {/* Theme Toggle */}
           {toggleTheme && (
@@ -142,7 +196,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           {/* Notifications */}
           <div className="relative">
             <button
-              onClick={() => { setNotifOpen(p => !p); setProfileOpen(false); }}
+              onClick={() => { setNotifOpen(p => !p); setProfileOpen(false); setWorkspaceOpen(false); }}
               className="relative p-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-all active:scale-95"
             >
               <Bell size={18} />
@@ -205,7 +259,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           {/* User Profile info */}
           <div className="relative">
             <button
-              onClick={() => { setProfileOpen(p => !p); setNotifOpen(false); }}
+              onClick={() => { setProfileOpen(p => !p); setNotifOpen(false); setWorkspaceOpen(false); }}
               className="flex items-center gap-2 p-1 text-slate-300 hover:bg-slate-800/60 rounded-xl transition-all active:scale-95"
             >
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-extrabold font-sans shadow-lg shadow-blue-500/20">

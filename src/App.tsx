@@ -555,7 +555,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.setItem('hrms_auth', 'true');
     localStorage.setItem('hrms_profile', JSON.stringify(profile));
     setRole(profile.role);
-    const initialCompanyId = selectedCompanyId || (profile.role === 'Employee' ? profile.companyId || 'c-gcri' : '');
+    const initialCompanyId = selectedCompanyId !== undefined ? selectedCompanyId : (profile.role === 'Employee' ? profile.companyId || 'c-gcri' : '');
     setActiveCompanyId(initialCompanyId);
     if (initialCompanyId) {
       localStorage.setItem('hrms_active_company_id', initialCompanyId);
@@ -652,7 +652,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     return <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />;
   }
 
-  if (!activeCompanyId) {
+  if (!activeCompanyId && authProfile.role !== 'Super Admin') {
     return <SelectWorkspace companies={companies} user={authProfile} onSelect={handleCompanyChange} />;
   }
 

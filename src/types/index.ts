@@ -58,6 +58,7 @@ export interface Company {
   branchName?: string;
   branchCode?: string;
   isHeadOffice?: boolean;
+  isArchived?: boolean;
 
   purchasedAdditionalBranches?: number;
   branchLicenseStatus?: 'Active License' | 'Pending Upgrade' | 'Suspended';
@@ -277,7 +278,8 @@ export interface PaymentRecord {
   paymentDate: string;
   invoiceNumber: string;
   planType: string;
-  paymentMode: 'Card' | 'UPI' | 'Bank Transfer' | 'Net Banking' | 'Manual';
+  billingCycle?: 'Monthly' | 'Yearly' | string;
+  paymentMode: 'Card' | 'UPI' | 'Bank Transfer' | 'Net Banking' | 'Manual' | 'System Change';
   transactionStatus: 'Success' | 'Failed' | 'Refunded';
 }
 

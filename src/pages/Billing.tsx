@@ -612,15 +612,31 @@ export const Billing: React.FC<BillingProps> = ({
 
     const finalized = syncAndRecalculateBilling(updated, changingPlanCompany.id);
     onUpdateCompanies(finalized);
+    
+    const newRecord = {
+      id: `tx${Date.now()}`,
+      companyId: changingPlanCompany.id,
+      companyName: changingPlanCompany.name,
+      amount: selectedPlan.priceMonthly,
+      paymentDate: getNowTimestampDisplay(),
+      invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
+      planType: selectedPlan.name as any,
+      billingCycle: 'Monthly',
+      paymentMode: 'System Change' as const,
+      transactionStatus: 'Success' as const
+    };
+    api.payments.create(newRecord).then(saved => onUpdatePayments(prev => [saved, ...prev])).catch(console.error);
+
     setChangingPlanCompany(null);
   };
 
   const handleExportPayments = () => {
-    const headers = ['Invoice Number', 'Company Name', 'Plan Type', 'Amount', 'Date', 'Mode', 'Status'];
+    const headers = ['Invoice Number', 'Company Name', 'Plan Type', 'Billing Cycle', 'Amount', 'Date', 'Mode', 'Status'];
     const rows = payments.map(p => [
       p.invoiceNumber,
       p.companyName,
       p.planType,
+      p.billingCycle || 'Monthly',
       `₹${p.amount}`,
       p.paymentDate,
       p.paymentMode,
@@ -1483,6 +1499,7 @@ export const Billing: React.FC<BillingProps> = ({
                   <th className="py-4 px-6">Invoice ID</th>
                   <th className="py-4 px-6">Company Name</th>
                   <th className="py-4 px-6">Pricing Tier</th>
+                  <th className="py-4 px-6">Billing Cycle</th>
                   <th className="py-4 px-6">Transaction Date</th>
                   <th className="py-4 px-6">Payment Mode</th>
                   <th className="py-4 px-6">Amount</th>
@@ -1500,6 +1517,9 @@ export const Billing: React.FC<BillingProps> = ({
                     </td>
                     <td className="py-4 px-6 text-xs text-slate-300">
                       {pay.planType}
+                    </td>
+                    <td className="py-4 px-6 text-xs text-slate-400 font-medium">
+                      {pay.billingCycle || 'Monthly'}
                     </td>
                     <td className="py-4 px-6 text-xs text-slate-450">
                       {pay.paymentDate}
