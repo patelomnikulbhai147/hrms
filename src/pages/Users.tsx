@@ -3,9 +3,11 @@ import { ShieldCheck, Search, Filter, ShieldAlert, Key, Edit, Trash2, CheckCircl
 import { motion, AnimatePresence } from 'framer-motion';
 import { type UserAccount, type AppModules, type ModulePermissions } from './Login';
 import { type Company } from '../data/mockData';
+import { isWorkspaceInherited } from '../utils/workspaceUtils';
 import { Badge } from '../components/ui/Badge';
 import { cn } from '../utils/cn';
 import { usePermissions } from '../context/PermissionContext';
+import { api } from '../api/apiClient';
 
 interface UsersProps {
   userAccounts: UserAccount[];
@@ -35,27 +37,38 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('users');
+  const canCreate = canCreateModule('users');
+  const canDelete = canDeleteModule('users');
 
   // Modal state
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
 
   const filteredUsers = userAccounts.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          user.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (user?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          (user?.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (user?.email || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRole = roleFilter === 'All' || user.role === roleFilter;
     return matchesSearch && matchesRole;
   });
 
-  const handleToggleStatus = (userId: string) => {
-    onUpdateAccounts(prev => prev.map(u => {
-      if (u.id === userId) {
-        return { ...u, status: u.status === 'Active' ? 'Disabled' : 'Active' };
-      }
-      return u;
-    }));
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      const user = userAccounts.find(u => u.id === userId);
+      if (!user) return;
+      const newStatus = user.status === 'Active' ? 'Disabled' : 'Active';
+      await api.users.update(userId, { status: newStatus });
+      onUpdateAccounts(prev => prev.map(u => {
+        if (u.id === userId) {
+          return { ...u, status: newStatus };
+        }
+        return u;
+      }));
+    } catch (err) {
+      console.error('Failed to toggle status:', err);
+      alert('Failed to update status. Please try again.');
+    }
   };
 
   const handleOpenPermissions = (user: UserAccount) => {
@@ -93,25 +106,32 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
   const handleToggleWorkspace = (companyId: string) => {
     if (!selectedUser) return;
     const updatedUser = { ...selectedUser };
-    const currentIds = updatedUser.accessibleCompanyIds || [updatedUser.companyId];
+    const currentIds = updatedUser.accessibleCompanyIds || [];
     
     if (currentIds.includes(companyId)) {
       updatedUser.accessibleCompanyIds = currentIds.filter(id => id !== companyId);
-      // Ensure at least one company remains, fallback to global if all removed
-      if (updatedUser.accessibleCompanyIds.length === 0) {
-         updatedUser.accessibleCompanyIds = [updatedUser.companyId || 'c-gcri'];
-      }
     } else {
       updatedUser.accessibleCompanyIds = [...currentIds, companyId];
     }
     setSelectedUser(updatedUser);
   };
 
-  const handleSavePermissions = () => {
+  const handleSavePermissions = async () => {
     if (!selectedUser) return;
     
-    onUpdateAccounts(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
-    setSelectedUser(null);
+    try {
+      await api.users.update(selectedUser.id, {
+        accessibleCompanyIds: selectedUser.accessibleCompanyIds,
+        moduleAccess: selectedUser.moduleAccess,
+        permissions: selectedUser.permissions
+      });
+      
+      onUpdateAccounts(prev => prev.map(u => u.id === selectedUser.id ? selectedUser : u));
+      setSelectedUser(null);
+    } catch (err) {
+      console.error('Failed to save permissions to backend:', err);
+      alert('Failed to save permissions to backend. Please try again.');
+    }
   };
 
   return (
@@ -212,7 +232,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                       </Badge>
                     </td>
                     <td className="p-4 text-right">
-                      {canEdit && (
+                      {canDelete && (
                         <div className="flex items-center justify-end gap-2">
                           {user.role !== 'Super Admin' ? (
                             <button
@@ -322,21 +342,10 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         {companies.map(company => {
-                          const directAssigned = (selectedUser.accessibleCompanyIds || [selectedUser.companyId]).includes(company.id);
+                          const directAssigned = (selectedUser.accessibleCompanyIds || []).includes(company.id) || selectedUser.companyId === company.id;
                           
-                          // Compute inheritance for selected user
-                          const parentIds = selectedUser.accessibleCompanyIds || [selectedUser.companyId];
-                          let isInherited = false;
-                          for (const pid of parentIds) {
-                            if (!pid) continue;
-                            const parent = companies.find(c => c.id === pid);
-                            if (parent && (pid === 'c-gcri' || parent.isHeadOffice || !parent.parentCompanyId)) {
-                              if (company.parentCompanyId === pid) {
-                                isInherited = true;
-                                break;
-                              }
-                            }
-                          }
+                          // Compute inheritance for selected user using shared logic
+                          const isInherited = isWorkspaceInherited(company.id, selectedUser, companies);
                           
                           const isAssigned = directAssigned || isInherited;
                           
@@ -344,32 +353,43 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                             <button
                               key={company.id}
                               onClick={() => !isInherited && handleToggleWorkspace(company.id)}
-                              disabled={isInherited}
+                              disabled={isInherited || selectedUser.companyId === company.id}
                               className={cn(
-                                "flex flex-col items-start p-3 rounded-xl border transition-all text-left group relative overflow-hidden",
+                                "flex flex-col items-start p-4 rounded-xl border transition-all text-left group relative overflow-hidden",
                                 isAssigned 
-                                  ? (isInherited ? "bg-emerald-600/10 border-emerald-500/30" : "bg-blue-600/10 border-blue-500/30 shadow-inner") 
-                                  : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/50 hover:border-slate-700",
-                                isInherited && "cursor-default"
+                                  ? (isInherited ? "bg-emerald-500/10 border-emerald-500/30" : "bg-blue-600/15 border-blue-500/40 shadow-inner") 
+                                  : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-800/60 hover:border-slate-600",
+                                (isInherited || selectedUser.companyId === company.id) && "cursor-default"
                               )}
                             >
                               <div className="flex items-start gap-3 w-full">
                                 <div className={cn(
-                                  "w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
+                                  "w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors shadow-sm",
                                   isAssigned 
                                     ? (isInherited ? "bg-emerald-500 border-emerald-500 text-white" : "bg-blue-500 border-blue-500 text-white") 
                                     : "bg-slate-800 border-slate-600 text-transparent group-hover:border-slate-500"
                                 )}>
-                                  <CheckCircle2 size={12} strokeWidth={3} className={cn("transition-transform", isAssigned ? "scale-100" : "scale-0")} />
+                                  <CheckCircle2 size={14} strokeWidth={3} className={cn("transition-transform", isAssigned ? "scale-100" : "scale-0")} />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <p className={cn("text-xs font-bold truncate transition-colors", isAssigned ? (isInherited ? "text-emerald-300" : "text-blue-300") : "text-slate-300")}>{company.name}</p>
-                                  <p className="text-[10px] text-slate-500 truncate mt-0.5">{company.domain || 'Branch Office'}</p>
+                                  <p className={cn("text-sm font-bold truncate transition-colors", isAssigned ? (isInherited ? "text-emerald-300" : "text-blue-300") : "text-slate-300")}>{company.name}</p>
+                                  <p className="text-[11px] text-slate-500 truncate mt-0.5">{company.domain || 'Branch Office'}</p>
                                 </div>
                               </div>
                               {isInherited && (
-                                <div className="mt-2 w-full text-center">
-                                  <span className="text-[9px] font-extrabold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Inherited from Parent</span>
+                                <div className="mt-3 w-full border-t border-emerald-500/20 pt-2.5">
+                                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-400">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                                    Inherited Access
+                                  </span>
+                                </div>
+                              )}
+                              {selectedUser.companyId === company.id && !isInherited && (
+                                <div className="mt-3 w-full border-t border-blue-500/20 pt-2.5">
+                                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
+                                    Primary Base
+                                  </span>
                                 </div>
                               )}
                             </button>
@@ -418,7 +438,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                               {/* Granular Permissions */}
                               {isEnabled && (
                                 <div className="p-3.5 flex items-center gap-3">
-                                  {(['view', 'edit'] as Array<keyof ModulePermissions>).map(action => {
+                                  {(['view', 'create', 'edit', 'delete'] as Array<keyof ModulePermissions>).map(action => {
                                     const hasAction = perms[action];
                                     return (
                                       <button

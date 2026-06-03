@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from './api/apiClient';
+import { getAccessibleWorkspaceIds } from './utils/workspaceUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
 import { Dashboard } from './pages/Dashboard';
+import { SelectWorkspace } from './pages/SelectWorkspace';
 import { Employees } from './pages/Employees';
 import { Leaves } from './pages/Leaves';
 import { Attendance } from './pages/Attendance';
@@ -36,7 +38,6 @@ import {
   PLAN_LIMITS,
   getCompanyIdFromBranchName
 } from './data/mockData';
-import { allExcelParsedEmployees } from './data/excelSeededData';
 import { calculateBranchBilling } from './utils/subscriptionUtils';
 
 const pageTitles: Record<PageId, string> = {
@@ -64,15 +65,6 @@ const defaultPlans: SubscriptionPlan[] = [
 ];
 
 const defaultPayments: PaymentRecord[] = [];
-
-const defaultEmployees: Employee[] = allExcelParsedEmployees.map(emp => {
-  return {
-    ...emp,
-    role: 'Staff',
-    status: (emp.status || 'Active') as any
-  };
-});
-
 export const SAFE_COMPANY_FALLBACK: any = {
   id: '',
   name: 'Global Workspace',
@@ -143,96 +135,13 @@ export default function App() {
     localStorage.setItem('hrms_accounts', JSON.stringify(next));
   };
 
-  // Persistent company list (including address and primaryColor configs!)
-  const [companies, setCompanies] = useState<Company[]>(() => {
-    const raw = localStorage.getItem('hrms_companies');
-    if (raw) {
-      try {
-        const parsed: Company[] = JSON.parse(raw);
-        // sanitize renewalDate fields and pre-seed monthly/yearly pricing
-        const sanitized = parsed.map(c => {
-          const planObj = defaultPlans.find(p => p.name === c.plan);
-          const basePriceMonthly = planObj ? planObj.priceMonthly : (c.plan === 'Enterprise' ? 12999 : (c.plan === 'Professional' ? 4999 : 1999));
-          const basePriceYearly = planObj ? planObj.priceYearly : (c.plan === 'Enterprise' ? 129999 : (c.plan === 'Professional' ? 49999 : 19999));
-
-          const nextCompany = {
-            ...c,
-            priceMonthly: c.priceMonthly || basePriceMonthly,
-            priceYearly: c.priceYearly || basePriceYearly
-          };
-
-          if (!c.renewalDate) return nextCompany;
-          const d = new Date(c.renewalDate);
-          if (isNaN(d.getTime())) {
-            return { ...nextCompany, renewalDate: '' };
-          }
-          return nextCompany;
-        });
-        // validate and recalculate billing for the parent company
-        const billingResult = calculateBranchBilling(sanitized, 'c-gcri', defaultPlans);
-        localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
-        return billingResult.updatedCompanies;
-      } catch (e) {
-        const preCalculated = defaultCompanies.map(c => {
-          const planObj = defaultPlans.find(p => p.name === c.plan);
-          return {
-            ...c,
-            priceMonthly: planObj ? planObj.priceMonthly : 12999,
-            priceYearly: planObj ? planObj.priceYearly : 129999
-          };
-        });
-        const billingResult = calculateBranchBilling(preCalculated, 'c-gcri', defaultPlans);
-        localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
-        return billingResult.updatedCompanies;
-      }
-    }
-    const preCalculated = defaultCompanies.map(c => {
-      const planObj = defaultPlans.find(p => p.name === c.plan);
-      return {
-        ...c,
-        priceMonthly: planObj ? planObj.priceMonthly : 12999,
-        priceYearly: planObj ? planObj.priceYearly : 129999
-      };
-    });
-    const billingResult = calculateBranchBilling(preCalculated, 'c-gcri', defaultPlans);
-    localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
-    return billingResult.updatedCompanies;
-  });
-
-  // Persistent employees state
+  // Database models initialized strictly empty to enforce live DB queries (No stale localStorage caching)
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-
-  // Persistent attendance records state
-  const [attendance, setAttendance] = useState<AttendanceRecord[]>(() => {
-    const raw = localStorage.getItem('hrms_attendance');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_attendance', JSON.stringify(defaultAttendance));
-    return defaultAttendance;
-  });
-
-  // Persistent leave requests state
-  const [leaves, setLeaves] = useState<LeaveRequest[]>(() => {
-    const raw = localStorage.getItem('hrms_leaves');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_leaves', JSON.stringify(defaultLeaves));
-    return defaultLeaves;
-  });
-
-  // Persistent payroll records state
-  const [payroll, setPayroll] = useState<PayrollRecord[]>(() => {
-    const raw = localStorage.getItem('hrms_payroll');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_payroll', JSON.stringify(defaultPayroll));
-    return defaultPayroll;
-  });
-
-  // Persistent documents compliance state
-  const [documents, setDocuments] = useState<Document[]>(() => {
-    const raw = localStorage.getItem('hrms_documents');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_documents', JSON.stringify(defaultDocuments));
-    return defaultDocuments;
-  });
+  const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
+  const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
+  const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
+  const [documents, setDocuments] = useState<Document[]>([]);
 
   // Persistent SaaS plans state
   const [plans, setPlans] = useState<SubscriptionPlan[]>(() => {
@@ -336,7 +245,7 @@ export default function App() {
         if (updatedProfile.status === 'Disabled') {
           handleLogout();
         } else {
-          setAuthProfile(updatedProfile);
+          setStoredAuthProfile(updatedProfile);
           setRole(updatedProfile.role);
           localStorage.setItem('hrms_profile', JSON.stringify(updatedProfile));
         }
@@ -538,7 +447,43 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('hrms_auth') === 'true';
   });
-  const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>(() => {
+    // Data hydration from backend PostgreSQL
+  const hydrateAll = async () => {
+    try {
+      const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments] = await Promise.all([
+        api.companies.getAll().catch(() => null),
+        api.branches.getAll().catch(() => null),
+        api.employees.getAll().catch(() => null),
+        api.users.getAll().catch(() => null),
+        api.payroll.getAll().catch(() => null),
+        api.documents.getAll().catch(() => null)
+      ]);
+      
+      if (fetchedCompanies) {
+        let allEntities = [...fetchedCompanies];
+        if (fetchedBranches) {
+          const mappedBranches = fetchedBranches.map((b: any) => ({
+             ...b,
+             name: b.branchName || b.name,
+             isHeadOffice: false,
+             parentCompanyId: b.companyId
+          }));
+          allEntities = [...allEntities, ...mappedBranches];
+        }
+        setCompanies(allEntities);
+      }
+      
+      if (fetchedEmployees) setEmployees(fetchedEmployees);
+      if (fetchedUsers) setUserAccounts(fetchedUsers);
+      if (fetchedPayroll) setPayroll(fetchedPayroll);
+      if (fetchedDocuments) setDocuments(fetchedDocuments);
+    } catch (err) {
+      console.error('Hydration failed:', err);
+    }
+  };
+
+
+const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>(() => {
     const raw = localStorage.getItem('hrms_profile');
     return raw ? JSON.parse(raw) : null;
   });
@@ -546,20 +491,12 @@ export default function App() {
   const authProfile = React.useMemo(() => {
     if (!storedAuthProfile) return null;
     
-    // Dynamically sync permissions and profile state from the centralized users array
     const latestProfile = userAccounts.find(u => u.id === storedAuthProfile.id) || storedAuthProfile;
+    const computedAccess = getAccessibleWorkspaceIds(latestProfile, companies);
     
-    if (!latestProfile.accessibleCompanyIds || latestProfile.accessibleCompanyIds.length === 0) return latestProfile;
-
-    const idSet = new Set<string>();
-    latestProfile.accessibleCompanyIds.forEach(id => {
-      idSet.add(id);
-      companies.filter(c => c.parentCompanyId === id).forEach(b => idSet.add(b.id));
-    });
-
     return {
       ...latestProfile,
-      accessibleCompanyIds: Array.from(idSet)
+      accessibleCompanyIds: computedAccess
     };
   }, [storedAuthProfile, userAccounts, companies]);
 
@@ -581,10 +518,14 @@ export default function App() {
     const rawProfile = localStorage.getItem('hrms_profile');
     if (rawProfile) {
       const profile = JSON.parse(rawProfile);
-      return profile.companyId || 'c-gcri';
+      return profile.role === 'Employee' ? (profile.companyId || 'c-gcri') : '';
     }
-    return 'c-gcri';
+    return '';
   }); 
+
+  useEffect(() => {
+    if (isAuthenticated) hydrateAll();
+  }, [isAuthenticated, activeCompanyId]);
   const [isMasquerading, setIsMasquerading] = useState<boolean>(() => {
     return localStorage.getItem('hrms_is_masquerading') === 'true';
   });
@@ -614,9 +555,13 @@ export default function App() {
     localStorage.setItem('hrms_auth', 'true');
     localStorage.setItem('hrms_profile', JSON.stringify(profile));
     setRole(profile.role);
-    const initialCompanyId = selectedCompanyId || profile.companyId || 'c-gcri';
+    const initialCompanyId = selectedCompanyId || (profile.role === 'Employee' ? profile.companyId || 'c-gcri' : '');
     setActiveCompanyId(initialCompanyId);
-    localStorage.setItem('hrms_active_company_id', initialCompanyId);
+    if (initialCompanyId) {
+      localStorage.setItem('hrms_active_company_id', initialCompanyId);
+    } else {
+      localStorage.removeItem('hrms_active_company_id');
+    }
     setCurrentPage('dashboard');
     localStorage.setItem('hrms_current_page', 'dashboard');
     setIsMasquerading(false);
@@ -642,19 +587,8 @@ export default function App() {
   const handleCompanyChange = (companyId: string) => {
     // Check if the user is authorized to switch to this company
     if (resolvedRole !== 'Super Admin' && !isMasquerading) {
-      const allowedIds = authProfile?.accessibleCompanyIds || [authProfile?.companyId];
-      
-      const isAllowed = allowedIds.some(pid => {
-        if (pid === companyId) return true;
-        const parent = companies.find(c => c.id === pid);
-        if (parent && (pid === 'c-gcri' || parent.isHeadOffice)) {
-           const child = companies.find(c => c.id === companyId);
-           return child?.parentCompanyId === pid;
-        }
-        return false;
-      });
-
-      if (!isAllowed) {
+      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies);
+      if (!accessibleIds.includes(companyId)) {
         return;
       }
     }
@@ -716,6 +650,10 @@ export default function App() {
 
   if (!isAuthenticated || !authProfile) {
     return <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />;
+  }
+
+  if (!activeCompanyId) {
+    return <SelectWorkspace companies={companies} user={authProfile} onSelect={handleCompanyChange} />;
   }
 
   const renderPage = () => {

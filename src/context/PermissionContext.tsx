@@ -1,10 +1,12 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { type AppModules, type UserAccount } from '../pages/Login';
-import { type Company } from '../data/mockData';
+import { type Company } from '../types';
 
 interface PermissionContextType {
   canView: (module: AppModules) => boolean;
   canEdit: (module: AppModules) => boolean;
+  canCreate: (module: AppModules) => boolean;
+  canDelete: (module: AppModules) => boolean;
   hasBranchAccess: (companyId: string) => boolean;
   getInheritedBranches: (companyId: string) => string[];
 }
@@ -12,6 +14,8 @@ interface PermissionContextType {
 const PermissionContext = createContext<PermissionContextType>({
   canView: () => true,
   canEdit: () => false,
+  canCreate: () => false,
+  canDelete: () => false,
   hasBranchAccess: () => false,
   getInheritedBranches: () => [],
 });
@@ -41,6 +45,35 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
   
   // Default fallback if no permissions are set yet
   return true;
+};
+
+
+export const checkCanCreate = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanEdit(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].create;
+  }
+  if (!authProfile.permissions) {
+    if (role === 'Company Head' || role === 'HR') return true;
+    return false;
+  }
+  return false;
+};
+
+export const checkCanDelete = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanEdit(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].delete;
+  }
+  if (!authProfile.permissions) {
+    if (role === 'Company Head') return true;
+    return false;
+  }
+  return false;
 };
 
 export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
@@ -106,10 +139,14 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
 
     const canView = (module: AppModules): boolean => checkCanView(module, authProfile, role);
     const canEdit = (module: AppModules): boolean => checkCanEdit(module, authProfile, role);
+    const canCreate = (module: AppModules): boolean => checkCanCreate(module, authProfile, role);
+    const canDelete = (module: AppModules): boolean => checkCanDelete(module, authProfile, role);
 
     return {
       canView,
       canEdit,
+      canCreate,
+      canDelete,
       hasBranchAccess,
       getInheritedBranches,
     };

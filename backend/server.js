@@ -7,6 +7,14 @@ const companyRoutes = require('./src/routes/companyRoutes');
 const branchRoutes = require('./src/routes/branchRoutes');
 const migrationRoutes = require('./src/routes/migrationRoutes');
 const employeeRoutes = require('./src/routes/employeeRoutes');
+const leaveRoutes = require('./src/routes/leaveRoutes');
+const documentRoutes = require('./src/routes/documentRoutes');
+const paymentRoutes = require('./src/routes/paymentRoutes');
+const notificationRoutes = require('./src/routes/notificationRoutes');
+const payrollRoutes = require('./src/routes/payrollRoutes');
+const attendanceRoutes = require('./src/routes/attendanceRoutes');
+const userRoutes = require('./src/routes/userRoutes');
+const subscriptionPlanRoutes = require('./src/routes/subscriptionPlanRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -22,6 +30,14 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/migrate', migrationRoutes);
 app.use('/api/employees', employeeRoutes);
+app.use('/api/leaves', leaveRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/payroll', payrollRoutes);
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/plans', subscriptionPlanRoutes);
 
 // Basic Health Check
 app.get('/api/health', (req, res) => {
@@ -37,3 +53,6 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// trigger nodemon restart
+// trigger nodemon restart

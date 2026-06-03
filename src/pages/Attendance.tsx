@@ -6,7 +6,7 @@ import {
   type AttendanceStatus,
   type Role,
   isCompanyIdMatch
-} from '../data/mockData';
+} from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card, StatCard } from '../components/ui/Card';
@@ -15,6 +15,7 @@ import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+import { api } from '../api/apiClient';
 
 interface AttendanceProps {
   role: Role;
@@ -45,38 +46,29 @@ export const Attendance: React.FC<AttendanceProps> = ({
 
   // Dynamically initialize and sync attendance records for all company employees for the selectedDate
   const uniqueEmployees = getUniqueEmployees(employees);
-  useEffect(() => {
-    const activeCompanyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
-    let updatedAttendance = [...attendance];
-    let changed = false;
-
-    activeCompanyEmployees.forEach(emp => {
-      const exists = attendance.some(a => a.employeeId === emp.id && a.date === selectedDate);
-      if (!exists) {
-        const newRecord: AttendanceRecord = {
-          id: `a${Date.now()}-${emp.id}`,
-          companyId: emp.companyId, // Set to the employee's specific branch ID
-          employeeId: emp.id,
-          employeeName: emp.name,
-          department: emp.department,
-          date: selectedDate,
-          clockIn: '',
-          clockOut: '',
-          hoursWorked: 0,
-          status: 'Absent'
-        };
-        updatedAttendance.push(newRecord);
-        changed = true;
-      }
-    });
-
-    if (changed) {
-      onUpdateAttendance(updatedAttendance);
-    }
-  }, [activeCompanyId, selectedDate, uniqueEmployees, attendance]);
-
+  
   const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
-  const scopedRecords = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  const dbScopedRecords = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  
+  // Dynamically generate missing records for today's view without saving to DB yet
+  const scopedRecords = uniqueEmployees
+    .filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, undefined, e.branchLocation))
+    .map(emp => {
+      const existing = dbScopedRecords.find(a => a.employeeId === emp.id && a.date === selectedDate);
+      if (existing) return existing;
+      return {
+        id: `new-${emp.id}-${selectedDate}`,
+        companyId: emp.companyId,
+        employeeId: emp.id,
+        employeeName: emp.name,
+        department: emp.department,
+        date: selectedDate,
+        clockIn: '',
+        clockOut: '',
+        hoursWorked: 0,
+        status: 'Absent' as AttendanceStatus
+      };
+    });
 
   const filtered = scopedRecords.filter(a => {
     const matchDate = a.date === selectedDate;
@@ -102,10 +94,21 @@ export const Attendance: React.FC<AttendanceProps> = ({
     setClockedIn(false);
   };
 
-  const handleMarkAttendance = (status: AttendanceStatus) => {
+  const handleMarkAttendance = async (status: AttendanceStatus) => {
     if (!markModal) return;
-    onUpdateAttendance(attendance.map(r => r.id === markModal.id ? { ...r, status } : r));
-    setMarkModal(null);
+    const target = attendance.find(r => r.id === markModal.id);
+    if (!target) return;
+    const updated = { ...target, status };
+    try {
+      // If it starts with 'a' and has '-', it's a frontend generated ID for unlogged attendance, let's treat it as create if the API handles upsert, or create if missing. The API 'update' method handles ID.
+      const saved = await api.attendance.update(target.id, updated).catch(async () => {
+        return await api.attendance.create(updated);
+      });
+      onUpdateAttendance(attendance.map(r => r.id === markModal.id ? saved : r));
+      setMarkModal(null);
+    } catch (e) {
+      alert('Failed to update attendance on server.');
+    }
   };
 
   const { canEdit: canEditModule } = usePermissions();

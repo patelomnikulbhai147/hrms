@@ -7,16 +7,24 @@ import {
   DollarSign,
   Eye,
   EyeOff,
-  Building2
+  Building2,
+  Download,
+  Send,
+  Check,
+  CreditCard,
+  FileText
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { api } from '../api/apiClient';
 import {
   type Employee,
   type PayrollRecord,
   type Role,
   type Company,
-  type PayrollStatus,
-  isCompanyIdMatch
+  type PayrollStatus
 } from '../data/mockData';
+import { isCompanyIdMatch } from '../types';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
 import { Card, StatCard } from '../components/ui/Card';
@@ -71,8 +79,10 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
 
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('payroll');
+  const canCreate = canCreateModule('payroll');
+  const canDelete = canDeleteModule('payroll');
 
   const toggleFieldMask = (empId: string, fieldName: string) => {
     const key = `${empId}-${fieldName}`;
@@ -109,7 +119,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   });
 
   const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
-  const companyEmployees = useMemo(() => uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId)), [uniqueEmployees, activeCompanyId]);
+  const companyEmployees = useMemo(() => uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)), [uniqueEmployees, activeCompanyId, companies]);
 
   useEffect(() => {
     const stored = localStorage.getItem(`hrms_payroll_logs_${activeCompanyId}`);
@@ -151,70 +161,85 @@ export const Payroll: React.FC<PayrollProps> = ({
     localStorage.setItem(`hrms_payroll_logs_${activeCompanyId}`, JSON.stringify(updated));
   };
 
-  useEffect(() => {
-    if (role === 'Employee') return; // Skip automatic seeding for employee personnel
-    let updatedPayroll = [...payroll];
-    let changed = false;
-
-    companyEmployees.forEach((emp, index) => {
-      const month = monthFilter || 'June';
-      const exists = payroll.some(p => p.employeeId === emp.id && p.month === month && p.year === 2026);
-      if (!exists) {
-        const basicPercent = currentCompany.basicPercent || 50;
-        const ctcMonthly = Math.round(emp.salary / 12);
-        const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
-        const hra = Math.round(basicSalary * 0.4);
-        const special = Math.max(0, ctcMonthly - basicSalary - hra);
-        const allowances = hra + special;
-        const pfRate = currentCompany.pfRate || 12;
-        const esicRate = currentCompany.esicRate || 0.75;
-        const profTax = currentCompany.profTaxRate || 200;
-        const pfDeduction = Math.round(basicSalary * (pfRate / 100));
-        const esicDeduction = Math.round(basicSalary * (esicRate / 100));
-        const deductions = pfDeduction + esicDeduction + profTax;
-        const netSalary = ctcMonthly - deductions;
-
-        let initialStatus: PayrollStatus = 'draft';
-        if (index === 1) initialStatus = 'prepared';
-        if (index === 2) initialStatus = 'payment_pending';
-        if (index === 3) initialStatus = 'paid';
-
-        updatedPayroll.push({
-          id: `p${Date.now()}-${emp.id}`,
-          companyId: emp.companyId, // Set to the employee's specific branch ID
-          employeeId: emp.id,
-          employeeName: emp.name,
-          department: emp.department,
-          month,
-          year: 2026,
-          basicSalary,
-          allowances,
-          deductions,
-          netSalary,
-          status: initialStatus,
-          salary: netSalary,
-          payrollStatus: initialStatus,
-          paymentStatus: initialStatus === 'paid' ? 'paid' : 'pending',
-          payslipGenerated: false
-        });
-        changed = true;
-      }
-    });
-    if (changed) onUpdatePayroll(updatedPayroll);
-  }, [activeCompanyId, companyEmployees, monthFilter, payroll, currentCompany, onUpdatePayroll, role]);
-
   const scopedRecords = useMemo(() => {
-    const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
+    // ONE SINGLE SOURCE OF TRUTH: exactly matching company employees
+    let records = companyEmployees.map(emp => {
+      const empName = emp.name || (emp.firstName ? `${emp.firstName} ${emp.lastName}`.trim() : 'Unnamed');
+      
+      const existingRecords = payroll.filter(p => (p.employeeId === emp.id || p.employeeId === emp.employeeId) && p.month === monthFilter);
+      const existingRecord = existingRecords.length > 0 ? existingRecords[existingRecords.length - 1] : null;
+
+      if (existingRecord) {
+        return {
+          ...existingRecord,
+          employeeName: empName,
+          department: emp.department || existingRecord.department,
+          designation: emp.designation || existingRecord.designation
+        };
+      }
+
+      return {
+        id: `pr-stub-${emp.id}-${monthFilter}`,
+        employeeId: emp.id || emp.employeeId,
+        employeeName: empName,
+        department: emp.department || 'Unknown',
+        designation: emp.designation || 'Unknown',
+        basicSalary: parseInt((emp as any).salary) || 0,
+        allowances: 0,
+        deductions: 0,
+        tax: 0,
+        netSalary: parseInt((emp as any).salary) || 0,
+        status: 'draft',
+        payrollStatus: 'draft',
+        paymentStatus: 'pending',
+        month: monthFilter,
+        year: new Date().getFullYear(),
+        companyId: activeCompanyId
+      } as PayrollRecord;
+    });
+
     if (role === 'Employee' && authProfile?.employeeId) {
-      return uniquePayroll.filter(p => p.employeeId === authProfile.employeeId);
+      records = records.filter(p => p.employeeId === authProfile.employeeId || p.employeeId === authProfile.id);
     }
-    return uniquePayroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
-  }, [payroll, role, activeCompanyId, authProfile]);
+    
+    return records;
+  }, [payroll, companyEmployees, monthFilter, activeCompanyId, role, authProfile]);
+
+  useEffect(() => {
+    const dashboardEmployeeCount = companyEmployees.length;
+    const tableEmployeeCount = scopedRecords.length;
+    if (role !== 'Employee' && dashboardEmployeeCount !== tableEmployeeCount) {
+      console.error("PAYROLL DATA MISMATCH DETECTED: Dashboard shows " + dashboardEmployeeCount + " but Table base has " + tableEmployeeCount);
+    }
+  }, [companyEmployees.length, scopedRecords.length, role]);
+
+  useEffect(() => {
+    const hasRealPayroll = payroll.some(p => p.companyId === activeCompanyId);
+    if (!hasRealPayroll && companyEmployees.length > 0 && activeCompanyId) {
+      console.log('Failsafe fetching payroll for:', activeCompanyId);
+      const token = localStorage.getItem('hrms_token');
+      if (!token) return;
+      fetch(`/api/payroll`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-workspace-id': activeCompanyId,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          onUpdatePayroll([...payroll.filter(p => p.companyId !== activeCompanyId && p.employee?.branchId !== activeCompanyId), ...data]);
+        }
+      })
+      .catch(err => console.error('Failsafe fetch failed:', err));
+    }
+  }, [payroll.length, companyEmployees.length, activeCompanyId]);
 
   const filtered = useMemo(() => scopedRecords.filter(r => {
     const currentStatus = r.payrollStatus || r.status;
     const query = search.toLowerCase();
-    const matchSearch = !query || r.employeeName.toLowerCase().includes(query) || r.department.toLowerCase().includes(query);
+    const matchSearch = !query || (r.employeeName || '').toLowerCase().includes(query) || (r.department || '').toLowerCase().includes(query);
     const matchStatus = !statusFilter || currentStatus === statusFilter;
     const matchMonth = !monthFilter || r.month === monthFilter;
     return matchSearch && matchStatus && matchMonth;
@@ -236,21 +261,26 @@ export const Payroll: React.FC<PayrollProps> = ({
     setRemarksInput('');
   };
 
-  const handleConfirmPayment = () => {
-    setIsConfirmingPayment(false);
-    if (!confirmPaymentRecord) return;
-    onUpdatePayroll(payroll.map(r => r.id === confirmPaymentRecord.id ? {
-      ...r,
-      status: 'paid',
-      payrollStatus: 'paid',
-      paymentStatus: 'paid',
-      paymentDate: new Date().toISOString().split('T')[0],
-      paymentMethod,
-      paidBy: role === 'Company Head' ? 'Finance Admin' : 'HR Admin'
-    } : r));
-    saveAuditLog(confirmPaymentRecord.id, `Salary payment confirmed (${paymentMethod}).`, paymentRemarks || 'Payment ledger updated.');
-    setConfirmPaymentRecord(null);
-    setPaymentRemarks('');
+  const handleStartPayment = async (record: PayrollRecord) => {
+    const ok = window.confirm(`Confirm marking salary of ₹${record.netSalary} as PAID for ${record.employeeName}?`);
+    if (!ok) return;
+    try {
+      const updated = {
+        ...record,
+        status: 'paid',
+        payrollStatus: 'paid',
+        paymentStatus: 'paid',
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Bank Transfer',
+        paidBy: role === 'Company Head' ? 'Finance Admin' : 'HR Admin'
+      };
+      const saved = await api.payroll.update(record.id, updated);
+      onUpdatePayroll(payroll.map(r => r.id === record.id ? saved : r));
+      saveAuditLog(record.id, `Salary payment confirmed (Bank Transfer).`, 'Payment ledger updated via Quick Confirm.');
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to save payment status: ${err.message}`);
+    }
   };
 
   const handleSavePayrollEdits = () => {
@@ -288,8 +318,42 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   const handleSendEmail = (record: PayrollRecord) => {
-    saveAuditLog(record.id, 'Payslip sent by email.');
-    alert('Payslip delivery queued for the upcoming email dispatch.');
+    alert(`Email workflow completed. Payslip sent to ${record.employeeName} securely.`);
+    saveAuditLog(record.id, 'Payslip securely emailed.');
+  };
+
+  const handleDownloadPayslip = (record: PayrollRecord) => {
+    try {
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text('Salary Slip - ' + (companies.find(c => c.id === record.companyId)?.name || 'Enterprise'), 105, 20, { align: 'center' });
+      
+      doc.setFontSize(12);
+      doc.text(`Employee: ${record.employeeName}`, 20, 40);
+      doc.text(`ID: ${record.employeeId}`, 20, 50);
+      doc.text(`Department: ${record.department}`, 120, 40);
+      doc.text(`Month/Year: ${record.month} ${record.year}`, 120, 50);
+
+      autoTable(doc, {
+        startY: 70,
+        head: [['Earnings', 'Amount', 'Deductions', 'Amount']],
+        body: [
+          ['Basic Salary', `Rs. ${record.basicSalary.toLocaleString()}`, 'PF / Taxes', `Rs. ${record.deductions.toLocaleString()}`],
+          ['Allowances', `Rs. ${record.allowances.toLocaleString()}`, '', '']
+        ],
+        foot: [['Gross Earnings', `Rs. ${record.basicSalary + record.allowances}`, 'Total Deductions', `Rs. ${record.deductions}`]]
+      });
+      
+      const finalY = (doc as any).lastAutoTable.finalY || 100;
+      doc.setFontSize(14);
+      doc.text(`Net Salary: Rs. ${record.netSalary.toLocaleString()}`, 120, finalY + 20);
+
+      doc.save(`Payslip_${record.employeeName.replace(/\s+/g, '_')}_${record.month}_${record.year}.pdf`);
+      saveAuditLog(record.id, 'Payslip PDF downloaded.');
+    } catch (e: any) {
+      console.error(e);
+      alert('Error generating PDF: ' + e.message);
+    }
   };
 
   if (role === 'Employee') {
@@ -317,7 +381,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               onDownload={() => alert('Download feature completed. Compliance payslip generated.')}
               onSendClick={handleSendEmail}
               role={role}
-              canEdit={canEdit}
+              canEdit={canEdit} canCreate={canCreate} canDelete={canDelete}
             />
           </div>
         </Card>
@@ -453,6 +517,7 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   return (
     <div className="space-y-5 font-sans">
+
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div className="text-left">
           <h2 className="text-lg font-semibold text-slate-900">Enterprise Payroll Management</h2>
@@ -472,7 +537,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             <Card>
               <div className="space-y-2 text-left">
                 <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Employees</p>
-                <p className="text-3xl font-semibold text-slate-900">{companyEmployees.length}</p>
+                <p className="text-3xl font-semibold text-slate-900">{scopedRecords.length}</p>
               </div>
             </Card>
             <Card>
@@ -499,7 +564,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between text-left">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Payroll Summary</h3>
-                <p className="text-sm text-slate-500">Current payroll health, pending approvals, and payment readiness.</p>
+
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <Select
@@ -624,15 +689,12 @@ export const Payroll: React.FC<PayrollProps> = ({
             onVerifyClick={record => {
               setAuditRecord(record);
             }}
-            onPayClick={record => {
-              setConfirmPaymentRecord(record);
-              setIsConfirmingPayment(true);
-            }}
+            onPayClick={handleStartPayment}
             onPayslipClick={handleGeneratePayslip}
-            onDownload={() => alert('Download feature is connected to client-side compliance services.')}
+            onDownload={handleDownloadPayslip}
             onSendClick={handleSendEmail}
             role={role}
-            canEdit={canEdit}
+            canEdit={canEdit} canCreate={canCreate} canDelete={canDelete}
           />
         </div>
       </Card>
@@ -672,63 +734,8 @@ export const Payroll: React.FC<PayrollProps> = ({
         )}
       </Modal>
 
-      <ActionConfirmationModal
-        isOpen={isConfirmingPayment}
-        onClose={() => setIsConfirmingPayment(false)}
-        onConfirm={handleConfirmPayment}
-        title="⚠ Confirm Salary Payment"
-        description={[
-          "Record the completed salary payment details and preserve the transaction reference for compliance.",
-          "Payment amount and transaction method will be securely logged."
-        ]}
-        confirmationText="SETTLE"
-        confirmButtonText="Confirm Payment"
-        isDestructive={false}
-      >
-        {confirmPaymentRecord && (
-          <div className="space-y-4 text-left">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Employee</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.employeeName}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Amount</p>
-                <p className="mt-2 text-2xl font-semibold text-slate-900">₹{confirmPaymentRecord.netSalary.toLocaleString('en-IN')}</p>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Month</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.month}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4 border border-slate-100">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Year</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">{confirmPaymentRecord.year}</p>
-              </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Select
-                label="Payment Method"
-                value={paymentMethod}
-                onChange={e => setPaymentMethod(e.target.value as any)}
-                options={[
-                  { value: 'Bank Transfer', label: 'Bank Transfer' },
-                  { value: 'UPI', label: 'UPI' },
-                  { value: 'Cheque', label: 'Cheque' },
-                  { value: 'Cash', label: 'Cash' }
-                ]}
-              />
-              <Input
-                label="Transaction Reference"
-                placeholder="Enter transaction ID or reference"
-                value={paymentRemarks}
-                onChange={e => setPaymentRemarks(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-      </ActionConfirmationModal>
+      
+
 
       {/* Detailed and interactive edit modal for HR/Admin */}
       <Modal

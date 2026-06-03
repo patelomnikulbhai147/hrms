@@ -74,7 +74,7 @@ export const validateName = (name: string): ValidationResult => {
  */
 export const validateEmail = (email: string): ValidationResult => {
   if (!email || email.trim() === '') {
-    return { isValid: false, error: 'Email is required' };
+    return { isValid: true, error: '' };
   }
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {

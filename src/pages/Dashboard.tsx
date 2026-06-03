@@ -13,15 +13,15 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  isCompanyIdMatch,
-  getCompanyDepartments
-} from '../data/mockData';
+  isCompanyIdMatch
+} from '../types';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import {
   calculateSubscriptionAnalytics,
   getSubscriptionAlertsList,
   getDaysRemaining
 } from '../utils/subscriptionUtils';
+import { getCompanyInitials } from '../utils/workspaceUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -104,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onUpdateCompanies,
   onUpdatePayments
 }) => {
-  const todayStr = '2026-05-20'; // Anchor mock date
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Fallback defaults for safety (Shadowing original variables to prevent runtime crashes)
   const companies = rawCompanies || [];
@@ -135,15 +135,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
 
-  const isParentCompany = activeCompanyId === 'c-gcri';
-  const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all-gcri' : 'branch');
-  const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
+  const isParentCompany = !companies.find(c => c.id === activeCompanyId)?.parentCompanyId;
+  const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all' : 'branch');
+  const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? '' : activeCompanyId);
   const [selectedDept, setSelectedDept] = useState('all');
   const [selectedRole, setSelectedRole] = useState('all');
 
   useEffect(() => {
-    setSelectedAudience(isParentCompany ? 'all-gcri' : 'branch');
-    setSelectedBranch(isParentCompany ? 'c-ahmedabad' : activeCompanyId);
+    setSelectedAudience(isParentCompany ? 'all' : 'branch');
+    setSelectedBranch(isParentCompany ? '' : activeCompanyId);
   }, [activeCompanyId, isParentCompany]);
 
   useEffect(() => {
@@ -153,10 +153,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [companies, role, currentCompany, onNavigate]);
 
   // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
-  const rawScopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies));
+  const rawScopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
   const scopedEmployees = rawScopedEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
   const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
-  const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies));
+  const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies, undefined, p.employee?.branchId));
   const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies));
 
 
@@ -171,12 +171,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [companies, plans]);
 
   const globalActiveEmployeesCount = useMemo(() => {
-    return employees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated').length;
-  }, [employees]);
+    return companies.reduce((sum, c) => sum + (c.employeeCount || 0), 0);
+  }, [companies]);
 
-  const globalArchivedEmployeesCount = useMemo(() => {
-    return employees.filter(e => e.status === 'Archived' || e.status === 'Terminated').length;
-  }, [employees]);
+  const offboardedCompaniesCount = useMemo(() => {
+    const parentCompanies = companies.filter(c => !c.parentCompanyId);
+    let activeSubs = 0;
+    parentCompanies.forEach(company => {
+      const isActiveOrTrial = company.status !== 'Archived' && company.accountStatus === 'Active' &&
+        (company.paymentStatus === 'Paid' || company.paymentStatus === 'Trial Active');
+      if (isActiveOrTrial) {
+        activeSubs++;
+      }
+    });
+    return parentCompanies.length - activeSubs;
+  }, [companies]);
 
   const totalCompaniesCount = analytics.totalCompanies;
   const activeSubscriptionsCount = analytics.activeSubscriptions;
@@ -226,8 +235,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     if (!target) return;
     const updated = companies.map(c => {
       if (c.id !== companyId) return c;
-      const baseDate = c.renewalDate ? new Date(c.renewalDate + 'T00:00:00') : new Date('2026-05-20');
-      const todayVal = new Date('2026-05-20');
+      const baseDate = c.renewalDate ? new Date(c.renewalDate + 'T00:00:00') : new Date();
+      const todayVal = new Date();
       const base = baseDate.getTime() < todayVal.getTime() ? todayVal : baseDate;
       const next = new Date(base);
       if (c.billingCycle === 'Yearly') next.setFullYear(next.getFullYear() + 1);
@@ -244,8 +253,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       companyId: target.id,
       companyName: target.name,
       amount: price,
-      paymentDate: '2026-05-20 12:00',
-      invoiceNumber: `INV-2026-${Math.floor(100 + Math.random() * 900)}`,
+      paymentDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
       planType: target.plan,
       paymentMode: 'Manual' as const,
       transactionStatus: 'Success' as const
@@ -280,8 +289,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const filteredLatestCompanies = useMemo(() => {
     return companies
       .filter(c => {
-        const matchSearch = c.name.toLowerCase().includes(latestSearch.toLowerCase()) || c.adminName.toLowerCase().includes(latestSearch.toLowerCase());
-        const isExpired = c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || daysLeft(c.renewalDate) < 0;
+        const matchSearch = c.name?.toLowerCase().includes(latestSearch.toLowerCase()) || c.adminName?.toLowerCase().includes(latestSearch.toLowerCase());
+        const isExpired = c.accountStatus === 'Suspended' || c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || daysLeft(c.renewalDate) < 0 || c.status === 'Inactive' || c.status === 'Archived';
 
         if (latestFilter === 'All') return matchSearch;
         if (latestFilter === 'Active') return matchSearch && c.accountStatus === 'Active' && c.paymentStatus === 'Paid';
@@ -290,8 +299,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         if (latestFilter === 'Enterprise') return matchSearch && c.plan === 'Enterprise';
         return matchSearch;
       })
-      .sort((a, b) => new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime())
-      .slice(0, 5);
+      .sort((a, b) => new Date(b.joinDate).getTime() - new Date(a.joinDate).getTime());
   }, [companies, latestSearch, latestFilter]);
 
   // Revenue Overview Chart Data (Computed dynamic MRR from plans state)
@@ -299,7 +307,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const counts = { Starter: 0, Professional: 0, Enterprise: 0 };
     const sums = { Starter: 0, Professional: 0, Enterprise: 0 };
     companies.filter(c => !c.parentCompanyId).forEach(c => {
-      if (c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')) {
+      if (c.status !== 'Archived' && c.accountStatus === 'Active' && (c.paymentStatus === 'Paid' || c.paymentStatus === 'Trial Active')) {
         const planObj = plans.find(p => p.name === c.plan);
         const cost = planObj ? (c.billingCycle === 'Yearly' ? Math.round(planObj.priceYearly / 12) : planObj.priceMonthly) : (c.subscriptionPrice || 0);
         if (c.plan === 'Starter' || c.plan === 'Professional' || c.plan === 'Enterprise') {
@@ -351,8 +359,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
 
-  // Loading Guards
-  if (!companies.length || !employees.length) {
+  if (!companies.length) {
     return <Loading />;
   }
 
@@ -470,14 +477,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Offboarded Workforce</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Offboarded Companies</span>
               <div className="p-2 bg-slate-50 text-slate-600 rounded-lg">
                 <Archive size={16} />
               </div>
             </div>
             <div className="mt-3.5">
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
-                <AnimatedCounter value={globalArchivedEmployeesCount} />
+                <AnimatedCounter value={offboardedCompaniesCount} />
               </h3>
               <p className="text-[10px] text-slate-500 font-semibold mt-1">Offboarded / Archived</p>
             </div>
@@ -616,8 +623,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <tr key={company.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-white text-xs shadow-xs" style={{ backgroundColor: company.primaryColor || '#4f46e5' }}>
-                                {company.logo}
+                              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center font-bold text-white text-xs shadow-xs" style={!company.logoImage ? { backgroundColor: company.primaryColor || '#4f46e5' } : {}}>
+                                {company.logoImage ? (
+                                  <img src={company.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
+                                ) : (
+                                  getCompanyInitials(company.name)
+                                )}
                               </div>
                               <div>
                                 <p className="font-bold text-gray-900 text-xs">{company.name}</p>
@@ -727,7 +738,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1">
                             <span>{c.plan}</span>
                             <span>•</span>
-                            <span className="text-indigo-650 font-semibold">{employees.filter(e => e.companyId === c.id).length} Staff</span>
+                            <span className="text-indigo-650 font-semibold">{c.parentCompanyId ? employees.filter(e => isCompanyIdMatch(e.companyId, c.id, companies, e.branchLocation, e.branchId)).length : (c.employeeCount || 0)} Staff</span>
                             <span>•</span>
                             <span>Onboard: {c.joinDate}</span>
                           </div>
@@ -770,9 +781,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // ─── Company Head Dashboard (Corporate Operations Control) ───
   if (role === 'Company Head') {
     const totalEmployees = scopedEmployees.length;
-    const activeEmployeesCount = scopedEmployees.filter(e => e.status === 'Active').length;
+    const activeEmployeesCount = currentCompany?.employeeCount || 0;
 
-    const branches = companies.filter(b => b.parentCompanyId === 'c-gcri');
+    const branches = companies.filter(b => b.parentCompanyId === activeCompanyId);
 
     // Filter leaves for this company (supports parent + branches)
     const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies));
@@ -856,9 +867,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let targetBranchId = activeCompanyId;
       let targetBranchName = 'All';
 
-      if (selectedAudience === 'all-gcri') {
-        audienceDesc = 'All GCRI Staff';
-        targetBranchId = 'c-gcri';
+      if (selectedAudience === 'all') {
+        audienceDesc = 'All Staff';
+        targetBranchId = activeCompanyId;
         targetBranchName = 'All';
       } else if (selectedAudience === 'branch') {
         const brId = isParentCompany ? selectedBranch : activeCompanyId;
@@ -894,7 +905,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         priority: 'high'
       } as any as Notification;
 
-      onUpdateNotifications(prev => [newNotif, ...prev]);
+      api.notifications.create(newNotif).then((saved) => onUpdateNotifications(prev => [saved, ...prev])).catch(() => alert('Failed to broadcast to DB'));
       showToast(`Broadcast dispatch logged for: ${audienceDesc}!`, 'success');
       setBroadcastMsg('');
     };
@@ -958,7 +969,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </h3>
               <div className="space-y-4">
                 {branches.map(b => {
-                  const count = employees.filter(emp => emp.companyId === b.id).length;
+                  const count = employees.filter(emp => isCompanyIdMatch(emp.companyId, b.id, companies, emp.branchLocation, emp.branchId)).length;
                   const pct = totalEmployees > 0 ? (count / totalEmployees) * 100 : 0;
                   return (
                     <div key={b.id} className="group">
@@ -998,8 +1009,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </Thead>
                 <Tbody>
                   {branches.map(b => {
-                    const count = employees.filter(emp => emp.companyId === b.id).length;
-                    const branchPayroll = payroll.filter(p => p.companyId === b.id);
+                    const count = employees.filter(emp => isCompanyIdMatch(emp.companyId, b.id, companies, emp.branchLocation, emp.branchId)).length;
+                    const branchPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, b.id, companies, p.employee?.branchLocation, p.employee?.branchId));
                     const totalSalary = branchPayroll.reduce((sum, p) => sum + (p.netSalary || 0), 0);
                     const derivedStatus = deriveCompanyPayrollStatus(b.id, payroll);
 
@@ -1169,23 +1180,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   onChange={e => {
                     const val = e.target.value;
                     setSelectedAudience(val);
-                    if (val === 'all-gcri') {
+                    if (val === 'all') {
                       setSelectedBranch('all');
                     } else if (val === 'branch') {
                       if (!isParentCompany) {
                         setSelectedBranch(activeCompanyId);
                       } else {
-                        setSelectedBranch('c-ahmedabad');
+                        setSelectedBranch(branches[0]?.id || '');
                       }
                     }
                   }}
                   className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                 >
                   {isParentCompany && (
-                    <option value="all-gcri">GCRI (All Staff across all centers)</option>
+                    <option value="all">All Staff (Head Office & Centers)</option>
                   )}
                   {isParentCompany ? (
-                    <optgroup label="GCRI Subsidiaries & Branches">
+                    <optgroup label="Subsidiaries & Branches">
                       <option value="branch">Select Specific Branch Staff</option>
                     </optgroup>
                   ) : (
@@ -1229,7 +1240,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
                   >
                     <option value="all">All Departments</option>
-                    {getCompanyDepartments(activeCompanyId, companies).map(deptName => (
+                    {(companies.find(c => c.id === activeCompanyId)?.customDepartments || []).map(deptName => (
                       <option key={deptName} value={deptName}>{deptName}</option>
                     ))}
                   </select>

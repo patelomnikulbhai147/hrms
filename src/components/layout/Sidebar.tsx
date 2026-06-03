@@ -4,12 +4,14 @@ import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck
 } from 'lucide-react';
-import type { Role } from '../../data/mockData';
+import type { Role } from '../types';
 import type { UserAccount, AppModules } from '../../pages/Login';
+import type { Company } from '../types';
 import { usePermissions } from '../../context/PermissionContext';
+import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
-  | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
+  | 'select-workspace' | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
   | 'documents' | 'reports' | 'settings' | 'billing' | 'users';
 
 interface NavItem {
@@ -42,6 +44,7 @@ interface SidebarProps {
   theme?: 'dark' | 'light';
   toggleTheme?: () => void;
   authProfile?: UserAccount | null;
+  currentCompany?: Company;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -53,7 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onExitMasquerade,
   theme = 'dark',
   toggleTheme,
-  authProfile
+  authProfile,
+  currentCompany
 }) => {
   const { canView } = usePermissions();
 
@@ -72,17 +76,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="absolute top-0 left-0 w-full h-40 bg-radial-gradient from-blue-500/5 to-transparent pointer-events-none" />
 
       {/* Logo */}
-      <div className={cn('flex items-center gap-2.5 px-4 py-5 border-b border-slate-900/60 relative z-10', collapsed && 'justify-center px-0')}>
-        <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/10 active:scale-95 transition-all">
-          <Building2 size={16} className="text-white" />
-        </div>
-        {!collapsed && (
-          <div>
-            <p className="text-xs font-extrabold text-white leading-tight font-sans tracking-tight uppercase">SaaS HRMS</p>
-            <p className="text-[9px] text-slate-500 mt-0.5 uppercase tracking-wider font-extrabold">
-              {isMasquerading ? 'Masquerading' : role}
-            </p>
-          </div>
+      <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-slate-900/60 relative z-10', collapsed && 'justify-center px-0')}>
+        {role === 'Super Admin' && !isMasquerading ? (
+          <>
+            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-[#4F46E5] to-[#7C3AED] flex items-center justify-center shadow-[0_0_15px_rgba(79,70,229,0.4)] border border-white/20 backdrop-blur-md relative overflow-hidden">
+              <div className="absolute inset-0 bg-white/10 opacity-0 hover:opacity-100 transition-opacity" />
+              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.5)]" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 5v14M13 5v14M6 12h7M13 5c3.5 0 5 1.5 5 3.5S16.5 12 13 12M13 12l4.5 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="6" cy="5" r="1.5" fill="currentColor" />
+                <circle cx="6" cy="19" r="1.5" fill="currentColor" />
+                <circle cx="13" cy="5" r="1.5" fill="currentColor" />
+                <circle cx="13" cy="19" r="1.5" fill="currentColor" />
+                <circle cx="13" cy="12" r="1.5" fill="currentColor" />
+                <circle cx="17.5" cy="19" r="1.5" fill="currentColor" />
+              </svg>
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-bold text-white leading-tight font-sans tracking-wide">
+                  HRMate
+                </p>
+                <p className="text-[9px] text-indigo-300 mt-0.5 uppercase tracking-[0.15em] font-bold">
+                  SUPER ADMIN
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/10 active:scale-95 transition-all overflow-hidden" style={!currentCompany?.logoImage ? { backgroundColor: currentCompany?.primaryColor || '#4f46e5' } : {}}>
+              {currentCompany?.logoImage ? (
+                <img src={currentCompany.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
+              ) : (
+                <span className="text-white font-bold text-xs">{getCompanyInitials(currentCompany?.name)}</span>
+              )}
+            </div>
+            {!collapsed && (
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-extrabold text-white leading-tight font-sans tracking-tight uppercase truncate" title={currentCompany?.headerText || currentCompany?.name || 'SaaS HRMS'}>
+                  {currentCompany?.headerText || currentCompany?.name || 'SaaS HRMS'}
+                </p>
+                <p className="text-[9px] text-slate-500 mt-0.5 uppercase tracking-wider font-extrabold">
+                  {isMasquerading ? 'Masquerading' : role}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

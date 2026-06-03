@@ -1,4 +1,4 @@
-import { type PayrollRecord } from '../data/mockData';
+import { type PayrollRecord } from '../types';
 
 const payrollOrder = ['payslip_generated', 'paid', 'verified', 'prepared', 'draft', 'failed'] as const;
 export type PayrollWorkflowStatus = (typeof payrollOrder)[number];

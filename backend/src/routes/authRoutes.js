@@ -1,3 +1,4 @@
+const { requirePermission } = require('../middleware/rbacMiddleware');
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
@@ -7,6 +8,6 @@ const { protect } = require('../middleware/authMiddleware');
 router.post('/login', authController.login);
 
 // Protected routes
-router.get('/me', protect, authController.getMe);
+router.get('/me', protect, requirePermission('auth', 'view'), authController.getMe);
 
 module.exports = router;

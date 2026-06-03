@@ -12,8 +12,7 @@ import {
   type Role,
   type Company,
   isCompanyIdMatch
-} from '../data/mockData';
-import { SAFE_COMPANY_FALLBACK } from '../App';
+} from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card } from '../components/ui/Card';
@@ -22,7 +21,7 @@ import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
-
+import { api } from '../api/apiClient';
 interface DocumentsProps {
   role: Role;
   activeCompanyId: string;
@@ -70,7 +69,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Employment Offer Letter',
       body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are delighted to extend an offer of employment to join our professional team as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> inside the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Key package details:</p><ul><li>Effective Joining Date: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Base Salary Payout: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span> per annum</li></ul><p>We are confident your skills and background will contribute significantly to our operations. Welcome aboard!</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#3b82f6',
@@ -87,7 +86,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Welcome to the Team! Offer for {{designation}}',
       body: `<p>Hey <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We loved your energy, tech skills, and culture fit. We are thrilled to officially offer you the role of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> within our hyper-growth <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> squad at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>!</p><p>Details of your rocketship assignment:</p><ul><li>Launch Day: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Base Pay Package: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span> per annum</li></ul><p>Let's make history and build amazing experiences together!</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#10b981',
@@ -104,7 +103,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Offer of Internship Training Program',
       body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are pleased to offer you an Internship assignment as a Software Trainee in the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Internship terms:</p><ul><li>Start Date: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Monthly Training Stipend: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span></li></ul><p>We look forward to providing a highly rewarding learning environment to kickstart your career.</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#8b5cf6',
@@ -121,7 +120,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'To Whom It May Concern - Professional Experience Record',
       body: `<p>This certifies that <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span> was employed with <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span> as a <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> in the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division from <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span> onwards.</p><p>During their tenure of service, we found them to be diligent, hard-working, and highly cooperative in team projects. We recommend them highly for future opportunities.</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#3b82f6',
@@ -138,7 +137,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Confirmation of Joining & Reporting Instructions',
       body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We formally welcome you to the corporate offices of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>. We confirm that you have reported for duty in the role of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> within the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> team on <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span>.</p><p>Please coordinate with Onboarding IT to setup your secure cloud network profiles. We look forward to achieving great things together.</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#3b82f6',
@@ -155,7 +154,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Relieving Order and Acceptance of Resignation',
       body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>This is in reference to your resignation from the services of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>. We accept your resignation and confirm that you are officially relieved from your duties as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> effective immediately.</p><p>We thank you for your contributions during your tenure, which began on <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span>, and wish you success in your future career endeavors.</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#f59e0b',
@@ -172,7 +171,7 @@ const getInitialTemplates = (companyId: string, companyName: string): DocumentTe
       subject: 'Monthly Pay Statement',
       body: `<p>Monthly Statement for <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span> serving as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Gross compensation is structured on the active corporate payroll tables below. For inquiries, email <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_email" contenteditable="false">👤 Company Email</span>.</p>`,
       companyId,
-      createdAt: '2026-05-20',
+      createdAt: new Date().toISOString().split('T')[0],
       branding: {
         companyName: companyName,
         primaryColor: '#3b82f6',
@@ -197,10 +196,39 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // Scoped lists derived reactively (supports parent company branch rollups)
   const uniqueEmployees = getUniqueEmployees(employees);
-  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
   const uniqueDocuments = getUniqueRecords(documents, [d => d.id]); // Documents have unique IDs but might be duplicated in state
-  const list = uniqueDocuments.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId));
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
+  const list = uniqueDocuments.filter(d => {
+    // Fallback: If employee exists in companyEmployees, it's a guaranteed match
+    if (companyEmployees.some(e => e.id === d.employeeId || e.employeeId === d.employeeId)) return true;
+
+    const emp = uniqueEmployees.find(e => e.id === d.employeeId || e.employeeId === d.employeeId);
+    return isCompanyIdMatch(d.companyId, activeCompanyId, companies, emp?.branchLocation, emp?.branchId);
+  });
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || { name: 'Company Name' } as any;
+
+  // Failsafe fetch if list is 0 but we know this branch should have employees
+  useEffect(() => {
+    if (list.length === 0 && companyEmployees.length > 0 && activeCompanyId) {
+      console.log('Failsafe fetching documents for:', activeCompanyId);
+      const token = localStorage.getItem('hrms_token');
+      if (!token) return;
+      fetch(`/api/documents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-workspace-id': activeCompanyId,
+          'Content-Type': 'application/json'
+        }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data) && data.length > 0) {
+          onUpdateDocuments([...documents.filter(d => d.companyId !== activeCompanyId), ...data]);
+        }
+      })
+      .catch(err => console.error('Failsafe fetch failed:', err));
+    }
+  }, [list.length, companyEmployees.length, activeCompanyId]);
 
   // Compliance state
   const [search, setSearch] = useState('');
@@ -211,8 +239,10 @@ export const Documents: React.FC<DocumentsProps> = ({
     type: 'Aadhaar' as Document['type'],
   });
 
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('documents');
+  const canCreate = canCreateModule('documents');
+  const canDelete = canDeleteModule('documents');
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
@@ -224,14 +254,14 @@ export const Documents: React.FC<DocumentsProps> = ({
   const dossierItemsPerPage = 10;
 
   // Quick verify helper
-  const handleQuickVerify = (empId: string) => {
-    const updated = documents.map(d => {
+  const handleQuickVerify = async (empId: string) => {
+    const updatedPromises = documents.map(async d => {
       if (d.employeeId === empId && d.status === 'Pending') {
-        return { ...d, status: 'Verified' as const };
+        const u = { ...d, status: 'Verified' as const }; return await api.documents.update(d.id, u).catch(()=>u);
       }
       return d;
     });
-    onUpdateDocuments(updated);
+    const updated = await Promise.all(updatedPromises); onUpdateDocuments(updated);
     alert(`All pending documents for this employee have been audited as Verified.`);
   };
 
@@ -355,7 +385,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     } else {
       const initial = getInitialTemplates(activeCompanyId, currentCompany.name);
       setTemplates(initial);
-      localStorage.setItem(storageKey, JSON.stringify(initial));
+      
     }
   }, [activeCompanyId, currentCompany.name]);
 
@@ -363,7 +393,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   const saveTemplatesToStorage = (updated: DocumentTemplate[]) => {
     setTemplates(updated);
     const storageKey = `hrms_templates_${activeCompanyId}`;
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    
   };
 
   // Filtered templates of the active tab category
@@ -481,7 +511,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     return !q || d.name.toLowerCase().includes(q) || (d.employeeName?.toLowerCase().includes(q) ?? false);
   });
 
-  const handleUploadDocument = () => {
+  const handleUploadDocument = async () => {
     const emp = companyEmployees.find(e => e.id === selectedEmpId);
     const newDoc: Document = {
       id: `doc${Date.now()}`,
@@ -495,14 +525,14 @@ export const Documents: React.FC<DocumentsProps> = ({
       size: '1.2 MB',
       status: 'Pending',
     };
-    onUpdateDocuments([newDoc, ...documents]);
+    try { const saved = await api.documents.create(newDoc); onUpdateDocuments([saved, ...documents]); } catch(e) { alert('Failed to upload to DB'); }
     setUploadOpen(false);
     setUploadForm({ name: '', type: 'Aadhaar' });
     alert('Document registered in compliance vault.');
   };
 
-  const handleToggleStatus = (id: string, nextStatus: 'Verified' | 'Rejected') => {
-    onUpdateDocuments(documents.map(d => d.id === id ? { ...d, status: nextStatus } : d));
+  const handleToggleStatus = async (id: string, nextStatus: 'Verified' | 'Rejected') => {
+    try { const t = documents.find(d => d.id === id); if(!t) return; const saved = await api.documents.update(id, { ...t, status: nextStatus }); onUpdateDocuments(documents.map(d => d.id === id ? saved : d)); } catch(e) { alert('Failed to update in DB'); }
     alert(`Document audited as ${nextStatus}`);
   };
 

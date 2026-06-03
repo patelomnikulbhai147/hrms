@@ -6,12 +6,13 @@ import {
   FileText, Download, UserCheck,
   Building2, Plus, Trash2
 } from 'lucide-react';
-import { Company, SubscriptionPlan, PaymentRecord, Employee } from '../data/mockData';
+import { Company, SubscriptionPlan, PaymentRecord, Employee } from '../types';
 import { type UserAccount } from './Login';
 import { Button } from '../components/ui/Button';
 import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '../utils/subscriptionUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+import { api } from '../api/apiClient';
 
 interface BillingProps {
   companies: Company[];
@@ -511,7 +512,7 @@ export const Billing: React.FC<BillingProps> = ({
     const finalized = syncAndRecalculateBilling(updated, company.id);
     onUpdateCompanies(finalized);
 
-    onUpdatePayments(prevTx => [newRecord, ...prevTx]);
+    api.payments.create(newRecord).then(saved => onUpdatePayments(prevTx => [saved, ...prevTx])).catch(() => alert('Failed to create payment record in DB'));
     setSuccessMessage(`Subscription renewed successfully — Next renewal: ${formatDisplayDate(calculatedDate)}`);
     setRenewalConfirmCompany(null);
     setRenewalStep(1);
@@ -582,8 +583,10 @@ export const Billing: React.FC<BillingProps> = ({
       }
     }
 
-    onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? finalizedPlan : p));
-    setEditingPlan(null);
+    api.plans.update(finalizedPlan.id, finalizedPlan).then(() => {
+      api.plans.update(finalizedPlan.id, finalizedPlan).then(saved => onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? saved : p))).catch(() => alert('Failed to update plan in DB'));
+      setEditingPlan(null);
+    }).catch(console.error);
   };
 
   const handleChangePlanSubmit = (e: React.FormEvent) => {
@@ -985,7 +988,11 @@ export const Billing: React.FC<BillingProps> = ({
                                 <div>
                                   <span className="block text-[8px] text-emerald-400 font-extrabold uppercase tracking-wider">Active Slots</span>
                                   <span className="text-xs font-extrabold text-emerald-400">
-                                    {compBranches.filter(b => b.branchLicenseActive && b.branchPortalActive).length} / {compBranches.length} deployed
+                                    {compBranches.filter(b => {
+                                      const isSuspended = b.status === 'Inactive' || b.accountStatus === 'Suspended';
+                                      const licenseLabel = b.branchLicenseStatus || 'Active License';
+                                      return !isSuspended && licenseLabel !== 'Suspended';
+                                    }).length} / {compBranches.length} deployed
                                   </span>
                                 </div>
                               </div>

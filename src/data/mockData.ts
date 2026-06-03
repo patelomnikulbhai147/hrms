@@ -572,8 +572,9 @@ export const companies: Company[] = [
   }
 ];
 
-export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[]): boolean => {
+export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[], branchLocation?: string, branchId?: string): boolean => {
   if (recordCompanyId === activeId) return true;
+  if (branchId === activeId) return true; // Direct branch match
   
   let list = companiesList;
   if (!list && typeof window !== 'undefined') {
@@ -585,15 +586,16 @@ export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, comp
   if (!list) {
     const branches = ['c-ahmedabad', 'c-rajkot', 'c-bhavnagar', 'c-siddhpur'];
     if (activeId === 'c-gcri') {
-      return recordCompanyId === 'c-gcri' || branches.includes(recordCompanyId);
+      return recordCompanyId === 'c-gcri' || branches.includes(recordCompanyId) || (branchId ? branches.includes(branchId) : false);
     }
-    return recordCompanyId === activeId;
+    return recordCompanyId === activeId || branchId === activeId;
   }
 
   const activeComp = list.find(c => c.id === activeId);
   if (activeComp && (activeComp.id === 'c-gcri' || activeComp.isHeadOffice)) {
     const recordComp = list.find(c => c.id === recordCompanyId);
-    return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id || recordComp?.parentCompanyId === 'c-gcri';
+    const branchComp = branchId ? list.find(c => c.id === branchId) : null;
+    return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id || recordComp?.parentCompanyId === 'c-gcri' || branchComp?.parentCompanyId === activeComp.id || branchId === activeId;
   }
   return false;
 };

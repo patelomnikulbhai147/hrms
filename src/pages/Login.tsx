@@ -2,10 +2,14 @@ import React, { useState } from 'react';
 import { ShieldCheck, Lock, User, Sparkles, Building2 } from 'lucide-react';
 import { Company } from '../data/mockData';
 import { motion } from 'framer-motion';
+import { api } from '../api/apiClient';
+import { getAccessibleWorkspaceIds, getCompanyInitials } from '../utils/workspaceUtils';
 
 export interface ModulePermissions {
   view: boolean;
   edit: boolean;
+  create: boolean;
+  delete: boolean;
 }
 
 export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users';
@@ -39,74 +43,67 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
   const [pendingUser, setPendingUser] = useState<UserAccount | null>(null);
 
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // Search for a matching account
-    const matched = userAccounts.find(
-      acc => acc.username.toLowerCase() === username.trim().toLowerCase()
-    );
+    try {
+      const response = await api.auth.login({ username: username.trim(), password });
+      
+      if (!response || !response.token || !response.user) {
+        setError('Login failed. Invalid response from server.');
+        return;
+      }
 
-    if (!matched) {
-      setError('Login ID not registered in SaaS directory.');
-      return;
-    }
+      const matched: UserAccount = response.user;
+      
+      // Store JWT token globally so apiClient intercepts it
+      localStorage.setItem('hrms_jwt_token', response.token);
 
-    if (matched.passwordStr !== password) {
-      setError('Incorrect access password. Please try again.');
-      return;
-    }
+      if (matched.status === 'Disabled') {
+        setError('This corporate account has been deactivated. Please contact your administrator.');
+        return;
+      }
 
-    if (matched.status === 'Disabled') {
-      setError('This corporate account has been deactivated. Please contact your administrator.');
-      return;
-    }
-
-    // Tenant/Company active subscription block logic (skip for Super Admin platform owners)
-    if (matched.role !== 'Super Admin' && matched.companyId) {
-      const company = companies.find(c => c.id === matched.companyId);
-      if (company) {
-        if (company.accountStatus === 'Suspended') {
-          setError('Access Suspended: Your corporate workspace has been suspended. Please contact your billing administrator.');
-          return;
-        }
-        if (company.paymentStatus === 'Expired') {
-          setError('Access Expired: Your corporate subscription has expired. Please contact your billing administrator.');
-          return;
-        }
-        if (company.status === 'Inactive') {
-          setError('Access Blocked: Your corporate workspace is currently inactive. Please contact your administrator.');
-          return;
+      // Tenant/Company active subscription block logic (skip for Super Admin platform owners)
+      if (matched.role !== 'Super Admin' && matched.companyId) {
+        const company = companies.find(c => c.id === matched.companyId);
+        if (company) {
+          if (company.accountStatus === 'Suspended') {
+            setError('Access Suspended: Your corporate workspace has been suspended. Please contact your billing administrator.');
+            return;
+          }
+          if (company.paymentStatus === 'Expired') {
+            setError('Access Expired: Your corporate subscription has expired. Please contact your billing administrator.');
+            return;
+          }
+          if (company.status === 'Inactive') {
+            setError('Access Blocked: Your corporate workspace is currently inactive. Please contact your administrator.');
+            return;
+          }
         }
       }
-    }
 
-    // Success
-    // Check if user has multiple workspaces assigned (including inherited branches)
-    if (matched.accessibleCompanyIds) {
-      const idSet = new Set<string>();
-      matched.accessibleCompanyIds.forEach(id => {
-        idSet.add(id);
-        companies.filter(c => c.parentCompanyId === id).forEach(b => idSet.add(b.id));
-      });
-      matched.accessibleCompanyIds = Array.from(idSet);
-    }
+      // Include base companyId in calculation
+      matched.accessibleCompanyIds = getAccessibleWorkspaceIds(matched, companies);
 
-    if (matched.accessibleCompanyIds && matched.accessibleCompanyIds.length > 1) {
-      setPendingUser(matched);
-      return;
+      // Super Admin bypasses workspace selection
+      if (matched.role === 'Super Admin') {
+        onLogin(matched, matched.companyId);
+        return;
+      }
+
+      if (matched.accessibleCompanyIds.length > 1) {
+        setPendingUser(matched);
+        return;
+      }
+      
+      onLogin(matched, matched.companyId);
+    } catch (err: any) {
+      setError(err.message || 'Incorrect access password or user not found. Please try again.');
     }
-    
-    // Single workspace or Super Admin
-    onLogin(matched, matched.companyId);
   };
 
-  const handleQuickSelect = (acc: UserAccount) => {
-    setUsername(acc.username);
-    setPassword(acc.passwordStr);
-    setError('');
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans">
@@ -171,7 +168,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
                       {comp.logoImage ? (
                         <img src={comp.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
                       ) : (
-                        comp.logo || comp.name.substring(0, 2).toUpperCase()
+                        getCompanyInitials(comp.name)
                       )}
                     </div>
                     <div className="text-left flex-1 min-w-0">
@@ -206,33 +203,6 @@ export const Login: React.FC<LoginProps> = ({ userAccounts, companies, onLogin }
           </div>
         </div>
 
-        {/* Demo Quick-Select Panel */}
-        <div className="bg-slate-950/40 border border-slate-850/80 rounded-2xl p-4 space-y-3">
-          <div className="flex items-center gap-1.5 text-[10px] font-extrabold text-blue-400 uppercase tracking-wider">
-            <Sparkles size={11} className="animate-pulse" />
-            <span>SaaS Demo Helper Accounts</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 max-h-[170px] overflow-y-auto pr-1">
-            {userAccounts.map((acc) => (
-              <button
-                key={acc.id}
-                type="button"
-                onClick={() => handleQuickSelect(acc)}
-                className={`text-[11px] text-left px-3 py-2 rounded-xl bg-slate-900 border hover:border-blue-500/40 flex items-center justify-between transition-all active:scale-[0.98] ${
-                  acc.status === 'Disabled' 
-                    ? 'border-rose-955/40 text-slate-500 line-through font-medium' 
-                    : 'border-slate-800/60 text-slate-300 hover:text-white hover:bg-slate-800/30'
-                }`}
-                title={acc.status === 'Disabled' ? 'Account Deactivated' : undefined}
-              >
-                <span className="font-semibold">{acc.name} ({acc.role === 'Super Admin' ? 'Platform Owner' : acc.role})</span>
-                <span className="text-[10px] font-mono text-slate-500 font-bold">
-                  {acc.status === 'Disabled' ? 'DEACTIVATED' : `ID: ${acc.username}`}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Login Form */}
         <form onSubmit={handleLoginSubmit} className="space-y-4">

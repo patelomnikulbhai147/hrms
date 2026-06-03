@@ -17,8 +17,13 @@ exports.login = async (req, res) => {
       return res.status(400).json({ error: 'Please provide username and password' });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { username }
+    const user = await prisma.user.findFirst({
+      where: { 
+        OR: [
+          { username: username },
+          { email: username }
+        ]
+      }
     });
 
     if (!user) {

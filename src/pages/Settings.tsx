@@ -4,7 +4,8 @@ import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
 import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud } from 'lucide-react';
-import { type Company, type Role, getCompanyDepartments } from '../data/mockData';
+import { type Company, type Role } from '../types';
+import { getCompanyDepartments } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { usePermissions } from '../context/PermissionContext';
 import {
@@ -13,19 +14,22 @@ import {
   validateCompanyName,
   validatePercentage
 } from '../utils/validation';
+import { api } from '../api/apiClient';
 
 interface SettingsProps {
   role: Role;
   activeCompanyId: string;
   companies: Company[];
   onUpdateCompanies: (companies: Company[]) => void;
+  onRefresh?: () => void;
 }
 
 export const Settings: React.FC<SettingsProps> = ({
   role,
   activeCompanyId,
   companies,
-  onUpdateCompanies
+  onUpdateCompanies,
+  onRefresh
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding' | 'departments'>('profile');
   
@@ -46,8 +50,8 @@ export const Settings: React.FC<SettingsProps> = ({
   // Forms state synced with companies props
   const [profileForm, setProfileForm] = useState({
     name: currentCompany.name,
-    email: currentCompany.email || '',
-    address: currentCompany.address || '',
+    email: currentCompany.adminEmail || '',
+    address: currentCompany.billingAddress || '',
     industry: currentCompany.industry,
     companyIndustry: currentCompany.companyIndustry || currentCompany.industry || 'Generic',
     departmentTemplateType: currentCompany.departmentTemplateType || 'Generic',
@@ -59,11 +63,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [payrollForm, setPayrollForm] = useState({
-    pfRate: currentCompany.pfRate.toString(),
-    esicRate: currentCompany.esicRate.toString(),
-    basicPercent: currentCompany.basicPercent.toString(),
-    overtimeRate: currentCompany.overtimeRate.toString(),
-    profTaxRate: currentCompany.profTaxRate.toString(),
+    pfRate: (currentCompany.pfRate ?? 12).toString(),
+    esicRate: (currentCompany.esicRate ?? 3.25).toString(),
+    basicPercent: (currentCompany.basicPercent ?? 50).toString(),
+    overtimeRate: (currentCompany.overtimeRate ?? 1.5).toString(),
+    profTaxRate: (currentCompany.profTaxRate ?? 200).toString(),
   });
 
   const [brandingForm, setBrandingForm] = useState({
@@ -87,8 +91,8 @@ export const Settings: React.FC<SettingsProps> = ({
     const parts = (currentCompany.phone || '+91 ').split(' ');
     setProfileForm({
       name: currentCompany.name,
-      email: currentCompany.email || '',
-      address: currentCompany.address || '',
+      email: currentCompany.adminEmail || '',
+      address: currentCompany.billingAddress || '',
       industry: currentCompany.industry,
       companyIndustry: currentCompany.companyIndustry || currentCompany.industry || 'Generic',
       departmentTemplateType: currentCompany.departmentTemplateType || 'Generic',
@@ -99,11 +103,11 @@ export const Settings: React.FC<SettingsProps> = ({
     setErrors({});
 
     setPayrollForm({
-      pfRate: currentCompany.pfRate.toString(),
-      esicRate: currentCompany.esicRate.toString(),
-      basicPercent: currentCompany.basicPercent.toString(),
-      overtimeRate: currentCompany.overtimeRate.toString(),
-      profTaxRate: currentCompany.profTaxRate.toString(),
+      pfRate: (currentCompany.pfRate ?? 12).toString(),
+      esicRate: (currentCompany.esicRate ?? 3.25).toString(),
+      basicPercent: (currentCompany.basicPercent ?? 50).toString(),
+      overtimeRate: (currentCompany.overtimeRate ?? 1.5).toString(),
+      profTaxRate: (currentCompany.profTaxRate ?? 200).toString(),
     });
     setBrandingForm({
       logoText: currentCompany.logo,
@@ -184,7 +188,7 @@ export const Settings: React.FC<SettingsProps> = ({
     setCustomDepartments(newList);
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     if (role !== 'Super Admin' && role !== 'Company Head') {
       alert('Error: HR operators are not authorized to edit settings.');
       return;
@@ -202,44 +206,53 @@ export const Settings: React.FC<SettingsProps> = ({
       return;
     }
 
-    const updatedCompanies = companies.map(c => {
-      if (c.id === currentCompany.id) {
-        return {
-          ...c,
-          name: profileForm.name,
-          phone: `${phoneCode} ${phoneNum}`,
-          email: profileForm.email,
-          address: profileForm.address,
-          industry: profileForm.industry,
+    const payload = {
+      name: profileForm.name,
+      phone: `${phoneCode} ${phoneNum}`,
+      adminEmail: profileForm.email,
+      billingAddress: profileForm.address,
+      industry: profileForm.industry,
 
-          // Dynamic Industry & Templates
-          companyIndustry: profileForm.companyIndustry,
-          departmentTemplateType: profileForm.departmentTemplateType,
-          inheritParentDepartments: profileForm.inheritParentDepartments,
-          customDepartments: customDepartments,
+      companyIndustry: profileForm.companyIndustry,
+      departmentTemplateType: profileForm.departmentTemplateType,
+      inheritParentDepartments: profileForm.inheritParentDepartments,
+      customDepartments: customDepartments,
 
-          // Payroll settings
-          pfRate: parseFloat(payrollForm.pfRate) || 12,
-          esicRate: parseFloat(payrollForm.esicRate) || 3.25,
-          basicPercent: parseFloat(payrollForm.basicPercent) || 50,
-          overtimeRate: parseFloat(payrollForm.overtimeRate) || 1.5,
-          profTaxRate: parseFloat(payrollForm.profTaxRate) || 200,
+      pfRate: parseFloat(payrollForm.pfRate) || 12,
+      esicRate: parseFloat(payrollForm.esicRate) || 3.25,
+      basicPercent: parseFloat(payrollForm.basicPercent) || 50,
+      overtimeRate: parseFloat(payrollForm.overtimeRate) || 1.5,
+      profTaxRate: parseFloat(payrollForm.profTaxRate) || 200,
 
-          // Branding settings
-          logo: brandingForm.logoText,
-          logoImage: brandingForm.logoImage,
-          primaryColor: brandingForm.primaryColor,
-          headerText: brandingForm.headerText,
-          footerText: brandingForm.footerText,
-          signatureText: brandingForm.signatureText,
-          themeStyle: brandingForm.themeStyle as any,
-        };
+      logo: brandingForm.logoText,
+      logoImage: brandingForm.logoImage,
+      primaryColor: brandingForm.primaryColor,
+      headerText: brandingForm.headerText,
+      footerText: brandingForm.footerText,
+      signatureText: brandingForm.signatureText,
+      themeStyle: brandingForm.themeStyle as any,
+    };
+
+    try {
+      await api.companies.update(currentCompany.id, payload);
+      
+      if (onRefresh) {
+        onRefresh();
+      } else {
+        const updatedCompanies = companies.map(c => {
+          if (c.id === currentCompany.id) {
+            return { ...c, ...payload };
+          }
+          return c;
+        });
+        onUpdateCompanies(updatedCompanies);
       }
-      return c;
-    });
-
-    onUpdateCompanies(updatedCompanies);
-    alert('Company statutory profiles, templates, and branding configurations updated successfully! Changes immediately active.');
+      
+      alert('Company statutory profiles, templates, and branding configurations updated successfully! Changes immediately active.');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to save settings to database.');
+    }
   };
 
   const handleColorPreset = (hex: string) => {
@@ -258,7 +271,7 @@ export const Settings: React.FC<SettingsProps> = ({
     !payrollForm.pfRate ||
     !payrollForm.esicRate ||
     !payrollForm.basicPercent ||
-    Object.values(errors).some(err => !!err);
+    Object.values(errors).some(err => !!err && err !== '');
 
   return (
     <div className="space-y-4 font-sans">

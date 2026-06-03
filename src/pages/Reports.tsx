@@ -8,12 +8,12 @@ import {
   type Role,
   type Company,
   isCompanyIdMatch
-} from '../data/mockData';
-import { SAFE_COMPANY_FALLBACK } from '../App';
+} from '../types';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
 import { Badge, statusBadge } from '../components/ui/Badge';
+import { downloadAttendancePDF, downloadAttendanceExcel } from '../utils/exportUtils';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 import { ExportManagerModal } from '../components/ui/ExportManagerModal';
@@ -45,7 +45,7 @@ export const Reports: React.FC<ReportsProps> = ({
 
   // Scoped datasets derived from reactive props (supports parent company branch rollups)
   const uniqueEmployees = getUniqueEmployees(employees);
-  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, undefined, e.branchLocation));
   const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
   const companyAttendance = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
   const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
@@ -54,7 +54,7 @@ export const Reports: React.FC<ReportsProps> = ({
   const companyLeaves = uniqueLeaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
 
   // Load active company branding
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
+  const currentCompany = companies.find(c => c.id === activeCompanyId) || ({} as any);
 
   const depts = [...new Set(companyEmployees.map(e => e.department))];
   
@@ -150,8 +150,8 @@ export const Reports: React.FC<ReportsProps> = ({
               />
             </div>
           )}
-          <Button variant="outline" icon={<Download size={13} />}>Download PDF</Button>
-          <Button variant="outline" icon={<Download size={13} />}>Download Excel</Button>
+          <Button onClick={() => downloadAttendancePDF(companyAttendance, monthFilter, '2026', currentCompany.name)} variant="outline" icon={<Download size={13} />}>Download PDF</Button>
+          <Button onClick={() => downloadAttendanceExcel(companyAttendance, monthFilter, '2026')} variant="outline" icon={<Download size={13} />}>Download Excel</Button>
         </div>
       </Card>
 

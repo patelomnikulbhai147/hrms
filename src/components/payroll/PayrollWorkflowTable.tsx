@@ -2,7 +2,7 @@ import React from 'react';
 import { Eye, Check, CreditCard, FileText, Download, Send } from 'lucide-react';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../ui/Table';
 import { Badge } from '../ui/Badge';
-import { type PayrollRecord, type Role } from '../../data/mockData';
+import { type PayrollRecord, type Role } from '../types';
 import { payrollStatusConfig, getStatusBadgeVariant } from '../../utils/PayrollWorkflowEngine';
 
 interface PayrollWorkflowTableProps {

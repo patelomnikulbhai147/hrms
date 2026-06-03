@@ -1,3 +1,4 @@
+import { api } from '../api/apiClient';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Eye, Edit2, Trash2,
@@ -8,7 +9,7 @@ import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role, type Company,
   isCompanyIdMatch, getCompanyIdFromBranchName
-} from '../data/mockData';
+} from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card, StatCard } from '../components/ui/Card';
@@ -21,9 +22,9 @@ import {
   validateSalary, validateEmployeeId
 } from '../utils/validation';
 import { type UserAccount } from './Login';
-import { allExcelParsedEmployees } from '../data/excelSeededData';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+
 import { exportToExcel } from '../utils/exportUtils';
 
 interface EmployeesProps {
@@ -45,7 +46,6 @@ const capitalize = (str: string) => {
 const statusOptions: EmployeeStatus[] = ['Active', 'Inactive', 'On Leave', 'Terminated'];
 const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
 const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
-const branchOptions = ['AHMEDABAD', 'BHAVNAGAR', 'RAJKOT', 'SIDDHPUR'];
 
 export const Employees: React.FC<EmployeesProps> = ({
   role,
@@ -62,9 +62,16 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
+  const currentComp = companies.find(c => c.id === activeCompanyId);
+  const isBranchWorkspace = !!currentComp?.parentCompanyId && !currentComp?.isHeadOffice;
+  const parentCompanyId = isBranchWorkspace ? currentComp.parentCompanyId : activeCompanyId;
+  const dynamicBranches = useMemo(() => companies.filter(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'), [companies, parentCompanyId]);
+  const branchOptions = useMemo(() => dynamicBranches.map(b => b.branchName || b.name), [dynamicBranches]);
 
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('employees');
+  const canCreate = canCreateModule('employees');
+  const canDelete = canDeleteModule('employees');
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
@@ -109,14 +116,20 @@ export const Employees: React.FC<EmployeesProps> = ({
   }, [leaves, viewEmp, activeCompanyId]);
 
   // Handlers for premium document upload and base64 parsing
-  const handleUploadDocType = (docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload', fileUrl: string) => {
+  const handleUploadDocType = async (docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload', fileUrl: string) => {
     if (!viewEmp) return;
     const updatedEmp = {
       ...viewEmp,
       [docType]: fileUrl
     };
-    onUpdateEmployees(employees.map(e => e.id === viewEmp.id ? updatedEmp : e));
-    setViewEmp(updatedEmp);
+    try {
+      const savedEmp = await api.employees.update(updatedEmp.id, updatedEmp);
+      onUpdateEmployees(employees.map(e => e.id === savedEmp.id ? savedEmp : e));
+      setViewEmp(savedEmp);
+    } catch (err) {
+      console.error('Failed to upload document:', err);
+      alert('Failed to upload document. Please try again.');
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload') => {
@@ -152,7 +165,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     salary: '32000',
     joinDate: '2026-05-20',
     manager: 'Dr. Suresh Babu',
-    employeeId: '',
+    employeeId: '[ Auto Generated ]',
 
     // Expanded master fields
     firstName: '',
@@ -189,18 +202,19 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Auto-generate employee code on add open
   const handleStartAdd = () => {
-    const nextCodeNum = companyEmployees.length + 1;
+    const initialBranch = isBranchWorkspace ? (currentComp?.branchName || currentComp?.name || '') : (branchOptions[0] || '');
+
     setForm({
       name: '', email: '', countryCode: '+91', mobileNumber: '',
       department: 'Nursing', designation: 'Staff Nurse', role: 'Staff',
       status: 'Active', location: 'Ahmedabad, Gujarat', salary: '32000',
       joinDate: '2026-05-20', manager: 'Dr. Suresh Babu',
-      employeeId: `VE${String(1000 + nextCodeNum)}`,
+      employeeId: '[ Auto Generated ]',
       firstName: '', middleName: '', lastName: '', aadhaarName: '',
       gender: 'Female', dob: '1998-08-10', maritalStatus: 'UNMARRIED',
       nationality: 'INDIAN', fatherSpouseName: '', relationType: 'FATHER',
       emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
-      exitDate: '', exitReason: '', serviceBookNo: '', branchLocation: 'AHMEDABAD',
+      exitDate: '', exitReason: '', serviceBookNo: '', branchLocation: initialBranch,
       aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
       bankName: '', accountNumber: '', ifsc: '', presentAddress: '', permanentAddress: '',
     });
@@ -225,13 +239,16 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // central company scope filtering
   const companyEmployees = useMemo(() => {
-    return getUniqueEmployees(employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies)));
+    const filtered = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
+    const unique = getUniqueEmployees(filtered);
+    console.log('DEBUG EMPLOYEES: activeCompanyId:', activeCompanyId, 'filtered length:', filtered.length, 'unique length:', unique.length);
+    return unique;
   }, [employees, activeCompanyId, companies]);
 
   const filterDepartments = useMemo(() => {
     const set = new Set<string>();
     const branchEmps = employees.filter(e => {
-      const matchComp = isCompanyIdMatch(e.companyId, activeCompanyId, companies);
+      const matchComp = isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId);
       const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
       return matchComp && matchBranch;
     });
@@ -246,7 +263,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const set = new Set<string>();
     const branchName = form.branchLocation;
     const branchEmps = employees.filter(e => 
-      isCompanyIdMatch(e.companyId, activeCompanyId, companies) &&
+      isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId) &&
       (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
     );
     branchEmps.forEach(e => {
@@ -264,7 +281,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     const set = new Set<string>();
     const branchName = editEmp?.branchLocation;
     const branchEmps = employees.filter(e => 
-      isCompanyIdMatch(e.companyId, activeCompanyId, companies) &&
+      isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId) &&
       (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
     );
     branchEmps.forEach(e => {
@@ -311,9 +328,9 @@ export const Employees: React.FC<EmployeesProps> = ({
       if (activeMainTab === 'active' && isArchived) return false;
       if (activeMainTab === 'previous' && !isArchived) return false;
 
-      const matchesSearch = emp.name.toLowerCase().includes(search.toLowerCase()) ||
-                            emp.employeeId.toLowerCase().includes(search.toLowerCase()) ||
-                            emp.designation.toLowerCase().includes(search.toLowerCase());
+      const matchesSearch = (emp.name || '').toLowerCase().includes(search.toLowerCase()) ||
+                            (emp.employeeId || '').toLowerCase().includes(search.toLowerCase()) ||
+                            (emp.designation || '').toLowerCase().includes(search.toLowerCase());
       const matchesDept = !deptFilter || emp.department === deptFilter || emp.designation === deptFilter;
       const matchesStatus = !statusFilter || emp.status === statusFilter;
       const matchesBranch = !branchFilter || (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
@@ -332,24 +349,31 @@ export const Employees: React.FC<EmployeesProps> = ({
   }, [companyEmployees]);
 
   // Add Validation & Execution
-  const handleAddSubmit = () => {
+  const handleAddSubmit = async () => {
+    const effectiveAadhaarName = form.aadhaarName || form.name;
+    const effectiveEmail = form.email || '';
+
     const nameErr = validateName(form.name).error;
-    const emailErr = validateEmail(form.email).error;
+    const emailErr = effectiveEmail ? validateEmail(effectiveEmail).error : '';
     const phoneErr = validatePhone(form.mobileNumber).error;
-    const empIdErr = validateEmployeeId(form.employeeId, employees).error;
     const salaryErr = validateSalary(form.salary).error;
 
     const activeErrors: Record<string, string> = {
       name: nameErr || '',
       email: emailErr || '',
       phone: phoneErr || '',
-      employeeId: empIdErr || '',
       salary: salaryErr || ''
     };
 
-    if (!form.aadhaarName || form.aadhaarName.trim().length < 3) {
+    if (!effectiveAadhaarName || effectiveAadhaarName.trim().length < 3) {
       activeErrors.aadhaarName = 'Name as per Aadhaar is required';
     }
+    if (!form.dob) activeErrors.dob = 'Date of Birth is required';
+    if (!form.gender) activeErrors.gender = 'Gender is required';
+    if (!form.maritalStatus) activeErrors.maritalStatus = 'Marital Status is required';
+    if (!form.nationality) activeErrors.nationality = 'Nationality is required';
+    if (!form.fatherSpouseName) activeErrors.fatherSpouseName = 'Father/Spouse Name is required';
+
     if (!form.designation || form.designation.trim().length === 0) {
       activeErrors.designation = 'Designation is required';
     }
@@ -378,28 +402,68 @@ export const Employees: React.FC<EmployeesProps> = ({
       activeErrors.ifsc = 'Valid 11-character IFSC is required';
     }
 
-    if (form.pfNumber || form.uan) {
-      if (!form.pfNumber) {
-        activeErrors.pfNumber = 'PF Number is required if UAN is provided';
-      }
-      if (!form.uan || !/^\d{12}$/.test(form.uan.trim())) {
-        activeErrors.uan = 'Valid 12-digit UAN is required if PF number is provided';
-      }
+    if (form.pfNumber && form.pfNumber.trim().length < 5) {
+      activeErrors.pfNumber = 'Valid PF Number is required if entered';
+    }
+    if (form.uan && !/^\d{12}$/.test(form.uan.trim())) {
+      activeErrors.uan = 'Valid 12-digit UAN is required if entered';
+    }
+    if (form.esic && form.esic.trim().length < 10) {
+      activeErrors.esic = 'Valid ESIC IP Number is required if entered';
+    }
+
+    if (!form.presentAddress || form.presentAddress.trim().length < 5) {
+      activeErrors.presentAddress = 'Present Address is required (min 5 characters)';
+    }
+    if (!form.permanentAddress || form.permanentAddress.trim().length < 5) {
+      activeErrors.permanentAddress = 'Permanent Address is required (min 5 characters)';
     }
 
     const hasErrors = Object.values(activeErrors).some(val => val !== '');
     if (hasErrors) {
       setErrors(activeErrors);
-      alert('Error: Please resolve all required fields and format validation errors before submitting.');
+      const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
+      
+      // Map error key to tab
+      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
+      else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
+      else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
+      else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
+
+      setTimeout(() => {
+        const element = document.getElementById(`field-${firstErrorKey}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.focus();
+        } else {
+          const modalContainer = document.querySelector('.modal-content') || document.querySelector('[role="dialog"]');
+          if (modalContainer) modalContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 50);
       return;
     }
 
+    let resolvedCompanyId = parentCompanyId;
+    let resolvedBranchId = null;
+
+    if (isBranchWorkspace) {
+      resolvedBranchId = activeCompanyId;
+    } else {
+      if (form.branchLocation) {
+        const matchingBranch = dynamicBranches.find(b => (b.branchName || b.name) === form.branchLocation);
+        if (matchingBranch) {
+          resolvedBranchId = matchingBranch.id;
+        }
+      }
+    }
+
     const newEmp: Employee = {
-      id: `emp-gcri-${form.employeeId}`,
-      employeeId: form.employeeId.trim(),
-      companyId: getCompanyIdFromBranchName(form.branchLocation || '', activeCompanyId, companies),
+      id: `emp-${Date.now()}`,
+      employeeId: '[ Auto Generated ]',
+      companyId: resolvedCompanyId,
+      branchId: resolvedBranchId,
       name: form.name,
-      email: form.email,
+      email: effectiveEmail,
       phone: `${form.countryCode} ${form.mobileNumber}`,
       department: form.department,
       designation: form.designation,
@@ -415,7 +479,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       firstName: form.firstName,
       middleName: form.middleName,
       lastName: form.lastName,
-      aadhaarName: form.aadhaarName,
+      aadhaarName: effectiveAadhaarName,
       gender: form.gender,
       dob: form.dob,
       maritalStatus: form.maritalStatus,
@@ -441,23 +505,160 @@ export const Employees: React.FC<EmployeesProps> = ({
       permanentAddress: form.permanentAddress,
     };
 
-    onUpdateEmployees([newEmp, ...employees]);
-    setAddOpen(false);
-    alert(`Absence/Employee profile for ${form.name} logged successfully.`);
+    try {
+      const savedEmp = await api.employees.create(newEmp);
+      onUpdateEmployees([savedEmp, ...employees]);
+      setAddOpen(false);
+      alert(`Absence/Employee profile for ${form.name} logged successfully.`);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to save to database: ${err.message}`);
+    }
   };
 
+  const today = new Date().toISOString().split('T')[0];
+  const handleConfirmInitialOffboarding = () => { setIsWizardOpen(true); };
+  const handleDelete = () => {
+    if (!deleteEmp) return;
+    api.employees.archive(deleteEmp.id).then(() => {
+      onUpdateEmployees(employees.map(e => e.id === deleteEmp.id ? { ...e, status: 'Archived', exitDate: today, exitReason: 'Admin Archived' } : e));
+      setDeleteEmp(null);
+      setIsConfirmingDelete(false);
+      alert('Employee archived successfully.');
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to archive employee');
+    });
+  };
+  const handleWizardStepComplete = (step: number) => setWizardStep(step + 1);
+  const handleFinalArchive = async () => {
+    setIsOffboardingExecuting(true);
+    handleOffboardSubmit();
+  };
+  const setIsConfirmingOffboard = (val: boolean) => {};
+  
   // Edit Submission
-  const handleEditSubmit = () => {
+  const handleEditSubmit = async () => {
     if (!editEmp) return;
 
     const nameErr = validateName(editEmp.name).error;
-    const emailErr = validateEmail(editEmp.email).error;
+    const emailErr = editEmp.email ? validateEmail(editEmp.email).error : '';
     const phoneErr = validatePhone(editMobileNumber).error;
 
-    if (nameErr || emailErr || phoneErr) {
-      alert('Error: Please correct name, email or phone errors.');
+    const activeErrors: Record<string, string> = {
+      name: nameErr || '',
+      email: emailErr || '',
+      phone: phoneErr || '',
+    };
+
+    if (!editEmp.aadhaarName || editEmp.aadhaarName.trim().length < 3) {
+      activeErrors.aadhaarName = 'Name as per Aadhaar is required';
+    }
+    if (!editEmp.dob) activeErrors.dob = 'Date of Birth is required';
+    if (!editEmp.gender) activeErrors.gender = 'Gender is required';
+    if (!editEmp.maritalStatus) activeErrors.maritalStatus = 'Marital Status is required';
+    if (!editEmp.nationality) activeErrors.nationality = 'Nationality is required';
+    if (!editEmp.fatherSpouseName) activeErrors.fatherSpouseName = 'Father/Spouse Name is required';
+
+    if (!editEmp.pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(editEmp.pan.trim().toUpperCase())) {
+      activeErrors.pan = 'Valid 10-character PAN is required (e.g. ABCDE1234F)';
+    }
+    if (!editEmp.aadhaar || !/^\d{12}$/.test(editEmp.aadhaar.trim())) {
+      activeErrors.aadhaar = 'Valid 12-digit Aadhaar number is required';
+    }
+    if (!editEmp.bankName || editEmp.bankName.trim().length < 3) {
+      activeErrors.bankName = 'Bank Name is required';
+    }
+    if (!editEmp.accountNumber || editEmp.accountNumber.trim().length < 9) {
+      activeErrors.accountNumber = 'Valid Bank Account Number is required';
+    }
+    if (!editEmp.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(editEmp.ifsc.trim().toUpperCase())) {
+      activeErrors.ifsc = 'Valid 11-character IFSC is required';
+    }
+    if (editEmp.pfNumber && editEmp.pfNumber.trim().length < 5) {
+      activeErrors.pfNumber = 'Valid PF Number is required if entered';
+    }
+    if (editEmp.uan && !/^\d{12}$/.test(editEmp.uan.trim())) {
+      activeErrors.uan = 'Valid 12-digit UAN is required if entered';
+    }
+    if (editEmp.esic && editEmp.esic.trim().length < 10) {
+      activeErrors.esic = 'Valid ESIC IP Number is required if entered';
+    }
+
+    if (!editEmp.presentAddress || editEmp.presentAddress.trim().length < 5) {
+      activeErrors.presentAddress = 'Present Address is required (min 5 characters)';
+    }
+    if (!editEmp.permanentAddress || editEmp.permanentAddress.trim().length < 5) {
+      activeErrors.permanentAddress = 'Permanent Address is required (min 5 characters)';
+    }
+
+    const hasErrors = Object.values(activeErrors).some(val => val !== '');
+    if (hasErrors) {
+      setErrors(activeErrors);
+      const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
+      
+      // Map error key to tab
+      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
+      else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
+      else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
+      else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
+
+      setTimeout(() => {
+        const element = document.getElementById(`field-${firstErrorKey}`);
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          element.focus();
+        } else {
+          const modalContainer = document.querySelector('.modal-content') || document.querySelector('[role="dialog"]');
+          if (modalContainer) modalContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 50);
       return;
     }
+
+    let resolvedCompanyId = parentCompanyId;
+    let resolvedBranchId = null;
+
+    if (isBranchWorkspace) {
+      resolvedBranchId = activeCompanyId;
+    } else {
+      if (editEmp.branchLocation) {
+        const matchingBranch = dynamicBranches.find(b => (b.branchName || b.name) === editEmp.branchLocation);
+        if (matchingBranch) {
+          resolvedBranchId = matchingBranch.id;
+        }
+      }
+    }
+    
+    const updatedEmp = {
+      ...editEmp,
+      companyId: resolvedCompanyId,
+      branchId: resolvedBranchId
+    };
+
+    try {
+      api.employees.update(updatedEmp.id, updatedEmp).then(savedEmp => {
+        onUpdateEmployees(employees.map(e => e.id === updatedEmp.id ? savedEmp : e));
+        setEditEmp(null);
+        alert('Employee successfully updated.');
+      }).catch(err => {
+        console.error(err);
+        alert(`Failed to save to PostgreSQL: ${err.message}`);
+      });
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const handleOffboardSubmit = () => {
+    if (!offboardEmp) return;
+
+    const historyItem = {
+      role: offboardEmp.designation,
+      department: offboardEmp.department,
+      startDate: offboardEmp.joinDate,
+      endDate: today
+    };
 
     const updated: Employee = {
       ...offboardEmp,
@@ -612,7 +813,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             const parsedEmp = {
               id: `emp-gcri-${empCode}`,
               employeeId: empCode,
-              companyId: getCompanyIdFromBranchName(sheetName, activeCompanyId, companies),
+              companyId: parentCompanyId,
+              branchId: companies.find(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived' && (c.branchName || c.name).toLowerCase() === sheetName.toLowerCase())?.id || null,
               name: fullName,
               email: email,
               phone: cleanExcelValue(row[17]),
@@ -669,38 +871,23 @@ export const Employees: React.FC<EmployeesProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  const handleBulkCommit = () => {
+  const handleBulkCommit = async () => {
     setIsConfirmingBulk(false);
     if (importedRows.length === 0) return;
-    onUpdateEmployees([...importedRows, ...employees]);
-    setImportedRows([]);
-    setImportLogs([]);
-    setImportOpen(false);
-    alert(`Bulk synchronized ${importedRows.length} employees from Excel to local HRMS successfully.`);
-  };
-
-  const loadSeededMockExcel = () => {
-    // Quick load all parsed Excel records from static storage for seamless testing
-    const mapped = allExcelParsedEmployees.map(emp => ({
-      ...emp,
-      companyId: activeCompanyId,
-      role: 'Employee' as Role,
-      status: (emp.status || 'Active') as any
-    }));
-
-    // Deduplicate to avoid accidental repeated seed additions
-    const newEmployees = mapped.filter(m => 
-      !employees.some(e => e.employeeId === m.employeeId)
-    );
-
-    if (newEmployees.length === 0) {
-      alert('All enterprise seed records are already populated in this branch!');
-    } else {
-      onUpdateEmployees([...newEmployees, ...employees]);
-      alert(`Instantly populated database with ${newEmployees.length} real employee profiles from the Excel master!`);
+    
+    try {
+      const response = await api.employees.bulkCreate(importedRows);
+      onUpdateEmployees([...response.employees, ...employees]);
+      setImportedRows([]);
+      setImportLogs([]);
+      setImportOpen(false);
+      alert(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
+    } catch (error) {
+      console.error('Bulk commit failed:', error);
+      alert('Failed to save bulk imported employees to the database.');
     }
-    setImportOpen(false);
   };
+
 
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
 
@@ -731,7 +918,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             </button>
           </div>
 
-          {isHR && canEdit && activeMainTab === 'active' && (
+          {isHR && canCreate && activeMainTab === 'active' && (
             <>
               <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
                 Bulk Importer
@@ -1031,7 +1218,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 </div>
                 <div className="col-span-2">
                   <p className="text-[10px] text-gray-400">ESIC IP Number</p>
-                  <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || '—'}</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || (viewEmp as any).esiNumber || '—'}</p>
                 </div>
               </div>
             )}
@@ -1289,16 +1476,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             </p>
           </div>
 
-          {/* Quick Mock Trigger */}
-          <div className="flex items-center justify-between p-2.5 bg-slate-900/20 border border-slate-700/50 rounded-lg">
-            <div>
-              <p className="font-bold text-slate-200">Quick-Load Excel Seeding (834 Rows)</p>
-              <p className="text-[10px] text-slate-400">Populates the HRMS dynamically with the full parsed real master roster.</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={loadSeededMockExcel}>
-              Load Seeded Dataset
-            </Button>
-          </div>
+
 
           {/* Drag & Drop File Container */}
           <div
@@ -1395,27 +1573,30 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'personal' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Employee Code *" value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })} error={errors.employeeId} />
-                <Input label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.name} />
+                <Input label="Employee Code *" value="[ Auto Generated ]" disabled />
+                <Input id="field-aadhaarName" label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.aadhaarName || errors.name} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input label="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
-                <Input label="Middle Name" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} />
-                <Input label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
+                <Input id="field-firstName" label="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
+                <Input id="field-middleName" label="Middle Name" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} />
+                <Input id="field-lastName" label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Select label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} />
-                <Input label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} />
-                <Select label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} />
+                <Select id="field-gender" label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
+                <Input id="field-dob" label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} error={errors.dob} />
+                <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Nationality" value={form.nationality} onChange={e => setForm({ ...form, nationality: e.target.value })} />
-                <Input label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
+                <Input id="field-nationality" label="Nationality" value={form.nationality} onChange={e => setForm({ ...form, nationality: e.target.value })} error={errors.nationality} />
+                <Input id="field-phone" label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
+              </div>
+              <div className="grid grid-cols-1 gap-3">
+                <Input id="field-email" label="Email Address (Optional)" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} error={errors.email} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input label="Father/Spouse Name" value={form.fatherSpouseName} onChange={e => setForm({ ...form, fatherSpouseName: e.target.value })} />
-                <Select label="Relation" value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
-                <Input label="Emergency Phone" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
+                <Input id="field-fatherSpouseName" label="Father/Spouse Name" value={form.fatherSpouseName} onChange={e => setForm({ ...form, fatherSpouseName: e.target.value })} error={errors.fatherSpouseName} />
+                <Select id="field-relationType" label="Relation" value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
+                <Input id="field-emergencyContact" label="Emergency Phone" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
               </div>
             </div>
           )}
@@ -1423,21 +1604,21 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'job' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Select label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
-                <Select label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} />
+                <Select id="field-branchLocation" label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={[{ value: '', label: 'Head Office / None' }, ...branchOptions.map(b => ({ value: b, label: b }))]} disabled={isBranchWorkspace} error={errors.branchLocation} />
+                <Select id="field-department" label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} error={errors.department} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Select label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} />
-                <Select label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
+                <Select id="field-designation" label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} error={errors.designation} />
+                <Select id="field-category" label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} error={errors.category} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Select label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} />
-                <Input label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} />
-                <Input label="Service Book No" value={form.serviceBookNo} onChange={e => setForm({ ...form, serviceBookNo: e.target.value })} />
+                <Select id="field-employmentType" label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
+                <Input id="field-joinDate" label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={errors.joinDate} />
+                <Input id="field-serviceBookNo" label="Service Book No" value={form.serviceBookNo} onChange={e => setForm({ ...form, serviceBookNo: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
-                <Input label="Manager" value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} />
+                <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
+                <Input id="field-manager" label="Manager" value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} />
               </div>
             </div>
           )}
@@ -1445,26 +1626,26 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'banking' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Aadhaar Number" placeholder="12-digit number" value={form.aadhaar} onChange={e => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
-                <Input label="PAN Card" placeholder="10-character alphanumeric" value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase().slice(0, 10) })} />
+                <Input id="field-aadhaar" label="Aadhaar Number" placeholder="12-digit number" value={form.aadhaar} onChange={e => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.aadhaar} />
+                <Input id="field-pan" label="PAN Card" placeholder="10-character alphanumeric" value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase().slice(0, 10) })} error={errors.pan} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} />
-                <Input label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
-                <Input label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} />
+                <Input id="field-pfNumber" label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
+                <Input id="field-uan" label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                <Input id="field-esic" label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
               </div>
               <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
-                <Input label="Bank Name" placeholder="e.g. State Bank of India" value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} />
-                <Input label="Account Number" value={form.accountNumber} onChange={e => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} />
-                <Input label="IFSC Code" placeholder="e.g. SBIN0001234" value={form.ifsc} onChange={e => setForm({ ...form, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />
+                <Input id="field-bankName" label="Bank Name" placeholder="e.g. State Bank of India" value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} error={errors.bankName} />
+                <Input id="field-accountNumber" label="Account Number" value={form.accountNumber} onChange={e => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} error={errors.accountNumber} />
+                <Input id="field-ifsc" label="IFSC Code" placeholder="e.g. SBIN0001234" value={form.ifsc} onChange={e => setForm({ ...form, ifsc: e.target.value.toUpperCase().slice(0, 11) })} error={errors.ifsc} />
               </div>
             </div>
           )}
 
           {activeTab === 'address' && (
             <div className="space-y-3">
-              <Input label="Present Address" value={form.presentAddress} onChange={e => setForm({ ...form, presentAddress: e.target.value })} />
-              <Input label="Permanent Address" value={form.permanentAddress} onChange={e => setForm({ ...form, permanentAddress: e.target.value })} />
+              <Input id="field-presentAddress" label="Present Address" value={form.presentAddress} onChange={e => setForm({ ...form, presentAddress: e.target.value })} error={errors.presentAddress} />
+              <Input id="field-permanentAddress" label="Permanent Address" value={form.permanentAddress} onChange={e => setForm({ ...form, permanentAddress: e.target.value })} error={errors.permanentAddress} />
               <div className="p-2 bg-slate-50 rounded border border-slate-200 flex items-center justify-between text-[11px] font-semibold text-slate-600">
                 <span>Copy Present Address to Permanent?</span>
                 <button type="button" onClick={() => setForm({ ...form, permanentAddress: form.presentAddress })} className="text-blue-600 hover:underline">Copy Address</button>
@@ -1500,26 +1681,29 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <Input label="Employee Code *" value={editEmp.employeeId} disabled />
-                  <Input label="Aadhaar Full Name *" value={editEmp.name} onChange={e => setEditEmp({ ...editEmp, name: e.target.value })} />
+                  <Input id="field-aadhaarName" label="Aadhaar Full Name *" value={editEmp.name} onChange={e => setEditEmp({ ...editEmp, name: e.target.value })} error={errors.aadhaarName || errors.name} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Input label="First Name" value={editEmp.firstName || ''} onChange={e => setEditEmp({ ...editEmp, firstName: e.target.value })} />
-                  <Input label="Middle Name" value={editEmp.middleName || ''} onChange={e => setEditEmp({ ...editEmp, middleName: e.target.value })} />
-                  <Input label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
+                  <Input id="field-firstName" label="First Name" value={editEmp.firstName || ''} onChange={e => setEditEmp({ ...editEmp, firstName: e.target.value })} />
+                  <Input id="field-middleName" label="Middle Name" value={editEmp.middleName || ''} onChange={e => setEditEmp({ ...editEmp, middleName: e.target.value })} />
+                  <Input id="field-lastName" label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Select label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} />
-                  <Input label="Date of Birth *" type="date" value={editEmp.dob || ''} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} />
-                  <Select label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} />
+                  <Select id="field-gender" label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
+                  <Input id="field-dob" label="Date of Birth *" type="date" value={editEmp.dob || ''} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} error={errors.dob} />
+                  <Select id="field-maritalStatus" label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Nationality" value={editEmp.nationality || 'INDIAN'} onChange={e => setEditEmp({ ...editEmp, nationality: e.target.value })} />
-                  <Input label="Mobile Number *" value={editMobileNumber} onChange={e => setEditMobileNumber(e.target.value)} />
+                  <Input id="field-nationality" label="Nationality" value={editEmp.nationality || 'INDIAN'} onChange={e => setEditEmp({ ...editEmp, nationality: e.target.value })} error={errors.nationality} />
+                  <Input id="field-phone" label="Mobile Number *" value={editMobileNumber} onChange={e => setEditMobileNumber(e.target.value)} error={errors.phone} />
+                </div>
+                <div className="grid grid-cols-1 gap-3">
+                  <Input id="field-email" label="Email Address (Optional)" value={editEmp.email || ''} onChange={e => setEditEmp({ ...editEmp, email: e.target.value })} error={errors.email} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Input label="Father/Spouse Name" value={editEmp.fatherSpouseName || ''} onChange={e => setEditEmp({ ...editEmp, fatherSpouseName: e.target.value })} />
-                  <Select label="Relation" value={editEmp.relationType || 'FATHER'} onChange={e => setEditEmp({ ...editEmp, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
-                  <Input label="Emergency Phone" value={editEmp.emergencyContact || ''} onChange={e => setEditEmp({ ...editEmp, emergencyContact: e.target.value })} />
+                  <Input id="field-fatherSpouseName" label="Father/Spouse Name" value={editEmp.fatherSpouseName || ''} onChange={e => setEditEmp({ ...editEmp, fatherSpouseName: e.target.value })} error={errors.fatherSpouseName} />
+                  <Select id="field-relationType" label="Relation" value={editEmp.relationType || 'FATHER'} onChange={e => setEditEmp({ ...editEmp, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
+                  <Input id="field-emergencyContact" label="Emergency Phone" value={editEmp.emergencyContact || ''} onChange={e => setEditEmp({ ...editEmp, emergencyContact: e.target.value })} />
                 </div>
               </div>
             )}
@@ -1527,25 +1711,25 @@ export const Employees: React.FC<EmployeesProps> = ({
             {activeTab === 'job' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Select label="Branch Location *" value={editEmp.branchLocation || 'AHMEDABAD'} onChange={e => setEditEmp({ ...editEmp, branchLocation: e.target.value })} options={branchOptions.map(b => ({ value: b, label: b }))} />
-                  <Select label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={editFormDepartments.map(d => ({ value: d, label: d }))} />
+                  <Select id="field-branchLocation" label="Branch Location *" value={editEmp.branchLocation || ''} onChange={e => setEditEmp({ ...editEmp, branchLocation: e.target.value })} options={[{ value: '', label: 'Head Office / None' }, ...branchOptions.map(b => ({ value: b, label: b }))]} disabled={isBranchWorkspace} error={errors.branchLocation} />
+                  <Select id="field-department" label="Department *" value={editEmp.department} onChange={e => setEditEmp({ ...editEmp, department: e.target.value })} options={editFormDepartments.map(d => ({ value: d, label: d }))} error={errors.department} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Select label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} />
-                  <Select label="Employment Class *" value={editEmp.category || 'Skilled'} onChange={e => setEditEmp({ ...editEmp, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} />
+                  <Select id="field-designation" label="Designation *" value={editEmp.designation} onChange={e => setEditEmp({ ...editEmp, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} error={errors.designation} />
+                  <Select id="field-category" label="Employment Class *" value={editEmp.category || 'Skilled'} onChange={e => setEditEmp({ ...editEmp, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} error={errors.category} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Select label="Employment Type *" value={editEmp.employmentType || 'CONTRACTUAL'} onChange={e => setEditEmp({ ...editEmp, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} />
-                  <Input label="Joining Date *" type="date" value={editEmp.joinDate} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} />
-                  <Input label="Service Book No" value={editEmp.serviceBookNo || ''} onChange={e => setEditEmp({ ...editEmp, serviceBookNo: e.target.value })} />
+                  <Select id="field-employmentType" label="Employment Type *" value={editEmp.employmentType || 'CONTRACTUAL'} onChange={e => setEditEmp({ ...editEmp, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
+                  <Input id="field-joinDate" label="Joining Date *" type="date" value={editEmp.joinDate} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} error={errors.joinDate} />
+                  <Input id="field-serviceBookNo" label="Service Book No" value={editEmp.serviceBookNo || ''} onChange={e => setEditEmp({ ...editEmp, serviceBookNo: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} />
-                  <Input label="Manager" value={editEmp.manager} onChange={e => setEditEmp({ ...editEmp, manager: e.target.value })} />
+                  <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} error={errors.salary} />
+                  <Input id="field-manager" label="Manager" value={editEmp.manager} onChange={e => setEditEmp({ ...editEmp, manager: e.target.value })} />
                 </div>
                 <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
-                  <Input label="Exit Date" type="date" value={editEmp.exitDate || ''} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} />
-                  <Input label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} />
+                  <Input id="field-exitDate" label="Exit Date" type="date" value={editEmp.exitDate || ''} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
+                  <Input id="field-exitReason" label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} error={errors.exitReason} />
                 </div>
               </div>
             )}
@@ -1553,26 +1737,26 @@ export const Employees: React.FC<EmployeesProps> = ({
             {activeTab === 'banking' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Input label="Aadhaar Number" value={editEmp.aadhaar || ''} onChange={e => setEditEmp({ ...editEmp, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
-                  <Input label="PAN Card" value={editEmp.pan || ''} onChange={e => setEditEmp({ ...editEmp, pan: e.target.value.toUpperCase().slice(0, 10) })} />
+                  <Input id="field-aadhaar" label="Aadhaar Number" value={editEmp.aadhaar || ''} onChange={e => setEditEmp({ ...editEmp, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.aadhaar} />
+                  <Input id="field-pan" label="PAN Card" value={editEmp.pan || ''} onChange={e => setEditEmp({ ...editEmp, pan: e.target.value.toUpperCase().slice(0, 10) })} error={errors.pan} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Input label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} />
-                  <Input label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} />
-                  <Input label="ESIC IP Number" value={editEmp.esic || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} />
+                  <Input id="field-pfNumber" label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
+                  <Input id="field-uan" label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                  <Input id="field-esic" label="ESIC IP Number" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
                 </div>
                 <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
-                  <Input label="Bank Name" value={editEmp.bankName || ''} onChange={e => setEditEmp({ ...editEmp, bankName: e.target.value })} />
-                  <Input label="Account Number" value={editEmp.accountNumber || ''} onChange={e => setEditEmp({ ...editEmp, accountNumber: e.target.value.replace(/\D/g, '') })} />
-                  <Input label="IFSC Code" value={editEmp.ifsc || ''} onChange={e => setEditEmp({ ...editEmp, ifsc: e.target.value.toUpperCase().slice(0, 11) })} />
+                  <Input id="field-bankName" label="Bank Name" value={editEmp.bankName || ''} onChange={e => setEditEmp({ ...editEmp, bankName: e.target.value })} error={errors.bankName} />
+                  <Input id="field-accountNumber" label="Account Number" value={editEmp.accountNumber || ''} onChange={e => setEditEmp({ ...editEmp, accountNumber: e.target.value.replace(/\D/g, '') })} error={errors.accountNumber} />
+                  <Input id="field-ifsc" label="IFSC Code" value={editEmp.ifsc || ''} onChange={e => setEditEmp({ ...editEmp, ifsc: e.target.value.toUpperCase().slice(0, 11) })} error={errors.ifsc} />
                 </div>
               </div>
             )}
 
             {activeTab === 'address' && (
               <div className="space-y-3">
-                <Input label="Present Address" value={editEmp.presentAddress || ''} onChange={e => setEditEmp({ ...editEmp, presentAddress: e.target.value })} />
-                <Input label="Permanent Address" value={editEmp.permanentAddress || ''} onChange={e => setEditEmp({ ...editEmp, permanentAddress: e.target.value })} />
+                <Input id="field-presentAddress" label="Present Address" value={editEmp.presentAddress || ''} onChange={e => setEditEmp({ ...editEmp, presentAddress: e.target.value })} error={errors.presentAddress} />
+                <Input id="field-permanentAddress" label="Permanent Address" value={editEmp.permanentAddress || ''} onChange={e => setEditEmp({ ...editEmp, permanentAddress: e.target.value })} error={errors.permanentAddress} />
               </div>
             )}
           </div>

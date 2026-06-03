@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { Badge } from './Badge';
 import { Download, FileSpreadsheet, FileText, Filter, Users, DollarSign, Calendar, CheckSquare, Settings2, DownloadCloud } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
-import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../../data/mockData';
+import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../types';
 
 interface ExportManagerModalProps {
   open: boolean;

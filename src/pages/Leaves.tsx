@@ -7,7 +7,7 @@ import {
   type LeaveStatus,
   type Role,
   isCompanyIdMatch
-} from '../data/mockData';
+} from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card, StatCard } from '../components/ui/Card';
@@ -17,6 +17,7 @@ import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
+import { api } from '../api/apiClient';
 
 interface LeavesProps {
   role: Role;
@@ -53,8 +54,10 @@ export const Leaves: React.FC<LeavesProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
 
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('leaves');
+  const canCreate = canCreateModule('leaves');
+  const canDelete = canDeleteModule('leaves');
 
   const todayStr = '2026-05-20'; // Standard system anchor date
 
@@ -142,7 +145,7 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
-    const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId));
+    const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, undefined, e.branchLocation));
     return companyEmployees.map(emp => {
       const empLeaves = uniqueLeaves.filter(
         l => (l.employeeId === emp.id || l.employeeName.toLowerCase() === emp.name.toLowerCase()) && 
@@ -274,7 +277,7 @@ export const Leaves: React.FC<LeavesProps> = ({
   }, [companyLeaves]);
 
   // Operations
-  const handleApply = () => {
+  const handleApply = async () => {
     if (!selectedEmp) {
       setNameError('Please select a valid employee from the autocomplete search.');
       alert('Error: Please select a valid employee from the autocomplete search.');
@@ -296,16 +299,21 @@ export const Leaves: React.FC<LeavesProps> = ({
       appliedOn: todayStr,
     };
 
-    onUpdateLeaves([newLeave, ...leaves]);
-    setAddOpen(false);
-    setForm({ employeeName: '', department: 'Engineering', leaveType: 'Annual', fromDate: todayStr, toDate: todayStr, reason: '' });
-    setNameError('');
-    setSelectedEmp(null);
-    setSearchQuery('');
-    alert('Leave request submitted successfully.');
+    try {
+      const saved = await api.leaves.create(newLeave);
+      onUpdateLeaves([saved, ...leaves]);
+      setAddOpen(false);
+      setForm({ employeeName: '', department: 'Engineering', leaveType: 'Annual', fromDate: todayStr, toDate: todayStr, reason: '' });
+      setNameError('');
+      setSelectedEmp(null);
+      setSearchQuery('');
+      alert('Leave request submitted successfully.');
+    } catch (e) {
+      alert('Failed to save leave request to server.');
+    }
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editLeave) return;
     const computedDays = calcDays(editForm.fromDate, editForm.toDate);
     const updated: LeaveRequest = {
@@ -317,14 +325,27 @@ export const Leaves: React.FC<LeavesProps> = ({
       reason: editForm.reason,
       status: editForm.status,
     };
-    onUpdateLeaves(leaves.map(l => (l.id === editLeave.id ? updated : l)));
-    setEditLeave(null);
-    alert('Leave request updated successfully.');
+    try {
+      const saved = await api.leaves.update(updated.id, updated);
+      onUpdateLeaves(leaves.map(l => (l.id === editLeave.id ? saved : l)));
+      setEditLeave(null);
+      alert('Leave request updated successfully.');
+    } catch (e) {
+      alert('Failed to update leave request on server.');
+    }
   };
 
-  const handleQuickStatus = (leaveId: string, nextStatus: LeaveStatus) => {
-    onUpdateLeaves(leaves.map(l => (l.id === leaveId ? { ...l, status: nextStatus } : l)));
-    alert(`Leave status updated to ${nextStatus}.`);
+  const handleQuickStatus = async (leaveId: string, nextStatus: LeaveStatus) => {
+    const target = leaves.find(l => l.id === leaveId);
+    if (!target) return;
+    const updated = { ...target, status: nextStatus };
+    try {
+      const saved = await api.leaves.update(leaveId, updated);
+      onUpdateLeaves(leaves.map(l => (l.id === leaveId ? saved : l)));
+      alert(`Leave status updated to ${nextStatus}.`);
+    } catch (e) {
+      alert('Failed to update status on server.');
+    }
   };
 
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
@@ -339,7 +360,7 @@ export const Leaves: React.FC<LeavesProps> = ({
             Log and track employee leave rosters and scheduled company absences
           </p>
         </div>
-        {isHR && canEdit && (
+        {isHR && canCreate && (
           <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
             Log Leave Absence
           </Button>
@@ -490,7 +511,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                           >
                             View
                           </button>
-                          {isHR && canEdit && (
+                          {isHR && canCreate && (
                             <>
                               <button
                                 onClick={() => setEditLeave(l)}
@@ -636,7 +657,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                 {(() => {
                   const q = searchQuery.toLowerCase().trim();
                   const matches = uniqueEmployees.filter(emp => {
-                    if (!isCompanyIdMatch(emp.companyId, activeCompanyId)) return false;
+                    if (!isCompanyIdMatch(emp.companyId, activeCompanyId, undefined, emp.branchLocation)) return false;
                     if (!q) return true; // show all under current tenant when focused
                     return (
                       emp.name.toLowerCase().includes(q) ||

@@ -1,65 +1,43 @@
 const fs = require('fs');
+const path = 'c:/Users/HP/OneDrive/Desktop/enterprise-hrms-crm-application - Copy(d1)/src/App.tsx';
 
-let content = fs.readFileSync('src/App.tsx', 'utf-8');
+let content = fs.readFileSync(path, 'utf8');
 
-// 1. Add API import
-if (!content.includes("import { api } from './api/apiClient';")) {
-  content = content.replace("import React, { useState", "import React, { useState, useEffect\nimport { api } from './api/apiClient';");
-}
+// Remove migration block
+content = content.replace(/\/\/ Auto-migration: check if browser[\s\S]*?window\.location\.reload\(\);\s*\}\s*\}/, '');
 
-// 2. Replace company state initialization
-const companyStateRegex = /const \[companies, setCompanies\] = useState<Company\[\]>\(\(\) => \{[\s\S]*?return defaultCompanies;[\s\S]*?\}\);/;
-const newCompanyState = `const [companies, setCompanies] = useState<Company[]>([]);
+// Remove all localStorage.setItem for data
+content = content.replace(/localStorage\.setItem\('hrms_employees', JSON\.stringify\(nextEmployees\)\);/g, '');
+content = content.replace(/localStorage\.setItem\('hrms_payroll', JSON\.stringify\(nextPayroll\)\);/g, '');
+content = content.replace(/localStorage\.setItem\('hrms_attendance', JSON\.stringify\(next\)\);/g, '');
+content = content.replace(/localStorage\.setItem\('hrms_leaves', JSON\.stringify\(nextLeaves\)\);/g, '');
+content = content.replace(/localStorage\.setItem\('hrms_documents', JSON\.stringify\(next\)\);/g, '');
 
+// Update useEffect to fetch profile
+const authUseEffect = `
   useEffect(() => {
-    // Phase 2: Fetching live companies from PostgreSQL Backend
-    api.companies.getAll()
-      .then(data => setCompanies(data))
-      .catch(err => {
-        console.error('Failed to load companies from DB, falling back to local', err);
-        const raw = localStorage.getItem('hrms_companies');
-        if (raw) {
-           setCompanies(JSON.parse(raw));
-        } else {
-           setCompanies(defaultCompanies);
+    const initAuth = async () => {
+      const token = localStorage.getItem('hrms_jwt_token');
+      if (token) {
+        try {
+          const user = await api.auth.getMe();
+          setStoredAuthProfile(user);
+          setIsAuthenticated(true);
+          setRole(user.role);
+          localStorage.setItem('hrms_profile', JSON.stringify(user));
+        } catch (e) {
+          handleLogout();
         }
-      });
-  }, []);`;
+      }
+      hydrateAll();
+    };
+    initAuth();
+  }, []);
+`;
+content = content.replace(/useEffect\(\(\) => \{\s*hydrateAll\(\);\s*\}, \[\]\);/, authUseEffect);
 
-content = content.replace(companyStateRegex, newCompanyState);
+// In handleLogout, clear token
+content = content.replace(/localStorage\.removeItem\('hrms_auth'\);/, "localStorage.removeItem('hrms_auth');\n    localStorage.removeItem('hrms_jwt_token');");
 
-// 3. Update handleAddCompany
-const handleAddCompanyRegex = /const handleAddCompany = \(newCompany: Company\) => \{[\s\S]*?setCompanies\(next\);\s*localStorage\.setItem\('hrms_companies', JSON\.stringify\(next\)\);\s*\};/;
-const newHandleAddCompany = `const handleAddCompany = async (newCompany: Company) => {
-    try {
-      // Send to DB
-      const savedCompany = await api.companies.create(newCompany);
-      const next = [...companies, savedCompany];
-      setCompanies(next);
-      localStorage.setItem('hrms_companies', JSON.stringify(next));
-    } catch(err) {
-      console.error(err);
-      alert('Failed to save company to Database');
-    }
-  };`;
-
-content = content.replace(handleAddCompanyRegex, newHandleAddCompany);
-
-// 4. Update handleUpdateCompany
-const handleUpdateCompanyRegex = /const handleUpdateCompany = \(updatedCompany: Company\) => \{[\s\S]*?setCompanies\(next\);\s*localStorage\.setItem\('hrms_companies', JSON\.stringify\(next\)\);\s*\};/;
-const newHandleUpdateCompany = `const handleUpdateCompany = async (updatedCompany: Company) => {
-    try {
-      const savedCompany = await api.companies.update(updatedCompany.id, updatedCompany);
-      const next = companies.map\(c => c.id === savedCompany.id ? savedCompany : c\);
-      setCompanies(next);
-      localStorage.setItem('hrms_companies', JSON.stringify(next));
-    } catch(err) {
-      console.error(err);
-      alert('Failed to update company in Database');
-    }
-  };`;
-
-content = content.replace(handleUpdateCompanyRegex, newHandleUpdateCompany);
-
-fs.writeFileSync('src/App.tsx', content);
-console.log('App.tsx patched successfully with API client.');
+fs.writeFileSync(path, content, 'utf8');
+console.log('App.tsx patched successfully');

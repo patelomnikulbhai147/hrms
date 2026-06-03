@@ -23,6 +23,8 @@ import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
 import { exportToExcel } from '../utils/exportUtils';
+import { getCompanyInitials } from '../utils/workspaceUtils';
+import { api } from '../api/apiClient';
 
 interface CompaniesProps {
   _role: Role;
@@ -34,6 +36,7 @@ interface CompaniesProps {
   plans: SubscriptionPlan[];
   employees: Employee[];
   onUpdateEmployees?: (employees: Employee[]) => void;
+  onRefresh?: () => void;
 }
 
 export const Companies: React.FC<CompaniesProps> = ({
@@ -45,14 +48,17 @@ export const Companies: React.FC<CompaniesProps> = ({
   onStartMasquerade,
   plans,
   employees,
-  onUpdateEmployees
+  onUpdateEmployees,
+  onRefresh
 }) => {
   if (false as boolean) {
     console.log(_role);
   }
 
-  const { canEdit: canEditModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
   const canEdit = canEditModule('companies');
+  const canCreate = canCreateModule('companies');
+  const canDelete = canDeleteModule('companies');
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -77,6 +83,7 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
   const [workspaceAssignUser, setWorkspaceAssignUser] = useState<UserAccount | null>(null);
+  const [isSubmittingOfficer, setIsSubmittingOfficer] = useState(false);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
 
   const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
@@ -161,6 +168,10 @@ export const Companies: React.FC<CompaniesProps> = ({
 
     if (reassign) {
       if (onUpdateEmployees) {
+        const toUpdate = uniqueEmployees.filter(emp => emp.companyId === branchId);
+        Promise.all(toUpdate.map(emp => api.employees.update(emp.id, { companyId: 'c-gcri', branchLocation: 'Ahmedabad' })))
+          .catch(err => console.error('Failed to update reassigned employees on backend', err));
+
         const updated = uniqueEmployees.map(emp => {
           if (emp.companyId === branchId) {
             return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
@@ -182,9 +193,14 @@ export const Companies: React.FC<CompaniesProps> = ({
     }
 
     // Delete company/branch
-    const nextCompanies = companies.filter(c => c.id !== branchId);
-    onUpdateCompanies(nextCompanies);
-    alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+    api.companies.archive(branchId).then(() => {
+      const nextCompanies = companies.filter(c => c.id !== branchId);
+      onUpdateCompanies(nextCompanies);
+      alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to archive branch on the backend.');
+    });
   };
 
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({
@@ -245,7 +261,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     role: 'Company Head' as 'Company Head' | 'HR',
   });
 
-  const handleCreateCompany = () => {
+  const handleCreateCompany = async () => {
     // Require validation
     if (errors.mobileNumber || !newCompany.name || !newCompany.email || !newCompany.mobileNumber || !newCompany.address) {
       alert('Error: Please resolve validation errors before saving.');
@@ -316,9 +332,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       avatar: newCompany.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
-    onUpdateAccounts([...userAccounts, newHead]);
-    onUpdateCompanies([fresh, ...companies]);
-    setAddOpen(false);
+    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert('Failed to create via API'); }
 
     // Reset state
     setNewCompany({
@@ -376,13 +390,23 @@ export const Companies: React.FC<CompaniesProps> = ({
         return c;
       });
       
-      // Update state
+      // Update state and backend
+      const updates = updatedCompanies.filter(c => relatedCompanyIds.includes(c.id)).map(c => {
+        return c.parentCompanyId ? api.branches.update(c.id, { 
+          status: c.status, accountStatus: c.accountStatus, branchPortalActive: c.branchPortalActive, branchLicenseActive: c.branchLicenseActive, branchLicenseStatus: c.branchLicenseStatus
+        }).catch(e => console.error(e)) : api.companies.update(c.id, { 
+          status: c.status, accountStatus: c.accountStatus, branchPortalActive: c.branchPortalActive, branchLicenseActive: c.branchLicenseActive, branchLicenseStatus: c.branchLicenseStatus
+        }).catch(e => console.error(e));
+      });
+      Promise.all(updates);
       onUpdateCompanies(updatedCompanies);
 
       // Forceful Employee Restoration: If company becomes Active, ALL its archived employees should become Active
       if (nextStatus === 'Active' && onUpdateEmployees) {
+        const empUpdates: Promise<any>[] = [];
         const updatedEmployees = employees.map(emp => {
           if (relatedCompanyIds.includes(emp.companyId) && emp.status === 'Archived') {
+            empUpdates.push(api.employees.update(emp.id, { status: 'Active' }).catch(e => console.error(e)));
             return {
               ...emp,
               status: 'Active' as const,
@@ -390,6 +414,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           }
           return emp;
         });
+        Promise.all(empUpdates);
         onUpdateEmployees(updatedEmployees);
       }
       
@@ -420,8 +445,18 @@ export const Companies: React.FC<CompaniesProps> = ({
       }
       return c;
     });
-    onUpdateCompanies(updated);
-    setEditPlanModal(null);
+    api.companies.update(editPlanModal.id, { 
+      plan: newPlan, 
+      priceMonthly: selectedPlan ? selectedPlan.priceMonthly : editPlanModal.priceMonthly,
+      priceYearly: selectedPlan ? selectedPlan.priceYearly : editPlanModal.priceYearly,
+      subscriptionPrice: selectedPlan ? selectedPlan.priceMonthly : editPlanModal.subscriptionPrice
+    }).then(() => {
+      onUpdateCompanies(updated);
+      setEditPlanModal(null);
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to save plan to backend');
+    });
   };
 
   const handleSaveBranch = () => {
@@ -509,9 +544,17 @@ export const Companies: React.FC<CompaniesProps> = ({
         avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
       };
 
-      onUpdateAccounts([...userAccounts, newAdminUser]);
-      onUpdateCompanies([...companies, newBranchObj]);
-      alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+      Promise.all([
+        api.branches.create(newBranchObj).catch(e => { console.error("Branch create error:", e); throw e; }),
+        api.users.create({ ...newAdminUser, password: newAdminUser.passwordStr }).catch(e => { console.error("User create error:", e); throw e; })
+      ]).then(() => {
+        onUpdateAccounts([...userAccounts, newAdminUser]);
+        onUpdateCompanies([...companies, newBranchObj]);
+        alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+      }).catch(err => {
+        console.error(err);
+        alert('Failed to create branch or admin user on the backend.');
+      });
     }
 
     setBranchModalOpen(false);
@@ -589,10 +632,15 @@ export const Companies: React.FC<CompaniesProps> = ({
       avatar: officerForm.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
-    onUpdateAccounts([...userAccounts, newUser]);
-    setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
-    setOfficerErrors({});
-    alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
+    api.users.create({ ...newUser, password: newUser.passwordStr }).then(() => {
+      onUpdateAccounts([...userAccounts, newUser]);
+      setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
+      setOfficerErrors({});
+      alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to create user account on the backend.');
+    });
   };
 
   const handleToggleUserActivation = (userId: string) => {
@@ -607,17 +655,27 @@ export const Companies: React.FC<CompaniesProps> = ({
     alert('User status toggled successfully.');
   };
 
-  const handleResetUserPassword = (userId: string) => {
-    const newPass = prompt('Enter new access password:');
-    if (!newPass) return;
-    const updated = userAccounts.map(u => {
-      if (u.id === userId) {
-        return { ...u, passwordStr: newPass };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    alert('Password updated successfully.');
+  const handleResetUserPassword = async (userId: string) => {
+    const newPass = prompt('Enter new access password (min 8 characters):');
+    if (!newPass || newPass.length < 8) {
+      if (newPass) alert('Password must be at least 8 characters long.');
+      return;
+    }
+    
+    try {
+      await api.users.resetPassword(userId, newPass);
+      const updated = userAccounts.map(u => {
+        if (u.id === userId) {
+          return { ...u, passwordStr: newPass };
+        }
+        return u;
+      });
+      onUpdateAccounts(updated);
+      alert('Password updated successfully.');
+    } catch (err: any) {
+      console.error(err);
+      alert(`Failed to reset password: ${err.message}`);
+    }
   };
 
   const handleRevokeUser = (userId: string) => {
@@ -633,7 +691,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     if (activeMainTab === 'active' && isArchived) return false;
     if (activeMainTab === 'archived' && !isArchived) return false;
 
-    const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.domain.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = (c.name || '').toLowerCase().includes(search.toLowerCase()) || (c.domain || '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || c.status === statusFilter;
     const matchPlan = !planFilter || c.plan === planFilter;
     return matchSearch && matchStatus && matchPlan;
@@ -692,14 +750,20 @@ export const Companies: React.FC<CompaniesProps> = ({
       return;
     }
     const today = new Date().toISOString().split('T')[0];
+    const branchIds = companies.filter(c => c.parentCompanyId === offboardCompany.id).map(c => c.id);
+    const allLinkedIds = [offboardCompany.id, ...branchIds];
     
     // Auto cascade employees to archived if they belong to this company or its branches
     if (onUpdateEmployees) {
-      const branchIds = companies.filter(c => c.parentCompanyId === offboardCompany.id).map(c => c.id);
-      const allLinkedIds = [offboardCompany.id, ...branchIds];
-
+      const empUpdates: Promise<any>[] = [];
       const updatedEmps = employees.map(emp => {
         if (allLinkedIds.includes(emp.companyId) && emp.status !== 'Archived') {
+          empUpdates.push(api.employees.update(emp.id, { 
+             status: 'Archived', 
+             exitDate: today, 
+             exitReason: 'Tender/Company Auto-Archived' 
+          }).catch(e => console.error(e)));
+
           return {
              ...emp,
              status: 'Archived' as const,
@@ -719,6 +783,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         }
         return emp;
       });
+      Promise.all(empUpdates);
       onUpdateEmployees(updatedEmps);
     }
 
@@ -730,14 +795,25 @@ export const Companies: React.FC<CompaniesProps> = ({
         completedOn: new Date().toISOString()
       }
     };
-    onUpdateCompanies(companies.map(c => {
-      if (c.id === offboardCompany.id) return updated;
-      if (c.parentCompanyId === offboardCompany.id) return { ...c, status: 'Archived' };
-      return c;
-    }));
-    setIsConfirmingOffboard(false);
-    setOffboardCompany(null);
-    alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
+
+    const compUpdates = [
+      offboardCompany.parentCompanyId ? api.branches.archive(offboardCompany.id) : api.companies.archive(offboardCompany.id),
+      ...branchIds.map(bId => api.branches.archive(bId))
+    ];
+
+    Promise.all(compUpdates).then(() => {
+      onUpdateCompanies(companies.map(c => {
+        if (c.id === offboardCompany.id) return updated;
+        if (c.parentCompanyId === offboardCompany.id) return { ...c, status: 'Archived' };
+        return c;
+      }));
+      setIsConfirmingOffboard(false);
+      setOffboardCompany(null);
+      alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
+    }).catch(err => {
+      console.error(err);
+      alert('Failed to execute offboarding on backend.');
+    });
   };
 
   const executeCompleteOffboarding = () => {
@@ -745,11 +821,11 @@ export const Companies: React.FC<CompaniesProps> = ({
   };
 
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
-  const activeCount = parentCompanies.filter(c => c.status === 'Active').length;
-  const suspendedCount = parentCompanies.filter(c => c.status === 'Inactive').length;
+  const activeCount = companies.filter(c => c.status === 'Active' && c.status !== 'Archived').length;
+  const suspendedCount = companies.filter(c => c.status === 'Inactive' || c.accountStatus === 'Suspended' || c.accountStatus === 'Blocked' || c.status === 'Archived').length;
 
   // Determine if save button should be disabled
-  const isSaveDisabled =
+  console.log('Companies.tsx render. Total companies:', companies.length, 'Filtered:', filtered.length); const isSaveDisabled =
     !newCompany.name ||
     !newCompany.email ||
     !newCompany.mobileNumber ||
@@ -803,7 +879,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <StatCard label="Active Companies" value={activeCount} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" sub="Access allowed to portal" />
         <StatCard label="Suspended Accounts" value={suspendedCount} icon={<XCircle size={16} className="text-red-500" />} color="bg-red-50" sub="Portal entry blocked" />
-        <StatCard label="Total Scoped Tenants" value={parentCompanies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
+        <StatCard label="Total Scoped Tenants" value={companies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
       </div>
 
       {/* Filters bar */}
@@ -873,9 +949,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 const isExpanded = expandedParents[c.id];
 
                 // Calculate total combined employees under parent
-                const combinedEmpCount = hasBranches
-                  ? branches.reduce((sum, b) => sum + activeUniqueEmployees.filter(emp => emp.companyId === b.id).length, 0) + activeUniqueEmployees.filter(emp => emp.companyId === c.id).length
-                  : activeUniqueEmployees.filter(emp => emp.companyId === c.id).length;
+                const combinedEmpCount = (c.employeeCount || 0) + branches.reduce((sum, b) => sum + (b.employeeCount || 0), 0);
 
                 return (
                   <React.Fragment key={c.id}>
@@ -892,8 +966,12 @@ export const Companies: React.FC<CompaniesProps> = ({
                               <ChevronRight size={14} />
                             </button>
                           )}
-                          <div className="w-8 h-8 rounded border text-white flex items-center justify-center font-bold text-xs" style={{ backgroundColor: c.primaryColor || '#3b82f6', borderColor: `${c.primaryColor || '#3b82f6'}40` }}>
-                            {c.logo}
+                          <div className="w-8 h-8 rounded border overflow-hidden flex items-center justify-center font-bold text-xs shadow-sm" style={!c.logoImage ? { backgroundColor: c.primaryColor || '#3b82f6', borderColor: `${c.primaryColor || '#3b82f6'}40` } : {}}>
+                            {c.logoImage ? (
+                              <img src={c.logoImage} alt="Logo" className="w-full h-full object-contain" />
+                            ) : (
+                              <span className="text-white text-xs">{getCompanyInitials(c.name)}</span>
+                            )}
                           </div>
                           <div>
                             <div className="flex items-center gap-1.5">
@@ -1007,7 +1085,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </thead>
                               <tbody className="divide-y divide-slate-700/50 text-[11px] text-slate-300">
                                 {branches.map(b => {
-                                  const branchEmpCount = activeUniqueEmployees.filter(emp => emp.companyId === b.id).length;
+                                  const branchEmpCount = activeUniqueEmployees.filter(emp => emp.companyId === b.id || (emp.companyId === b.parentCompanyId && emp.branchLocation?.toLowerCase() === (b.branchName || b.name)?.toLowerCase()) || emp.branchId === b.id).length;
                                   return (
                                     <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
                                       <td className="py-2 px-4">
@@ -1705,8 +1783,12 @@ export const Companies: React.FC<CompaniesProps> = ({
         {offboardCompany && (
           <div className="space-y-6 text-sm text-left">
             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="h-12 w-12 rounded-full flex items-center justify-center font-bold text-lg text-white shadow-inner" style={{ backgroundColor: offboardCompany.primaryColor || '#3b82f6' }}>
-                {offboardCompany.logo || offboardCompany.name.slice(0, 2).toUpperCase()}
+              <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center font-bold text-lg text-white shadow-inner" style={!offboardCompany.logoImage ? { backgroundColor: offboardCompany.primaryColor || '#3b82f6' } : {}}>
+                {offboardCompany.logoImage ? (
+                  <img src={offboardCompany.logoImage} alt="Logo" className="w-full h-full object-contain" />
+                ) : (
+                  getCompanyInitials(offboardCompany.name)
+                )}
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-slate-800">{offboardCompany.name}</h3>

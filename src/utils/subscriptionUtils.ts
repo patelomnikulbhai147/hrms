@@ -1,4 +1,4 @@
-import { type Company, type SubscriptionPlan, PLAN_LIMITS } from '../data/mockData';
+import { type Company, type SubscriptionPlan, PLAN_LIMITS } from '../types';
 
 export type SubscriptionStatus = 'Suspended' | 'Overdue' | 'Expiring Soon' | 'Trial Ending' | 'Active';
 
@@ -56,7 +56,7 @@ export const calculateSubscriptionStatus = (company: Company): SubscriptionStatu
   return 'Active';
 };
 
-export const calculateSubscriptionAnalytics = (companies: Company[], _plans: SubscriptionPlan[]): SubscriptionMetrics => {
+export const calculateSubscriptionAnalytics = (companies: Company[], plans: SubscriptionPlan[]): SubscriptionMetrics => {
   const parentCompanies = companies.filter(c => !c.parentCompanyId);
   const totalCompanies = parentCompanies.length;
   const totalBranches = companies.filter(c => !!c.parentCompanyId).length;
@@ -68,8 +68,8 @@ export const calculateSubscriptionAnalytics = (companies: Company[], _plans: Sub
   parentCompanies.forEach(company => {
     if (!company) return;
 
-    // Active means accountStatus === 'Active' and paymentStatus is Paid or Trial Active
-    const isActiveOrTrial = company.accountStatus === 'Active' &&
+    // Active means status !== 'Archived', accountStatus === 'Active' and paymentStatus is Paid or Trial Active
+    const isActiveOrTrial = company.status !== 'Archived' && company.accountStatus === 'Active' &&
       (company.paymentStatus === 'Paid' || company.paymentStatus === 'Trial Active');
 
     if (isActiveOrTrial) {
@@ -86,9 +86,13 @@ export const calculateSubscriptionAnalytics = (companies: Company[], _plans: Sub
       pendingRenewals++;
     }
 
-    // Revenue calculation
+    // Revenue calculation using real subscription plans
     if (isActiveOrTrial) {
-      monthlyRevenue += company.subscriptionPrice || 0;
+      const planObj = plans.find(p => p.name === company.plan);
+      const cost = planObj 
+        ? (company.billingCycle === 'Yearly' ? Math.round(planObj.priceYearly / 12) : planObj.priceMonthly) 
+        : (company.subscriptionPrice || 0);
+      monthlyRevenue += cost;
     }
   });
 

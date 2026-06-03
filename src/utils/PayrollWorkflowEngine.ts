@@ -1,4 +1,4 @@
-import { type PayrollRecord, type PayrollStatus } from '../data/mockData';
+import { type PayrollRecord, type PayrollStatus } from '../types';
 
 export const payrollStatusConfig = {
   draft: {
