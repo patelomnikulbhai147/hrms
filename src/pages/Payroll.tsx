@@ -194,7 +194,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         paymentStatus: 'pending',
         month: monthFilter,
         year: new Date().getFullYear(),
-        companyId: activeCompanyId
+        companyId: emp.companyId || activeCompanyId
       } as PayrollRecord;
     });
 

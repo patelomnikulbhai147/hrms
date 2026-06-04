@@ -117,14 +117,19 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 1. Role-based isolation & scoping
   const companyLeaves = useMemo(() => {
-    const isCompany = uniqueLeaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
+    const isCompany = uniqueLeaves.filter(l => {
+      const emp = uniqueEmployees.find(e => e.id === l.employeeId || e.name.toLowerCase() === l.employeeName.toLowerCase());
+      const match = isCompanyIdMatch(l.companyId, activeCompanyId, undefined, emp?.branchLocation, emp?.branchId);
+      console.log('Leaves filter:', l.id, l.employeeName, 'companyId:', l.companyId, 'active:', activeCompanyId, 'emp:', !!emp, 'match:', match);
+      return match;
+    });
     if (role === 'Employee') {
       return isCompany.filter(
         l => l.employeeId === authProfile?.employeeId || l.employeeName.toLowerCase() === authProfile?.name?.toLowerCase()
       );
     }
     return isCompany;
-  }, [uniqueLeaves, activeCompanyId, role, authProfile]);
+  }, [uniqueLeaves, activeCompanyId, role, authProfile, uniqueEmployees]);
 
   const filtered = useMemo(() => {
     return companyLeaves.filter(l => {
@@ -286,7 +291,7 @@ export const Leaves: React.FC<LeavesProps> = ({
 
     const newLeave: LeaveRequest = {
       id: `l${Date.now()}`,
-      companyId: activeCompanyId,
+      companyId: selectedEmp.companyId || activeCompanyId,
       employeeId: selectedEmp.id,
       employeeName: selectedEmp.name,
       department: selectedEmp.department,

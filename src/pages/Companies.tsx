@@ -97,6 +97,61 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [branchModalOpen, setBranchModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Company | null>(null);
   const [parentCompanyIdForBranch, setParentCompanyIdForBranch] = useState<string>('');
+
+  // Edit Company state
+  const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [editCompanyForm, setEditCompanyForm] = useState({
+    name: '',
+    branchCode: '',
+    industry: 'Technology',
+    adminEmail: '',
+    phone: '',
+    billingAddress: '',
+    domain: '',
+    status: 'Active' as 'Active' | 'Inactive' | 'Archived'
+  });
+
+  const handleOpenEditCompany = (company: Company) => {
+    setEditingCompanyId(company.id);
+    setEditCompanyForm({
+      name: company.name || '',
+      branchCode: company.branchCode || company.gstNumber || '',
+      industry: company.industry || 'Technology',
+      adminEmail: company.adminEmail || company.email || '',
+      phone: company.phone || '',
+      billingAddress: company.billingAddress || company.address || company.location || '',
+      domain: company.domain || '',
+      status: company.status || 'Active'
+    });
+    setEditCompanyModalOpen(true);
+  };
+
+  const handleSaveCompany = async () => {
+    if (!editingCompanyId) return;
+    try {
+      const payload = {
+        name: editCompanyForm.name,
+        branchCode: editCompanyForm.branchCode,
+        industry: editCompanyForm.industry,
+        adminEmail: editCompanyForm.adminEmail,
+        phone: editCompanyForm.phone,
+        billingAddress: editCompanyForm.billingAddress,
+        domain: editCompanyForm.domain,
+        status: editCompanyForm.status,
+        isHeadOffice: true
+      };
+      const saved = await api.companies.update(editingCompanyId, payload);
+      const updatedCompany = { ...companies.find(c => c.id === editingCompanyId), ...saved, isHeadOffice: true };
+      onUpdateCompanies(companies.map(c => c.id === editingCompanyId ? updatedCompany : c));
+      setEditCompanyModalOpen(false);
+      alert('Company details updated successfully.');
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update company details.');
+    }
+  };
+
   const [branchForm, setBranchForm] = useState({
     name: '',
     branchCode: '',
@@ -142,9 +197,9 @@ export const Companies: React.FC<CompaniesProps> = ({
     setEditingBranch(branch);
     setParentCompanyIdForBranch(branch.parentCompanyId || 'c-gcri');
     setBranchForm({
-      name: branch.name,
+      name: branch.name || branch.branchName || '',
       branchCode: branch.branchCode || '',
-      location: branch.address || '',
+      location: branch.location || branch.address || '',
       email: branch.email || branch.adminEmail || '',
       phone: branch.phone || '',
       adminName: branch.adminName || '',
@@ -512,8 +567,29 @@ export const Companies: React.FC<CompaniesProps> = ({
         }
         return c;
       });
-      onUpdateCompanies(updatedCompanies);
-      alert('Branch updated successfully.');
+      api.branches.update(editingBranch.id, {
+        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+        branchCode: branchForm.branchCode,
+        location: branchForm.location,
+        email: branchForm.email,
+        adminEmail: branchForm.email,
+        phone: branchForm.phone,
+        adminName: branchForm.adminName,
+        employeeCapacity: Number(branchForm.employeeCapacity) || 200,
+        status: branchForm.status,
+        pfRate: Number(branchForm.pfRate) || 12,
+        esicRate: Number(branchForm.esicRate) || 3.25,
+        basicPercent: Number(branchForm.basicPercent) || 50,
+        profTaxRate: Number(branchForm.profTaxRate) || 200,
+        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+      }).then(() => {
+        onUpdateCompanies(updatedCompanies);
+        setBranchModalOpen(false);
+        alert('Branch updated successfully.');
+      }).catch(err => {
+        console.error(err);
+        alert('Failed to update branch on backend.');
+      });
     } else {
       // Create mode
       const newId = `c-br-${Date.now()}`;
@@ -1038,6 +1114,14 @@ export const Companies: React.FC<CompaniesProps> = ({
                       <Td>
                         {canEdit && (
                           <div className="flex items-center gap-2">
+                            
+                            <button
+                              onClick={() => handleOpenEditCompany(c)}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
+                              title="Edit Company"
+                            >
+                              <Edit size={13} />
+                            </button>
                             <button
                               onClick={() => onStartMasquerade(c.id)}
                               className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
@@ -1566,6 +1650,41 @@ export const Companies: React.FC<CompaniesProps> = ({
             />
           </div>
         )}
+      </Modal>
+
+      
+      {/* Edit Company Modal */}
+      <Modal open={editCompanyModalOpen} onClose={() => setEditCompanyModalOpen(false)} title="Edit Parent Company" size="lg" footer={<>
+        <Button variant="outline" onClick={() => setEditCompanyModalOpen(false)}>Cancel</Button>
+        <Button onClick={handleSaveCompany} style={{ backgroundColor: '#4f46e5' }}>Save Changes</Button>
+      </>}>
+        <div className="grid grid-cols-2 gap-4 text-left font-sans">
+          <Input label="Company Name *" value={editCompanyForm.name} onChange={e => setEditCompanyForm({...editCompanyForm, name: e.target.value})} />
+          <Input label="Company Code" value={editCompanyForm.branchCode} onChange={e => setEditCompanyForm({...editCompanyForm, branchCode: e.target.value})} />
+          <Input label="Sector / Industry" value={editCompanyForm.industry} onChange={e => setEditCompanyForm({...editCompanyForm, industry: e.target.value})} />
+          <Input label="Admin Email" type="email" value={editCompanyForm.adminEmail} onChange={e => setEditCompanyForm({...editCompanyForm, adminEmail: e.target.value})} />
+          <Input label="Phone Number" value={editCompanyForm.phone} onChange={e => setEditCompanyForm({...editCompanyForm, phone: e.target.value})} />
+          <Input label="Website Domain" value={editCompanyForm.domain} onChange={e => setEditCompanyForm({...editCompanyForm, domain: e.target.value})} />
+          <Select 
+            label="Status" 
+            value={editCompanyForm.status} 
+            onChange={e => setEditCompanyForm({...editCompanyForm, status: e.target.value as any})}
+            options={[
+              { value: 'Active', label: 'Active' },
+              { value: 'Inactive', label: 'Inactive' },
+              { value: 'Archived', label: 'Archived' }
+            ]}
+          />
+          <div className="col-span-2">
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Billing Address</label>
+            <textarea
+              className="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              rows={2}
+              value={editCompanyForm.billingAddress}
+              onChange={e => setEditCompanyForm({...editCompanyForm, billingAddress: e.target.value})}
+            />
+          </div>
+        </div>
       </Modal>
 
       {/* Branch Creation / Edition Modal */}

@@ -34,10 +34,26 @@ exports.createCompany = async (req, res) => {
     const isBranch = req.body.isHeadOffice === false || req.body.parentCompanyId;
     
     if (isBranch) {
-      const data = { ...req.body, branchName: req.body.name || req.body.branchName };
-      delete data.name; // Prisma branch model uses branchName
-      const branch = await prisma.branch.create({ data });
-      return res.status(201).json({ ...branch, name: branch.branchName, isHeadOffice: false });
+      const branchData = {
+        companyId: req.body.parentCompanyId || req.body.companyId,
+        branchName: req.body.name || req.body.branchName,
+        branchCode: req.body.branchCode,
+        location: req.body.location || req.body.address,
+        phone: req.body.phone,
+        email: req.body.email,
+        adminName: req.body.adminName,
+        adminEmail: req.body.adminEmail,
+        employeeCapacity: req.body.employeeCapacity,
+        status: req.body.status,
+        pfRate: req.body.pfRate,
+        esicRate: req.body.esicRate,
+        basicPercent: req.body.basicPercent,
+        profTaxRate: req.body.profTaxRate,
+        overtimeRate: req.body.overtimeRate
+      };
+      
+      const branch = await prisma.branch.create({ data: branchData });
+      return res.status(201).json({ ...branch, name: branch.branchName, isHeadOffice: false, parentCompanyId: branch.companyId });
     }
 
     const company = await prisma.company.create({
@@ -62,6 +78,19 @@ exports.updateCompany = async (req, res) => {
       if (req.body.branchName) validBranchData.branchName = req.body.branchName;
       if (req.body.status) validBranchData.status = req.body.status;
       if (req.body.location) validBranchData.location = req.body.location;
+      if (req.body.address) validBranchData.location = req.body.address;
+      if (req.body.branchCode) validBranchData.branchCode = req.body.branchCode;
+      if (req.body.email) validBranchData.email = req.body.email;
+      if (req.body.phone) validBranchData.phone = req.body.phone;
+      if (req.body.adminName) validBranchData.adminName = req.body.adminName;
+      if (req.body.adminEmail) validBranchData.adminEmail = req.body.adminEmail;
+      if (req.body.employeeCapacity) validBranchData.employeeCapacity = req.body.employeeCapacity;
+      if (req.body.pfRate) validBranchData.pfRate = req.body.pfRate;
+      if (req.body.esicRate) validBranchData.esicRate = req.body.esicRate;
+      if (req.body.basicPercent) validBranchData.basicPercent = req.body.basicPercent;
+      if (req.body.profTaxRate) validBranchData.profTaxRate = req.body.profTaxRate;
+      if (req.body.overtimeRate) validBranchData.overtimeRate = req.body.overtimeRate;
+
 
       const branch = await prisma.branch.update({
         where: { id },

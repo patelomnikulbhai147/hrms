@@ -119,10 +119,22 @@ model Branch {
   company              Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   
   branchName           String
+  branchCode           String?
   location             String?
+  phone                String?
+  email                String?
+  adminName            String?
+  adminEmail           String?
   headcount            Int      @default(0)
+  employeeCapacity     Int      @default(200)
   status               String   @default("Active")
   isArchived           Boolean  @default(false)
+  
+  pfRate               Float    @default(12)
+  esicRate             Float    @default(3.25)
+  basicPercent         Float    @default(50)
+  profTaxRate          Float    @default(200)
+  overtimeRate         Float    @default(1.5)
   
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

@@ -515,7 +515,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     const emp = companyEmployees.find(e => e.id === selectedEmpId);
     const newDoc: Document = {
       id: `doc${Date.now()}`,
-      companyId: activeCompanyId,
+      companyId: emp?.companyId || activeCompanyId,
       name: uploadForm.name || `${emp?.name || 'Employee'}_${uploadForm.type}.pdf`,
       type: uploadForm.type,
       employeeId: selectedEmpId,

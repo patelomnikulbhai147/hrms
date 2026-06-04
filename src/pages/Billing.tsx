@@ -117,9 +117,9 @@ export const Billing: React.FC<BillingProps> = ({
     setEditingBranch(branch);
     setParentCompanyIdForBranch(branch.parentCompanyId || 'c-gcri');
     setBranchForm({
-      name: branch.name,
+      name: branch.name || branch.branchName || '',
       branchCode: branch.branchCode || '',
-      location: branch.address || '',
+      location: branch.location || branch.address || '',
       email: branch.email || branch.adminEmail || '',
       phone: branch.phone || '',
       adminName: branch.adminName || '',
@@ -294,9 +294,29 @@ export const Billing: React.FC<BillingProps> = ({
         }
         return c;
       });
-      const finalized = syncAndRecalculateBilling(updatedCompanies, editingBranch.parentCompanyId || 'c-gcri');
-      onUpdateCompanies(finalized);
-      alert('Branch updated successfully.');
+      api.branches.update(editingBranch.id, {
+        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
+        branchCode: branchForm.branchCode,
+        location: branchForm.location,
+        email: branchForm.email,
+        adminEmail: branchForm.email,
+        phone: branchForm.phone,
+        adminName: branchForm.adminName,
+        employeeCapacity: Number(branchForm.employeeCapacity) || 200,
+        status: branchForm.status,
+        pfRate: Number(branchForm.pfRate) || 12,
+        esicRate: Number(branchForm.esicRate) || 3.25,
+        basicPercent: Number(branchForm.basicPercent) || 50,
+        profTaxRate: Number(branchForm.profTaxRate) || 200,
+        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
+      }).then(() => {
+        const finalized = syncAndRecalculateBilling(updatedCompanies, editingBranch.parentCompanyId || 'c-gcri');
+        onUpdateCompanies(finalized);
+        alert('Branch updated successfully.');
+      }).catch(err => {
+        console.error(err);
+        alert('Failed to update branch on backend.');
+      });
     } else {
       // Create mode
       const newId = `c-br-${Date.now()}`;
@@ -361,10 +381,18 @@ export const Billing: React.FC<BillingProps> = ({
         avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
       };
 
-      onUpdateAccounts([...userAccounts, newAdminUser]);
-      const finalized = syncAndRecalculateBilling([...companies, newBranchObj], parentCompanyIdForBranch || 'c-gcri');
-      onUpdateCompanies(finalized);
-      alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+      Promise.all([
+        api.branches.create(newBranchObj).catch(e => { console.error("Branch create error:", e); throw e; }),
+        api.users.create({ ...newAdminUser, password: newAdminUser.passwordStr }).catch(e => { console.error("User create error:", e); throw e; })
+      ]).then(() => {
+        onUpdateAccounts([...userAccounts, newAdminUser]);
+        const finalized = syncAndRecalculateBilling([...companies, newBranchObj], parentCompanyIdForBranch || 'c-gcri');
+        onUpdateCompanies(finalized);
+        alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+      }).catch(err => {
+        console.error(err);
+        alert('Failed to create branch or admin user on the backend.');
+      });
     }
 
     setBranchModalOpen(false);
@@ -1182,7 +1210,7 @@ export const Billing: React.FC<BillingProps> = ({
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {compBranches.map(br => {
                               const uniqueEmployees = getUniqueEmployees(employees);
-                              const brEmployeesCount = uniqueEmployees.filter(emp => emp.companyId === br.id).length;
+                              const brEmployeesCount = br.headcount || uniqueEmployees.filter(emp => emp.companyId === br.id || emp.branchId === br.id).length;
                               const capacity = br.employeeCapacity || 200;
                               const capacityPercent = Math.min(100, Math.round((brEmployeesCount / capacity) * 100));
 
@@ -1325,18 +1353,23 @@ export const Billing: React.FC<BillingProps> = ({
                   {/* Invoices and Stats Bar */}
                   <div className="mt-6 pt-4 border-t border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-slate-400">
                     <div>
-                      Unified price: <strong className="text-white">₹{(comp.subscriptionPrice || 0).toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
-                      {!isSingleCompanyMode && compBranches.length > 0 && (() => {
+                      {(() => {
+                        const basePrice = (comp.billingCycle === 'Yearly' ? comp.priceYearly : comp.priceMonthly) || 
+                                          (comp.plan === 'Enterprise' ? (comp.billingCycle === 'Yearly' ? 249900 : 24990) : 
+                                           comp.plan === 'Professional' ? (comp.billingCycle === 'Yearly' ? 99900 : 9990) : 0);
                         const totalBranchAddonCost = Math.max(compBranches.length - 1, 0) * 999;
-
-                        if (totalBranchAddonCost > 0) {
-                          return (
-                            <span className="ml-2 text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full font-bold shadow-[0_0_8px_rgba(99,102,241,0.1)]">
-                              Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
-                            </span>
-                          );
-                        }
-                        return null;
+                        const displayPrice = comp.subscriptionPrice > 0 ? comp.subscriptionPrice : (basePrice + totalBranchAddonCost);
+                        
+                        return (
+                          <>
+                            Unified price: <strong className="text-white">₹{displayPrice.toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
+                            {!isSingleCompanyMode && compBranches.length > 0 && totalBranchAddonCost > 0 && (
+                              <span className="ml-2 text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full font-bold shadow-[0_0_8px_rgba(99,102,241,0.1)]">
+                                Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
+                              </span>
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                     <div className="flex items-center gap-3">

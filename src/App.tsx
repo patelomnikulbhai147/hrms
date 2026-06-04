@@ -450,13 +450,15 @@ export default function App() {
     // Data hydration from backend PostgreSQL
   const hydrateAll = async () => {
     try {
-      const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments] = await Promise.all([
+      const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments, fetchedLeaves, fetchedAttendance] = await Promise.all([
         api.companies.getAll().catch(() => null),
         api.branches.getAll().catch(() => null),
         api.employees.getAll().catch(() => null),
         api.users.getAll().catch(() => null),
         api.payroll.getAll().catch(() => null),
-        api.documents.getAll().catch(() => null)
+        api.documents.getAll().catch(() => null),
+        api.leaves.getAll().catch(() => null),
+        api.attendance.getAll().catch(() => null)
       ]);
       
       if (fetchedCompanies) {
@@ -477,6 +479,8 @@ export default function App() {
       if (fetchedUsers) setUserAccounts(fetchedUsers);
       if (fetchedPayroll) setPayroll(fetchedPayroll);
       if (fetchedDocuments) setDocuments(fetchedDocuments);
+      if (fetchedLeaves) setLeaves(fetchedLeaves);
+      if (fetchedAttendance) setAttendance(fetchedAttendance);
     } catch (err) {
       console.error('Hydration failed:', err);
     }
