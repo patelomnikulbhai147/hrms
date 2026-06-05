@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   Building2, Plus, Search, KeyRound, Lock, Trash2,
-  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight, LogOut, FileSpreadsheet
+  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight, LogOut, FileSpreadsheet, Shield, Cloud, Link, Users,
+  Globe, ShieldCheck, Ban, PauseCircle, Rocket, MinusCircle, Building
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
 import { Card, StatCard } from '../components/ui/Card';
@@ -934,108 +935,149 @@ export const Companies: React.FC<CompaniesProps> = ({
     Object.values(errors).some(err => !!err);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 bg-[#F8FBFF] -mx-4 -mt-4 p-6 min-h-screen font-sans">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-2">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">SaaS Company Management</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Control tenant configurations, verify enrollments, and provision corporate credentials</p>
+          <h2 className="text-xl font-semibold text-slate-800">SaaS Company Management</h2>
+          <p className="text-sm text-slate-500 mt-1">Configure tenants, verify enrollments, and manage corporate access</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Main Tabs */}
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            <button
-              onClick={() => setActiveMainTab('active')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Active Tenders
-            </button>
-            <button
-              onClick={() => setActiveMainTab('archived')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'archived' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Archived Tenders
-            </button>
-          </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setActiveMainTab('active')}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'active' ? 'bg-white text-[#2563EB] border-[#DBEAFE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#1D4ED8]'}`}
+          >
+            Active Tenders
+          </button>
+          <button
+            onClick={() => setActiveMainTab('archived')}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'archived' ? 'bg-white text-[#2563EB] border-[#DBEAFE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#1D4ED8]'}`}
+          >
+            Archived Tenders
+          </button>
           
           {canEdit && (
-            <Button variant="outline" icon={<FileSpreadsheet size={14} />} onClick={handleExport} disabled={isExporting}>
+            <button 
+              onClick={handleExport} 
+              disabled={isExporting}
+              className="px-4 py-2 text-sm font-medium bg-white text-slate-700 border border-slate-200 shadow-sm rounded-full inline-flex items-center gap-2 hover:bg-slate-50 transition-colors"
+            >
+              <FileSpreadsheet size={16} />
               {isExporting ? 'Exporting...' : 'Export to Excel'}
-            </Button>
+            </button>
           )}
           
           {canEdit && activeMainTab === 'active' && (
-            <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)}>
+            <button 
+              onClick={() => setAddOpen(true)}
+              className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all inline-flex items-center gap-2"
+            >
+              <Plus size={16} />
               Create Company
-            </Button>
+            </button>
           )}
         </div>
       </div>
 
       {/* KPI stats */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Active Companies" value={activeCount} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" sub="Access allowed to portal" />
-        <StatCard label="Suspended Accounts" value={suspendedCount} icon={<XCircle size={16} className="text-red-500" />} color="bg-red-50" sub="Portal entry blocked" />
-        <StatCard label="Total Scoped Tenants" value={companies.length} icon={<Building2 size={16} className="text-blue-600" />} color="bg-blue-50" sub="Active cloud subscriptions" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Card 1 */}
+        <div className="bg-gradient-to-br from-[#EFF6FF] to-[#F8FBFF] rounded-[14px] p-5 flex items-start gap-4 border border-[#DBEAFE] shadow-sm hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-[#EFF6FF] flex items-center justify-center flex-shrink-0 border border-[#DBEAFE] shadow-sm">
+            <Building2 size={24} className="text-[#2563EB]" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-600">Active Companies</h3>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{activeCount}</p>
+            <p className="text-xs text-slate-500 mt-1">Access allowed to portal</p>
+          </div>
+        </div>
+        {/* Card 2 */}
+        <div className="bg-gradient-to-br from-rose-50 to-[#FFF0F0] rounded-[14px] p-5 flex items-start gap-4 border border-rose-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center flex-shrink-0 border border-rose-200 shadow-sm">
+            <Shield size={24} className="text-rose-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-600">Suspended Accounts</h3>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{suspendedCount}</p>
+            <p className="text-xs text-slate-500 mt-1">Portal entry blocked</p>
+          </div>
+        </div>
+        {/* Card 3 */}
+        <div className="bg-gradient-to-br from-indigo-50 to-[#F8FAFF] rounded-[14px] p-5 flex items-start gap-4 border border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0 border border-indigo-200 shadow-sm">
+            <Cloud size={24} className="text-indigo-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-600">Total Scoped Tenants</h3>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{companies.length}</p>
+            <p className="text-xs text-slate-500 mt-1">Active cloud subscriptions</p>
+          </div>
+        </div>
       </div>
 
       {/* Filters bar */}
-      <Card>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div className="flex-1 min-w-48">
-            <Input
+      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex-1 relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
               placeholder="Search companies by name or domain..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              icon={<Search size={14} />}
+              className="w-full bg-slate-50 border-none rounded-full pl-11 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-400 outline-none"
             />
           </div>
-          <div className="w-40">
-            <Select
+          <div className="w-full sm:w-48 relative">
+            <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              options={[
-                { value: '', label: 'All Statuses' },
-                { value: 'Active', label: 'Active' },
-                { value: 'Inactive', label: 'Suspended' }
-              ]}
-            />
+              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Statuses</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Suspended</option>
+            </select>
+            <ChevronRight size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" />
           </div>
-          <div className="w-40">
-            <Select
+          <div className="w-full sm:w-48 relative">
+            <select
               value={planFilter}
               onChange={e => setPlanFilter(e.target.value)}
-              options={[
-                { value: '', label: 'All Plans' },
-                { value: 'Starter', label: 'Starter' },
-                { value: 'Professional', label: 'Professional' },
-                { value: 'Enterprise', label: 'Enterprise' }
-              ]}
-            />
+              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+            >
+              <option value="">All Plans</option>
+              <option value="Starter">Starter</option>
+              <option value="Professional">Professional</option>
+              <option value="Enterprise">Enterprise</option>
+            </select>
+            <ChevronRight size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none" />
           </div>
         </div>
-      </Card>
+      </div>
 
       {/* Grid directory */}
-      <Card padding={false}>
-        <div className="px-4 py-2.5 border-b border-slate-800/80 flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tenant Directory</span>
+      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#DBEAFE] flex items-center justify-between bg-white">
+          <span className="text-sm font-bold text-slate-800">Tenant Directory</span>
           <span className="text-xs text-slate-500 font-medium">{filtered.length} clients registered</span>
         </div>
-        <Table>
-          <Thead>
-            <tr>
-              <Th>Company Profile</Th>
-              <Th>SaaS Admin Info</Th>
-              <Th>Details</Th>
-              <Th>Status</Th>
-              <Th>Actions</Th>
-            </tr>
-          </Thead>
-          <Tbody>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[#DBEAFE] bg-[#F8FBFF]">
+                <th className="py-3 px-5 text-xs font-semibold text-slate-500">Company Profile</th>
+                <th className="py-3 px-5 text-xs font-semibold text-slate-500">SaaS Admin Info</th>
+                <th className="py-3 px-5 text-xs font-semibold text-slate-500">Details</th>
+                <th className="py-3 px-5 text-xs font-semibold text-slate-500">Status</th>
+                <th className="py-3 px-5 text-xs font-semibold text-slate-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#DBEAFE]">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-8 text-sm text-gray-400">
+                <td colSpan={5} className="text-center py-8 text-sm text-slate-400">
                   No company records found matching search queries
                 </td>
               </tr>
@@ -1050,224 +1092,214 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                 return (
                   <React.Fragment key={c.id}>
-                    <Tr className={hasBranches ? "bg-slate-800/30 hover:bg-slate-800/50 font-medium" : ""}>
+                    <tr className="hover:bg-slate-50/50 transition-colors bg-white">
                       {/* Company Profile */}
-                      <Td>
-                        <div className="flex items-center gap-2.5">
+                      <td className="py-3 px-5">
+                        <div className="flex items-center gap-3">
                           {hasBranches && (
                             <button
                               onClick={() => toggleExpandParent(c.id)}
-                              className="p-1 hover:bg-slate-700 rounded text-slate-400 hover:text-slate-200 transition-transform duration-200"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-transform duration-200"
                               style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}
                             >
-                              <ChevronRight size={14} />
+                              <ChevronRight size={16} />
                             </button>
                           )}
-                          <div className="w-8 h-8 rounded border overflow-hidden flex items-center justify-center font-bold text-xs shadow-sm" style={!c.logoImage ? { backgroundColor: c.primaryColor || '#3b82f6', borderColor: `${c.primaryColor || '#3b82f6'}40` } : {}}>
+                          <div className="w-10 h-10 rounded-full bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center font-bold text-sm border border-[#DBEAFE]" style={!c.logoImage ? {} : {}}>
                             {c.logoImage ? (
-                              <img src={c.logoImage} alt="Logo" className="w-full h-full object-contain" />
+                              <img src={c.logoImage} alt="Logo" className="w-full h-full object-contain rounded-full" />
                             ) : (
-                              <span className="text-white text-xs">{getCompanyInitials(c.name)}</span>
+                              <span>{getCompanyInitials(c.name)}</span>
                             )}
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <h4 className="text-xs font-bold text-slate-200">{c.name}</h4>
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold text-slate-800">{c.name}</h4>
                               {hasBranches && (
-                                <Badge variant="indigo" className="scale-90 origin-left">Parent Company</Badge>
+                                <span className="text-[10px] font-semibold bg-[#EFF6FF] text-[#2563EB] px-2 py-0.5 rounded-full border border-[#DBEAFE]">Parent Company</span>
                               )}
                             </div>
-                            <span className="text-[10px] text-slate-500 hover:underline cursor-pointer">{c.domain}</span>
+                            <span className="text-xs text-slate-500 mt-0.5 block">{c.domain}</span>
                           </div>
                         </div>
-                      </Td>
+                      </td>
 
                       {/* SaaS Admin Info */}
-                      <Td>
-                        <div className="space-y-0.5">
-                          <p className="text-xs font-semibold text-slate-300">{c.adminName}</p>
-                          <div className="flex flex-col gap-0.5 text-[10px] text-slate-500">
-                            <span className="flex items-center gap-1"><Mail size={10} /> {c.adminEmail}</span>
-                            <span className="flex items-center gap-1"><Phone size={10} /> {c.phone}</span>
+                      <td className="py-3 px-5">
+                        <div className="space-y-1">
+                          <p className="text-xs font-semibold text-slate-700">{c.adminName}</p>
+                          <div className="flex flex-col gap-1 text-[11px] text-slate-500">
+                            <span className="flex items-center gap-1.5"><Mail size={12} className="text-slate-400" /> {c.adminEmail}</span>
+                            <span className="flex items-center gap-1.5"><Phone size={12} className="text-slate-400" /> {c.phone}</span>
                           </div>
                         </div>
-                      </Td>
+                      </td>
 
                       {/* Details */}
-                      <Td>
-                        <div className="text-[10px] text-slate-400 space-y-0.5">
-                          <p>Sector: <span className="font-semibold text-slate-300">{c.industry}</span></p>
-                          <p className="flex items-center gap-1"><Calendar size={9} /> Joined: {c.joinDate}</p>
+                      <td className="py-3 px-5">
+                        <div className="text-[11px] text-slate-500 space-y-1">
+                          <p>Sector: <span className="font-semibold text-slate-700">{c.industry}</span></p>
+                          <p>Joined: {c.joinDate}</p>
                           <p>
                             {hasBranches ? 'Combined Staff: ' : 'Employees: '}
-                            <span className="font-bold text-indigo-400">{combinedEmpCount}</span>
+                            <span className="font-semibold text-slate-700">{combinedEmpCount}</span>
                           </p>
                         </div>
-                      </Td>
+                      </td>
 
                       {/* Status */}
-                      <Td>
-                        <Badge variant={statusBadge(c.status)} dot>{c.status}</Badge>
-                      </Td>
+                      <td className="py-3 px-5">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${c.status === 'Active' ? 'bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'Active' ? 'bg-[#2563EB]' : 'bg-[#DC2626]'}`}></span>
+                          {c.status}
+                        </span>
+                      </td>
 
                       {/* Actions */}
-                      <Td>
+                      <td className="py-3 px-5">
                         {canEdit && (
                           <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => onStartMasquerade(c.id)}
+                              className="text-xs px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium transition-colors hover:bg-slate-50 inline-flex items-center gap-1.5 shadow-sm"
+                            >
+                              Manage {hasBranches ? 'All' : ''} <ChevronRight size={14} className="text-slate-400" />
+                            </button>
                             
                             <button
                               onClick={() => handleOpenEditCompany(c)}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
+                              className="p-1.5 bg-white text-slate-400 hover:text-slate-600 border border-slate-200 rounded-md transition-colors shadow-sm"
                               title="Edit Company"
                             >
-                              <Edit size={13} />
-                            </button>
-                            <button
-                              onClick={() => onStartMasquerade(c.id)}
-                              className="text-xs px-2.5 py-1 text-white rounded font-bold transition-colors inline-flex items-center gap-1 shadow-sm font-sans"
-                              style={{ backgroundColor: c.primaryColor || '#4f46e5' }}
-                            >
-                              Manage {hasBranches ? 'All' : ''} <ArrowRight size={10} />
+                              <Link size={14} />
                             </button>
 
                             <button
                               onClick={() => setManageAccountsModal(c)}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-indigo-400 border border-slate-700 rounded transition-colors"
+                              className="p-1.5 bg-white text-slate-400 hover:text-slate-600 border border-slate-200 rounded-md transition-colors shadow-sm"
                               title="Manage Credentials"
                             >
-                              <KeyRound size={13} />
+                              <Users size={14} />
                             </button>
 
                             {activeMainTab === 'active' ? (
-                              <button
+                               <button
                                 onClick={() => handleStartOffboarding(c)}
-                                className="text-[10px] font-semibold text-amber-500 hover:text-amber-400 hover:underline inline-flex items-center gap-1"
-                                title="Initiate Tender Offboarding"
+                                className="p-1.5 bg-white text-rose-400 hover:text-rose-600 border border-slate-200 rounded-md transition-colors shadow-sm"
+                                title="Delete/Archive"
                               >
-                                <LogOut size={10} /> Offboard
+                                <Trash2 size={14} />
                               </button>
                             ) : (
-                              <button
+                               <button
                                 onClick={() => openStatusModal(c)}
-                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${c.status === 'Active' ? 'bg-rose-50/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300' : 'bg-emerald-50/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'}`}
+                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${c.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
                               >
                                 {c.status === 'Active' ? 'Suspend' : 'Activate'}
                               </button>
                             )}
-                            <button
-                              onClick={() => handleDeleteClick(c)}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 rounded transition-colors"
-                              title="Delete/Archive"
-                            >
-                              <Trash2 size={13} />
-                            </button>
                           </div>
                         )}
-                      </Td>
-                    </Tr>
+                      </td>
+                    </tr>
 
                     {/* Collapsible Nested Roster for branches */}
                     {hasBranches && isExpanded && (
                       <tr>
-                        <td colSpan={5} className="bg-slate-900/40 p-4 border-l-4 border-indigo-500">
-                          <div className="rounded-xl border border-slate-700/80 bg-slate-800/50 overflow-hidden shadow-sm">
-                            <div className="bg-slate-900/60 px-4 py-2 border-b border-slate-700/60 flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider font-sans">GCRI Connected Sub-Branches</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-slate-500 font-medium">{branches.length} branches resolved</span>
+                        <td colSpan={5} className="bg-[#F8FBFF] p-6 border-l-4 border-[#2563EB]">
+                          <div className="rounded-[16px] border border-[#DBEAFE] bg-white overflow-hidden shadow-sm">
+                            <div className="bg-[#EFF6FF] px-5 py-3 border-b border-[#DBEAFE] flex items-center justify-between">
+                              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">GCRI Connected Sub-Branches</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-[11px] text-slate-500 font-medium">{branches.length} branches resolved</span>
                                 {canEdit && (
                                   <button
                                     onClick={() => handleOpenCreateBranch(c.id)}
-                                    className="px-2.5 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-[9px] font-bold flex items-center gap-1 shadow-xs transition-colors"
+                                    className="px-3 py-1.5 bg-white border border-[#DBEAFE] hover:bg-[#EFF6FF] text-[#2563EB] rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition-colors"
                                   >
-                                    <Plus size={10} /> Create Branch
+                                    <Plus size={12} className="text-[#2563EB]" /> Create Branch
                                   </button>
                                 )}
                               </div>
                             </div>
                             <table className="w-full text-left border-collapse">
                               <thead>
-                                <tr className="bg-slate-900/40 border-b border-slate-700/80 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                                  <th className="py-2.5 px-4">Branch Code & Name</th>
-                                  <th className="py-2.5 px-4">SaaS Admin Info</th>
-                                  <th className="py-2.5 px-4">Staff Count</th>
-                                  <th className="py-2.5 px-4">Status</th>
-                                  <th className="py-2.5 px-4 text-right">Branch Actions</th>
+                                <tr className="border-b border-[#DBEAFE] text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                  <th className="py-3 px-5">Branch Code & Name</th>
+                                  <th className="py-3 px-5">SaaS Admin Info</th>
+                                  <th className="py-3 px-5">Staff Count</th>
+                                  <th className="py-3 px-5">Status</th>
+                                  <th className="py-3 px-5 text-right">Branch Actions</th>
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-slate-700/50 text-[11px] text-slate-300">
+                              <tbody className="divide-y divide-[#E2EFEA] text-xs text-slate-600">
                                 {branches.map(b => {
                                   const branchEmpCount = activeUniqueEmployees.filter(emp => emp.companyId === b.id || (emp.companyId === b.parentCompanyId && emp.branchLocation?.toLowerCase() === (b.branchName || b.name)?.toLowerCase()) || emp.branchId === b.id).length;
                                   return (
-                                    <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
-                                      <td className="py-2 px-4">
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[10px] font-sans">
+                                    <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
+                                      <td className="py-2.5 px-5">
+                                        <div className="flex items-center gap-3">
+                                          <span className="font-bold text-[#1D4ED8] bg-[#EFF6FF] px-2 py-1 rounded border border-[#DBEAFE] text-[10px]">
                                             {b.branchCode || 'BR'}
                                           </span>
                                           <div>
-                                            <p className="font-bold text-slate-200">{b.branchName || b.name}</p>
-                                            <p className="text-[9px] text-slate-500">{b.domain}</p>
+                                            <p className="font-bold text-slate-800">{b.branchName || b.name}</p>
+                                            <p className="text-[10px] text-slate-500">{b.domain}</p>
                                           </div>
                                         </div>
                                       </td>
-                                      <td className="py-2 px-4">
-                                        <p className="font-medium text-slate-300">{b.adminName}</p>
-                                        <p className="text-[9px] text-slate-500">{b.adminEmail}</p>
+                                      <td className="py-2.5 px-5">
+                                        <p className="font-medium text-slate-700">{b.adminName}</p>
+                                        <p className="text-[10px] text-slate-500">{b.adminEmail}</p>
                                       </td>
-                                      <td className="py-2 px-4 font-bold text-indigo-400 font-sans">
+                                      <td className="py-2.5 px-5 font-semibold text-slate-700">
                                         {branchEmpCount} Staff
                                       </td>
-                                      <td className="py-2 px-4">
-                                        <Badge variant={statusBadge(b.status)} dot>{b.status}</Badge>
+                                      <td className="py-2.5 px-5">
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${b.status === 'Active' ? 'bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
+                                          <span className={`w-1 h-1 rounded-full ${b.status === 'Active' ? 'bg-[#2563EB]' : 'bg-[#DC2626]'}`}></span>
+                                          {b.status}
+                                        </span>
                                       </td>
-                                      <td className="py-2 px-4 text-right">
+                                      <td className="py-2.5 px-5 text-right">
                                         {canEdit && (
-                                          <div className="inline-flex items-center gap-1.5">
+                                          <div className="inline-flex items-center gap-2">
                                             <button
                                               onClick={() => onStartMasquerade(b.id)}
-                                              className="px-2 py-1 text-white text-[10px] rounded font-bold transition-colors shadow-xs font-sans"
-                                              style={{ backgroundColor: b.primaryColor || '#4f46e5' }}
+                                              className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium text-[11px] transition-colors hover:bg-slate-50 shadow-sm"
                                             >
-                                              Manage Branch
-                                            </button>
-                                            <button
-                                              onClick={() => setManageAccountsModal(b)}
-                                              className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
-                                              title="Credentials"
-                                            >
-                                              <KeyRound size={11} />
+                                              Manage
                                             </button>
                                             <button
                                               onClick={() => handleOpenEditBranch(b)}
-                                              className="p-1 bg-slate-800 border border-slate-700 rounded text-slate-400 hover:text-indigo-400 transition-colors"
+                                              className="p-1.5 bg-white text-slate-400 hover:text-slate-600 border border-slate-200 rounded-md transition-colors shadow-sm"
                                               title="Edit Branch Settings"
                                             >
-                                              <Edit size={11} />
+                                              <Link size={12} />
+                                            </button>
+                                            <button
+                                              onClick={() => setManageAccountsModal(b)}
+                                              className="p-1.5 bg-white text-slate-400 hover:text-slate-600 border border-slate-200 rounded-md transition-colors shadow-sm"
+                                              title="Credentials"
+                                            >
+                                              <Users size={12} />
                                             </button>
                                             {activeMainTab === 'active' ? (
                                               <button
                                                 onClick={() => handleStartOffboarding(b)}
-                                                className="p-1 bg-amber-500/10 border border-amber-500/20 rounded text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 transition-colors"
-                                                title="Initiate Branch Offboarding"
+                                                className="p-1.5 bg-white text-rose-400 hover:text-rose-600 border border-slate-200 rounded-md transition-colors shadow-sm"
+                                                title="Delete/Archive"
                                               >
-                                                <LogOut size={11} />
+                                                <Trash2 size={12} />
                                               </button>
                                             ) : (
                                               <button
-                                                onClick={() => handleDeleteClick(b)}
-                                                className="p-1 bg-rose-500/10 border border-rose-500/20 rounded text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-colors"
-                                                title="Delete/Archive"
+                                                onClick={() => openStatusModal(b)}
+                                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${b.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
                                               >
-                                                <Trash2 size={11} />
+                                                {b.status === 'Active' ? 'Suspend' : 'Activate'}
                                               </button>
                                             )}
-                                            <button
-                                              onClick={() => openStatusModal(b)}
-                                              className={`px-2 py-1 rounded border text-[9px] font-bold shadow-xs transition-all ${b.status === 'Active' ? 'bg-rose-50/10 border-rose-500/20 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300' : 'bg-emerald-50/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300'}`}
-                                            >
-                                              {b.status === 'Active' ? 'Suspend' : 'Activate'}
-                                            </button>
                                           </div>
                                         )}
                                       </td>
@@ -1284,9 +1316,10 @@ export const Companies: React.FC<CompaniesProps> = ({
                 );
               })
             )}
-          </Tbody>
-        </Table>
-      </Card>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Add Company Modal with Strict Onboarding Fields */}
       <Modal
@@ -1521,7 +1554,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </button>
                               <button
                                 onClick={() => handleToggleUserActivation(u.id)}
-                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-[#2563EB] hover:bg-[#1D4ED8]'
                                   }`}
                               >
                                 {u.status === 'Active' ? 'Disable' : 'Enable'}
