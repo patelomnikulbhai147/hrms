@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { Badge } from './Badge';
 import { Download, FileSpreadsheet, FileText, Filter, Users, DollarSign, Calendar, CheckSquare, Settings2, DownloadCloud } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
-import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../types';
+import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../../data/mockData';
 
 interface ExportManagerModalProps {
   open: boolean;
@@ -186,8 +186,8 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
 
       exportToExcel({
         fileName: `${companyNamePrefix}_Enterprise_Export`,
-        sheets: exportSheets,
-        format
+        format,
+        sheets: exportSheets
       });
 
       onClose();

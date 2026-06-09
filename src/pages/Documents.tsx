@@ -4,7 +4,7 @@ import {
   Award,
   Plus, Edit, Trash2, ZoomIn, ZoomOut, Sparkles, Sliders, Palette, Printer,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, Table2, User, Landmark, Tag, Info,
-  Upload, Check, ShieldCheck, ChevronLeft, ChevronRight, Eye
+  Upload, Check, ShieldCheck, ChevronLeft, ChevronRight, Eye, Download
 } from 'lucide-react';
 import {
   type Employee,
@@ -20,8 +20,20 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+
+const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'Document Name', key: 'name', width: 30 },
+  { header: 'Type', key: 'type', width: 18 },
+  { header: 'Employee', key: 'employeeName', width: 24 },
+  { header: 'Uploaded By', key: 'uploadedBy', width: 18 },
+  { header: 'Uploaded On', key: 'uploadedOn', width: 16 },
+  { header: 'Size', key: 'size', width: 12 },
+  { header: 'Status', key: 'status', width: 14 },
+];
 interface DocumentsProps {
   role: Role;
   activeCompanyId: string;
@@ -239,10 +251,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     type: 'Aadhaar' as Document['type'],
   });
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('documents');
-  const canCreate = canCreateModule('documents');
-  const canDelete = canDeleteModule('documents');
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
@@ -389,11 +399,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     }
   }, [activeCompanyId, currentCompany.name]);
 
-  // Sync templates back to storage
   const saveTemplatesToStorage = (updated: DocumentTemplate[]) => {
     setTemplates(updated);
-    const storageKey = `hrms_templates_${activeCompanyId}`;
-    
   };
 
   // Filtered templates of the active tab category
@@ -537,16 +544,90 @@ export const Documents: React.FC<DocumentsProps> = ({
   };
 
   // High-fidelity print A4 PDF
-  const handlePrint = () => {
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  // WYSIWYG export: the PDF is rasterised directly from the on-screen preview
+  // DOM (#a4-sheet-preview), so the downloaded payslip/letter is a pixel match
+  // of the template designer — no separate hand-coded PDF layout exists.
+  const handlePrint = async () => {
+    const element = document.getElementById('a4-sheet-preview');
+    if (!element || isPrinting) return;
+    setIsPrinting(true);
+
+    // Neutralise the on-screen zoom transform so the capture is full A4
+    // resolution, then restore it afterwards.
+    const prevTransform = element.style.transform;
+    element.style.transform = 'none';
+
+    try {
+      console.log('[Payslip PDF] Step 1 — Template loaded:', currentCategory);
+      console.log('[Payslip PDF] Step 2 — Employee data bound:', docVariables.employee_name);
+      // html2canvas-pro understands modern CSS color functions (oklch) emitted
+      // by Tailwind v4 — the original html2canvas throws on them.
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas-pro'),
+        import('jspdf'),
+      ]);
+      console.log('[Payslip PDF] Step 3 — Rendering HTML to canvas…');
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      console.log('[Payslip PDF] Step 4 — Canvas rendered', canvas.width, 'x', canvas.height);
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = 210, pageH = 297;
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      let heightLeft = imgH;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+      }
+
+      const safeName = (docVariables.employee_name || 'Document').replace(/[^a-z0-9]+/gi, '_');
+      const docLabel = (currentCategory || 'Document').replace(/[^a-z0-9]+/gi, '_');
+      console.log('[Payslip PDF] Step 5 — PDF generated, downloading…');
+      pdf.save(`${docLabel}_${safeName}.pdf`);
+      console.log('[Payslip PDF] Step 6 — File downloaded');
+    } catch (err: any) {
+      console.error('[Payslip PDF] Generation failed:', err);
+      const reason = err?.message || String(err);
+      alert(`PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`);
+    } finally {
+      element.style.transform = prevTransform;
+      setIsPrinting(false);
+    }
+  };
+
+  // Native browser print — renders the real preview DOM (full CSS, fonts,
+  // images, watermarks, oklch colours, multi-page) via the print engine. The
+  // global `@media print` rules (index.css) isolate #a4-sheet-preview so only
+  // the payslip prints. Users can print or "Save as PDF" from the dialog.
+  const printPayslip = () => {
     const element = document.getElementById('a4-sheet-preview');
     if (!element) return;
-    
-    element.setAttribute('style', 'width: 210mm; min-height: 297mm; transform: none !important; font-size: 13px; line-height: 1.6; padding: 25mm 20mm;');
-    const printContent = element.outerHTML;
-
-    document.body.innerHTML = `<div style="padding:0; margin:0; background:white;">${printContent}</div>`;
-    window.print();
-    window.location.reload();
+    const prevTransform = element.style.transform;
+    element.style.transform = 'none';
+    document.body.classList.add('printing-payslip');
+    const cleanup = () => {
+      document.body.classList.remove('printing-payslip');
+      element.style.transform = prevTransform;
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    // Defer so the layout reflows (transform reset) before the dialog opens.
+    setTimeout(() => { window.print(); }, 60);
   };
 
   // Open Edit Template Modal
@@ -775,11 +856,20 @@ export const Documents: React.FC<DocumentsProps> = ({
             <div className="w-72">
               <Input placeholder="Search employee documents..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
             </div>
-            {canEdit && (
-              <Button onClick={() => setUploadOpen(true)}>
-                Upload Verification Doc
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <ExportMenu
+                fileName="Compliance_Documents"
+                title="Compliance Documents"
+                sheetName="Documents"
+                columns={DOCUMENT_EXPORT_COLUMNS}
+                rows={() => filteredCompliance}
+              />
+              {canEdit && (
+                <Button onClick={() => setUploadOpen(true)}>
+                  Upload Verification Doc
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -1326,10 +1416,20 @@ export const Documents: React.FC<DocumentsProps> = ({
                     )}
                     <Button
                       onClick={handlePrint}
-                      className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow"
+                      disabled={isPrinting}
+                      className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow disabled:opacity-60"
+                    >
+                      <Download size={13} />
+                      {isPrinting ? 'Generating…' : 'Download PDF'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={printPayslip}
+                      disabled={isPrinting}
+                      className="flex-1 text-xs font-bold flex items-center justify-center gap-1"
                     >
                       <Printer size={13} />
-                      Print PDF
+                      Print Payslip
                     </Button>
                   </div>
                 </div>
@@ -1442,7 +1542,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                               <p>Department: <span className="font-semibold text-slate-800">{docVariables.department}</span></p>
                             </div>
                             <div className="space-y-1">
-                              <p>Base Location: <span className="font-semibold text-slate-800">{currentCompany.address.split(',')[0]}</span></p>
+                              <p>Base Location: <span className="font-semibold text-slate-800">{((currentCompany as any).address || (currentCompany as any).billingAddress || currentCompany.name || '—').split(',')[0]}</span></p>
                               <p>Joining Date: <span className="font-semibold text-slate-800">{docVariables.joining_date}</span></p>
                               <p>Billing Month: <span className="font-semibold text-slate-800">June 2026</span></p>
                             </div>

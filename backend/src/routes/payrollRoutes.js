@@ -6,9 +6,10 @@ const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
-router.get('/', controller.getAll);
-router.post('/', controller.create);
-router.put('/:id', controller.update);
-router.delete('/:id', controller.delete);
+router.get('/', requirePermission('payroll', 'view'), controller.getAll);
+router.post('/generate', requirePermission('payroll', 'create'), controller.generate);
+router.post('/', requirePermission('payroll', 'create'), controller.create);
+router.put('/:id', requirePermission('payroll', 'edit'), controller.update);
+router.delete('/:id', requirePermission('payroll', 'delete'), controller.delete);
 
 module.exports = router;

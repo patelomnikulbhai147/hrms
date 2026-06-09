@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, X, Check, Loader2, Info } from 'lucide-react';
+import { AlertTriangle, Check, Loader2, Info } from 'lucide-react';
 import { Button } from './Button';
 import { Modal } from './Modal';
 import { Input } from './Input';

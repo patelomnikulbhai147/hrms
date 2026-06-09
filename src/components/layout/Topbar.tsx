@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon, Building2 } from 'lucide-react';
-import { type Role, type Company, type Notification } from '../types';
+import { type Role, type Company, type Notification } from '../../data/mockData';
 import { type UserAccount } from '../../pages/Login';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../../api/apiClient';
-import { getCompanyInitials } from '../../utils/workspaceUtils';
+
 
 interface TopbarProps {
   onToggleSidebar: () => void;
@@ -31,7 +31,7 @@ interface TopbarProps {
 export const Topbar: React.FC<TopbarProps> = ({
   onToggleSidebar,
   role,
-  onRoleChange,
+
   onCompanyChange,
   activeCompanyId,
   isMasquerading,
@@ -80,7 +80,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="bg-[#361905] border-b border-amber-900/40 text-amber-500 px-4 py-1.5 text-xs font-bold flex items-center justify-between gap-3 shadow-lg select-none">
           <div className="flex items-center gap-2.5">
             <ShieldAlert size={14} className="animate-pulse text-amber-500" />
-            <span className="tracking-tight text-[11px] text-amber-500">Active Tenant Masquerade: Viewing HR workspace for <strong className="text-amber-400 font-extrabold">{currentCompany?.name}</strong></span>
+            <span className="tracking-tight text-[11px] text-amber-500">Viewing workspace as Super Admin (Masquerade Mode){currentCompany?.name ? <> — <strong className="text-amber-400 font-extrabold">{currentCompany.name}</strong></> : null}</span>
           </div>
           <button
             onClick={onExitMasquerade}
@@ -104,24 +104,91 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Fixed Company Name Badge in Navbar for Company Head and HR */}
         {(activeRole === 'Company Head' || activeRole === 'HR') && currentCompany && (
-          <div className="ml-2 px-3 py-1 bg-gradient-to-r from-blue-950/40 to-indigo-950/40 border border-blue-900/60 text-blue-300 text-xs font-bold rounded-full flex items-center gap-2 shadow-sm select-none">
-            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse" />
-            <span className="text-[10px] uppercase tracking-wider text-blue-400 font-extrabold">Company:</span> {currentCompany.name}
+          <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F7FAFF] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
+            <Building2 size={16} className="text-[#4F7CFF]" />
+            <span>{currentCompany.name}</span>
           </div>
         )}
 
         <div className="ml-auto flex items-center gap-3">
-          
+
+          {/* Masquerade Workspace Switcher (Company / Branch) */}
+          {isMasquerading && onCompanyChange && (
+            <div className="relative">
+              <button
+                onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
+                title="Switch workspace"
+              >
+                <Building2 size={16} className="text-[#4F7CFF]" />
+                <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">Workspace:</span>
+                <span className="max-w-[140px] truncate">{currentCompany?.name || 'Select'}</span>
+                <ChevronDown size={16} className="text-[#6B7280]" />
+              </button>
+
+              <AnimatePresence>
+                {workspaceOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5EFFF] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
+                  >
+                    <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                      {/* Companies (head offices / parents) */}
+                      <div className="px-4 pt-2 pb-1">
+                        <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Companies</span>
+                      </div>
+                      {companies.filter(c => !c.parentCompanyId).map(comp => {
+                        const isCurrent = comp.id === activeCompanyId;
+                        const childBranches = companies.filter(b => b.parentCompanyId === comp.id);
+                        return (
+                          <React.Fragment key={comp.id}>
+                            <button
+                              onClick={() => { if (!isCurrent) onCompanyChange(comp.id); setWorkspaceOpen(false); }}
+                              className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F7FAFF]', isCurrent ? 'bg-[#EDF4FF] text-[#4F7CFF] font-bold' : 'text-[#1F2937] font-semibold')}
+                            >
+                              <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#4F7CFF] flex-shrink-0" />{comp.name}</span>
+                              {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
+                            </button>
+                            {childBranches.length > 0 && (
+                              <div className="pl-3">
+                                {childBranches.map(br => {
+                                  const brCurrent = br.id === activeCompanyId;
+                                  return (
+                                    <button
+                                      key={br.id}
+                                      onClick={() => { if (!brCurrent) onCompanyChange(br.id); setWorkspaceOpen(false); }}
+                                      className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#F7FAFF] border-l-2 border-[#E5EFFF] ml-3', brCurrent ? 'text-[#4F7CFF] font-bold bg-[#F7FAFF]' : 'text-[#4B5563] font-medium')}
+                                    >
+                                      <span className="truncate pr-2">↳ {(br as any).branchName || br.name}</span>
+                                      {brCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
           {/* Workspace Switcher */}
           {authProfile && activeRole !== 'Super Admin' && authProfile.accessibleCompanyIds && authProfile.accessibleCompanyIds.length > 1 && !isMasquerading && (
             <div className="relative">
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
-                className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-lg text-xs font-bold text-slate-200 transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
               >
-                <Building2 size={14} className="text-indigo-400" />
+                <Building2 size={16} className="text-[#4F7CFF]" />
                 <span className="max-w-[120px] truncate">{currentCompany?.name || 'Switch Workspace'}</span>
-                <ChevronDown size={14} className="text-slate-500" />
+                <ChevronDown size={16} className="text-[#6B7280]" />
               </button>
               
               <AnimatePresence>
@@ -131,10 +198,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-800/80 rounded-2xl shadow-2xl py-2 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5EFFF] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
                   >
-                    <div className="px-4 py-2 border-b border-slate-800/80 mb-1">
-                      <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Switch Workspace</span>
+                    <div className="px-4 py-2 border-b border-[#E5EFFF] mb-1">
+                      <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Switch Location</span>
                     </div>
                     <div className="max-h-60 overflow-y-auto custom-scrollbar">
                       {authProfile.accessibleCompanyIds.map(id => {
@@ -151,12 +218,12 @@ export const Topbar: React.FC<TopbarProps> = ({
                               setWorkspaceOpen(false);
                             }}
                             className={cn(
-                              "w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-slate-800/60",
-                              isCurrent ? "bg-indigo-500/10 text-indigo-300 font-bold" : "text-slate-300 font-medium"
+                              "w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F7FAFF]",
+                              isCurrent ? "bg-[#EDF4FF] text-[#4F7CFF] font-bold" : "text-[#4B5563] font-medium"
                             )}
                           >
                             <span className="truncate pr-2">{comp.name}</span>
-                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 flex-shrink-0" />}
+                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
                           </button>
                         );
                       })}

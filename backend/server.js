@@ -14,7 +14,10 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const payrollRoutes = require('./src/routes/payrollRoutes');
 const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const userRoutes = require('./src/routes/userRoutes');
+const overtimeRoutes = require('./src/routes/overtimeRoutes');
+const shiftRoutes = require('./src/routes/shiftRoutes');
 const subscriptionPlanRoutes = require('./src/routes/subscriptionPlanRoutes');
+const statisticsRoutes = require('./src/routes/statisticsRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -37,7 +40,10 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/payroll', payrollRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/overtime', overtimeRoutes);
+app.use('/api/shifts', shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
+app.use('/api/statistics', statisticsRoutes);
 
 // Basic Health Check
 app.get('/api/health', (req, res) => {

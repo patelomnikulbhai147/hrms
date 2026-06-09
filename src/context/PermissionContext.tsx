@@ -40,11 +40,11 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
 
   // Then check granular action permissions if they exist
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].view;
+    return authProfile.permissions[module].view === true;
   }
   
   // Default fallback if no permissions are set yet
-  return true;
+  return false;
 };
 
 
@@ -53,11 +53,7 @@ export const checkCanCreate = (module: AppModules, authProfile: UserAccount | nu
   if (!authProfile) return false;
   if (!checkCanEdit(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].create;
-  }
-  if (!authProfile.permissions) {
-    if (role === 'Company Head' || role === 'HR') return true;
-    return false;
+    return authProfile.permissions[module].create === true;
   }
   return false;
 };
@@ -67,11 +63,7 @@ export const checkCanDelete = (module: AppModules, authProfile: UserAccount | nu
   if (!authProfile) return false;
   if (!checkCanEdit(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].delete;
-  }
-  if (!authProfile.permissions) {
-    if (role === 'Company Head') return true;
-    return false;
+    return authProfile.permissions[module].delete === true;
   }
   return false;
 };
@@ -85,16 +77,10 @@ export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null
 
   // Check granular action permissions
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].edit;
+    return authProfile.permissions[module].edit === true;
   }
 
   // Fallback defaults if permissions matrix is completely missing
-  if (!authProfile.permissions) {
-     if (role === 'Employee' && (module === 'settings' || module === 'leaves' || module === 'attendance')) return true;
-     if (role === 'Company Head' || role === 'HR' || role === 'Finance') return true;
-     return false;
-  }
-  
   return false;
 };
 

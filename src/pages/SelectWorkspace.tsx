@@ -1,5 +1,5 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Company, Role } from '../types';
+import { Company } from '../types';
 import { Building2, ArrowRight, CheckCircle2, ShieldCheck } from 'lucide-react';
 import type { UserAccount } from './Login';
 import { cn } from '../utils/cn';
@@ -98,7 +98,6 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                 </h3>
                 <div className="text-sm text-slate-400 flex-1">
                   {workspace.isHeadOffice ? 'Head Office' : 'Branch Office'}
-                  {workspace.location && ` • ${workspace.location}`}
                 </div>
               </button>
             );

@@ -3,8 +3,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select, Textarea } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
-import { Building2, Palette, BadgeCent, CheckCircle2, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud } from 'lucide-react';
-import { type Company, type Role } from '../types';
+import { Building2, Palette, BadgeCent, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud } from 'lucide-react';
+import { type Company, type Role } from '../data/mockData';
 import { getCompanyDepartments } from '../data/mockData';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { usePermissions } from '../context/PermissionContext';
@@ -15,6 +15,7 @@ import {
   validatePercentage
 } from '../utils/validation';
 import { api } from '../api/apiClient';
+import { PayrollComplianceEngine } from '../components/settings/PayrollComplianceEngine';
 
 interface SettingsProps {
   role: Role;
@@ -120,7 +121,7 @@ export const Settings: React.FC<SettingsProps> = ({
     });
 
     // Populate customDepartments list from actual database resolution
-    setCustomDepartments(getCompanyDepartments(currentCompany.id, companies));
+    setCustomDepartments(getCompanyDepartments(currentCompany.id, companies as any));
   }, [activeCompanyId, currentCompany, companies]);
 
 
@@ -202,7 +203,13 @@ export const Settings: React.FC<SettingsProps> = ({
     const basicErr = validatePercentage(payrollForm.basicPercent, 'Basic Salary Percentage').error;
 
     if (nameErr || emailErr || phoneErr || pfErr || esicErr || basicErr || !profileForm.address) {
-      alert('Error: Please resolve validation errors before saving.');
+      const missing = [];
+      if (!profileForm.address) missing.push('Corporate HQ Full Address');
+      if (nameErr) missing.push('Corporate Name');
+      if (emailErr) missing.push('Official Support Email');
+      if (phoneErr) missing.push('Office Mobile Number');
+      
+      alert(`Error: Please resolve validation errors before saving.\nMissing/Invalid: ${missing.join(', ')}`);
       return;
     }
 
@@ -231,6 +238,10 @@ export const Settings: React.FC<SettingsProps> = ({
       footerText: brandingForm.footerText,
       signatureText: brandingForm.signatureText,
       themeStyle: brandingForm.themeStyle as any,
+      
+      // Preserve entity relationships
+      isHeadOffice: currentCompany.isHeadOffice,
+      parentCompanyId: currentCompany.parentCompanyId
     };
 
     try {
@@ -249,6 +260,8 @@ export const Settings: React.FC<SettingsProps> = ({
       }
       
       alert('Company statutory profiles, templates, and branding configurations updated successfully! Changes immediately active.');
+      // Force reload to apply theme changes everywhere globally
+      window.location.reload();
     } catch (err) {
       console.error(err);
       alert('Failed to save settings to database.');
@@ -263,15 +276,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const canEdit = canEditModule('settings');
   const isSuperOrHead = (role === 'Super Admin' || role === 'Company Head') && canEdit;
 
-  const isSaveDisabled =
-    !profileForm.name ||
-    !profileForm.email ||
-    !phoneNum ||
-    !profileForm.address ||
-    !payrollForm.pfRate ||
-    !payrollForm.esicRate ||
-    !payrollForm.basicPercent ||
-    Object.values(errors).some(err => !!err && err !== '');
+
 
   return (
     <div className="space-y-4 font-sans">
@@ -452,72 +457,21 @@ export const Settings: React.FC<SettingsProps> = ({
             </Card>
           )}
 
-          {/* TAB 2: Payroll Settings */}
+          {/* TAB 2: Payroll Settings Engine */}
           {activeSubTab === 'payroll' && (
-            <Card>
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 pb-1.5 border-b border-gray-100">
-                Statutory Payroll Allocations
-              </h3>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3 text-left">
-                  <Input
-                    label="Provident Fund (PF) Contribution (%) *"
-                    disabled={!isSuperOrHead}
-                    value={payrollForm.pfRate}
-                    onChange={e => {
-                      const clean = e.target.value.replace(/[^\d.]/g, '');
-                      setPayrollForm({ ...payrollForm, pfRate: clean });
-                      setErrors(prev => ({ ...prev, pfRate: validatePercentage(clean, 'PF Rate').error }));
-                    }}
-                    error={errors.pfRate}
-                    success={payrollForm.pfRate !== '' && !errors.pfRate}
-                  />
-                  <Input
-                    label="ESIC Taxation Rate (%) *"
-                    disabled={!isSuperOrHead}
-                    value={payrollForm.esicRate}
-                    onChange={e => {
-                      const clean = e.target.value.replace(/[^\d.]/g, '');
-                      setPayrollForm({ ...payrollForm, esicRate: clean });
-                      setErrors(prev => ({ ...prev, esicRate: validatePercentage(clean, 'ESIC Rate').error }));
-                    }}
-                    error={errors.esicRate}
-                    success={payrollForm.esicRate !== '' && !errors.esicRate}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-left">
-                  <Input
-                    label="Basic Salary CTC Percentage (%) *"
-                    disabled={!isSuperOrHead}
-                    value={payrollForm.basicPercent}
-                    onChange={e => {
-                      const clean = e.target.value.replace(/[^\d.]/g, '');
-                      setPayrollForm({ ...payrollForm, basicPercent: clean });
-                      setErrors(prev => ({ ...prev, basicPercent: validatePercentage(clean, 'Basic Salary Percentage').error }));
-                    }}
-                    error={errors.basicPercent}
-                    success={payrollForm.basicPercent !== '' && !errors.basicPercent}
-                  />
-                  <Input
-                    label="Professional Tax Rate (INR) *"
-                    disabled={!isSuperOrHead}
-                    type="number"
-                    value={payrollForm.profTaxRate}
-                    onChange={e => setPayrollForm({ ...payrollForm, profTaxRate: e.target.value })}
-                  />
-                </div>
-
-                <Input
-                  label="Overtime Hourly Multiplier (e.g. 1.5x) *"
-                  disabled={!isSuperOrHead}
-                  type="number"
-                  step="0.1"
-                  value={payrollForm.overtimeRate}
-                  onChange={e => setPayrollForm({ ...payrollForm, overtimeRate: e.target.value })}
-                />
-              </div>
-            </Card>
+            <PayrollComplianceEngine 
+              currentCompany={currentCompany} 
+              isSuperOrHead={isSuperOrHead} 
+              onSave={(payload) => {
+                setPayrollForm({
+                  ...payrollForm,
+                  pfRate: payload.pfRate?.toString() || payrollForm.pfRate,
+                  esicRate: payload.esicRate?.toString() || payrollForm.esicRate,
+                  profTaxRate: payload.profTaxRate?.toString() || payrollForm.profTaxRate,
+                  overtimeRate: payload.overtimeRate?.toString() || payrollForm.overtimeRate
+                });
+              }}
+            />
           )}
 
           {/* TAB 3: Branding & Templates */}
@@ -762,7 +716,7 @@ export const Settings: React.FC<SettingsProps> = ({
           {/* Action Trigger */}
           {isSuperOrHead && (
             <div className="pt-2">
-              <Button onClick={handleSaveAll} disabled={isSaveDisabled} className="w-full">
+              <Button onClick={handleSaveAll} className="w-full">
                 Apply Company Statutory & Branding Settings
               </Button>
             </div>

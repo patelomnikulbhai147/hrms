@@ -30,7 +30,8 @@ export const Modal: React.FC<ModalProps> = ({ open, onClose, title, children, si
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(4px)' }}
             onClick={onClose}
           />
           <motion.div

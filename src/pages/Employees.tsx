@@ -3,12 +3,12 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Eye, Edit2, Trash2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
-  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, ArrowRight
+  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role, type Company,
-  isCompanyIdMatch, getCompanyIdFromBranchName
+  isCompanyIdMatch
 } from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -19,13 +19,27 @@ import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModa
 import { Input, Select } from '../components/ui/Input';
 import {
   validatePhone, validateName, validateEmail,
-  validateSalary, validateEmployeeId
+  validateSalary
 } from '../utils/validation';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 
-import { exportToExcel } from '../utils/exportUtils';
+const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Name', key: 'name', width: 26 },
+  { header: 'Designation', key: 'designation', width: 22 },
+  { header: 'Department', key: 'department', width: 20 },
+  { header: 'Branch', key: 'branchLocation', width: 18 },
+  { header: 'Mobile', key: 'mobileNumber', width: 16 },
+  { header: 'Email', key: 'email', width: 28 },
+  { header: 'Salary', key: 'salary', width: 14 },
+  { header: 'Status', key: 'status', width: 14 },
+];
+
+
 
 interface EmployeesProps {
   role: Role;
@@ -68,10 +82,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   const dynamicBranches = useMemo(() => companies.filter(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'), [companies, parentCompanyId]);
   const branchOptions = useMemo(() => dynamicBranches.map(b => b.branchName || b.name), [dynamicBranches]);
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('employees');
   const canCreate = canCreateModule('employees');
-  const canDelete = canDeleteModule('employees');
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
@@ -95,7 +108,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Dynamic Leave History filtering for the currently viewed employee
   
   // Enterprise Lifecycle & Export
-  const [activeMainTab, setActiveMainTab] = useState<'active' | 'previous'>('active');
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous'>('all');
 
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -105,8 +118,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
-  const [offboardStep, setOffboardStep] = useState(1);
-  const [isExporting, setIsExporting] = useState(false);
+
   const empLeavesHistory = useMemo(() => {
     if (!viewEmp) return [];
     return leaves.filter(
@@ -197,7 +209,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     permanentAddress: '',
   });
 
-  const [editCountryCode, setEditCountryCode] = useState('+91');
+
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
   // Auto-generate employee code on add open
@@ -227,10 +239,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     setEditEmp(emp);
     const parts = (emp.phone || '').split(' ');
     if (parts.length > 1) {
-      setEditCountryCode(parts[0]);
       setEditMobileNumber(parts.slice(1).join(''));
     } else {
-      setEditCountryCode('+91');
       setEditMobileNumber(emp.phone || '');
     }
     setActiveTab('personal');
@@ -340,11 +350,14 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
-    const activeRoster = companyEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
-    const total = activeRoster.length;
-    const active = activeRoster.filter(e => e.status === 'Active').length;
+    const activeRoster = companyEmployees.filter(e => e.status === 'Active');
+    // Total Staff Strength = every employee assigned to this workspace (COUNT),
+    // Active Roster = the active subset. They must not collapse to 0 just because
+    // a branch's staff are archived.
+    const total = companyEmployees.length;
+    const active = activeRoster.length;
     const verifiedPayroll = activeRoster.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
-    const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
+    const pendingExits = companyEmployees.filter(e => e.status === 'Active' && e.exitDate && !e.exitReason).length;
     return { total, active, verifiedPayroll, pendingExits };
   }, [companyEmployees]);
 
@@ -443,8 +456,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       return;
     }
 
-    let resolvedCompanyId = parentCompanyId;
-    let resolvedBranchId = null;
+    let resolvedCompanyId = parentCompanyId || activeCompanyId;
+    let resolvedBranchId: string | undefined = undefined;
 
     if (isBranchWorkspace) {
       resolvedBranchId = activeCompanyId;
@@ -535,7 +548,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     setIsOffboardingExecuting(true);
     handleOffboardSubmit();
   };
-  const setIsConfirmingOffboard = (val: boolean) => {};
+  const setIsConfirmingOffboard = (_val: boolean) => {};
   
   // Edit Submission
   const handleEditSubmit = async () => {
@@ -616,8 +629,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       return;
     }
 
-    let resolvedCompanyId = parentCompanyId;
-    let resolvedBranchId = null;
+    let resolvedCompanyId = parentCompanyId || activeCompanyId;
+    let resolvedBranchId: string | undefined = undefined;
 
     if (isBranchWorkspace) {
       resolvedBranchId = activeCompanyId;
@@ -654,10 +667,13 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!offboardEmp) return;
 
     const historyItem = {
-      role: offboardEmp.designation,
-      department: offboardEmp.department,
+      companyId: offboardEmp.companyId,
+      companyName: currentComp?.name || 'Company',
+      role: offboardEmp.role || 'Staff',
+      designation: offboardEmp.designation,
       startDate: offboardEmp.joinDate,
-      endDate: today
+      endDate: today,
+      reason: 'Formal Offboarding Completed'
     };
 
     const updated: Employee = {
@@ -905,20 +921,34 @@ export const Employees: React.FC<EmployeesProps> = ({
           {/* Main Tabs */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
+              onClick={() => setActiveMainTab('all')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              All Staff ({companyEmployees.length})
+            </button>
+            <button
               onClick={() => setActiveMainTab('active')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Active Roster
+              Active Roster ({stats.active})
             </button>
             <button
               onClick={() => setActiveMainTab('previous')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Previous Employees
+              Previous Employees ({companyEmployees.length - stats.active})
             </button>
           </div>
 
-          {isHR && canCreate && activeMainTab === 'active' && (
+          <ExportMenu
+            fileName="Employees"
+            title="Employee Directory"
+            sheetName="Employees"
+            columns={EMPLOYEE_EXPORT_COLUMNS}
+            rows={() => filtered}
+          />
+
+          {isHR && canCreate && activeMainTab !== 'previous' && (
             <>
               <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
                 Bulk Importer
@@ -1016,7 +1046,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                             <Edit2 size={13} />
                           </button>
 
-                          {activeMainTab === 'active' ? (
+                          {(emp.status !== 'Archived' && emp.status !== 'Terminated') ? (
                             <button
                               onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
                               className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"

@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/prisma');
 
 // Get all companies
 exports.getCompanies = async (req, res) => {
@@ -241,4 +240,205 @@ exports.archiveCompany = async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 };
+/**
+ * GET /api/companies/export
+ * Returns enriched, export-ready data for:
+ *   - companies[]  — every Company row with active/total employee counts
+ *   - branches[]   — every Branch row with parent company name and headcounts
+ *   - plans[]      — active SubscriptionPlan list for the summary sheet
+ */
+exports.exportCompanies = async (req, res) => {
+  try {
+    // Fetch companies with their branches, employee counts and payment records
+    const [companies, branches, plans] = await Promise.all([
+      prisma.company.findMany({
+        include: {
+          branches: {
+            select: {
+              id: true,
+              branchName: true,
+              branchCode: true,
+              location: true,
+              phone: true,
+              email: true,
+              adminName: true,
+              adminEmail: true,
+              status: true,
+              isArchived: true,
+              headcount: true,
+              employeeCapacity: true,
+              pfRate: true,
+              esicRate: true,
+              basicPercent: true,
+              profTaxRate: true,
+              overtimeRate: true,
+              createdAt: true,
+              updatedAt: true,
+              _count: {
+                select: {
+                  employees: true,
+                }
+              }
+            }
+          },
+          _count: {
+            select: {
+              employees: true,
+              branches: true,
+            }
+          }
+        },
+        orderBy: { createdAt: 'asc' }
+      }),
+      prisma.branch.findMany({
+        include: {
+          company: { select: { name: true } },
+          _count: { select: { employees: true } }
+        },
+        orderBy: { createdAt: 'asc' }
+      }),
+      prisma.subscriptionPlan.findMany({ orderBy: { priceMonthly: 'asc' } })
+    ]);
 
+    // Active employee counts per company/branch
+    const activeEmpByCompany = await prisma.employee.groupBy({
+      by: ['companyId'],
+      where: { status: { in: ['Active', 'ACTIVE'] } },
+      _count: { _all: true }
+    });
+    const activeEmpByBranch = await prisma.employee.groupBy({
+      by: ['branchId'],
+      where: { status: { in: ['Active', 'ACTIVE'] }, branchId: { not: null } },
+      _count: { _all: true }
+    });
+
+    const activeByComp = Object.fromEntries(activeEmpByCompany.map(r => [r.companyId, r._count._all]));
+    const activeByBranch = Object.fromEntries(activeEmpByBranch.map(r => [r.branchId, r._count._all]));
+
+    const formatDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+    const formatDateTime = (d) => d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+    const enrichedCompanies = companies.map(c => ({
+      type: 'Company',
+      companyId: c.id,
+      branchId: '',
+      companyName: c.name || '',
+      branchName: '',
+      contactPerson: c.adminName || '',
+      email: c.adminEmail || c.domain || '',
+      mobileNumber: c.phone || '',
+      alternateContact: '',
+      industry: c.industry || '',
+      city: '',
+      state: '',
+      country: 'India',
+      address: c.billingAddress || '',
+      totalEmployeeCount: c._count.employees,
+      activeEmployeeCount: activeByComp[c.id] || 0,
+      totalBranches: c._count.branches,
+      website: c.domain || '',
+      joinDateTime: formatDateTime(c.joinDate),
+      subscriptionPlan: c.plan || '',
+      subscriptionPrice: c.subscriptionPrice || c.priceMonthly || 0,
+      billingCycle: c.billingCycle || 'Monthly',
+      subscriptionStartDate: formatDate(c.joinDate),
+      subscriptionExpiryDate: c.renewalDate || '',
+      billingStatus: c.paymentStatus || '',
+      companyStatus: c.status || '',
+      branchStatus: '',
+      accountStatus: c.accountStatus || '',
+      isArchived: c.isArchived ? 'Yes' : 'No',
+      gstNumber: c.gstNumber || '',
+      domain: c.domain || '',
+      pfRate: c.pfRate || 12,
+      esicRate: c.esicRate || 3.25,
+      basicPercent: c.basicPercent || 50,
+      profTaxRate: c.profTaxRate || 200,
+      overtimeRate: c.overtimeRate || 1.5,
+      createdDate: formatDate(c.createdAt),
+      updatedDate: formatDate(c.updatedAt),
+    }));
+
+    const enrichedBranches = branches.map(b => ({
+      type: 'Branch',
+      companyId: b.companyId,
+      branchId: b.id,
+      companyName: b.company?.name || '',
+      branchName: b.branchName || '',
+      contactPerson: b.adminName || '',
+      email: b.email || b.adminEmail || '',
+      mobileNumber: b.phone || '',
+      alternateContact: '',
+      industry: '',
+      city: b.location || '',
+      state: '',
+      country: 'India',
+      address: b.location || '',
+      totalEmployeeCount: b._count.employees,
+      activeEmployeeCount: activeByBranch[b.id] || 0,
+      totalBranches: '',
+      subscriptionPlan: 'Included',
+      subscriptionPrice: '',
+      billingCycle: '',
+      subscriptionStartDate: formatDate(b.createdAt),
+      subscriptionExpiryDate: '',
+      billingStatus: '',
+      companyStatus: '',
+      branchStatus: b.status || '',
+      accountStatus: '',
+      isArchived: b.isArchived ? 'Yes' : 'No',
+      gstNumber: '',
+      domain: '',
+      pfRate: b.pfRate,
+      esicRate: b.esicRate,
+      basicPercent: b.basicPercent,
+      profTaxRate: b.profTaxRate,
+      overtimeRate: b.overtimeRate,
+      branchCode: b.branchCode || '',
+      employeeCapacity: b.employeeCapacity || 200,
+      createdDate: formatDate(b.createdAt),
+      updatedDate: formatDate(b.updatedAt),
+    }));
+
+    // ── Employee Summary ──────────────────────────────────────────────────────
+    // Live employee aggregates straight from the Employee table (never cached
+    // counts). Overall totals + a per-company breakdown for the PDF/Excel report.
+    const [empTotalByCompany, empActiveByCompany, empStatusGroups, totalEmployees] = await Promise.all([
+      prisma.employee.groupBy({ by: ['companyId'], _count: { _all: true } }),
+      prisma.employee.groupBy({ by: ['companyId'], where: { status: { in: ['Active', 'ACTIVE'] } }, _count: { _all: true } }),
+      prisma.employee.groupBy({ by: ['status'], _count: { _all: true } }),
+      prisma.employee.count(),
+    ]);
+    const totByComp = Object.fromEntries(empTotalByCompany.map(r => [r.companyId, r._count._all]));
+    const actByComp = Object.fromEntries(empActiveByCompany.map(r => [r.companyId, r._count._all]));
+    const activeEmployees = empStatusGroups
+      .filter(g => ['active'].includes(String(g.status).toLowerCase()))
+      .reduce((s, g) => s + g._count._all, 0);
+
+    const employeeSummary = {
+      totalEmployees,
+      activeEmployees,
+      archivedEmployees: totalEmployees - activeEmployees,
+      byStatus: empStatusGroups.map(g => ({ status: g.status, count: g._count._all })),
+      byCompany: companies.map(c => ({
+        companyName: c.name || '',
+        companyStatus: c.status || '',
+        total: totByComp[c.id] || 0,
+        active: actByComp[c.id] || 0,
+        archived: (totByComp[c.id] || 0) - (actByComp[c.id] || 0),
+      })),
+    };
+
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      companies: enrichedCompanies,
+      branches: enrichedBranches,
+      plans,
+      employeeSummary,
+      exportedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Export Companies Error:', error);
+    res.status(500).json({ error: 'Failed to generate export data' });
+  }
+};

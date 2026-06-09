@@ -71,7 +71,12 @@ exports.updateUser = async (req, res) => {
       data: dataToUpdate
     });
 
-    res.json(updatedUser);
+    const parsedPerms = updatedUser.permissions || {};
+    res.json({
+      ...updatedUser,
+      permissions: parsedPerms.permissions || {},
+      moduleAccess: parsedPerms.moduleAccess || {}
+    });
   } catch (error) {
     console.error('Error updating user:', error);
     res.status(500).json({ error: 'Internal server error while updating user' });
@@ -121,7 +126,12 @@ exports.createUser = async (req, res) => {
       }
     });
 
-    res.status(201).json(newUser);
+    const parsedPerms = newUser.permissions || {};
+    res.status(201).json({
+      ...newUser,
+      permissions: parsedPerms.permissions || {},
+      moduleAccess: parsedPerms.moduleAccess || {}
+    });
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Internal server error while creating user' });
@@ -135,8 +145,15 @@ exports.getAllUsers = async (req, res) => {
     });
     // Remove passwordHash before sending
     const safeUsers = users.map(u => {
-      const { passwordHash, password, ...rest } = u;
-      return { ...rest, passwordStr: password, password };
+      const { passwordHash, password, permissions: rawPermissions, ...rest } = u;
+      const parsedPerms = rawPermissions || {};
+      return { 
+        ...rest, 
+        passwordStr: password, 
+        password,
+        permissions: parsedPerms.permissions || {},
+        moduleAccess: parsedPerms.moduleAccess || {}
+      };
     });
     res.json(safeUsers);
   } catch (error) {

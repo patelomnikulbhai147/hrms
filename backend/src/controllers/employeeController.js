@@ -1,5 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/prisma');
 
 exports.getEmployees = async (req, res) => {
   try {
@@ -313,6 +312,58 @@ exports.deleteEmployee = async (req, res) => {
     res.json({ message: 'Employee archived successfully', employee });
   } catch (error) {
     console.error('Error deleting employee:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// ── Employee Status Verification Report ──────────────────────────────────────
+// Returns one row per employee (Employee ID, Name, Status, isArchived, Branch,
+// Company) plus a mismatch list, so status inconsistencies can be identified.
+// `status` is the single source of truth; isArchived is derived from it.
+exports.statusReport = async (req, res) => {
+  try {
+    const [employees, branches, companies] = await Promise.all([
+      prisma.employee.findMany({
+        select: { id: true, employeeId: true, name: true, status: true, branchId: true, companyId: true },
+        orderBy: { name: 'asc' },
+      }),
+      prisma.branch.findMany({ select: { id: true, branchName: true, status: true } }),
+      prisma.company.findMany({ select: { id: true, name: true, status: true } }),
+    ]);
+    const bMap = Object.fromEntries(branches.map(b => [b.id, b]));
+    const cMap = Object.fromEntries(companies.map(c => [c.id, c]));
+    const SUPPORTED = ['Active', 'Archived', 'Resigned', 'Terminated', 'Inactive'];
+
+    const rows = employees.map(e => {
+      const b = e.branchId ? bMap[e.branchId] : null;
+      const c = cMap[e.companyId] || null;
+      const archived = e.status === 'Archived';
+      // An archived employee whose parent branch/company is Active is a mismatch.
+      const parentActive = b ? b.status === 'Active' : (c ? c.status === 'Active' : false);
+      const mismatch =
+        (archived && parentActive) ||
+        !SUPPORTED.includes(e.status);
+      return {
+        employeeId: e.employeeId,
+        employeeName: e.name,
+        status: e.status,
+        isArchived: archived,
+        branch: b ? b.branchName : '',
+        company: c ? c.name : '',
+        mismatch,
+        mismatchReason: !SUPPORTED.includes(e.status)
+          ? `Unsupported status "${e.status}"`
+          : (archived && parentActive ? 'Archived employee under an Active branch/company' : ''),
+      };
+    });
+
+    const mismatches = rows.filter(r => r.mismatch);
+    const byStatus = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+
+    res.set('Cache-Control', 'no-store');
+    res.json({ total: rows.length, byStatus, mismatchCount: mismatches.length, mismatches, rows, generatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error('Error generating employee status report:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

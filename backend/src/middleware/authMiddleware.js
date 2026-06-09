@@ -13,8 +13,7 @@ exports.protect = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const { PrismaClient } = require('@prisma/client');
-    const prisma = new PrismaClient();
+    const prisma = require('../config/prisma');
     const user = await prisma.user.findUnique({ where: { id: decoded.id } });
     
     if (!user) {

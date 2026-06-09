@@ -6,7 +6,8 @@ export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated' |
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
 export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
-export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
+export type AttendanceStatus = 'Present' | 'Absent' | 'Half Day' | 'Weekly Off' | 'Holiday' | 'Leave' | 'Work From Home' | 'On Duty';
+export type AttendanceFlag = 'Late Mark' | 'Early Exit' | 'Overtime' | 'Night Shift' | 'Missed Punch' | 'Double Shift' | 'Field Work';
 
 export interface Company {
   id: string;
@@ -188,6 +189,9 @@ export interface AttendanceRecord {
   clockOut: string;
   status: AttendanceStatus;
   hoursWorked: number;
+  flags?: AttendanceFlag[];
+  leaveType?: string;
+  shift?: string;
 }
 
 export interface LeaveRequest {
@@ -246,6 +250,8 @@ export interface PayrollRecord {
   bonus?: number;
   tax?: number;
   notes?: string;
+  overtimeAmount?: number;
+  overtimeHours?: number;
 }
 
 export interface Document {
@@ -307,6 +313,7 @@ export interface PaymentRecord {
   paymentDate: string;
   invoiceNumber: string;
   planType: string;
+  billingCycle?: string;
   paymentMode: 'Card' | 'UPI' | 'Bank Transfer' | 'Net Banking' | 'Manual';
   transactionStatus: 'Success' | 'Failed' | 'Refunded';
 }
@@ -572,7 +579,7 @@ export const companies: Company[] = [
   }
 ];
 
-export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[], branchLocation?: string, branchId?: string): boolean => {
+export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[], _branchLocation?: string, branchId?: string): boolean => {
   if (recordCompanyId === activeId) return true;
   if (branchId === activeId) return true; // Direct branch match
   

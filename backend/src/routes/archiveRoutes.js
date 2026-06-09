@@ -1,4 +1,4 @@
-const { requirePermission } = require('../middleware/rbacMiddleware');
+const { requireSuperAdmin } = require('../middleware/rbacMiddleware');
 const express = require('express');
 const router = express.Router();
 const ArchiveService = require('../services/archiveService');
@@ -6,6 +6,7 @@ const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
+// Employee offboarding — accessible to authorised HR/Admin roles (protect only)
 router.post('/employee/:id', async (req, res) => {
   try {
     const archived = await ArchiveService.offboardEmployee(
@@ -21,7 +22,8 @@ router.post('/employee/:id', async (req, res) => {
   }
 });
 
-router.post('/company/:id', async (req, res) => {
+// Company archive/reactivate — SUPER ADMIN ONLY
+router.post('/company/:id', requireSuperAdmin, async (req, res) => {
   try {
     const archived = await ArchiveService.offboardCompany(
       req.params.id, 
@@ -36,7 +38,7 @@ router.post('/company/:id', async (req, res) => {
   }
 });
 
-router.post('/reactivate/company/:id', async (req, res) => {
+router.post('/reactivate/company/:id', requireSuperAdmin, async (req, res) => {
   try {
     const company = await ArchiveService.reactivateCompany(
       req.params.id, 

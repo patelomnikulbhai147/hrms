@@ -4,7 +4,8 @@ export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated' |
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
 export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
-export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
+export type AttendanceStatus = 'Present' | 'Absent' | 'Half Day' | 'Weekly Off' | 'Holiday' | 'Leave' | 'Work From Home' | 'On Duty';
+export type AttendanceFlag = 'Late Mark' | 'Early Exit' | 'Overtime' | 'Night Shift' | 'Missed Punch' | 'Double Shift' | 'Field Work';
 
 export interface Company {
   id: string;
@@ -175,6 +176,9 @@ export interface AttendanceRecord {
   clockOut: string;
   status: AttendanceStatus;
   hoursWorked: number;
+  flags?: AttendanceFlag[];
+  leaveType?: string;
+  shift?: string;
 }
 
 export interface LeaveRequest {
@@ -350,7 +354,49 @@ export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, comp
     const recordComp = list.find(c => c.id === recordCompanyId);
     return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id;
   }
-  
+
+  return false;
+};
+
+/**
+ * buildScopedEmployeeIdSet
+ *
+ * Returns the set of employee identifiers (both the uuid `id` and the business
+ * `employeeId`) that belong to the active company/branch workspace. This is the
+ * single source of truth used to scope CHILD records (attendance, leaves,
+ * payroll, documents) — those records carry an `employeeId` but no `branchId`,
+ * so they can only be scoped to a branch through employee membership.
+ */
+export const buildScopedEmployeeIdSet = (
+  employees: Array<{ id?: string; employeeId?: string; companyId: string; branchLocation?: string; branchId?: string }>,
+  activeId: string,
+  companiesList?: Company[]
+): Set<string> => {
+  const ids = new Set<string>();
+  for (const e of employees) {
+    if (isCompanyIdMatch(e.companyId, activeId, companiesList, e.branchLocation, e.branchId)) {
+      if (e.id) ids.add(e.id);
+      if (e.employeeId) ids.add(e.employeeId);
+    }
+  }
+  return ids;
+};
+
+/**
+ * isRecordInWorkspace
+ *
+ * True when a child record belongs to the active workspace — by employee
+ * membership first (works for both company and branch workspaces), falling back
+ * to a direct company match for company-level records with no employee link.
+ */
+export const isRecordInWorkspace = (
+  record: { employeeId?: string; companyId?: string },
+  activeId: string,
+  scopedEmployeeIds: Set<string>,
+  companiesList?: Company[]
+): boolean => {
+  if (record.employeeId && scopedEmployeeIds.has(record.employeeId)) return true;
+  if (record.companyId) return isCompanyIdMatch(record.companyId, activeId, companiesList);
   return false;
 };
 

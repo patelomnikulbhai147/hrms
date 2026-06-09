@@ -1,4 +1,4 @@
-import { type PayrollRecord, type PayrollStatus } from '../types';
+import { type PayrollRecord } from '../types';
 
 export const payrollStatusConfig = {
   draft: {
@@ -26,6 +26,11 @@ export const payrollStatusConfig = {
     badgeVariant: 'green' as const,
     description: 'Salary payment settled successfully in corporate ledger.'
   },
+  completed: {
+    label: 'Paid',
+    badgeVariant: 'green' as const,
+    description: 'Salary payment settled successfully in corporate ledger.'
+  },
   payslip_generated: {
     label: 'Payslip Generated',
     badgeVariant: 'purple' as const,
@@ -38,19 +43,29 @@ export const payrollStatusConfig = {
   }
 };
 
-export const getStatusBadgeVariant = (status: PayrollStatus) => {
-  return payrollStatusConfig[status]?.badgeVariant || 'gray';
+export const getStatusBadgeVariant = (status: string) => {
+  return (payrollStatusConfig as any)[status]?.badgeVariant || 'gray';
 };
 
-export const dbToUiStatus = (status: PayrollStatus): string => {
-  return payrollStatusConfig[status]?.label || status;
+export const dbToUiStatus = (status: string): string => {
+  return (payrollStatusConfig as any)[status]?.label || status;
 };
 
 // Centralized dynamic metric calculator for dashboards and progress indicators
 export const calculatePayrollStats = (scopedRecords: PayrollRecord[]) => {
-  const paidRecords = scopedRecords.filter(r => r.payrollStatus === 'paid' || r.payrollStatus === 'payslip_generated');
-  const pendingRecords = scopedRecords.filter(r => r.payrollStatus !== 'paid' && r.payrollStatus !== 'payslip_generated' && r.payrollStatus !== 'failed');
-  const failedRecords = scopedRecords.filter(r => r.payrollStatus === 'failed');
+  const isPaid = (r: PayrollRecord) => {
+    const s = r.payrollStatus || (r as any).status;
+    return s === 'paid' || s === 'payslip_generated' || (s as string) === 'completed' || r.paymentStatus === 'paid';
+  };
+
+  const isFailed = (r: PayrollRecord) => {
+    const s = r.payrollStatus || (r as any).status;
+    return s === 'failed';
+  };
+
+  const paidRecords = scopedRecords.filter(isPaid);
+  const pendingRecords = scopedRecords.filter(r => !isPaid(r) && !isFailed(r));
+  const failedRecords = scopedRecords.filter(isFailed);
 
   const totalSalaryPaid = paidRecords.reduce((sum, r) => sum + r.netSalary, 0);
   const totalSalaryPending = pendingRecords.reduce((sum, r) => sum + r.netSalary, 0);

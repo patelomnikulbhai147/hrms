@@ -8,7 +8,8 @@ import {
   type Role,
   type Company,
   isCompanyIdMatch
-} from '../types';
+} from '../data/mockData';
+import { buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
@@ -45,13 +46,15 @@ export const Reports: React.FC<ReportsProps> = ({
 
   // Scoped datasets derived from reactive props (supports parent company branch rollups)
   const uniqueEmployees = getUniqueEmployees(employees);
-  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, undefined, e.branchLocation));
+  const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies as any[], e.branchLocation, e.branchId));
+  // Scope child records by employee membership (they have employeeId but no branchId).
+  const scopedEmpIds = buildScopedEmployeeIdSet(uniqueEmployees as any[], activeCompanyId, companies as any[]);
   const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
-  const companyAttendance = uniqueAttendance.filter(a => isCompanyIdMatch(a.companyId, activeCompanyId));
+  const companyAttendance = uniqueAttendance.filter(a => isRecordInWorkspace(a, activeCompanyId, scopedEmpIds, companies as any[]));
   const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
-  const companyPayroll = uniquePayroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId));
+  const companyPayroll = uniquePayroll.filter(p => isRecordInWorkspace(p, activeCompanyId, scopedEmpIds, companies as any[]));
   const uniqueLeaves = getUniqueRecords(leaves, [l => l.id]);
-  const companyLeaves = uniqueLeaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId));
+  const companyLeaves = uniqueLeaves.filter(l => isRecordInWorkspace(l, activeCompanyId, scopedEmpIds, companies as any[]));
 
   // Load active company branding
   const currentCompany = companies.find(c => c.id === activeCompanyId) || ({} as any);

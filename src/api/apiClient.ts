@@ -1,6 +1,29 @@
-import { Company, UserAccount } from '../types';
+import { Company } from '../data/mockData';
 
 const BASE_URL = 'http://localhost:5000/api';
+
+// Live Super Admin KPI counts returned by GET /api/statistics/super-admin.
+// Single source of truth — every field is computed directly from PostgreSQL.
+export interface SuperAdminStats {
+  totalCompanies: number;           // Total Companies / Total Scoped Tenants / Directory
+  activeCompanies: number;          // Active Companies KPI
+  suspendedAccounts: number;        // Suspended Accounts KPI
+  archivedCompanies: number;
+  offboardedCompanies: number;      // Offboarded Companies KPI
+  activeSubscriptions: number;      // Active Subscriptions KPI
+  totalBranches: number;            // Total Branches KPI
+  activeBranches: number;
+  suspendedBranches: number;
+  archivedBranches: number;
+  deactivatedCompanies: number;     // Companies with status Suspended/Inactive/Deactivated
+  deactivatedBranches: number;      // Branches with status Suspended/Inactive/Deactivated
+  totalEmployees: number;           // Combined Employees KPI (COUNT(*))
+  activeStaff: number;              // currently-employed headcount
+  totalStaff: number;               // back-compat alias of activeStaff
+  combinedEmployees: number;        // alias of totalEmployees
+  monthlyRevenue: number;           // Monthly Revenue (MRR) KPI
+  generatedAt: string;
+}
 
 const getHeaders = () => {
   const token = localStorage.getItem('hrms_jwt_token');
@@ -26,12 +49,14 @@ async function apiFetch(url: string, options?: RequestInit) {
       } catch (e) {
         msg = res.statusText || msg;
       }
-      throw new Error(msg);
+      const err: any = new Error(msg);
+      err.status = res.status;
+      throw err;
     }
     return await res.json();
   } catch (err: any) {
     console.error('API Client Error:', err);
-    throw new Error(err.message || 'Network or Server Error');
+    throw err;
   }
 }
 
@@ -47,6 +72,13 @@ export const api = {
     getMe: async () => {
       return await apiFetch(`${BASE_URL}/auth/me`, {
         headers: getHeaders()
+      });
+    },
+    forgotPassword: async (data: { username: string; newPassword: string }) => {
+      return await apiFetch(`${BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
       });
     }
   },
@@ -83,6 +115,11 @@ export const api = {
     },
     getDependencies: async (id: string) => {
       return await apiFetch(`${BASE_URL}/companies/${id}/dependencies`, {
+        headers: getHeaders()
+      });
+    },
+    getExportData: async () => {
+      return await apiFetch(`${BASE_URL}/companies/export`, {
         headers: getHeaders()
       });
     }
@@ -202,6 +239,13 @@ export const api = {
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'DELETE', headers: getHeaders() }); }
   },
 
+  statistics: {
+    // Live, database-driven Super Admin KPI counts (single source of truth).
+    getSuperAdmin: async () => {
+      return await apiFetch(`${BASE_URL}/statistics/super-admin`, { headers: getHeaders() });
+    }
+  },
+
   plans: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/plans`, { headers: getHeaders() });
@@ -238,8 +282,28 @@ export const api = {
 
   attendance: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/attendance`, { headers: getHeaders() }); },
+    getAnalytics: async (companyId?: string, date?: string) => { 
+      const params = new URLSearchParams();
+      if (companyId) params.append('companyId', companyId);
+      if (date) params.append('date', date);
+      return await apiFetch(`${BASE_URL}/attendance/analytics?${params.toString()}`, { headers: getHeaders() }); 
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); }
+  },
+
+  overtime: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/overtime`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/overtime`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    delete: async (id: string) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'DELETE', headers: getHeaders() }); }
+  },
+
+  shifts: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/shifts`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/shifts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/shifts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    delete: async (id: string) => { return await apiFetch(`${BASE_URL}/shifts/${id}`, { method: 'DELETE', headers: getHeaders() }); }
   }
 };

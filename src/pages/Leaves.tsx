@@ -6,7 +6,9 @@ import {
   type LeaveType,
   type LeaveStatus,
   type Role,
-  isCompanyIdMatch
+  type Company,
+  isCompanyIdMatch,
+  buildScopedEmployeeIdSet
 } from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -16,8 +18,21 @@ import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+
+const LEAVE_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'Employee', key: 'employeeName', width: 24 },
+  { header: 'Department', key: 'department', width: 20 },
+  { header: 'Leave Type', key: 'leaveType', width: 16 },
+  { header: 'From Date', key: 'fromDate', width: 14 },
+  { header: 'To Date', key: 'toDate', width: 14 },
+  { header: 'Days', key: 'days', width: 10 },
+  { header: 'Status', key: 'status', width: 14 },
+  { header: 'Reason', key: 'reason', width: 36 },
+];
 
 interface LeavesProps {
   role: Role;
@@ -25,6 +40,7 @@ interface LeavesProps {
   leaves: LeaveRequest[];
   onUpdateLeaves: (leaves: LeaveRequest[]) => void;
   _employees: Employee[];
+  companies?: Company[];
   authProfile?: UserAccount | null;
 }
 
@@ -37,6 +53,7 @@ export const Leaves: React.FC<LeavesProps> = ({
   leaves,
   onUpdateLeaves,
   _employees,
+  companies = [],
   authProfile
 }) => {
   const [search, setSearch] = useState('');
@@ -54,10 +71,9 @@ export const Leaves: React.FC<LeavesProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('leaves');
   const canCreate = canCreateModule('leaves');
-  const canDelete = canDeleteModule('leaves');
 
   const todayStr = '2026-05-20'; // Standard system anchor date
 
@@ -115,13 +131,21 @@ export const Leaves: React.FC<LeavesProps> = ({
   const uniqueEmployees = useMemo(() => getUniqueEmployees(_employees), [_employees]);
   const uniqueLeaves = useMemo(() => getUniqueRecords(leaves, [l => l.id]), [leaves]);
 
+  // Single source of truth: the set of employee ids in this workspace. Leave
+  // records carry an employeeId but no branchId, so scoping by employee
+  // membership is the only reliable way to filter a branch workspace.
+  const scopedEmpIds = useMemo(
+    () => buildScopedEmployeeIdSet(uniqueEmployees as any[], activeCompanyId, companies),
+    [uniqueEmployees, activeCompanyId, companies]
+  );
+
   // 1. Role-based isolation & scoping
   const companyLeaves = useMemo(() => {
     const isCompany = uniqueLeaves.filter(l => {
       const emp = uniqueEmployees.find(e => e.id === l.employeeId || e.name.toLowerCase() === l.employeeName.toLowerCase());
-      const match = isCompanyIdMatch(l.companyId, activeCompanyId, undefined, emp?.branchLocation, emp?.branchId);
-      console.log('Leaves filter:', l.id, l.employeeName, 'companyId:', l.companyId, 'active:', activeCompanyId, 'emp:', !!emp, 'match:', match);
-      return match;
+      return (l.employeeId && scopedEmpIds.has(l.employeeId)) ||
+        (emp?.id && scopedEmpIds.has(emp.id)) ||
+        isCompanyIdMatch(l.companyId, activeCompanyId, companies, emp?.branchLocation, emp?.branchId);
     });
     if (role === 'Employee') {
       return isCompany.filter(
@@ -150,11 +174,12 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
-    const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, undefined, e.branchLocation));
+    const companyEmployees = uniqueEmployees.filter(e =>
+      (e.id && scopedEmpIds.has(e.id)) || isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)
+    );
     return companyEmployees.map(emp => {
       const empLeaves = uniqueLeaves.filter(
-        l => (l.employeeId === emp.id || l.employeeName.toLowerCase() === emp.name.toLowerCase()) && 
-             isCompanyIdMatch(l.companyId, activeCompanyId) &&
+        l => (l.employeeId === emp.id || l.employeeName.toLowerCase() === emp.name.toLowerCase()) &&
              l.status === 'Approved'
       );
       const sickUsed = empLeaves.filter(l => l.leaveType === 'Sick').reduce((sum, l) => sum + l.days, 0);
@@ -185,8 +210,7 @@ export const Leaves: React.FC<LeavesProps> = ({
   const selectedEmpLeaves = useMemo(() => {
     if (!selectedEmp) return null;
     const empLeaves = uniqueLeaves.filter(
-      l => (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && 
-           isCompanyIdMatch(l.companyId, activeCompanyId) &&
+      l => (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) &&
            l.status === 'Approved'
     );
     const sickUsed = empLeaves.filter(l => l.leaveType === 'Sick').reduce((sum, l) => sum + l.days, 0);
@@ -365,11 +389,20 @@ export const Leaves: React.FC<LeavesProps> = ({
             Log and track employee leave rosters and scheduled company absences
           </p>
         </div>
-        {isHR && canCreate && (
-          <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
-            Log Leave Absence
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportMenu
+            fileName="Leaves"
+            title="Leave Report"
+            sheetName="Leaves"
+            columns={LEAVE_EXPORT_COLUMNS}
+            rows={() => filtered}
+          />
+          {isHR && canCreate && (
+            <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
+              Log Leave Absence
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats row */}
@@ -662,7 +695,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                 {(() => {
                   const q = searchQuery.toLowerCase().trim();
                   const matches = uniqueEmployees.filter(emp => {
-                    if (!isCompanyIdMatch(emp.companyId, activeCompanyId, undefined, emp.branchLocation)) return false;
+                    if (!((emp.id && scopedEmpIds.has(emp.id)) || isCompanyIdMatch(emp.companyId, activeCompanyId, companies, emp.branchLocation, emp.branchId))) return false;
                     if (!q) return true; // show all under current tenant when focused
                     return (
                       emp.name.toLowerCase().includes(q) ||
