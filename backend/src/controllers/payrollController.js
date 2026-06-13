@@ -89,10 +89,103 @@ const syncPayrollForEmployees = async (companyWhere, month, year) => {
   }
 };
 
+// ── Attendance-driven payroll computation ────────────────────────────────────
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const daysInMonthOf = (month, year) => {
+  const mi = Math.max(0, MONTHS.findIndex(m => m.toLowerCase() === String(month).toLowerCase()));
+  return new Date(Number(year), mi + 1, 0).getDate();
+};
+
+/**
+ * Recompute one payroll record from its AttendanceSummary. Payable days drive
+ * pay; LWP days are deducted at the per-day rate; OT is paid as an allowance.
+ * Persists the attendance figures on the payroll and clears `isOutdated`.
+ */
+async function recalcOne(payroll, summary, emp, company) {
+  const basicSalary = emp?.salary || payroll.basicSalary || 0;
+  const dim = daysInMonthOf(payroll.month, payroll.year);
+  const perDay = dim > 0 ? basicSalary / dim : 0;
+
+  const present = summary?.presentDays || 0;
+  const cl = summary?.cl || 0, pl = summary?.pl || 0, sl = summary?.sl || 0;
+  const lwp = summary?.lwp || 0, half = summary?.halfDays || 0, ot = summary?.otHours || 0;
+  const payableDays = summary ? summary.payableDays : dim;
+
+  const hra = Math.round(basicSalary * 0.4);
+  const special = Math.round(basicSalary * 0.1);
+  const overtimeRate = company?.overtimeRate || 1.5;
+  const hourlyRate = dim > 0 ? basicSalary / (dim * 8) : 0;
+  const otAmount = Math.round(ot * hourlyRate * overtimeRate);
+  // Leave encashment already pushed onto this record is preserved and paid as an
+  // earning (see leaveEncashmentController.addToPayroll), so it flows into net.
+  const encashAmount = Math.round(payroll.leaveEncashmentAmount || 0);
+  const allowances = hra + special + otAmount + encashAmount;
+
+  const pfRate = company?.pfRate || 12;
+  const esicRate = company?.esicRate || 0.75;
+  const profTax = company?.profTaxRate || 200;
+  const statutory = Math.round(basicSalary * (pfRate / 100)) + Math.round(basicSalary * (esicRate / 100)) + profTax;
+  const lwpDeduction = Math.round(perDay * lwp);
+  const deductions = statutory + lwpDeduction;
+  const netSalary = Math.max(0, (basicSalary + allowances) - deductions);
+
+  return prisma.payroll.update({
+    where: { id: payroll.id },
+    data: {
+      basicSalary, allowances, deductions, netSalary,
+      presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
+      halfDays: half, otHours: ot, payableDays,
+      isOutdated: false, summarySyncedAt: new Date(),
+      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s).`
+        + (encashAmount > 0 ? ` Incl. leave encashment Rs.${encashAmount}.` : ''),
+    },
+  });
+}
+
+// POST /api/payroll/recalculate  { ids?, month?, year?, companyId? }
+// Re-syncs payroll from AttendanceSummary. Without ids, recalculates every
+// outdated record in scope. Locked records are skipped unless Super Admin.
+exports.recalculate = async (req, res) => {
+  try {
+    const isSuper = req.user?.role === 'Super Admin';
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+
+    let where;
+    if (ids && ids.length) {
+      where = { id: { in: ids } };
+    } else {
+      where = { isOutdated: true };
+      if (req.body.month) where.month = req.body.month;
+      if (req.body.year) where.year = Number(req.body.year);
+      if (!isSuper) {
+        const allowed = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+        where.OR = [{ companyId: { in: allowed } }, { employee: { branchId: { in: allowed } } }];
+      } else if (req.body.companyId) {
+        where.companyId = Number(req.body.companyId);
+      }
+    }
+
+    const records = await prisma.payroll.findMany({ where, include: { employee: true, company: true } });
+    let recalculated = 0, skippedLocked = 0;
+    for (const p of records) {
+      if (p.payrollStatus === 'locked' && !isSuper) { skippedLocked++; continue; }
+      const summary = await prisma.attendanceSummary.findUnique({
+        where: { employeeId_month_year: { employeeId: p.employeeId, month: p.month, year: p.year } },
+      });
+      await recalcOne(p, summary, p.employee, p.company);
+      recalculated++;
+    }
+    res.json({ recalculated, skippedLocked });
+  } catch (error) {
+    console.error('Error recalculating payroll', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
 exports.getAll = async (req, res) => {
   try {
     const { month } = req.query;
-    const companyId = req.query.companyId || req.headers['x-workspace-id'];
+    const companyId = require('../utils/idParam')(req.query.companyId || req.headers['x-workspace-id']);
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
@@ -364,7 +457,7 @@ exports.update = async (req, res) => {
     delete payload.id;
 
     const existingRecord = await prisma.payroll.findUnique({
-      where: { id }
+      where: { id: idParam(id) }
     });
 
     if (!existingRecord) {
@@ -376,7 +469,7 @@ exports.update = async (req, res) => {
     }
 
     const data = await prisma.payroll.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: payload
     });
 
@@ -414,11 +507,158 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.payroll.delete({
-      where: { id }
+      where: { id: idParam(id) }
     });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// PATCH /api/payroll/:id/slip-event  { event: 'generated'|'downloaded'|'emailed', fileName? }
+// Stamps the relevant payslip-lifecycle timestamp (audit history).
+exports.slipEvent = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { event, fileName } = req.body;
+    const now = new Date();
+    const data = {};
+    if (fileName) data.payslipFileName = fileName;
+    if (event === 'generated') { data.generatedAt = now; data.payslipGenerated = true; }
+    else if (event === 'downloaded') { data.downloadedAt = now; data.downloadCount = { increment: 1 }; }
+    else if (event === 'emailed') { data.emailSentAt = now; }
+    else return res.status(400).json({ error: 'Unknown slip event.' });
+    const updated = await prisma.payroll.update({ where: { id: idParam(id) }, data });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error stamping slip event', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// POST /api/payroll/approve  { ids: string[] }  → approve payroll record(s)
+exports.approve = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
+    if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
+    const approvedBy = req.user?.name || req.user?.email || 'Admin';
+    const result = await prisma.payroll.updateMany({
+      where: { id: { in: ids } },
+      data: { payrollStatus: 'approved', approvedAt: new Date(), approvedBy },
+    });
+    res.json({ approved: result.count });
+  } catch (error) {
+    console.error('Error approving payroll', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// POST /api/payroll/mark-paid  { ids: string[] }  → mark record(s) paid
+exports.markPaid = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+    if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
+    const paidBy = req.user?.name || req.user?.email || 'Admin';
+    const result = await prisma.payroll.updateMany({
+      where: { id: { in: ids } },
+      data: { paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: new Date().toISOString(), paymentMethod: 'Bank Transfer', paidBy },
+    });
+    res.json({ paid: result.count });
+  } catch (error) {
+    console.error('Error marking paid', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// Lock/unlock the AttendanceSummary rows matching a set of payroll records.
+async function setSummaryLock(payrollIds, locked) {
+  const rows = await prisma.payroll.findMany({
+    where: { id: { in: payrollIds } },
+    select: { employeeId: true, month: true, year: true },
+  });
+  for (const r of rows) {
+    await prisma.attendanceSummary.updateMany({
+      where: { employeeId: r.employeeId, month: r.month, year: r.year },
+      data: { locked },
+    });
+  }
+}
+
+// POST /api/payroll/lock  { ids }  → lock record(s) AND their attendance month
+exports.lock = async (req, res) => {
+  try {
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
+    if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
+    const result = await prisma.payroll.updateMany({
+      where: { id: { in: ids } },
+      data: { payrollStatus: 'locked', lockedAt: new Date() },
+    });
+    await setSummaryLock(ids, true); // block attendance editing for the locked month
+    res.json({ locked: result.count });
+  } catch (error) {
+    console.error('Error locking payroll', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// POST /api/payroll/unlock  { ids }  → Super Admin only: reopen month + attendance
+exports.unlock = async (req, res) => {
+  try {
+    if (req.user?.role !== 'Super Admin') {
+      return res.status(403).json({ error: 'Only a Super Admin can unlock a payroll month.' });
+    }
+    const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
+    if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
+    const result = await prisma.payroll.updateMany({
+      where: { id: { in: ids } },
+      data: { payrollStatus: 'approved', lockedAt: null },
+    });
+    await setSummaryLock(ids, false);
+    res.json({ unlocked: result.count });
+  } catch (error) {
+    console.error('Error unlocking payroll', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// POST /api/payroll/:id/email-slip  { pdfBase64, fileName, to? }
+// Emails the salary slip (PDF generated client-side) and stamps emailSentAt.
+exports.emailSlip = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { pdfBase64, fileName, to } = req.body;
+    const record = await prisma.payroll.findUnique({ where: { id: idParam(id) }, include: { employee: true, company: true } });
+    if (!record) return res.status(404).json({ error: 'Payroll record not found.' });
+
+    const recipient = to || record.employee?.email;
+    if (!recipient) return res.status(400).json({ error: 'Employee has no email address on file.' });
+
+    const { sendPayslipEmail, isSmtpConfigured } = require('../services/emailService');
+    const period = `${record.month} ${record.year}`;
+    const result = await sendPayslipEmail({
+      to: recipient,
+      employeeName: record.employee?.name || record.employeeName,
+      period,
+      companyName: record.company?.name,
+      pdfBase64,
+      fileName: fileName || `${record.employee?.employeeId || 'employee'}_${record.month}_${record.year}_Salary_Slip.pdf`,
+    });
+
+    // Stamp emailSentAt regardless of dev-mode (the intent + audit trail is recorded).
+    await prisma.payroll.update({ where: { id: idParam(id) }, data: { emailSentAt: new Date() } });
+
+    res.json({
+      sent: result.delivered,
+      devMode: result.devMode,
+      smtpConfigured: isSmtpConfigured(),
+      to: recipient,
+      message: result.delivered
+        ? `Salary slip emailed to ${recipient}.`
+        : `SMTP is not configured — email was logged, not delivered. Set SMTP_* in backend/.env to enable real delivery. (Recipient: ${recipient})`,
+    });
+  } catch (error) {
+    console.error('Error emailing slip', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };

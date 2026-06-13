@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, Activity, Building2, BarChart3 as BarChart3Icon, Send } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -8,9 +9,15 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { byEmployeeCode } from '../utils/employeeSort';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
-import { downloadAttendanceTemplateExcel, downloadImportGuidePDF, downloadAttendanceReport } from '../utils/attendanceExportUtils';
+import { getApiErrorMessage } from '../utils/apiError';
+import { downloadAttendanceTemplateExcel, downloadImportGuidePDF, downloadAttendanceReport, exportAttendanceDataset, type ExportFormat } from '../utils/attendanceExportUtils';
+import {
+  type PeriodMode, getPeriodRange, eachDateInRange, resolveStatus, statusCode, bucketOf,
+  summarizeEmployeePeriod, summarizeYear,
+} from '../utils/attendancePeriods';
 import { AnimatedCounter } from '../components/common/AnimatedCounter';
 interface AttendanceCenterProps {
   role: Role;
@@ -59,6 +66,29 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const [reportDept, setReportDept] = useState('');
   const [reportBranch, setReportBranch] = useState('');
 
+  // ── Enterprise period + filters (drive Weekly/Monthly/Yearly/Custom views) ──
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('daily');
+  const [customStart, setCustomStart] = useState(today);
+  const [customEnd, setCustomEnd] = useState(today);
+  const [filterCompany, setFilterCompany] = useState('');
+  const [filterBranch, setFilterBranch] = useState('');
+  const [filterDept, setFilterDept] = useState('');
+  const [filterDesignation, setFilterDesignation] = useState('');
+  const [filterEmployee, setFilterEmployee] = useState('');
+
+  // Export modal
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportMode, setExportMode] = useState<PeriodMode>('monthly');
+  const [exportFormat, setExportFormat] = useState<ExportFormat>('excel');
+  const [exportScope, setExportScope] = useState<'all'|'company'|'multiple'|'branch'|'department'|'individual'>('all');
+  const [exportCompanyIds, setExportCompanyIds] = useState<string[]>([]);
+
+  // Payroll sync modal
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [syncPreview, setSyncPreview] = useState<any>(null);
+  const [syncDone, setSyncDone] = useState<any>(null);
+
   // Mode Configuration State
   const [attendanceMode, setAttendanceMode] = useState<string>(() => {
     return localStorage.getItem(`hrms_attendance_mode_${activeCompanyId}`) || 'advanced';
@@ -90,13 +120,66 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const [attendanceAnalytics, setAttendanceAnalytics] = useState<any>(null);
 
+  // DB-backed editable monthly attendance summaries (source of truth for payroll).
+  const [dbSummaries, setDbSummaries] = useState<Record<string, any>>({});
+  const [summaryRefresh, setSummaryRefresh] = useState(0);
+  const SUMMARY_MONTH = 'June';
+  const SUMMARY_YEAR = 2026;
+  const loadSummaries = () => api.attendanceSummary.getAll(SUMMARY_MONTH, SUMMARY_YEAR)
+    .then((rows: any[]) => {
+      const map: Record<string, any> = {};
+      (rows || []).forEach(r => { map[String(r.employeeId)] = r; });
+      setDbSummaries(map);
+    }).catch(() => {});
+
   useEffect(() => {
     if (activeCompanyId) {
       api.shifts.getAll().then(res => setShifts(res)).catch(e => console.error("Failed to load shifts", e));
       api.overtime.getAll().then(res => setOvertimeData(res)).catch(e => console.error("Failed to load overtime", e));
       api.attendance.getAnalytics(activeCompanyId, today).then(res => setAttendanceAnalytics(res)).catch(console.error);
+      loadSummaries();
     }
-  }, [activeCompanyId, attendance, leaves, employees]);
+  }, [activeCompanyId, attendance, leaves, employees, summaryRefresh]);
+
+  // ── Edit Attendance (monthly summary) modal ──
+  const [editSummary, setEditSummary] = useState<any | null>(null);
+  const [summaryForm, setSummaryForm] = useState<any>({ presentDays: 0, absentDays: 0, cl: 0, pl: 0, sl: 0, lwp: 0, halfDays: 0, otHours: 0, shift: '' });
+  const [savingSummary, setSavingSummary] = useState(false);
+
+  const openEditSummary = (employeeId: any, employeeName: string, employeeCode: string) => {
+    const s = dbSummaries[String(employeeId)];
+    if (!s) { alert('No attendance summary on file for this employee yet. Run "Sync to Payroll" first.'); return; }
+    setEditSummary({ ...s, employeeName, employeeCode });
+    setSummaryForm({
+      presentDays: s.presentDays ?? 0, absentDays: s.absentDays ?? 0, cl: s.cl ?? 0, pl: s.pl ?? 0,
+      sl: s.sl ?? 0, lwp: s.lwp ?? 0, halfDays: s.halfDays ?? 0, otHours: s.otHours ?? 0, shift: s.shift ?? '',
+    });
+  };
+
+  const payablePreview = (() => {
+    const f = summaryForm;
+    return Math.round((Number(f.presentDays) + Number(f.halfDays) * 0.5 + Number(f.cl) + Number(f.pl) + Number(f.sl)) * 100) / 100;
+  })();
+
+  const saveSummary = async () => {
+    if (!editSummary) return;
+    setSavingSummary(true);
+    try {
+      await api.attendanceSummary.update(editSummary.id, {
+        presentDays: Number(summaryForm.presentDays), absentDays: Number(summaryForm.absentDays),
+        cl: Number(summaryForm.cl), pl: Number(summaryForm.pl), sl: Number(summaryForm.sl),
+        lwp: Number(summaryForm.lwp), halfDays: Number(summaryForm.halfDays), otHours: Number(summaryForm.otHours),
+        shift: summaryForm.shift,
+      });
+      setEditSummary(null);
+      setSummaryRefresh(x => x + 1);
+      alert('Attendance updated. Payroll for this month now requires regeneration.');
+    } catch (e: any) {
+      alert(e?.message || 'Failed to save attendance summary.');
+    } finally {
+      setSavingSummary(false);
+    }
+  };
   
   const [showOTModal, setShowOTModal] = useState(false);
   const [editingOTId, setEditingOTId] = useState<string | null>(null);
@@ -122,7 +205,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
   const uniqueEmployees = getUniqueEmployees(companyEmployees);
-  const activeUniqueEmployees = uniqueEmployees.filter(e => e.status === 'Active');
+  const activeUniqueEmployees = uniqueEmployees.filter(e => e.status === 'Active').sort(byEmployeeCode(e => e.employeeId));
   const filteredEmployees = activeUniqueEmployees.filter(e => 
     e.name.toLowerCase().includes(empSearch.toLowerCase()) || 
     (e.employeeId && e.employeeId.toLowerCase().includes(empSearch.toLowerCase())) ||
@@ -130,7 +213,52 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   );
 
   const departments = Array.from(new Set(activeUniqueEmployees.map(e => e.department).filter(Boolean)));
-  const branches = Array.from(new Set(activeUniqueEmployees.map(e => e.branchLocation).filter(Boolean)));
+  const branches = Array.from(new Set(activeUniqueEmployees.map(e => e.branchLocation).filter((b): b is string => Boolean(b))));
+  const designations = Array.from(new Set(activeUniqueEmployees.map(e => (e as any).designation as string).filter((d): d is string => Boolean(d))));
+
+  // Company options for the Company / Multiple-company filters and export scope.
+  const companyOptions = useMemo(() => {
+    const ids = Array.from(new Set(activeUniqueEmployees.map(e => e.companyId).filter(Boolean)));
+    return ids.map(id => ({ value: id, label: companies.find(c => c.id === id)?.name || id }));
+  }, [activeUniqueEmployees, companies]);
+
+  // Employees after applying the enterprise filter bar (shared by all period views).
+  const periodEmployees = useMemo(() => {
+    let list = activeUniqueEmployees;
+    if (filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany || isCompanyIdMatch(e.companyId, filterCompany, companies, e.branchLocation, e.branchId));
+    if (filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
+    if (filterDept) list = list.filter(e => e.department === filterDept);
+    if (filterDesignation) list = list.filter(e => (e as any).designation === filterDesignation);
+    if (filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
+    return list;
+  }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, filterEmployee, companies]);
+
+  // Active period range + the dates it spans.
+  const period = useMemo(() => getPeriodRange(periodMode, selectedDate, customStart, customEnd), [periodMode, selectedDate, customStart, customEnd]);
+  const periodDates = useMemo(() => eachDateInRange(period.start, period.end), [period]);
+
+  // Per-employee summary across the active period (Monthly / Custom / Weekly totals).
+  const periodSummaries = useMemo(
+    () => periodEmployees.map(e => summarizeEmployeePeriod(e, periodDates, attendance, leaves, overtimeData)),
+    [periodEmployees, periodDates, attendance, leaves, overtimeData]
+  );
+
+  // Yearly 12-month aggregate for the analytics view.
+  const yearlyData = useMemo(
+    () => periodMode === 'yearly' ? summarizeYear(new Date(selectedDate).getFullYear(), periodEmployees, attendance, leaves, overtimeData) : [],
+    [periodMode, selectedDate, periodEmployees, attendance, leaves, overtimeData]
+  );
+
+  // Shift the active date by one period (prev/next navigation).
+  const shiftPeriod = (dir: 1 | -1) => {
+    const d = new Date(selectedDate);
+    if (periodMode === 'daily') d.setDate(d.getDate() + dir);
+    else if (periodMode === 'weekly') d.setDate(d.getDate() + 7 * dir);
+    else if (periodMode === 'monthly') d.setMonth(d.getMonth() + dir);
+    else if (periodMode === 'yearly') d.setFullYear(d.getFullYear() + dir);
+    else { d.setDate(d.getDate() + dir); }
+    setSelectedDate(d.toISOString().split('T')[0]);
+  };
   
   // Generate daily records
   const dailyRecords = uniqueEmployees.map(emp => {
@@ -161,15 +289,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       hoursWorked: 0,
       status: isOnLeave ? 'Leave' : (isSunday ? 'Weekly Off' : 'Absent') as any,
       leaveType: isOnLeave ? isOnLeave.leaveType : undefined,
-      flags: []
+      flags: [] as AttendanceRecord['flags']
     };
   });
 
+  const empCodeById = (eid: any) => activeUniqueEmployees.find(e => String(e.id) === String(eid))?.employeeId || '';
   const filteredRecords = dailyRecords.filter(a => {
     const matchSearch = !search || a.employeeName.toLowerCase().includes(search.toLowerCase()) || a.department.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || a.status === statusFilter;
     return matchSearch && matchStatus;
-  });
+  }).sort(byEmployeeCode((a: any) => empCodeById(a.employeeId)));
 
   // Dashboard Stats — scope attendance rows by employee membership (records
   // carry an employeeId but no branchId, so branch workspaces need this).
@@ -252,7 +381,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         if (existingIdx >= 0) {
           const updated = { ...updatedAttendance[existingIdx], status: status as any };
           updatedAttendance[existingIdx] = updated;
-          if (!updated.id.startsWith('new-')) {
+          // updated.id is numeric for persisted rows and a "new-…" string only for
+          // unsaved ones — coerce so numeric ids don't throw on .startsWith.
+          if (!String(updated.id).startsWith('new-')) {
             await api.attendance.update(updated.id, updated);
           }
         } else {
@@ -270,7 +401,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       alert(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved directly to PostgreSQL.`);
     } catch (e) {
       console.error(e);
-      alert('Failed to save to PostgreSQL database.');
+      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
     }
   };
 
@@ -283,7 +414,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       if (existingIdx >= 0) {
         const updated = { ...updatedAttendance[existingIdx], status: status as any };
         updatedAttendance[existingIdx] = updated;
-        if (!updated.id.startsWith('new-')) {
+        // Coerce: numeric ids (persisted rows) must not throw on .startsWith.
+        if (!String(updated.id).startsWith('new-')) {
            await api.attendance.update(updated.id, updated);
         } else {
            const dbRes = await api.attendance.create({...updated, id: undefined});
@@ -299,7 +431,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       onUpdateAttendance(updatedAttendance);
     } catch (e) {
       console.error(e);
-      alert('Failed to save to PostgreSQL database.');
+      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
     }
   };
 
@@ -311,7 +443,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       onUpdateAttendance(attendance.map(a => a.id === id ? updated : a));
     } catch (e) {
       console.error(e);
-      alert('Failed to update status');
+      alert(getApiErrorMessage(e, 'Could not update attendance status.'));
     }
   };
 
@@ -410,18 +542,148 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     }
   };
 
-  const handleStatusOT = (id: string, newStatus: string) => {
-    const updatedOT = overtimeData.map(o => o.id === id ? { ...o, status: newStatus } : o);
-    setOvertimeData(updatedOT);
-    localStorage.setItem(`hrms_overtime_${activeCompanyId}`, JSON.stringify(updatedOT));
+  const handleStatusOT = async (id: string, newStatus: string) => {
+    const target = overtimeData.find(o => o.id === id);
+    if (!target) return;
+    try {
+      // Persist the approve/reject to the database. Previously this only wrote
+      // to local state + localStorage, so the overtime status reverted on
+      // refresh and payroll never saw the approval.
+      await api.overtime.update(id, { ...target, status: newStatus });
+      const updatedOT = overtimeData.map(o => o.id === id ? { ...o, status: newStatus } : o);
+      setOvertimeData(updatedOT);
+      localStorage.setItem(`hrms_overtime_${activeCompanyId}`, JSON.stringify(updatedOT));
+    } catch (e) {
+      console.error(e);
+      alert(getApiErrorMessage(e, 'Could not update the overtime status.'));
+    }
   };
 
   const downloadGuide = () => {
     downloadImportGuidePDF();
   };
 
-  const pushToPayroll = () => {
-    alert('DATABASE INTEGRATION SUCCESS\n\nAttendance data has been pushed to the Payroll Engine. Overtime amounts, Loss of Pay (LOP) days, and Working Days have been dynamically recalculated for the current cycle.');
+  // ── Attendance → Payroll synchronization (real DB write with dry-run preview) ──
+  const openPayrollSync = async () => {
+    setSyncOpen(true);
+    setSyncDone(null);
+    setSyncPreview(null);
+    setSyncLoading(true);
+    try {
+      const d = new Date(selectedDate);
+      const res = await api.attendance.syncPayroll({
+        companyId: activeCompanyId || undefined,
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        dryRun: true,
+      });
+      setSyncPreview(res);
+    } catch (e: any) {
+      alert(`Failed to compute payroll sync: ${e.message || e}`);
+      setSyncOpen(false);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  const commitPayrollSync = async () => {
+    setSyncLoading(true);
+    try {
+      const d = new Date(selectedDate);
+      const res = await api.attendance.syncPayroll({
+        companyId: activeCompanyId || undefined,
+        month: d.getMonth() + 1,
+        year: d.getFullYear(),
+        dryRun: false,
+      });
+      setSyncDone(res);
+    } catch (e: any) {
+      alert(`Failed to write payroll: ${e.message || e}`);
+    } finally {
+      setSyncLoading(false);
+    }
+  };
+
+  // ── Build the export dataset for a given period mode + employee scope ──
+  const buildExportDataset = (mode: PeriodMode, emps: Employee[]) => {
+    if (mode === 'daily') {
+      const cols = [
+        { header: 'Sr No', key: 'srNo' },
+        { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
+        { header: 'Department', key: 'department' }, { header: 'Designation', key: 'designation' },
+        { header: 'Branch', key: 'branch' }, { header: 'Date', key: 'date' },
+        { header: 'In', key: 'clockIn' }, { header: 'Out', key: 'clockOut' }, { header: 'Status', key: 'status' },
+      ];
+      const rows = emps.map((e, i) => {
+        const { status, record } = resolveStatus(e.id, selectedDate, attendance, leaves);
+        return {
+          srNo: i + 1,
+          employeeCode: e.employeeId || '', employeeName: e.name, department: e.department,
+          designation: (e as any).designation || '', branch: e.branchLocation || 'Head Office',
+          date: selectedDate, clockIn: record?.clockIn || '', clockOut: record?.clockOut || '', status,
+        };
+      });
+      return { rows, cols };
+    }
+    if (mode === 'weekly') {
+      const dates = eachDateInRange(getPeriodRange('weekly', selectedDate).start, getPeriodRange('weekly', selectedDate).end);
+      const cols = [
+        { header: 'Sr No', key: 'srNo' },
+        { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
+        { header: 'Department', key: 'department' }, { header: 'Branch', key: 'branch' },
+        ...dates.map((d, i) => ({ header: `${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]} ${d.slice(8)}`, key: `d${i}` })),
+        { header: 'Present', key: 'present' },
+      ];
+      const rows = emps.map((e, idx) => {
+        const row: any = { srNo: idx + 1, employeeCode: e.employeeId || '', employeeName: e.name, department: e.department, branch: e.branchLocation || 'Head Office' };
+        let present = 0;
+        dates.forEach((d, i) => { const { status } = resolveStatus(e.id, d, attendance, leaves); row[`d${i}`] = statusCode(status); if (bucketOf(status) === 'present') present++; });
+        row.present = present;
+        return row;
+      });
+      return { rows, cols };
+    }
+    // monthly / custom / yearly → per-employee summary totals
+    const range = getPeriodRange(mode, selectedDate, customStart, customEnd);
+    const dates = eachDateInRange(range.start, range.end);
+    const cols = [
+      { header: 'Sr No', key: 'srNo' },
+      { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
+      { header: 'Department', key: 'department' }, { header: 'Designation', key: 'designation' }, { header: 'Branch', key: 'branch' },
+      { header: 'Present', key: 'present' }, { header: 'Absent', key: 'absent' }, { header: 'Leave', key: 'leave' },
+      { header: 'Half Day', key: 'half' }, { header: 'WFH', key: 'wfh' }, { header: 'Holiday', key: 'holiday' },
+      { header: 'Weekly Off', key: 'weeklyOff' }, { header: 'Late', key: 'lateMarks' }, { header: 'OT Hrs', key: 'otHours' },
+      { header: 'Working Days', key: 'workingDays' }, { header: 'LOP', key: 'lop' }, { header: 'Payable Days', key: 'payableDays' },
+    ];
+    const rows = emps.map((e, i) => ({ srNo: i + 1, ...summarizeEmployeePeriod(e, dates, attendance, leaves, overtimeData) }));
+    return { rows, cols };
+  };
+
+  // Resolve which employees belong to the chosen export scope.
+  const resolveScopeEmployees = (): Employee[] => {
+    let list = activeUniqueEmployees;
+    if (exportScope === 'company' && filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany);
+    else if (exportScope === 'multiple') list = list.filter(e => exportCompanyIds.includes(e.companyId) || exportCompanyIds.includes(e.branchId || ''));
+    else if (exportScope === 'branch' && filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
+    else if (exportScope === 'department' && filterDept) list = list.filter(e => e.department === filterDept);
+    else if (exportScope === 'individual' && filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
+    return list;
+  };
+
+  const runExport = () => {
+    const emps = resolveScopeEmployees();
+    if (emps.length === 0) { alert('No employees match the selected scope/filters.'); return; }
+    const { rows, cols } = buildExportDataset(exportMode, emps);
+    const range = getPeriodRange(exportMode, selectedDate, customStart, customEnd);
+    const scopeLabel = exportScope === 'all' ? 'All Companies'
+      : exportScope === 'multiple' ? `${exportCompanyIds.length} Companies`
+      : exportScope === 'company' ? (companyOptions.find(c => c.value === filterCompany)?.label || 'Company')
+      : exportScope === 'branch' ? (filterBranch || 'Branch')
+      : exportScope === 'department' ? (filterDept || 'Department')
+      : (activeUniqueEmployees.find(e => String(e.id) === String(filterEmployee))?.name || 'Employee');
+    const title = `Attendance ${exportMode[0].toUpperCase()}${exportMode.slice(1)} Report`;
+    exportAttendanceDataset(title, exportFormat, rows, cols, `${scopeLabel} · ${range.label} · ${emps.length} employee(s)`);
+    setExportOpen(false);
   };
 
   return (
@@ -431,13 +693,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><Calendar size={20} className="text-blue-600" /> Enterprise Attendance Management Center</h2>
           <p className="text-xs text-slate-500 mt-1">Fully integrated with Payroll Engine, Leave Balances, and Overtime Processing.</p>
         </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-             <Button variant="outline" size="sm" onClick={pushToPayroll} className="flex items-center gap-1 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+        <div className="flex gap-2">
+           <Button variant="outline" size="sm" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }} className="flex items-center gap-1 border-slate-200 text-slate-700 bg-white hover:bg-slate-50">
+             <Download size={14}/> Export
+           </Button>
+           {isAdmin && (
+             <Button variant="outline" size="sm" onClick={openPayrollSync} className="flex items-center gap-1 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
                <RefreshCcw size={14}/> Push to Payroll Engine
              </Button>
-          </div>
-        )}
+           )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -633,9 +898,57 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         </div>
       )}
 
-      {/* TAB: ENTRY */}
+      {/* TAB: ENTRY (now a unified Records area driven by the period selector) */}
       {activeTab === 'entry' && (
-        <Card padding={false} className="animate-in fade-in overflow-hidden border-slate-200">
+       <div className="space-y-4 animate-in fade-in">
+        {/* Period selector */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-center gap-3">
+          <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
+            {(['daily','weekly','monthly','yearly','custom'] as PeriodMode[]).map(m => (
+              <button key={m} onClick={() => setPeriodMode(m)}
+                className={`px-3 py-1.5 text-[11px] font-bold rounded-md capitalize transition-colors ${periodMode === m ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                {m}
+              </button>
+            ))}
+          </div>
+          {periodMode === 'custom' ? (
+            <div className="flex items-center gap-2">
+              <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-36 text-xs h-8" />
+              <span className="text-slate-400 text-xs">to</span>
+              <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-36 text-xs h-8" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-1">
+              <button onClick={() => shiftPeriod(-1)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronLeft size={16} /></button>
+              <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" />
+              <button onClick={() => shiftPeriod(1)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronRight size={16} /></button>
+            </div>
+          )}
+          <span className="text-xs font-bold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">{period.label}</span>
+          <div className="ml-auto">
+            <Button size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}><Download size={13} className="mr-1" /> Export</Button>
+          </div>
+        </div>
+
+        {/* Enterprise filter bar */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex flex-wrap items-end gap-2">
+          <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500 mr-1"><Filter size={13} /> Filters</div>
+          {companyOptions.length > 1 && (
+            <div className="w-40"><Select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} options={[{ value: '', label: 'All Companies' }, ...companyOptions]} className="text-xs h-8" /></div>
+          )}
+          <div className="w-36"><Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-8" /></div>
+          <div className="w-36"><Select value={filterDept} onChange={e => setFilterDept(e.target.value)} options={[{ value: '', label: 'All Departments' }, ...departments.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
+          <div className="w-36"><Select value={filterDesignation} onChange={e => setFilterDesignation(e.target.value)} options={[{ value: '', label: 'All Designations' }, ...designations.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
+          <div className="w-44"><Select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...periodEmployees.map(e => ({ value: e.id, label: e.name }))]} className="text-xs h-8" /></div>
+          {(filterCompany || filterBranch || filterDept || filterDesignation || filterEmployee) && (
+            <button onClick={() => { setFilterCompany(''); setFilterBranch(''); setFilterDept(''); setFilterDesignation(''); setFilterEmployee(''); }} className="h-8 px-2 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-md flex items-center gap-1"><X size={12} /> Clear</button>
+          )}
+          <span className="ml-auto text-[11px] font-bold text-slate-500">{periodEmployees.length} employee(s)</span>
+        </div>
+
+        {/* DAILY view — original entry grid (unchanged behaviour) */}
+        {periodMode === 'daily' && (
+        <Card padding={false} className="overflow-hidden border-slate-200">
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2 items-center">
               <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" />
@@ -659,6 +972,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <Thead className="bg-slate-100">
               <tr>
                 {isAdmin && <Th className="w-10 text-center"><input type="checkbox" onChange={e => setSelectedIds(e.target.checked ? filteredRecords.map(r => r.id) : [])} checked={selectedIds.length === filteredRecords.length && filteredRecords.length > 0} className="rounded border-slate-300" /></Th>}
+                <Th className="text-center">Sr No</Th>
                 <Th>Employee</Th>
                 <Th>Clock In</Th>
                 <Th>Clock Out</Th>
@@ -667,15 +981,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {filteredRecords.map(r => (
+              {filteredRecords.map((r, i) => (
                 <Tr key={r.id} className="hover:bg-slate-50">
                   {isAdmin && <Td className="text-center"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={e => {
                     if (e.target.checked) setSelectedIds([...selectedIds, r.id]);
                     else setSelectedIds(selectedIds.filter(id => id !== r.id));
                   }} className="rounded border-slate-300 text-blue-600" /></Td>}
+                  <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
                   <Td>
                     <div className="font-bold text-slate-800 text-xs">{r.employeeName}</div>
-                    <div className="text-[10px] text-slate-500">{r.department}</div>
+                    <div className="text-[10px] text-slate-500">{activeUniqueEmployees.find(e => e.id === r.employeeId)?.employeeId ? `${activeUniqueEmployees.find(e => e.id === r.employeeId)?.employeeId} · ` : ''}{r.department}</div>
                   </Td>
                   <Td><span className="text-xs font-mono">{r.clockIn || '--:--'}</span></Td>
                   <Td><span className="text-xs font-mono">{r.clockOut || '--:--'}</span></Td>
@@ -713,6 +1028,155 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             </Tbody>
           </Table>
         </Card>
+        )}
+
+        {/* WEEKLY GRID view */}
+        {periodMode === 'weekly' && (
+          <Card padding={false} className="overflow-hidden border-slate-200">
+            <div className="p-3 border-b border-slate-100 bg-slate-50">
+              <h4 className="font-bold text-sm text-slate-800">Weekly Attendance Grid</h4>
+              <p className="text-[10px] text-slate-500">{period.label} · P=Present A=Absent L=Leave HD=Half WFH=Work From Home H=Holiday WO=Weekly Off</p>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <Thead className="bg-slate-100">
+                  <tr>
+                    <Th>Employee</Th>
+                    {periodDates.map((d, i) => (
+                      <Th key={d} className="text-center whitespace-nowrap">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}<div className="text-[9px] font-normal text-slate-400">{d.slice(5)}</div></Th>
+                    ))}
+                    <Th className="text-center">Present</Th>
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {periodEmployees.length === 0 ? (
+                    <Tr><Td colSpan={periodDates.length + 2} className="text-center text-xs text-slate-500 py-8">No employees match the current filters.</Td></Tr>
+                  ) : periodEmployees.map(emp => {
+                    let present = 0;
+                    return (
+                      <Tr key={emp.id} className="hover:bg-slate-50">
+                        <Td><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
+                        {periodDates.map(d => {
+                          const { status } = resolveStatus(emp.id, d, attendance, leaves);
+                          const bucket = bucketOf(status);
+                          if (bucket === 'present') present++;
+                          const color = bucket === 'present' ? 'bg-emerald-100 text-emerald-700' : bucket === 'absent' ? 'bg-rose-100 text-rose-700' : bucket === 'leave' ? 'bg-indigo-100 text-indigo-700' : bucket === 'half' ? 'bg-orange-100 text-orange-700' : bucket === 'wfh' ? 'bg-purple-100 text-purple-700' : bucket === 'holiday' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-slate-100 text-slate-500';
+                          return <Td key={d} className="text-center"><span className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold ${color}`}>{statusCode(status)}</span></Td>;
+                        })}
+                        <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{present}</span></Td>
+                      </Tr>
+                    );
+                  })}
+                </Tbody>
+              </Table>
+            </div>
+          </Card>
+        )}
+
+        {/* MONTHLY / CUSTOM summary view */}
+        {(periodMode === 'monthly' || periodMode === 'custom') && (
+          <Card padding={false} className="overflow-hidden border-slate-200">
+            <div className="p-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-sm text-slate-800">{periodMode === 'monthly' ? 'Monthly' : 'Custom Range'} Attendance Summary</h4>
+                <p className="text-[10px] text-slate-500">{period.label} · {periodDates.length} day(s)</p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <Thead className="bg-slate-100">
+                  <tr>
+                    <Th className="text-center">Sr No</Th><Th>Employee</Th><Th>Dept</Th>
+                    <Th className="text-center">P</Th><Th className="text-center">A</Th><Th className="text-center">L</Th>
+                    <Th className="text-center">HD</Th><Th className="text-center">WFH</Th><Th className="text-center">H</Th><Th className="text-center">WO</Th>
+                    <Th className="text-center">Late</Th><Th className="text-center">OT Hrs</Th>
+                    <Th className="text-center">Work Days</Th><Th className="text-center">LOP</Th><Th className="text-center">Payable</Th>
+                    {isAdmin && <Th className="text-center">Edit</Th>}
+                  </tr>
+                </Thead>
+                <Tbody>
+                  {periodSummaries.length === 0 ? (
+                    <Tr><Td colSpan={isAdmin ? 16 : 15} className="text-center text-xs text-slate-500 py-8">No employees match the current filters.</Td></Tr>
+                  ) : periodSummaries.map((s, i) => (
+                    <Tr key={s.employeeId} className="hover:bg-slate-50">
+                      <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
+                      <Td><div className="font-bold text-slate-800 text-xs">{s.employeeName}</div><div className="text-[10px] text-slate-500">{s.employeeCode}</div></Td>
+                      <Td><span className="text-[10px] text-slate-500">{s.department}</span></Td>
+                      <Td className="text-center text-xs font-bold text-emerald-600">{s.present}</Td>
+                      <Td className="text-center text-xs font-bold text-rose-600">{s.absent}</Td>
+                      <Td className="text-center text-xs">{s.leave}</Td>
+                      <Td className="text-center text-xs">{s.half}</Td>
+                      <Td className="text-center text-xs">{s.wfh}</Td>
+                      <Td className="text-center text-xs">{s.holiday}</Td>
+                      <Td className="text-center text-xs">{s.weeklyOff}</Td>
+                      <Td className="text-center text-xs text-amber-600">{s.lateMarks}</Td>
+                      <Td className="text-center text-xs font-bold text-fuchsia-600">{s.otHours}</Td>
+                      <Td className="text-center text-xs">{s.workingDays}</Td>
+                      <Td className="text-center text-xs font-bold text-rose-500">{s.lop}</Td>
+                      <Td className="text-center text-xs font-bold text-blue-600">{s.payableDays}</Td>
+                      {isAdmin && (
+                        <Td className="text-center">
+                          {dbSummaries[String(s.employeeId)]?.locked ? (
+                            <span className="text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Month Locked</span>
+                          ) : (
+                            <button onClick={() => openEditSummary(s.employeeId, s.employeeName, s.employeeCode)}
+                              className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                              Edit
+                            </button>
+                          )}
+                        </Td>
+                      )}
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </div>
+          </Card>
+        )}
+
+        {/* YEARLY analytics view */}
+        {periodMode === 'yearly' && (
+          <div className="space-y-4">
+            <Card>
+              <h4 className="font-bold text-sm text-slate-800 mb-1">Yearly Attendance Analytics — {new Date(selectedDate).getFullYear()}</h4>
+              <p className="text-[10px] text-slate-500 mb-4">Monthly present / absent / leave totals across {periodEmployees.length} employee(s).</p>
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={yearlyData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <RTooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Bar dataKey="present" name="Present" fill="#10b981" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="absent" name="Absent" fill="#f43f5e" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="leave" name="Leave" fill="#6366f1" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+            <Card padding={false} className="overflow-hidden border-slate-200">
+              <Table>
+                <Thead className="bg-slate-100"><tr><Th>Month</Th><Th className="text-center">Present</Th><Th className="text-center">Absent</Th><Th className="text-center">Leave</Th><Th className="text-center">Half Day</Th><Th className="text-center">WFH</Th><Th className="text-center">OT Hrs</Th><Th className="text-center">Attendance %</Th></tr></Thead>
+                <Tbody>
+                  {yearlyData.map(m => (
+                    <Tr key={m.month} className="hover:bg-slate-50">
+                      <Td className="font-bold text-xs">{m.month}</Td>
+                      <Td className="text-center text-xs text-emerald-600 font-bold">{m.present}</Td>
+                      <Td className="text-center text-xs text-rose-600 font-bold">{m.absent}</Td>
+                      <Td className="text-center text-xs">{m.leave}</Td>
+                      <Td className="text-center text-xs">{m.half}</Td>
+                      <Td className="text-center text-xs">{m.wfh}</Td>
+                      <Td className="text-center text-xs text-fuchsia-600 font-bold">{m.otHours}</Td>
+                      <Td className="text-center text-xs font-bold text-blue-600">{m.attendanceRate}%</Td>
+                    </Tr>
+                  ))}
+                </Tbody>
+              </Table>
+            </Card>
+          </div>
+        )}
+       </div>
       )}
 
       {/* TAB: OVERTIME */}
@@ -1004,11 +1468,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <StatCard label="Total Employees" value={filteredReportRecords.length} color="bg-slate-50" />
-            <StatCard label="Present" value={filteredReportRecords.filter(r => r.status === 'Present').length} color="bg-emerald-50" />
-            <StatCard label="Absent" value={filteredReportRecords.filter(r => r.status === 'Absent').length} color="bg-rose-50" />
-            <StatCard label="On Leave" value={filteredReportRecords.filter(r => r.status === 'Leave').length} color="bg-indigo-50" />
-            <StatCard label="Late Mark" value={filteredReportRecords.filter(r => r.flags?.includes('Late Mark')).length} color="bg-amber-50" />
+            <StatCard label="Total Employees" value={filteredReportRecords.length} icon={<Users size={16} className="text-slate-600" />} color="bg-slate-50" />
+            <StatCard label="Present" value={filteredReportRecords.filter(r => r.status === 'Present').length} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
+            <StatCard label="Absent" value={filteredReportRecords.filter(r => r.status === 'Absent').length} icon={<XCircle size={16} className="text-rose-600" />} color="bg-rose-50" />
+            <StatCard label="On Leave" value={filteredReportRecords.filter(r => r.status === 'Leave').length} icon={<Calendar size={16} className="text-indigo-600" />} color="bg-indigo-50" />
+            <StatCard label="Late Mark" value={filteredReportRecords.filter(r => r.flags?.includes('Late Mark')).length} icon={<AlertCircle size={16} className="text-amber-600" />} color="bg-amber-50" />
           </div>
 
           <div className="space-y-6">
@@ -1151,6 +1615,179 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </Card>
         </div>
       )}
+
+      {/* ENTERPRISE EXPORT MODAL */}
+      <Modal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        title="Export Attendance"
+        footer={<><Button variant="outline" onClick={() => setExportOpen(false)}>Cancel</Button><Button onClick={runExport} className="flex items-center gap-2"><Download size={14} /> Export</Button></>}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Period</label>
+            <div className="grid grid-cols-5 gap-1.5">
+              {(['daily','weekly','monthly','yearly','custom'] as PeriodMode[]).map(m => (
+                <button key={m} onClick={() => setExportMode(m)} className={`py-2 text-[11px] font-bold rounded-lg border capitalize ${exportMode === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>{m}</button>
+              ))}
+            </div>
+            {exportMode === 'custom' && (
+              <div className="flex items-center gap-2 mt-2">
+                <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="text-xs h-8" />
+                <span className="text-slate-400 text-xs">to</span>
+                <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="text-xs h-8" />
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Format</label>
+            <div className="grid grid-cols-4 gap-1.5">
+              {([['excel','Excel',Download],['pdf','PDF',FileText],['csv','CSV',Database],['print','Print',Printer]] as [ExportFormat,string,any][]).map(([f, label, Icon]) => (
+                <button key={f} onClick={() => setExportFormat(f)} className={`py-2 text-[11px] font-bold rounded-lg border flex items-center justify-center gap-1.5 ${exportFormat === f ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}><Icon size={13} /> {label}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Scope</label>
+            <Select value={exportScope} onChange={e => setExportScope(e.target.value as any)} options={[
+              { value: 'all', label: 'All Companies' },
+              ...(companyOptions.length > 1 ? [{ value: 'multiple', label: 'Multiple Companies' }, { value: 'company', label: 'Single Company' }] : []),
+              { value: 'branch', label: 'Branch' },
+              { value: 'department', label: 'Department' },
+              { value: 'individual', label: 'Individual Employee' },
+            ]} className="text-xs h-9" />
+          </div>
+
+          {exportScope === 'company' && (
+            <Select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} options={[{ value: '', label: 'Select company…' }, ...companyOptions]} className="text-xs h-9" />
+          )}
+          {exportScope === 'multiple' && (
+            <div className="border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto space-y-1.5">
+              {companyOptions.map(c => (
+                <label key={c.value} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
+                  <input type="checkbox" checked={exportCompanyIds.includes(c.value)} onChange={e => setExportCompanyIds(e.target.checked ? [...exportCompanyIds, c.value] : exportCompanyIds.filter(id => id !== c.value))} className="rounded border-slate-300 text-blue-600" />
+                  {c.label}
+                </label>
+              ))}
+            </div>
+          )}
+          {exportScope === 'branch' && (
+            <Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'Select branch…' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-9" />
+          )}
+          {exportScope === 'department' && (
+            <Select value={filterDept} onChange={e => setFilterDept(e.target.value)} options={[{ value: '', label: 'Select department…' }, ...departments.map(d => ({ value: d, label: d }))]} className="text-xs h-9" />
+          )}
+          {exportScope === 'individual' && (
+            <Select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} options={[{ value: '', label: 'Select employee…' }, ...activeUniqueEmployees.map(e => ({ value: e.id, label: e.name }))]} className="text-xs h-9" />
+          )}
+
+          <p className="text-[10px] text-slate-400">Exports the selected period &amp; scope. Excel/CSV for spreadsheets, PDF for sharing, Print for hard copy.</p>
+        </div>
+      </Modal>
+
+      {/* PAYROLL SYNC MODAL */}
+      <Modal
+        open={syncOpen}
+        onClose={() => { setSyncOpen(false); setSyncPreview(null); setSyncDone(null); }}
+        title="Sync Attendance → Payroll"
+        footer={
+          syncDone ? (
+            <Button onClick={() => { setSyncOpen(false); setSyncDone(null); setSyncPreview(null); }}>Done</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setSyncOpen(false)}>Cancel</Button>
+              <Button onClick={commitPayrollSync} disabled={syncLoading || !syncPreview || syncPreview.count === 0} className="flex items-center gap-2">
+                {syncLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />} Confirm &amp; Write to Payroll
+              </Button>
+            </>
+          )
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">Computes payable days, Loss-of-Pay (LOP) and approved overtime for <b>{getPeriodRange('monthly', selectedDate).label}</b> and writes them into the Payroll deductions/allowances. Review before confirming.</p>
+
+          {syncLoading && !syncPreview && <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Calculating…</div>}
+
+          {syncDone && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 font-semibold">
+              ✅ Payroll updated. {syncDone.updated} record(s) updated, {syncDone.created} created for {getPeriodRange('monthly', selectedDate).label}.
+            </div>
+          )}
+
+          {syncPreview && (
+            <>
+              <div className="grid grid-cols-4 gap-2">
+                <StatCard label="Employees" value={syncPreview.totals?.employees || 0} icon={<Users size={16} className="text-slate-600" />} color="bg-slate-50" />
+                <StatCard label="LOP Days" value={syncPreview.totals?.lopDays || 0} icon={<XCircle size={16} className="text-rose-600" />} color="bg-rose-50" />
+                <StatCard label="OT Hours" value={(syncPreview.totals?.otHours || 0).toFixed(1)} icon={<Clock size={16} className="text-fuchsia-600" />} color="bg-fuchsia-50" />
+                <StatCard label="OT Amount" value={`₹${(syncPreview.totals?.otAmount || 0).toLocaleString()}`} icon={<Database size={16} className="text-indigo-600" />} color="bg-indigo-50" />
+              </div>
+              <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
+                <Table>
+                  <Thead className="bg-slate-100"><tr><Th>Employee</Th><Th className="text-center">Payable</Th><Th className="text-center">LOP</Th><Th className="text-center">OT Hrs</Th><Th className="text-right">LOP Ded.</Th><Th className="text-right">OT Amt</Th></tr></Thead>
+                  <Tbody>
+                    {(syncPreview.rows || []).map((r: any) => (
+                      <Tr key={r.employeeId}>
+                        <Td><span className="text-xs font-bold">{r.employeeName}</span></Td>
+                        <Td className="text-center text-xs">{r.payableDays}</Td>
+                        <Td className="text-center text-xs text-rose-600 font-bold">{r.lopDays}</Td>
+                        <Td className="text-center text-xs text-fuchsia-600">{r.otHours}</Td>
+                        <Td className="text-right text-xs">₹{r.lopDeduction.toLocaleString()}</Td>
+                        <Td className="text-right text-xs">₹{r.otAmount.toLocaleString()}</Td>
+                      </Tr>
+                    ))}
+                    {(!syncPreview.rows || syncPreview.rows.length === 0) && <Tr><Td colSpan={6} className="text-center text-xs text-slate-500 py-6">No active employees in scope.</Td></Tr>}
+                  </Tbody>
+                </Table>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
+
+      {/* Edit Attendance (monthly summary) */}
+      <Modal open={!!editSummary} onClose={() => setEditSummary(null)} title="Edit Attendance" size="lg">
+        {editSummary && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div>
+                <p className="font-bold text-slate-800 text-sm">{editSummary.employeeName}</p>
+                <p className="text-[11px] text-slate-500">{editSummary.employeeCode} · {SUMMARY_MONTH} {SUMMARY_YEAR}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-slate-400 uppercase font-bold">Payable Days</p>
+                <p className="text-lg font-extrabold text-blue-600">{payablePreview}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                ['presentDays', 'Present Days'], ['absentDays', 'Absent Days'],
+                ['cl', 'CL'], ['pl', 'PL'], ['sl', 'SL'], ['lwp', 'LWP'],
+                ['halfDays', 'Half Days'], ['otHours', 'OT Hours'],
+              ].map(([key, label]) => (
+                <Input key={key} label={label} type="number" step="0.5" min="0"
+                  value={String(summaryForm[key])}
+                  onChange={e => setSummaryForm({ ...summaryForm, [key]: e.target.value })} />
+              ))}
+            </div>
+            <Select label="Shift" value={summaryForm.shift || ''}
+              onChange={e => setSummaryForm({ ...summaryForm, shift: e.target.value })}
+              options={[{ value: '', label: '— None —' }, ...shifts.map((s: any) => ({ value: s.name, label: s.name })), { value: 'General', label: 'General' }]} />
+
+            <p className="text-[11px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-2">
+              Saving recalculates Payable Days and marks this month's payroll <strong>Requires Regeneration</strong>. The change is recorded in the audit log.
+            </p>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={() => setEditSummary(null)}>Cancel</Button>
+              <Button onClick={saveSummary} disabled={savingSummary}>{savingSummary ? 'Saving…' : 'Save Attendance'}</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
     </div>
   );

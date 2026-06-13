@@ -2,7 +2,8 @@ import React from 'react';
 import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
-  FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck
+  FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
+  ClipboardList, Briefcase
 } from 'lucide-react';
 import type { Role, Company } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
@@ -11,7 +12,7 @@ import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
-  | 'documents' | 'reports' | 'settings' | 'billing' | 'users';
+  | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders';
 
 interface NavItem {
   id: PageId;
@@ -30,6 +31,8 @@ const navItems: NavItem[] = [
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
+  { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
+  { id: 'tenders', label: 'Tender Information', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
 ];

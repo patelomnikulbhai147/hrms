@@ -47,7 +47,7 @@ enterprise-hrms-crm-application/
 ├── backend/                        # Node.js + Express Backend
 │   ├── prisma/
 │   │   ├── migrations/             # Database migration history
-│   │   └── schema.prisma           # Core database schema models
+│   │   └──            # Core database schema models
 │   ├── scripts/                    # Utility and migration scripts
 │   ├── src/
 │   │   ├── controllers/            # Business logic (e.g., employeeController, payrollController)

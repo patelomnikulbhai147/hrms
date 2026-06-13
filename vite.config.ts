@@ -15,4 +15,20 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  build: {
+    // Split heavy, rarely-changing libraries into their own chunks so the
+    // browser caches them across deploys and the initial route loads less JS.
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react": ["react", "react-dom"],
+          "vendor-charts": ["recharts"],
+          "vendor-export": ["xlsx", "jspdf", "jspdf-autotable", "jszip"],
+          "vendor-canvas": ["html2canvas", "html2canvas-pro"],
+          "vendor-motion": ["framer-motion"],
+        },
+      },
+    },
+  },
 });

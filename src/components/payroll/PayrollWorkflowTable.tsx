@@ -64,7 +64,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
               <Tr key={r.id} className="group border-b border-slate-100 hover:bg-slate-50 transition-colors">
                 <Td>
                   <div className="font-semibold text-slate-900 text-sm">{r.employeeName}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{r.employeeId}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{(r as any).employee?.employeeId || ''}</div>
                 </Td>
                 <Td>
                   <span className="text-sm text-slate-600">{r.department}</span>

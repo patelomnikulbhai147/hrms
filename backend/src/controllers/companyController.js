@@ -1,11 +1,110 @@
 const prisma = require('../config/prisma');
+const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
+const idParam = require('../utils/idParam');
+const { coerceEntityIds } = require('../utils/idParam');
+const AuditService = require('../services/auditService');
+const respondError = require('../utils/respondError');
+
+// ── Company Branding Management ───────────────────────────────────────────────
+// A dedicated, permission-gated endpoint so Company Admins / HR can manage their
+// OWN company's branding without the full Super-Admin-only company write. Branding
+// always lives on the top-level company (never a branch), so a branch id is
+// resolved to its parent. Only the whitelisted branding columns can be written —
+// statutory/payroll/billing fields are untouched.
+const BRANDING_FIELDS = [
+  'name', 'shortName', 'tagline', 'website', 'contactEmail', 'contactNumber',
+  'address', 'description', 'logo', 'logoImage', 'primaryColor', 'themeStyle',
+  'headerText', 'footerText', 'signatureText', 'gstNumber',
+];
+
+exports.updateBranding = async (req, res) => {
+  try {
+    const role = req.user?.role;
+    if (!role || role === 'Employee' || role === 'Staff') {
+      return res.status(403).json({ error: 'You do not have permission to edit company branding.' });
+    }
+
+    // Resolve the target to a top-level COMPANY (branding never lives on a branch).
+    const rawId = idParam(req.params.id);
+    let companyId = rawId;
+    const asCompany = await prisma.company.findUnique({ where: { id: rawId } });
+    if (!asCompany || asCompany.parentCompanyId) {
+      // rawId is a branch (or a sub-company) → use its parent company.
+      const asBranch = await prisma.branch.findUnique({ where: { id: rawId } }).catch(() => null);
+      companyId = (asCompany && asCompany.parentCompanyId) ? asCompany.parentCompanyId : (asBranch ? asBranch.companyId : rawId);
+    }
+
+    // Permission scope: Super Admin → any company; everyone else → ONLY their own
+    // top-level company. We compare against the user's resolved primary company
+    // (not the merged accessibleCompanyIds) so that branch ids — which overlap
+    // company ids — can never let a user edit a different company's branding.
+    if (role !== 'Super Admin') {
+      let userCompanyId = req.user.companyId;
+      if (userCompanyId) {
+        const uc = await prisma.company.findUnique({ where: { id: userCompanyId } });
+        if (!uc) {
+          const ub = await prisma.branch.findUnique({ where: { id: userCompanyId } }).catch(() => null);
+          if (ub) userCompanyId = ub.companyId;
+        } else if (uc.parentCompanyId) {
+          userCompanyId = uc.parentCompanyId;
+        }
+      }
+      if (!userCompanyId || companyId !== userCompanyId) {
+        return res.status(403).json({ error: 'You can only edit branding for your own company.' });
+      }
+      if (role === 'HR') {
+        const perms = req.user.permissions || {};
+        const moduleAccess = perms.moduleAccess || {};
+        const granular = perms.permissions || {};
+        const allowedBranding = moduleAccess.settings !== false &&
+          (granular.settings?.manage === true || granular.settings?.edit === true);
+        if (!allowedBranding) {
+          return res.status(403).json({ error: 'Company branding management is not enabled for your account.' });
+        }
+      }
+    }
+
+    const data = {};
+    for (const f of BRANDING_FIELDS) if (req.body[f] !== undefined) data[f] = req.body[f];
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: 'No branding fields supplied.' });
+    }
+
+    const updated = await prisma.company.update({ where: { id: companyId }, data });
+
+    // Audit: record exactly which branding fields changed, by whom.
+    if (req.user?.id) {
+      await AuditService.logAudit(req.user.id, 'UPDATE_BRANDING', 'Branding', String(companyId), {
+        fields: Object.keys(data),
+        nameChangedTo: data.name,
+        logoChanged: data.logoImage !== undefined || data.logo !== undefined,
+        by: req.user.name || req.user.email,
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating branding:', error);
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Company not found.' });
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
 
 // Get all companies
 exports.getCompanies = async (req, res) => {
   try {
+    let whereClause = {};
+    if (req.user && req.user.role !== 'Super Admin') {
+      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      whereClause.id = { in: allowedIds };
+    }
+
     const companies = await prisma.company.findMany({
+      where: whereClause,
       include: {
-        branches: true,
+        branches: {
+          orderBy: [{ branchNo: 'asc' }, { id: 'asc' }],
+        },
         _count: {
           select: { employees: { where: { status: 'Active' } } }
         }
@@ -22,8 +121,7 @@ exports.getCompanies = async (req, res) => {
 
     res.json(enrichedCompanies);
   } catch (error) {
-    console.error('Error fetching companies:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -50,18 +148,21 @@ exports.createCompany = async (req, res) => {
         profTaxRate: req.body.profTaxRate,
         overtimeRate: req.body.overtimeRate
       };
-      
+      coerceEntityIds(branchData);
+      branchData.id = await nextEntityId();
+      branchData.branchNo = await nextBranchNo(branchData.companyId);
       const branch = await prisma.branch.create({ data: branchData });
       return res.status(201).json({ ...branch, name: branch.branchName, isHeadOffice: false, parentCompanyId: branch.companyId });
     }
 
+    const companyData = coerceEntityIds({ ...req.body });
+    delete companyData.id;
     const company = await prisma.company.create({
-      data: req.body
+      data: { ...companyData, id: await nextEntityId() }
     });
     res.status(201).json(company);
   } catch (error) {
-    console.error('Error creating company/branch:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -92,7 +193,7 @@ exports.updateCompany = async (req, res) => {
 
 
       const branch = await prisma.branch.update({
-        where: { id },
+        where: { id: idParam(id) },
         data: validBranchData
       });
 
@@ -123,7 +224,13 @@ exports.updateCompany = async (req, res) => {
               where: { id: parentCompanyId },
               data: parentPayload
             });
-          } catch(e) {}
+          } catch(e) {
+            // Best-effort forward of branding/statutory settings to the parent
+            // company: the branch update itself already succeeded, so we don't
+            // fail the request. But log it — a silently-swallowed error here
+            // previously hid cases where the parent settings never persisted.
+            console.error(`Branch update: parent company ${parentCompanyId} forward-update failed:`, e.message);
+          }
         }
       }
 
@@ -137,13 +244,12 @@ exports.updateCompany = async (req, res) => {
     delete payload.branches;
     
     const company = await prisma.company.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: payload
     });
     res.json(company);
   } catch (error) {
-    console.error('Error updating company/branch:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -158,8 +264,7 @@ exports.getCompanyDependencies = async (req, res) => {
     
     res.json({ employees, branches, payrolls, attendances, documents });
   } catch (error) {
-    console.error('Error fetching dependencies:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -168,13 +273,13 @@ exports.deleteCompany = async (req, res) => {
     const { id } = req.params;
     
     // Check if it's a branch or company
-    const branchCheck = await prisma.branch.findUnique({ where: { id } });
+    const branchCheck = await prisma.branch.findUnique({ where: { id: idParam(id) } });
     if (branchCheck) {
       const employees = await prisma.employee.count({ where: { branchId: id } });
       if (employees > 0) {
         return res.status(400).json({ error: 'Cannot hard delete branch with existing employees.' });
       }
-      await prisma.branch.delete({ where: { id } });
+      await prisma.branch.delete({ where: { id: idParam(id) } });
       return res.json({ message: 'Branch permanently deleted' });
     }
 
@@ -188,11 +293,10 @@ exports.deleteCompany = async (req, res) => {
       return res.status(400).json({ error: 'Cannot hard delete company with existing dependent records. Please archive instead.' });
     }
 
-    await prisma.company.delete({ where: { id } });
+    await prisma.company.delete({ where: { id: idParam(id) } });
     res.json({ message: 'Company permanently deleted' });
   } catch (error) {
-    console.error('Error deleting company:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -200,10 +304,10 @@ exports.archiveCompany = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const branchCheck = await prisma.branch.findUnique({ where: { id } });
+    const branchCheck = await prisma.branch.findUnique({ where: { id: idParam(id) } });
     if (branchCheck) {
       const branch = await prisma.branch.update({
-        where: { id },
+        where: { id: idParam(id) },
         data: { status: 'Archived', isArchived: true }
       });
       await prisma.employee.updateMany({
@@ -215,7 +319,7 @@ exports.archiveCompany = async (req, res) => {
 
     // Archive company
     const company = await prisma.company.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: { status: 'Archived', isArchived: true }
     });
     
@@ -236,8 +340,7 @@ exports.archiveCompany = async (req, res) => {
     
     res.json({ message: 'Company archived successfully', company });
   } catch (error) {
-    console.error('Error archiving company:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 /**
@@ -295,7 +398,8 @@ exports.exportCompanies = async (req, res) => {
           company: { select: { name: true } },
           _count: { select: { employees: true } }
         },
-        orderBy: { createdAt: 'asc' }
+        // Company-wise branchNo ordering for exports/reports.
+        orderBy: [{ companyId: 'asc' }, { branchNo: 'asc' }, { id: 'asc' }]
       }),
       prisma.subscriptionPlan.findMany({ orderBy: { priceMonthly: 'asc' } })
     ]);
@@ -363,6 +467,7 @@ exports.exportCompanies = async (req, res) => {
       type: 'Branch',
       companyId: b.companyId,
       branchId: b.id,
+      branchNo: b.branchNo ?? '',
       companyName: b.company?.name || '',
       branchName: b.branchName || '',
       contactPerson: b.adminName || '',

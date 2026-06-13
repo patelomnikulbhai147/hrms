@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { Menu, Bell, ChevronDown, LogOut, ShieldAlert, X, Sun, Moon, Building2 } from 'lucide-react';
+import { getApiErrorMessage } from '../../utils/apiError';
+import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History } from 'lucide-react';
 import { type Role, type Company, type Notification } from '../../data/mockData';
 import { type UserAccount } from '../../pages/Login';
 import { Badge } from '../ui/Badge';
 import { cn } from '../../utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../../api/apiClient';
+import { buildWorkspaceHierarchy } from '../../utils/workspaceUtils';
+import { resolveActiveWorkspace } from '../../types';
 
 
 interface TopbarProps {
   onToggleSidebar: () => void;
   role: Role;
   onRoleChange: (role: Role) => void;
-  onCompanyChange?: (companyId: string) => void;
+  onCompanyChange?: (companyId: string, kind?: 'company' | 'branch') => void;
   activeCompanyId: string;
   isMasquerading: boolean;
   onExitMasquerade: () => void;
@@ -51,10 +54,25 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [wsSearchTerm, setWsSearchTerm] = useState('');
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => ({ ...prev, [groupName]: prev[groupName] === false ? true : false }));
+  };
 
   // If masquerading, role is forced to Company Head
   const activeRole = isMasquerading ? 'Company Head' : role;
-  const currentCompany = companies.find(c => c.id === activeCompanyId);
+  // Loose (String) compare so a branch workspace resolves whether activeCompanyId
+  // is a number (fresh click) or a string (rehydrated from localStorage).
+  const currentCompany = (resolveActiveWorkspace(companies as any[], activeCompanyId) as any) || companies.find(c => String(c.id) === String(activeCompanyId));
+  // When the active workspace is a branch, resolve its parent company so the
+  // header can render the "Company → Branch" breadcrumb.
+  const activeParentCompany = (currentCompany as any)?.parentCompanyId
+    ? companies.find(c => String(c.id) === String((currentCompany as any).parentCompanyId))
+    : null;
+  const isBranchWorkspace = !!(currentCompany as any)?.parentCompanyId;
+  const branchLabel = (currentCompany as any)?.branchName || currentCompany?.name;
 
   // Filter notifications by company if not Super Admin
   const companyNotifs = activeRole === 'Super Admin'
@@ -80,7 +98,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="bg-[#361905] border-b border-amber-900/40 text-amber-500 px-4 py-1.5 text-xs font-bold flex items-center justify-between gap-3 shadow-lg select-none">
           <div className="flex items-center gap-2.5">
             <ShieldAlert size={14} className="animate-pulse text-amber-500" />
-            <span className="tracking-tight text-[11px] text-amber-500">Viewing workspace as Super Admin (Masquerade Mode){currentCompany?.name ? <> — <strong className="text-amber-400 font-extrabold">{currentCompany.name}</strong></> : null}</span>
+            <span className="tracking-tight text-[11px] text-amber-500">Viewing workspace as Super Admin (Masquerade Mode){currentCompany?.name ? <> — {isBranchWorkspace && activeParentCompany ? <strong className="text-amber-400 font-extrabold">{activeParentCompany.name} → {branchLabel} Branch</strong> : <strong className="text-amber-400 font-extrabold">{currentCompany.name}</strong>}</> : null}</span>
           </div>
           <button
             onClick={onExitMasquerade}
@@ -97,16 +115,24 @@ export const Topbar: React.FC<TopbarProps> = ({
         </button>
 
         <div className="flex items-center gap-2 text-sm text-slate-300 min-w-0">
-          <span className="font-extrabold text-white truncate font-heading text-base tracking-tight">
-            {isMasquerading ? `SaaS Control Center — ${currentCompany?.name}` : pageTitle}
-          </span>
+          {isMasquerading && isBranchWorkspace && activeParentCompany ? (
+            <span className="font-extrabold text-white truncate font-heading text-base tracking-tight flex items-center gap-1.5">
+              <span className="text-slate-400">{activeParentCompany.name}</span>
+              <ChevronRight size={15} className="text-slate-500 flex-shrink-0" />
+              <span>{branchLabel} Branch</span>
+            </span>
+          ) : (
+            <span className="font-extrabold text-white truncate font-heading text-base tracking-tight">
+              {isMasquerading ? `SaaS Control Center — ${currentCompany?.name}` : pageTitle}
+            </span>
+          )}
         </div>
 
-        {/* Fixed Company Name Badge in Navbar for Company Head and HR */}
-        {(activeRole === 'Company Head' || activeRole === 'HR') && currentCompany && (
+        {/* Fixed Company Name Badge in Navbar (Mobile only or if multiple disabled) */}
+        {companies.length <= 1 && currentCompany && (
           <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F7FAFF] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
             <Building2 size={16} className="text-[#4F7CFF]" />
-            <span>{currentCompany.name}</span>
+            <span>{(currentCompany as any).branchName || currentCompany.name}</span>
           </div>
         )}
 
@@ -141,12 +167,17 @@ export const Topbar: React.FC<TopbarProps> = ({
                         <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Companies</span>
                       </div>
                       {companies.filter(c => !c.parentCompanyId).map(comp => {
-                        const isCurrent = comp.id === activeCompanyId;
-                        const childBranches = companies.filter(b => b.parentCompanyId === comp.id);
+                        // Kind-aware: a company is "current" only when the active
+                        // workspace is a COMPANY with this id — never when a branch
+                        // sharing the same numeric id is open (id collision).
+                        const isCurrent = String(comp.id) === String(activeCompanyId) && !isBranchWorkspace;
+                        const childBranches = companies
+                          .filter(b => b.parentCompanyId === comp.id)
+                          .sort((a, b) => (((a as any).branchNo ?? a.id) as number) - (((b as any).branchNo ?? b.id) as number));
                         return (
                           <React.Fragment key={comp.id}>
                             <button
-                              onClick={() => { if (!isCurrent) onCompanyChange(comp.id); setWorkspaceOpen(false); }}
+                              onClick={() => { if (!isCurrent) onCompanyChange(comp.id, 'company'); setWorkspaceOpen(false); }}
                               className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F7FAFF]', isCurrent ? 'bg-[#EDF4FF] text-[#4F7CFF] font-bold' : 'text-[#1F2937] font-semibold')}
                             >
                               <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#4F7CFF] flex-shrink-0" />{comp.name}</span>
@@ -155,11 +186,13 @@ export const Topbar: React.FC<TopbarProps> = ({
                             {childBranches.length > 0 && (
                               <div className="pl-3">
                                 {childBranches.map(br => {
-                                  const brCurrent = br.id === activeCompanyId;
+                                  // Kind-aware branch highlight: current only when a
+                                  // BRANCH workspace with this id is open.
+                                  const brCurrent = String(br.id) === String(activeCompanyId) && isBranchWorkspace;
                                   return (
                                     <button
                                       key={br.id}
-                                      onClick={() => { if (!brCurrent) onCompanyChange(br.id); setWorkspaceOpen(false); }}
+                                      onClick={() => { if (!brCurrent) onCompanyChange(br.id, 'branch'); setWorkspaceOpen(false); }}
                                       className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#F7FAFF] border-l-2 border-[#E5EFFF] ml-3', brCurrent ? 'text-[#4F7CFF] font-bold bg-[#F7FAFF]' : 'text-[#4B5563] font-medium')}
                                     >
                                       <span className="truncate pr-2">↳ {(br as any).branchName || br.name}</span>
@@ -180,14 +213,14 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
 
           {/* Workspace Switcher */}
-          {authProfile && activeRole !== 'Super Admin' && authProfile.accessibleCompanyIds && authProfile.accessibleCompanyIds.length > 1 && !isMasquerading && (
+          {companies.length > 1 && activeRole !== 'Super Admin' && !isMasquerading && (
             <div className="relative">
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
                 className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
               >
                 <Building2 size={16} className="text-[#4F7CFF]" />
-                <span className="max-w-[120px] truncate">{currentCompany?.name || 'Switch Workspace'}</span>
+                <span className="max-w-[120px] truncate">{(currentCompany as any)?.branchName || currentCompany?.name || 'Switch Workspace'}</span>
                 <ChevronDown size={16} className="text-[#6B7280]" />
               </button>
               
@@ -198,35 +231,124 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-64 bg-white border border-[#E5EFFF] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5EFFF] rounded-2xl shadow-2xl py-1 z-50 overflow-hidden"
                   >
-                    <div className="px-4 py-2 border-b border-[#E5EFFF] mb-1">
-                      <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Switch Location</span>
+                    <div className="px-3 py-2 border-b border-[#E5EFFF] flex flex-col gap-2 bg-[#F8FAFC]">
+                      <div className="flex items-center gap-2 px-1">
+                        <History size={13} className="text-[#64748B]" />
+                        <span className="text-[10px] font-extrabold text-[#64748B] uppercase tracking-wider">Switch Workspace</span>
+                      </div>
+                      <div className="relative">
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                        <input
+                          type="text"
+                          placeholder="Search workspaces..."
+                          value={wsSearchTerm}
+                          onChange={e => setWsSearchTerm(e.target.value)}
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E2E8F0] rounded-lg text-[11px] font-semibold text-[#334155] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#4F7CFF]/20 focus:border-[#4F7CFF] transition-all shadow-sm"
+                        />
+                      </div>
                     </div>
-                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                      {authProfile.accessibleCompanyIds.map(id => {
-                        const comp = companies.find(c => c.id === id);
-                        if (!comp) return null;
-                        const isCurrent = id === activeCompanyId;
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => {
-                              if (onCompanyChange && !isCurrent) {
-                                onCompanyChange(id);
-                              }
-                              setWorkspaceOpen(false);
-                            }}
-                            className={cn(
-                              "w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F7FAFF]",
-                              isCurrent ? "bg-[#EDF4FF] text-[#4F7CFF] font-bold" : "text-[#4B5563] font-medium"
-                            )}
-                          >
-                            <span className="truncate pr-2">{comp.name}</span>
-                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
-                          </button>
-                        );
-                      })}
+                    
+                    <div className="max-h-[320px] overflow-y-auto custom-scrollbar pb-1">
+                      {(() => {
+                        // Canonical Company -> Branch hierarchy (companies are parents,
+                        // branches are children). Filter by the search term but keep a
+                        // company group whenever the company OR any of its branches match.
+                        const term = wsSearchTerm.toLowerCase();
+                        const hierarchy = buildWorkspaceHierarchy(companies)
+                          .map(group => {
+                            const companyMatch = group.companyName.toLowerCase().includes(term);
+                            const cards = companyMatch
+                              ? group.cards
+                              : group.cards.filter(c =>
+                                  ((c as any).branchName || c.name || '').toLowerCase().includes(term)
+                                );
+                            return { ...group, cards };
+                          })
+                          .filter(group => group.cards.length > 0);
+
+                        if (hierarchy.length === 0) {
+                          return (
+                            <div className="py-6 text-center text-slate-500 flex flex-col items-center">
+                              <Search size={20} className="text-slate-300 mb-2" />
+                              <span className="text-[11px] font-semibold">No workspaces found</span>
+                            </div>
+                          );
+                        }
+
+                        return hierarchy.map((group) => {
+                          const groupName = group.companyName;
+                          const isExpanded = expandedGroups[groupName] !== false; // Default true
+
+                          // Sort branches: primary first, then alphabetically
+                          const sortedBranches = [...group.cards].sort((a, b) => {
+                            const isAPrimary = authProfile?.companyId === a.id;
+                            const isBPrimary = authProfile?.companyId === b.id;
+                            if (isAPrimary) return -1;
+                            if (isBPrimary) return 1;
+                            // Branch listings sort by branchNo ascending (per-company sequence).
+                            return (((a as any).branchNo ?? a.id) as number) - (((b as any).branchNo ?? b.id) as number);
+                          });
+                          return (
+                            <div key={group.companyId} className="mb-1">
+                              <button
+                                onClick={() => toggleGroup(groupName)}
+                                className="w-full text-left px-3 py-2 flex items-center justify-between hover:bg-[#F1F5F9] transition-colors group border-b border-[#F1F5F9] last:border-0"
+                              >
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <span className="text-[14px]">🏢</span>
+                                  <span className="text-[12px] font-bold text-[#334155] truncate tracking-wide">{groupName} ({group.cards.length})</span>
+                                </div>
+                                <div className="flex items-center flex-shrink-0">
+                                  <ChevronRight size={14} className={cn("text-[#94A3B8] transition-transform duration-200", isExpanded && "rotate-90")} />
+                                </div>
+                              </button>
+                              
+                              <AnimatePresence>
+                                {isExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="py-1 space-y-0.5">
+                                      {sortedBranches.map((comp) => {
+                                        const isCurrent = comp.id === activeCompanyId;
+                                        const isPrimary = authProfile?.companyId === comp.id;
+                                        return (
+                                          <button
+                                            key={comp.id}
+                                            onClick={() => {
+                                              if (onCompanyChange && !isCurrent) {
+                                                onCompanyChange(comp.id, (comp as any).parentCompanyId ? 'branch' : 'company');
+                                              }
+                                              setWorkspaceOpen(false);
+                                              setWsSearchTerm('');
+                                            }}
+                                            className={cn(
+                                              "w-full text-left px-4 py-2 text-[12px] flex items-center justify-between transition-all group",
+                                              isCurrent ? "bg-[#EFF6FF] text-[#2563EB] font-bold" : "text-[#475569] font-medium hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+                                            )}
+                                          >
+                                            <div className="flex items-center gap-2 overflow-hidden">
+                                              <span className="text-[13px]">{isPrimary ? '⭐' : '📍'}</span>
+                                              <span className="truncate">{(comp as any).branchName || comp.name}</span>
+                                            </div>
+                                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </motion.div>
                 )}
@@ -285,29 +407,48 @@ export const Topbar: React.FC<TopbarProps> = ({
                 >
                   <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between bg-slate-950/40">
                     <span className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Notifications</span>
-                    <Badge variant="blue">{unread} new</Badge>
+                    <div className="flex items-center gap-2">
+                      {unread > 0 && <Badge variant="blue">{unread} new</Badge>}
+                      {companyNotifs.some(n => !n.read) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); api.notifications.markAllRead().then(() => onUpdateNotifications(prev => prev.map(i => ({ ...i, read: true })))).catch(() => {}); }}
+                          className="text-[10px] font-bold text-blue-400 hover:text-blue-300" title="Mark all as read"
+                        >Mark all read</button>
+                      )}
+                      {companyNotifs.length > 0 && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (!window.confirm('Clear all notifications?')) return; api.notifications.clearAll().then(() => onUpdateNotifications([])).catch(() => {}); }}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300" title="Clear all notifications"
+                        >Clear all</button>
+                      )}
+                    </div>
                   </div>
                   <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
                     {companyNotifs.length === 0 ? (
                       <p className="p-5 text-center text-xs text-slate-500 font-medium">No recent alerts</p>
                     ) : (
-                      companyNotifs.slice(0, 5).map(n => (
-                        <div key={n.id} className={cn('px-4 py-3 hover:bg-slate-850/45 flex items-start justify-between gap-3 transition-colors', !n.read && 'bg-blue-955/20')}>
+                      companyNotifs.slice(0, 8).map(n => (
+                        <div
+                          key={n.id}
+                          onClick={() => { if (!n.read) { api.notifications.markRead(n.id).then(() => onUpdateNotifications(prev => prev.map(i => i.id === n.id ? { ...i, read: true } : i))).catch(() => {}); } }}
+                          className={cn('px-4 py-3 hover:bg-slate-850/45 flex items-start justify-between gap-3 transition-colors cursor-pointer', !n.read && 'bg-blue-955/20')}
+                        >
                           <div className="flex items-start gap-2.5 min-w-0">
                             <div className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0 relative', n.priority === 'high' ? 'bg-rose-500' : n.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-500')}>
-                              {(n.priority === 'high' || n.priority === 'medium') && (
+                              {!n.read && (n.priority === 'high' || n.priority === 'medium') && (
                                 <span className="absolute inline-flex h-full w-full rounded-full opacity-75 animate-ping bg-current" />
                               )}
                             </div>
                             <div className="min-w-0">
+                              {(n as any).title && <p className={cn('text-[11px] font-bold break-words', !n.read ? 'text-white' : 'text-slate-400')}>{(n as any).title}</p>}
                               <p className="text-[11px] text-slate-300 leading-relaxed font-medium break-words">{n.message}</p>
-                              <p className="text-[9px] text-slate-500 mt-1 font-semibold">{n.timestamp}</p>
+                              <p className="text-[9px] text-slate-500 mt-1 font-semibold">{n.timestamp ? new Date(n.timestamp).toLocaleString('en-IN') : ''}</p>
                             </div>
                           </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              api.notifications.delete(n.id).then(() => onUpdateNotifications(prev => prev.filter(item => item.id !== n.id))).catch(() => alert('Failed to delete notification from DB'));
+                              api.notifications.delete(n.id).then(() => onUpdateNotifications(prev => prev.filter(item => item.id !== n.id))).catch((err: any) => alert(getApiErrorMessage(err, 'Could not delete the notification.')));
                             }}
                             title="Delete notification"
                             className="text-slate-500 hover:text-rose-400 hover:bg-rose-955/40 p-1 rounded-md transition-all flex-shrink-0"

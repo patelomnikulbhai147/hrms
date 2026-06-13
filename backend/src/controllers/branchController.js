@@ -1,8 +1,20 @@
 const prisma = require('../config/prisma');
+const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
+const idParam = require('../utils/idParam');
+const respondError = require('../utils/respondError');
 
 exports.getBranches = async (req, res) => {
   try {
-    const { companyId } = req.query;
+    // CRITICAL: the branch REGISTRY must NOT be narrowed by the active workspace
+    // (the `x-workspace-id` header). That header changes every time a Super Admin
+    // masquerades into a company/branch. Because branch ids overlap company ids
+    // (e.g. Branch 2 "Bhavnagar" vs Company 2 "HealthPlus"), filtering the
+    // registry by the active id would drop the very branch being opened, and the
+    // frontend's resolveActiveWorkspace would then fall back to the colliding
+    // company — opening the wrong workspace. Only an EXPLICIT ?companyId= query
+    // narrows the result; the active-workspace header is ignored here. (Mirrors
+    // /api/companies, which already returns the full set for Super Admin.)
+    const explicitCompanyId = idParam(req.query.companyId);
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
@@ -11,20 +23,26 @@ exports.getBranches = async (req, res) => {
         { companyId: { in: allowedIds } },
         { id: { in: allowedIds } }
       ];
-      if (companyId) {
-        if (!allowedIds.includes(companyId)) {
-          // If they request a specific company but they only have access to a child branch of it,
-          // the OR clause already includes that logic for their specific branches. We just AND the companyId.
-          whereClause.companyId = companyId;
-        } else {
-          whereClause.companyId = companyId;
-        }
-      }
-    } else if (companyId) {
-      whereClause.companyId = companyId;
+    }
+    if (explicitCompanyId) {
+      // Explicit filter (e.g. a specific company's branch list). For non-super
+      // users this ANDs with the access OR-clause above, so it can never widen
+      // their scope.
+      whereClause.companyId = explicitCompanyId;
     }
 
-    const branches = await prisma.branch.findMany({ where: whereClause });
+    const branches = await prisma.branch.findMany({
+      where: whereClause,
+      include: {
+        company: {
+          select: { name: true }
+        }
+      },
+      // Company-wise ordering: group by company, then ascending branchNo
+      // (the per-company 1..N sequence), falling back to id for any legacy
+      // rows that predate branchNo backfill.
+      orderBy: [{ companyId: 'asc' }, { branchNo: 'asc' }, { id: 'asc' }],
+    });
 
     // Live employee counts per branch, computed directly from the Employee table.
     // `headcount` is the TOTAL number of employees assigned to the branch
@@ -52,24 +70,30 @@ exports.getBranches = async (req, res) => {
       headcount: totalBy[b.id] || 0,
       activeHeadcount: activeBy[b.id] || 0,
       totalEmployeeCount: totalBy[b.id] || 0,
+      parentCompanyName: b.company?.name || 'Unknown Company'
     }));
 
     res.json(enrichedBranches);
   } catch (error) {
-    console.error('Error fetching branches:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
 exports.createBranch = async (req, res) => {
   try {
+    const data = require('../utils/idParam').coerceEntityIds({ ...req.body });
+    delete data.id;
+    delete data.branchNo;
     const branch = await prisma.branch.create({
-      data: req.body
+      data: {
+        ...data,
+        id: await nextEntityId(),
+        branchNo: await nextBranchNo(data.companyId),
+      }
     });
     res.status(201).json(branch);
   } catch (error) {
-    console.error('Error creating branch:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -111,7 +135,7 @@ exports.updateBranch = async (req, res) => {
       return res.status(400).json({ error: 'No valid branch fields supplied to update.' });
     }
 
-    const branch = await prisma.branch.update({ where: { id }, data });
+    const branch = await prisma.branch.update({ where: { id: idParam(id) }, data });
     res.json({ ...branch, name: branch.branchName, isHeadOffice: false, parentCompanyId: branch.companyId });
   } catch (error) {
     console.error('Error updating branch:', error);
@@ -127,11 +151,10 @@ exports.deleteBranch = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.branch.delete({
-      where: { id }
+      where: { id: idParam(id) }
     });
     res.json({ message: 'Branch deleted successfully' });
   } catch (error) {
-    console.error('Error deleting branch:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };

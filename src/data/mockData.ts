@@ -95,7 +95,7 @@ export interface Company {
 }
 
 export interface Employee {
-  id: string;
+  id: string | number; // numeric AUTO_INCREMENT primary key (string only for unsaved drafts)
   employeeId: string;
   companyId: string;
   name: string;
@@ -579,33 +579,15 @@ export const companies: Company[] = [
   }
 ];
 
-export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[], _branchLocation?: string, branchId?: string): boolean => {
-  if (recordCompanyId === activeId) return true;
-  if (branchId === activeId) return true; // Direct branch match
-  
-  let list = companiesList;
-  if (!list && typeof window !== 'undefined') {
-    const raw = localStorage.getItem('hrms_companies');
-    if (raw) {
-      try { list = JSON.parse(raw); } catch (e) {}
-    }
-  }
-  if (!list) {
-    const branches = ['c-ahmedabad', 'c-rajkot', 'c-bhavnagar', 'c-siddhpur'];
-    if (activeId === 'c-gcri') {
-      return recordCompanyId === 'c-gcri' || branches.includes(recordCompanyId) || (branchId ? branches.includes(branchId) : false);
-    }
-    return recordCompanyId === activeId || branchId === activeId;
-  }
-
-  const activeComp = list.find(c => c.id === activeId);
-  if (activeComp && (activeComp.id === 'c-gcri' || activeComp.isHeadOffice)) {
-    const recordComp = list.find(c => c.id === recordCompanyId);
-    const branchComp = branchId ? list.find(c => c.id === branchId) : null;
-    return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id || recordComp?.parentCompanyId === 'c-gcri' || branchComp?.parentCompanyId === activeComp.id || branchId === activeId;
-  }
-  return false;
-};
+// Company/Branch ids are integers but may arrive as numeric strings ("1") from
+// the workspace/localStorage layer — compare them type-insensitively via `eq`.
+// Canonical, workspace-KIND-aware implementation lives in '../types'. The old
+// copy that used to live here compared `recordCompanyId === activeId` (and
+// `branchId === activeId`) directly, which leaks rows across the colliding
+// company/branch id space — Company N and Branch N share the same numeric id,
+// so an id-only match cannot tell them apart. Re-export the canonical one so
+// every caller scopes data identically and the bug cannot reappear.
+export { isCompanyIdMatch } from '../types';
 
 // ─── Employees ─────────────────────────────────────────────────────────────────
 

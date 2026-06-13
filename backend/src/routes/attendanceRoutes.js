@@ -8,6 +8,7 @@ router.use(protect);
 
 router.get('/', requirePermission('attendance', 'view'), controller.getAll);
 router.get('/analytics', requirePermission('attendance', 'view'), controller.getAnalytics);
+router.post('/sync-payroll', requirePermission('attendance', 'edit'), controller.syncPayroll);
 router.post('/', requirePermission('attendance', 'create'), controller.create);
 router.put('/:id', requirePermission('attendance', 'edit'), controller.update);
 router.delete('/:id', requirePermission('attendance', 'delete'), controller.delete);

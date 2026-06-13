@@ -6,10 +6,12 @@ import {
   type LeaveRequest,
   type PayrollRecord,
   type Role,
-  type Company,
-  isCompanyIdMatch
+  type Company
 } from '../data/mockData';
-import { buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
+// isCompanyIdMatch MUST come from '../types' (the kind-aware implementation).
+// The legacy copy in mockData ignores the active workspace KIND and therefore
+// leaks data across the colliding company/branch id space — see types/index.ts.
+import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '../types';
 import { Card, StatCard } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Select } from '../components/ui/Input';
@@ -17,6 +19,7 @@ import { Badge, statusBadge } from '../components/ui/Badge';
 import { downloadAttendancePDF, downloadAttendanceExcel } from '../utils/exportUtils';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { byEmployeeCode } from '../utils/employeeSort';
 import { ExportManagerModal } from '../components/ui/ExportManagerModal';
 
 interface ReportsProps {
@@ -49,15 +52,23 @@ export const Reports: React.FC<ReportsProps> = ({
   const companyEmployees = uniqueEmployees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies as any[], e.branchLocation, e.branchId));
   // Scope child records by employee membership (they have employeeId but no branchId).
   const scopedEmpIds = buildScopedEmployeeIdSet(uniqueEmployees as any[], activeCompanyId, companies as any[]);
+  // Resolve an employee CODE from a record's employeeId so every report sorts
+  // by Employee ID (Company → Branch → numeric sequence), SR NO following.
+  const codeOf = (eid: any, fallback?: string) => uniqueEmployees.find(e => String(e.id) === String(eid))?.employeeId || fallback || '';
   const uniqueAttendance = getUniqueRecords(attendance, [a => `${a.employeeId}-${a.date}`]);
-  const companyAttendance = uniqueAttendance.filter(a => isRecordInWorkspace(a, activeCompanyId, scopedEmpIds, companies as any[]));
+  const companyAttendance = uniqueAttendance.filter(a => isRecordInWorkspace(a, activeCompanyId, scopedEmpIds, companies as any[])).sort(byEmployeeCode((a: any) => codeOf(a.employeeId, a.employeeName)));
   const uniquePayroll = getUniqueRecords(payroll, [p => `${p.employeeId}-${p.month}-${p.year}`]);
-  const companyPayroll = uniquePayroll.filter(p => isRecordInWorkspace(p, activeCompanyId, scopedEmpIds, companies as any[]));
+  const companyPayroll = uniquePayroll.filter(p => isRecordInWorkspace(p, activeCompanyId, scopedEmpIds, companies as any[])).sort(byEmployeeCode((p: any) => codeOf(p.employeeId, p.employeeName)));
   const uniqueLeaves = getUniqueRecords(leaves, [l => l.id]);
-  const companyLeaves = uniqueLeaves.filter(l => isRecordInWorkspace(l, activeCompanyId, scopedEmpIds, companies as any[]));
+  const companyLeaves = uniqueLeaves.filter(l => isRecordInWorkspace(l, activeCompanyId, scopedEmpIds, companies as any[])).sort(byEmployeeCode((l: any) => codeOf(l.employeeId, l.employeeName)));
 
-  // Load active company branding
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || ({} as any);
+  // Load active company branding. Use the kind-aware resolver — a plain
+  // `find(c => c.id === activeCompanyId)` returns the first id match, which is
+  // the parent COMPANY when a Branch shares its id (companies precede branches
+  // in the merged list), showing the wrong workspace while masquerading.
+  const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
+    || companies.find(c => String(c.id) === String(activeCompanyId))
+    || ({} as any);
 
   const depts = [...new Set(companyEmployees.map(e => e.department))];
   
@@ -168,6 +179,7 @@ export const Reports: React.FC<ReportsProps> = ({
           <Table>
             <Thead>
               <tr>
+                <Th className="text-center">Sr No</Th>
                 <Th>Employee</Th>
                 <Th>Department</Th>
                 <Th>Date</Th>
@@ -178,9 +190,13 @@ export const Reports: React.FC<ReportsProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {companyAttendance.filter(a => !deptFilter || a.department === deptFilter).map(a => (
+              {companyAttendance.filter(a => !deptFilter || a.department === deptFilter).map((a, i) => (
                 <Tr key={a.id}>
-                  <Td><span className="text-xs font-semibold text-gray-800">{a.employeeName}</span></Td>
+                  <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
+                  <Td>
+                    <span className="text-xs font-semibold text-gray-800">{a.employeeName}</span>
+                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(a.employeeId, '')}</div>
+                  </Td>
                   <Td><span className="text-xs text-gray-500">{a.department}</span></Td>
                   <Td><span className="text-xs">{a.date}</span></Td>
                   <Td><span className="text-xs font-medium text-gray-700">{a.clockIn || '—'}</span></Td>
@@ -203,6 +219,7 @@ export const Reports: React.FC<ReportsProps> = ({
           <Table>
             <Thead>
               <tr>
+                <Th className="text-center">Sr No</Th>
                 <Th>Employee</Th>
                 <Th>Department</Th>
                 <Th>Basic</Th>
@@ -214,9 +231,13 @@ export const Reports: React.FC<ReportsProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {companyPayroll.filter(r => !deptFilter || r.department === deptFilter).map(r => (
+              {companyPayroll.filter(r => !deptFilter || r.department === deptFilter).map((r, i) => (
                 <Tr key={r.id}>
-                  <Td><span className="text-xs font-semibold text-gray-800">{r.employeeName}</span></Td>
+                  <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
+                  <Td>
+                    <span className="text-xs font-semibold text-gray-800">{r.employeeName}</span>
+                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(r.employeeId, '')}</div>
+                  </Td>
                   <Td><span className="text-xs text-gray-500">{r.department}</span></Td>
                   <Td><span className="text-xs">₹{r.basicSalary.toLocaleString()}</span></Td>
                   <Td><span className="text-xs text-emerald-600">+₹{r.allowances.toLocaleString()}</span></Td>
@@ -244,6 +265,7 @@ export const Reports: React.FC<ReportsProps> = ({
           <Table>
             <Thead>
               <tr>
+                <Th className="text-center">Sr No</Th>
                 <Th>Employee</Th>
                 <Th>Department</Th>
                 <Th>Leave Type</Th>
@@ -255,9 +277,13 @@ export const Reports: React.FC<ReportsProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {companyLeaves.map(l => (
+              {companyLeaves.map((l, i) => (
                 <Tr key={l.id}>
-                  <Td><span className="text-xs font-semibold text-gray-800">{l.employeeName}</span></Td>
+                  <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
+                  <Td>
+                    <span className="text-xs font-semibold text-gray-800">{l.employeeName}</span>
+                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(l.employeeId, '')}</div>
+                  </Td>
                   <Td><span className="text-xs text-gray-500">{l.department}</span></Td>
                   <Td><Badge variant="blue">{l.leaveType}</Badge></Td>
                   <Td><span className="text-xs">{l.fromDate}</span></Td>

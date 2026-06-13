@@ -33,7 +33,7 @@ export const Input: React.FC<InputProps> = ({ label, error, success, icon, class
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
 }
 
 export const Select: React.FC<SelectProps> = ({ label, error, options, className, ...props }) => {
@@ -48,7 +48,7 @@ export const Select: React.FC<SelectProps> = ({ label, error, options, className
           className
         )}
       >
-        {options.map(o => <option key={o.value} value={o.value} className="bg-slate-950 text-slate-100">{o.label}</option>)}
+        {options.map(o => <option key={o.value} value={o.value} disabled={o.disabled} className="bg-slate-950 text-slate-100">{o.label}</option>)}
       </select>
       {error && <p className="text-[11px] text-rose-450 font-bold">{error}</p>}
     </div>

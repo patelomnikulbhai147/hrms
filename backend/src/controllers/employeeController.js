@@ -1,8 +1,13 @@
 const prisma = require('../config/prisma');
+const { generateEmployeeCode, validateCustomCode } = require('../utils/employeeCode');
+const idParam = require('../utils/idParam');
+const { coerceEntityIds } = require('../utils/idParam');
+const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
+const respondError = require('../utils/respondError');
 
 exports.getEmployees = async (req, res) => {
   try {
-    const { companyId } = req.query;
+    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
@@ -30,20 +35,25 @@ exports.getEmployees = async (req, res) => {
     const employees = await prisma.employee.findMany({ where: whereClause });
     res.json(employees);
   } catch (error) {
-    console.error('Error fetching employees:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
 exports.createEmployee = async (req, res) => {
   try {
-    let data = { ...req.body };
+    let data = coerceEntityIds({ ...req.body });
 
-    // Validation
-    const requiredFields = ['name', 'companyId', 'department', 'designation'];
+    // Validation — friendly, field-named messages (joinDate is a required DB
+    // column with no default, so guard it here instead of letting Prisma throw
+    // a raw multi-line error).
+    const FIELD_LABELS = {
+      name: 'Full name', companyId: 'Company', department: 'Department',
+      designation: 'Designation', joinDate: 'Date of Joining',
+    };
+    const requiredFields = ['name', 'companyId', 'department', 'designation', 'joinDate'];
     for (const field of requiredFields) {
       if (!data[field] || String(data[field]).trim() === '') {
-        return res.status(400).json({ error: `Missing or empty required field: ${field}` });
+        return res.status(400).json({ error: `${FIELD_LABELS[field] || field} is required.`, code: 'REQUIRED_MISSING' });
       }
     }
     
@@ -66,7 +76,7 @@ exports.createEmployee = async (req, res) => {
 
     if (data.companyId) {
       const comp = await prisma.company.findUnique({ where: { id: data.companyId } });
-      if (!comp) data.companyId = 'c-gcri';
+      if (!comp) data.companyId = 1;
     }
 
     if (data.branchId) {
@@ -74,32 +84,32 @@ exports.createEmployee = async (req, res) => {
       if (!branch) data.branchId = null;
     }
 
-    // Auto-generate employeeId (VE sequence)
-    let generatedId = 'VE1001';
-    const lastEmp = await prisma.employee.findFirst({
-      where: { employeeId: { startsWith: 'VE' } },
-      orderBy: { employeeId: 'desc' }
-    });
-    
-    if (lastEmp) {
-      const lastNum = parseInt(lastEmp.employeeId.replace('VE', ''), 10);
-      if (!isNaN(lastNum)) {
-        generatedId = `VE${lastNum + 1}`;
-      }
+    // ── Uniqueness guard: refuse to create a second record for someone who is
+    // already on file (same Company+Branch+Name, or same Mobile / Email / Code).
+    const dup = await findDuplicate(prisma, data);
+    if (dup) {
+      return res.status(409).json({
+        error: `Duplicate employee: a record matching this ${dup.field} already exists ` +
+          `(${dup.match.name || dup.match.employeeId}, code ${dup.match.employeeId}). ` +
+          `Edit the existing employee instead of creating a new one.`,
+        duplicateOf: { id: dup.match.id, employeeId: dup.match.employeeId, name: dup.match.name, field: dup.field },
+      });
     }
 
-    let isUnique = false;
-    while (!isUnique) {
-      const exists = await prisma.employee.findUnique({ where: { employeeId: generatedId } });
-      if (exists) {
-        const num = parseInt(generatedId.replace('VE', ''), 10);
-        generatedId = `VE${num + 1}`;
-      } else {
-        isUnique = true;
-      }
+    // ── Employee code: professional branch-wise format  VE-<BRANCH>-#### ──
+    // codeMode === 'custom' lets the user supply their own unique code;
+    // otherwise (default) the next branch-wise sequence is generated.
+    const codeMode = data.codeMode;
+    const customCode = (data.employeeId && data.employeeId !== '[ Auto Generated ]') ? data.employeeId : null;
+    delete data.codeMode;
+
+    if (codeMode === 'custom' || (customCode && codeMode !== 'auto')) {
+      const v = await validateCustomCode(customCode);
+      if (!v.ok) return res.status(400).json({ error: v.error });
+      data.employeeId = v.code;
+    } else {
+      data.employeeId = await generateEmployeeCode(data.branchId, data.companyId);
     }
-    
-    data.employeeId = generatedId;
 
     const employee = await prisma.employee.create({
       data
@@ -147,8 +157,7 @@ exports.createEmployee = async (req, res) => {
 
     res.status(201).json(employee);
   } catch (error) {
-    console.error('Error creating employee:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    return respondError(res, error, { action: 'create employee', resource: 'employee' });
   }
 };
 
@@ -159,7 +168,26 @@ exports.bulkCreate = async (req, res) => {
       return res.status(400).json({ error: 'Expected an array of employees' });
     }
 
+    // Load every existing employee ONCE and index them, so each incoming row can
+    // be matched (by code / company+branch+name / mobile / email) against both
+    // the database AND the rows already processed in THIS batch. A match routes
+    // to update; only genuinely new people are inserted — imports can never
+    // create a duplicate.
+    const existing = await prisma.employee.findMany({
+      select: { id: true, employeeId: true, companyId: true, branchId: true, name: true, phone: true, email: true },
+    });
+    const index = buildIndex(existing);
+    const addToIndex = (e) => {
+      const { norm, normPhone, normEmail, nameKey } = require('../utils/employeeDedup');
+      if (e.employeeId) index.byCode.set(norm(e.employeeId), e);
+      if (norm(e.name) && norm(e.name) !== '-') index.byName.set(nameKey(e.companyId, e.branchId, e.name), e);
+      const ph = normPhone(e.phone); if (ph) index.byPhone.set(ph, e);
+      const em = normEmail(e.email); if (em) index.byEmail.set(em, e);
+    };
+
     const created = [];
+    const merged = [];
+    const skipped = [];
     for (const data of employees) {
       if (data.joinDate && typeof data.joinDate === 'string') {
         data.joinDate = new Date(data.joinDate);
@@ -170,19 +198,35 @@ exports.bulkCreate = async (req, res) => {
       } else if (data.exitDate === '') {
         data.exitDate = null;
       }
-      
+
       if (data.esic !== undefined) {
         data.esiNumber = data.esic;
         delete data.esic;
       }
 
-      // We'll use upsert to avoid duplicate errors on bulk insert, or skip them
-      const result = await prisma.employee.upsert({
-        where: { employeeId: data.employeeId },
-        update: data,
-        create: data
-      });
-      created.push(result);
+      const dup = matchAgainstIndex(data, index);
+      let result;
+      if (dup) {
+        // Same person already on file → UPDATE that record (never insert a 2nd
+        // row). Keep the existing unique code; don't overwrite it with a blank.
+        const patch = { ...data };
+        delete patch.id;
+        delete patch.employeeId;
+        result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
+        merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
+      } else if (data.employeeId) {
+        // Has an explicit code → upsert on the unique code.
+        result = await prisma.employee.upsert({
+          where: { employeeId: data.employeeId },
+          update: data,
+          create: data,
+        });
+        created.push(result);
+      } else {
+        result = await prisma.employee.create({ data });
+        created.push(result);
+      }
+      addToIndex(result);
     }
 
     // Auto-sync payroll for imported employees in the background
@@ -239,7 +283,14 @@ exports.bulkCreate = async (req, res) => {
       }
     } catch(e) {}
 
-    res.status(201).json({ count: created.length, employees: created });
+    res.status(201).json({
+      count: created.length,
+      createdCount: created.length,
+      mergedCount: merged.length,
+      skippedCount: skipped.length,
+      merged,
+      employees: created,
+    });
   } catch (error) {
     console.error('Error in bulk create:', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -249,7 +300,7 @@ exports.bulkCreate = async (req, res) => {
 exports.updateEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    let data = { ...req.body };
+    let data = coerceEntityIds({ ...req.body });
 
     // Validation for critical fields if they are provided
     const criticalFields = ['name', 'email', 'employeeId', 'companyId', 'department', 'designation'];
@@ -278,7 +329,7 @@ exports.updateEmployee = async (req, res) => {
 
     if (data.companyId) {
       const comp = await prisma.company.findUnique({ where: { id: data.companyId } });
-      if (!comp) data.companyId = 'c-gcri';
+      if (!comp) data.companyId = 1;
     }
 
     if (data.branchId) {
@@ -286,8 +337,39 @@ exports.updateEmployee = async (req, res) => {
       if (!branch) data.branchId = null;
     }
 
+    // If the employee code is being changed, validate format + uniqueness.
+    if (data.hasOwnProperty('employeeId')) {
+      const current = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { employeeId: true } });
+      if (current && data.employeeId !== current.employeeId) {
+        const v = await validateCustomCode(data.employeeId, id);
+        if (!v.ok) return res.status(400).json({ error: v.error });
+        data.employeeId = v.code;
+      }
+    }
+    delete data.codeMode;
+
+    // Uniqueness guard: an edit must not turn this row into a duplicate of
+    // another employee. Merge the patch over the current record so partial
+    // updates are checked against complete identity fields.
+    const selfId = idParam(id);
+    const current = await prisma.employee.findUnique({
+      where: { id: selfId },
+      select: { companyId: true, branchId: true, name: true, phone: true, email: true, employeeId: true },
+    });
+    if (current) {
+      const merged = { ...current, ...data };
+      const dup = await findDuplicate(prisma, merged, selfId);
+      if (dup) {
+        return res.status(409).json({
+          error: `Update rejected: would duplicate an existing employee (${dup.field} matches ` +
+            `${dup.match.name || dup.match.employeeId}, code ${dup.match.employeeId}).`,
+          duplicateOf: { id: dup.match.id, employeeId: dup.match.employeeId, name: dup.match.name, field: dup.field },
+        });
+      }
+    }
+
     const employee = await prisma.employee.update({
-      where: { id },
+      where: { id: idParam(id) },
       data
     });
     res.json(employee);
@@ -297,12 +379,36 @@ exports.updateEmployee = async (req, res) => {
   }
 };
 
+// GET /api/employees/next-code?branchId=...&companyId=...
+// Returns the next auto-generated branch-wise employee code (for form preview).
+exports.nextCode = async (req, res) => {
+  try {
+    const branchId = idParam(req.query.branchId) ?? null;
+    const companyId = idParam(req.query.companyId) ?? null;
+    const code = await generateEmployeeCode(branchId, companyId);
+    res.json({ code });
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
+
+// POST /api/employees/validate-code  { code, excludeId? }
+// Validates a custom employee code (format + uniqueness) without saving.
+exports.validateCode = async (req, res) => {
+  try {
+    const v = await validateCustomCode(req.body.code, req.body.excludeId);
+    res.json(v);
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
+
 exports.deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
     // Archive employee instead of hard delete
     const employee = await prisma.employee.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: { 
         status: 'Archived', 
         exitDate: new Date(), 
@@ -311,8 +417,7 @@ exports.deleteEmployee = async (req, res) => {
     });
     res.json({ message: 'Employee archived successfully', employee });
   } catch (error) {
-    console.error('Error deleting employee:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -363,7 +468,6 @@ exports.statusReport = async (req, res) => {
     res.set('Cache-Control', 'no-store');
     res.json({ total: rows.length, byStatus, mismatchCount: mismatches.length, mismatches, rows, generatedAt: new Date().toISOString() });
   } catch (error) {
-    console.error('Error generating employee status report:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };

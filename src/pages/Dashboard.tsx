@@ -14,7 +14,8 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  isCompanyIdMatch
+  isCompanyIdMatch,
+  resolveActiveWorkspace
 } from '../types';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import {
@@ -24,9 +25,11 @@ import {
 } from '../utils/subscriptionUtils';
 import { getCompanyInitials } from '../utils/workspaceUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
-import { type SuperAdminStats } from '../api/apiClient';
+import { api, type SuperAdminStats } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
+import { TaskTenderWidgets } from '../components/dashboard/TaskTenderWidgets';
 import { Badge } from '../components/ui/Badge';
 import {
   ResponsiveContainer,
@@ -68,7 +71,7 @@ interface DashboardProps {
   role: Role;
   onNavigate: (page: any) => void;
   activeCompanyId: string;
-  onStartMasquerade: (companyId: string) => void;
+  onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
   companies: Company[];
   employees: Employee[];
   attendance: AttendanceRecord[];
@@ -124,8 +127,21 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const plans = rawPlans || [];
   const notifications = _notifications || [];
 
-  // Find current company context first to prevent TDZ error
-  const currentCompany = companies.find(c => c.id === activeCompanyId);
+  // Find current company context first to prevent TDZ error.
+  // Loose (String) compare: activeCompanyId may arrive as a number (fresh click)
+  // or a string (rehydrated from localStorage) — both must resolve the same
+  // workspace, otherwise a branch loses its context after a reload.
+  const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId) || companies.find(c => String(c.id) === String(activeCompanyId));
+  // Branch context: the active workspace is a branch when it has a parent
+  // company. Used to scope the dashboard and render the "Company → Branch"
+  // breadcrumb / branch-specific title.
+  const activeParentCompany = currentCompany?.parentCompanyId
+    ? companies.find(c => String(c.id) === String(currentCompany.parentCompanyId))
+    : null;
+  const isBranchWorkspace = !!currentCompany?.parentCompanyId;
+  const branchTitle = isBranchWorkspace
+    ? `${(currentCompany as any).branchName || currentCompany?.name} Branch Dashboard`
+    : `${currentCompany?.name || 'Company'} Dashboard`;
 
   // Toast feedback state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
@@ -144,7 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
 
-  const isParentCompany = !companies.find(c => c.id === activeCompanyId)?.parentCompanyId;
+  const isParentCompany = !currentCompany?.parentCompanyId;
   const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all' : 'branch');
   const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? '' : activeCompanyId);
   const [selectedDept, setSelectedDept] = useState('all');
@@ -270,7 +286,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
       paymentMode: 'Manual' as const,
       transactionStatus: 'Success' as const
     };
-    onUpdatePayments?.((prev: any[]) => [payment, ...(prev || [])]);
+
+    // Persist to the database so the renewal survives refresh/relogin. Branches
+    // live in the Branch table (only `status` is a branch column); parent
+    // companies take the full set of subscription columns. `renewalDate` is a
+    // frontend-only display field with no backing column, so it is never sent.
+    if (target.parentCompanyId) {
+      api.branches.update(companyId, { status: 'Active' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+    } else {
+      api.companies.update(companyId, { paymentStatus: 'Paid', accountStatus: 'Active', status: 'Active' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+      // Invoice is recorded against the parent company (PaymentRecord.companyId
+      // is a Company FK; the saved row carries its real DB id back into state).
+      api.payments.create(payment)
+        .then((saved: any) => onUpdatePayments?.((prev: any[]) => [saved, ...(prev || [])]))
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the payment record.')); });
+    }
     showToast(`Subscription successfully renewed for ${target.name}! Invoice recorded.`, 'success');
   };
 
@@ -290,6 +322,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return c;
     });
     onUpdateCompanies?.(updated);
+    // Persist the suspension so it survives refresh/relogin (mirrors the
+    // Companies page status toggle). Branches only accept `status`; parent
+    // companies accept the account/payment status columns too.
+    if (target.parentCompanyId) {
+      api.branches.update(companyId, { status: 'Inactive' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+    } else {
+      api.companies.update(companyId, { accountStatus: 'Suspended', status: 'Inactive', paymentStatus: 'Expired' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+    }
     showToast(`Access suspended for ${target.name} due to license expiration.`, 'warning');
   };
 
@@ -362,7 +404,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
 
-  if (!companies.length) {
+  // The Super Admin dashboard is driven by live superAdminStats counts (each with
+  // a `?? 0` fallback), NOT the companies array, so it must render even when the
+  // platform has no companies yet (fresh / empty database). Gating on
+  // `companies.length` here caused the dashboard to hang on the loading spinner
+  // forever once the database was empty.
+  if (role !== 'Super Admin' && !companies.length) {
     return <Loading />;
   }
 
@@ -747,7 +794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </div>
                         <button
-                          onClick={() => onStartMasquerade(c.id)}
+                          onClick={() => onStartMasquerade(c.id, c.parentCompanyId ? 'branch' : 'company')}
                           className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold flex items-center gap-0.5 shrink-0 transition-colors"
                         >
                           Control
@@ -971,8 +1018,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">Good Morning, {currentCompany?.name || 'Team'} 👋</h2>
-            <p className="text-[13px] text-gray-500 mt-0.5">Here's what's happening in your organization today.</p>
+            <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">{branchTitle}</h2>
+            {isBranchWorkspace && activeParentCompany && (
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1D4ED8] mt-0.5">
+                <span className="text-slate-500">{activeParentCompany.name}</span>
+                <ChevronRight size={13} className="text-slate-400" />
+                <span>{(currentCompany as any).branchName || currentCompany?.name} Branch</span>
+              </div>
+            )}
+            <p className="text-[13px] text-gray-500 mt-0.5">
+              {isBranchWorkspace
+                ? `Showing data for the ${(currentCompany as any).branchName || currentCompany?.name} branch only.`
+                : "Here's what's happening in your organization today."}
+            </p>
           </div>
           <div className="flex items-center gap-3">
              <div className="bg-white border border-gray-200 shadow-sm rounded-lg px-3 py-2 text-[12px] font-medium text-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors">
@@ -1074,6 +1132,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
              </div>
            </div>
         </div>
+
+        {/* Task Manager + Tender Information widgets (added below statistics cards) */}
+        <TaskTenderWidgets activeCompanyId={activeCompanyId} onNavigate={onNavigate} />
 
         {/* Main Analytics Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

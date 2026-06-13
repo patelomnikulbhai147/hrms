@@ -1,8 +1,9 @@
 const prisma = require('../config/prisma');
+const idParam = require('../utils/idParam');
 
 exports.getAll = async (req, res) => {
   try {
-    const { companyId } = req.query;
+    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
@@ -39,7 +40,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const data = await prisma.overtime.update({ where: { id }, data: req.body });
+    const data = await prisma.overtime.update({ where: { id: idParam(id) }, data: req.body });
     res.json(data);
   } catch (error) {
     console.error('Error updating overtime', error);
@@ -50,7 +51,7 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.overtime.delete({ where: { id } });
+    await prisma.overtime.delete({ where: { id: idParam(id) } });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting overtime', error);

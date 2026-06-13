@@ -4,7 +4,7 @@ const prisma = require('../config/prisma');
  * SuperAdminStatisticsService
  *
  * Single source of truth for Super Admin KPI counts. Every value is computed
- * with a live aggregate query against PostgreSQL (via Prisma) so the dashboard,
+ * with a live aggregate query against MySQL (via Prisma) so the dashboard,
  * company directory, reports, and analytics always match the database exactly.
  *
  * There are NO hardcoded, cached, mock, or fallback numbers here.
@@ -112,16 +112,17 @@ async function getSuperAdminStatistics() {
     'archived', 'suspended', 'inactive', 'deactivated', 'disabled', 'offboarded'
   ];
 
-  // Build a parameterised placeholder list ($1, $2, …) for safe interpolation.
-  const placeholders = deactivatedStatusList.map((_, i) => `$${i + 1}`).join(', ');
+  // Build a parameterised placeholder list (?, ?, …) for safe interpolation.
+  // MySQL uses positional `?` placeholders and backtick-quoted identifiers.
+  const placeholders = deactivatedStatusList.map(() => '?').join(', ');
 
   const deactivatedBranchesResult = await prisma.$queryRawUnsafe(`
-    SELECT COUNT(*)::int AS cnt
-    FROM "Branch" b
-    JOIN "Company" c ON b."companyId" = c."id"
-    WHERE LOWER(b."status") IN (${placeholders})
-       OR LOWER(c."status") IN (${placeholders})
-       OR b."isArchived" = true
+    SELECT COUNT(*) AS cnt
+    FROM \`Branch\` b
+    JOIN \`Company\` c ON b.\`companyId\` = c.\`id\`
+    WHERE LOWER(b.\`status\`) IN (${placeholders})
+       OR LOWER(c.\`status\`) IN (${placeholders})
+       OR b.\`isArchived\` = true
   `, ...deactivatedStatusList, ...deactivatedStatusList);
 
   const deactivatedBranches = Number(deactivatedBranchesResult?.[0]?.cnt ?? 0);

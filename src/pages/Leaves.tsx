@@ -18,10 +18,12 @@ import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { byEmployeeCode } from '../utils/employeeSort';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 
 const LEAVE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Employee', key: 'employeeName', width: 24 },
@@ -70,6 +72,39 @@ export const Leaves: React.FC<LeavesProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
+
+  // Real per-employee leave wallets (CL/PL/SL) from the backend, keyed by employeeId.
+  const [walletByEmp, setWalletByEmp] = useState<Record<string, any>>({});
+  useEffect(() => {
+    let alive = true;
+    api.leaveBalances.getAll()
+      .then((rows: any[]) => {
+        if (!alive) return;
+        const map: Record<string, any> = {};
+        (rows || []).forEach(r => { map[String(r.employeeId)] = r; });
+        setWalletByEmp(map);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [activeCompanyId, leaves.length]);
+
+  // Map a leave-type label to a wallet category (CL/PL/SL), 'LWP', or null (special, always allowed).
+  const categoryOfType = (t: string): 'CL' | 'PL' | 'SL' | 'LWP' | null => {
+    const s = String(t || '').toLowerCase();
+    if (/unpaid|lwp|without pay/.test(s)) return 'LWP';
+    if (/casual/.test(s)) return 'CL';
+    if (/sick|medical/.test(s)) return 'SL';
+    if (/annual|privilege|earned/.test(s)) return 'PL';
+    return null;
+  };
+  // Available balance for a leave-type for an employee; Infinity = no balance limit.
+  const balanceForType = (empId: any, t: string): number => {
+    const cat = categoryOfType(t);
+    if (cat === 'LWP' || cat === null) return Infinity;
+    const w = walletByEmp[String(empId)];
+    if (!w) return Infinity; // wallet not loaded yet → don't block
+    return cat === 'CL' ? w.clBalance : cat === 'PL' ? w.plBalance : w.slBalance;
+  };
 
   const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('leaves');
@@ -169,8 +204,8 @@ export const Leaves: React.FC<LeavesProps> = ({
       }
       
       return matchSearch && matchType && matchStatus && matchBranch;
-    });
-  }, [companyLeaves, search, typeFilter, statusFilter, branchFilter, _employees]);
+    }).sort(byEmployeeCode(l => uniqueEmployees.find(e => String(e.id) === String(l.employeeId) || e.name?.toLowerCase() === l.employeeName?.toLowerCase())?.employeeId || l.employeeName));
+  }, [companyLeaves, search, typeFilter, statusFilter, branchFilter, _employees, uniqueEmployees]);
 
   // 2. Real-time Allowed vs Used Balance calculations for each employee
   const employeeLeaveSummaries = useMemo(() => {
@@ -313,6 +348,16 @@ export const Leaves: React.FC<LeavesProps> = ({
       return;
     }
 
+    const reqDays = calcDays(form.fromDate, form.toDate);
+    // Client-side balance guard (the server enforces it too): block CL/PL/SL beyond balance.
+    const cat = categoryOfType(form.leaveType);
+    const available = balanceForType(selectedEmp.id, form.leaveType);
+    if (cat && cat !== 'LWP' && reqDays > available) {
+      const label = cat === 'CL' ? 'Casual' : cat === 'PL' ? 'Privilege' : 'Sick';
+      alert(`Insufficient ${label} Leave Balance (available ${available}, requested ${reqDays}).\n\nUse "Unpaid (LWP)" if this leave must be taken without balance.`);
+      return;
+    }
+
     const newLeave: LeaveRequest = {
       id: `l${Date.now()}`,
       companyId: selectedEmp.companyId || activeCompanyId,
@@ -322,7 +367,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       leaveType: form.leaveType,
       fromDate: form.fromDate,
       toDate: form.toDate,
-      days: calcDays(form.fromDate, form.toDate),
+      days: reqDays,
       reason: form.reason,
       status: 'Pending',
       appliedOn: todayStr,
@@ -337,8 +382,9 @@ export const Leaves: React.FC<LeavesProps> = ({
       setSelectedEmp(null);
       setSearchQuery('');
       alert('Leave request submitted successfully.');
-    } catch (e) {
-      alert('Failed to save leave request to server.');
+    } catch (e: any) {
+      // Surface the server's balance rejection (409) verbatim.
+      alert(e?.message || 'Failed to save leave request to server.');
     }
   };
 
@@ -360,7 +406,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       setEditLeave(null);
       alert('Leave request updated successfully.');
     } catch (e) {
-      alert('Failed to update leave request on server.');
+      alert(getApiErrorMessage(e, 'Could not update the leave request.'));
     }
   };
 
@@ -373,7 +419,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       onUpdateLeaves(leaves.map(l => (l.id === leaveId ? saved : l)));
       alert(`Leave status updated to ${nextStatus}.`);
     } catch (e) {
-      alert('Failed to update status on server.');
+      alert(getApiErrorMessage(e, 'Could not update the leave status.'));
     }
   };
 
@@ -497,6 +543,7 @@ export const Leaves: React.FC<LeavesProps> = ({
         <Table>
           <Thead>
             <tr>
+              <Th className="text-center">Sr No</Th>
               <Th>Balance</Th>
               <Th>Employee</Th>
               <Th>Leave Category</Th>
@@ -509,15 +556,17 @@ export const Leaves: React.FC<LeavesProps> = ({
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-12 text-sm text-slate-500">No leave records registered</td></tr>
+              <tr><td colSpan={9} className="text-center py-12 text-sm text-slate-500">No leave records registered</td></tr>
             ) : (
-              filtered.map(l => {
+              filtered.map((l, idx) => {
                 const empSummary = employeeLeaveSummaries.find(
                   s => s.employeeName.toLowerCase() === l.employeeName.toLowerCase()
                 );
+                const empCode = uniqueEmployees.find(e => e.id === l.employeeId || e.name?.toLowerCase() === l.employeeName?.toLowerCase())?.employeeId;
                 return (
                   <React.Fragment key={l.id}>
                     <Tr className="hover:bg-white/[0.02] transition-colors border-b border-white/5">
+                      <Td className="text-center text-[11px] text-slate-400">{idx + 1}</Td>
                       <Td>
                         <button
                           onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)}
@@ -530,7 +579,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                       <Td>
                         <div onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)} className="cursor-pointer group">
                           <p className="text-xs font-bold text-white group-hover:text-indigo-400 transition-colors">{l.employeeName}</p>
-                          <p className="text-[10px] text-slate-450 mt-0.5">{l.department}</p>
+                          <p className="text-[10px] text-slate-450 mt-0.5">{empCode ? `${empCode} · ` : ''}{l.department}</p>
                         </div>
                       </Td>
                       <Td><Badge variant={l.leaveType === 'Sick' ? 'danger' : l.leaveType === 'Casual' ? 'success' : 'blue'}>{l.leaveType}</Badge></Td>
@@ -590,7 +639,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                     {/* Expandable leave breakdown and statistics card row */}
                     {expandedRowId === l.id && (
                       <tr className="bg-slate-900/30">
-                        <td colSpan={8} className="px-6 py-4 border-b border-white/5">
+                        <td colSpan={9} className="px-6 py-4 border-b border-white/5">
                           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-left text-xs">
                             <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
                               <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Sick Leaves Used</p>
@@ -748,35 +797,51 @@ export const Leaves: React.FC<LeavesProps> = ({
           </div>
 
           {/* Dynamic Leave Balance Ratios Panel */}
-          {selectedEmp && selectedEmpLeaves && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
-              <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
-                <span className="font-bold text-slate-800">Dynamic Leave Balance Ratios</span>
-                <span className="text-[10px] text-slate-500 font-semibold">{selectedEmp.department} · {selectedEmp.branchLocation || 'AHMEDABAD'}</span>
+          {selectedEmp && (() => {
+            const w = walletByEmp[String(selectedEmp.id)];
+            const cl = w ? w.clBalance : '—', pl = w ? w.plBalance : '—', sl = w ? w.slBalance : '—';
+            return (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
+                  <span className="font-bold text-slate-800">Leave Wallet — available balance</span>
+                  <span className="text-[10px] text-slate-500 font-semibold">{(selectedEmp as any).employeeId || ''} · {selectedEmp.department}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className={`bg-white p-2 rounded border text-center ${Number(cl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
+                    <p className="text-[9px] text-gray-400 font-medium">Casual (CL)</p>
+                    <p className={`font-bold mt-0.5 ${Number(cl) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>{cl}d</p>
+                  </div>
+                  <div className={`bg-white p-2 rounded border text-center ${Number(pl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
+                    <p className="text-[9px] text-gray-400 font-medium">Privilege (PL)</p>
+                    <p className={`font-bold mt-0.5 ${Number(pl) <= 0 ? 'text-red-600' : 'text-blue-600'}`}>{pl}d</p>
+                  </div>
+                  <div className={`bg-white p-2 rounded border text-center ${Number(sl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
+                    <p className="text-[9px] text-gray-400 font-medium">Sick (SL)</p>
+                    <p className={`font-bold mt-0.5 ${Number(sl) <= 0 ? 'text-red-600' : 'text-purple-700'}`}>{sl}d</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-500">Zero-balance categories are disabled. Take leave beyond balance as <strong>Unpaid (LWP)</strong>.</p>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="bg-white p-2 rounded border border-slate-150 text-center">
-                  <p className="text-[9px] text-gray-400 font-medium">Sick Leaves</p>
-                  <p className="font-bold text-red-600 mt-0.5">{selectedEmpLeaves.sickUsed} / {ALLOWED_SICK}d</p>
-                </div>
-                <div className="bg-white p-2 rounded border border-slate-150 text-center">
-                  <p className="text-[9px] text-gray-400 font-medium">Casual Leaves</p>
-                  <p className="font-bold text-emerald-600 mt-0.5">{selectedEmpLeaves.casualUsed} / {ALLOWED_CASUAL}d</p>
-                </div>
-                <div className="bg-white p-2 rounded border border-slate-150 text-center">
-                  <p className="text-[9px] text-gray-400 font-medium">Annual Leaves</p>
-                  <p className="font-bold text-blue-600 mt-0.5">{selectedEmpLeaves.annualUsed} / {ALLOWED_ANNUAL}d</p>
-                </div>
-                <div className="bg-white p-2 rounded border border-slate-150 text-center">
-                  <p className="text-[9px] text-gray-400 font-medium">Total Pool Pool</p>
-                  <p className="font-bold text-purple-700 mt-0.5">{selectedEmpLeaves.remaining}d Left</p>
-                </div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           <Select label="Leave Category *" disabled={!canEdit} value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
-            options={leaveTypes.map(type => ({ value: type, label: type }))} />
+            options={leaveTypes.map(type => {
+              const cat = categoryOfType(type);
+              const bal = selectedEmp ? balanceForType(selectedEmp.id, type) : Infinity;
+              const blocked = !!cat && cat !== 'LWP' && bal <= 0;
+              return { value: type, label: blocked ? `${type} (0 balance)` : type, disabled: blocked };
+            })} />
+          {selectedEmp && (() => {
+            const cat = categoryOfType(form.leaveType);
+            const bal = balanceForType(selectedEmp.id, form.leaveType);
+            const reqDays = calcDays(form.fromDate, form.toDate);
+            if (cat && cat !== 'LWP' && reqDays > bal) {
+              const label = cat === 'CL' ? 'Casual' : cat === 'PL' ? 'Privilege' : 'Sick';
+              return <p className="text-[11px] font-bold text-red-600">Insufficient {label} Leave Balance — available {bal === Infinity ? '∞' : bal}, requested {reqDays}.</p>;
+            }
+            return null;
+          })()}
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="From Date *" type="date" disabled={!canEdit} value={form.fromDate} onChange={e => setForm({ ...form, fromDate: e.target.value })} />

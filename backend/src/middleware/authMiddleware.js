@@ -20,14 +20,19 @@ exports.protect = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    // Dynamic hierarchy resolution: automatically grant access to all child branches
-    const allowedIds = [user.companyId, ...(user.accessibleCompanyIds || [])].filter(Boolean);
-    if (allowedIds.length > 0) {
-      const branches = await prisma.branch.findMany({
-        where: { companyId: { in: allowedIds } }
-      });
-      const branchIds = branches.map(b => b.id);
-      user.accessibleCompanyIds = Array.from(new Set([...(user.accessibleCompanyIds || []), ...branchIds]));
+    // Child branches a user can reach, derived from their company-level access.
+    // CRITICAL: these are kept in a SEPARATE field and are NOT merged into
+    // accessibleCompanyIds. Branch ids share the company id space (e.g. Vishv's
+    // branch #2 collides with company #2 "HealthPlus"), so merging them would let
+    // a `companyId IN (...)` filter match a foreign company — a cross-company data
+    // leak. Controllers scope on companyId via accessibleCompanyIds; branch rows
+    // are already reachable because branch employees carry their parent companyId.
+    const companyScope = [user.companyId, ...(user.accessibleCompanyIds || [])].filter(Boolean);
+    if (companyScope.length > 0) {
+      const branches = await prisma.branch.findMany({ where: { companyId: { in: companyScope } } });
+      user.accessibleBranchIds = branches.map(b => b.id);
+    } else {
+      user.accessibleBranchIds = [];
     }
 
     req.user = user;

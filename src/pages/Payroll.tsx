@@ -12,6 +12,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { api } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import {
   type Employee,
   type PayrollRecord,
@@ -21,7 +22,7 @@ import {
   type AttendanceRecord,
   type LeaveRequest
 } from '../data/mockData';
-import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
+import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '../types';
 import { SAFE_COMPANY_FALLBACK } from '../App';
 import { Badge } from '../components/ui/Badge';
 import { Card, StatCard } from '../components/ui/Card';
@@ -37,7 +38,9 @@ import { exportRowsToExcel } from '../utils/exportUtils';
 import {
   calculatePayrollStats
 } from '../utils/PayrollWorkflowEngine';
-import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel } from '../utils/salarySlipGenerator';
+import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '../utils/salarySlipGenerator';
+import { PayrollWorkbench } from '../components/payroll/PayrollWorkbench';
+import { byEmployeeCode } from '../utils/employeeSort';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
@@ -84,7 +87,8 @@ const amountInWords = (num: number): string => {
 };
 
 const PAYROLL_EXPORT_COLUMNS: ExportColumn[] = [
-  { header: 'Employee ID', key: 'employeeId', width: 16 },
+  { header: 'Sr No', key: 'srNo', width: 8 },
+  { header: 'Employee Code', key: 'employeeId', width: 18 },
   { header: 'Employee', key: 'employeeName', width: 24 },
   { header: 'Department', key: 'department', width: 20 },
   { header: 'Month', key: 'month', width: 12 },
@@ -142,8 +146,8 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   const uniqueEmployees = useMemo(() => getUniqueEmployees(employees), [employees]);
 
-  const getFullEmployee = (empId: string) => {
-    return uniqueEmployees.find(e => e.employeeId === empId || e.id === empId);
+  const getFullEmployee = (empId: any) => {
+    return uniqueEmployees.find(e => e.employeeId === empId || String(e.id) === String(empId));
   };
 
   // Dynamic Edit Form State
@@ -158,7 +162,11 @@ export const Payroll: React.FC<PayrollProps> = ({
     notes: ''
   });
 
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || SAFE_COMPANY_FALLBACK;
+  // Kind-aware: resolve a branch workspace to the branch (not the parent
+  // company it shares an id with) so the masquerade header/scope is correct.
+  const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
+    || companies.find(c => String(c.id) === String(activeCompanyId))
+    || SAFE_COMPANY_FALLBACK;
   const companyEmployees = useMemo(() => uniqueEmployees.filter(e => e.status === 'Active' && isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)), [uniqueEmployees, activeCompanyId, companies]);
   const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
   useEffect(() => {
@@ -207,6 +215,19 @@ export const Payroll: React.FC<PayrollProps> = ({
     () => buildScopedEmployeeIdSet(uniqueEmployees as any[], activeCompanyId, companies),
     [uniqueEmployees, activeCompanyId, companies]
   );
+
+  // Latest DB attendance summaries (the source of truth salary slips must use),
+  // keyed by employeeId for the selected month.
+  const [dbSummaryByEmp, setDbSummaryByEmp] = useState<Record<string, any>>({});
+  useEffect(() => {
+    api.attendanceSummary.getAll(monthFilter, 2026)
+      .then((rows: any[]) => {
+        const map: Record<string, any> = {};
+        (rows || []).forEach(r => { map[String(r.employeeId)] = r; });
+        setDbSummaryByEmp(map);
+      })
+      .catch(() => {});
+  }, [activeCompanyId, monthFilter, payroll]);
 
   const scopedRecords = useMemo(() => {
     let records = payroll.filter(p => p.month === monthFilter);
@@ -263,7 +284,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Payroll prepared for review.');
     } catch (err) {
       console.error(err);
-      alert('Failed to save to PostgreSQL');
+      alert(getApiErrorMessage(err, 'Could not save the payroll change.'));
     }
   };
 
@@ -278,7 +299,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       setRemarksInput('');
     } catch (err) {
       console.error(err);
-      alert('Failed to save to PostgreSQL');
+      alert(getApiErrorMessage(err, 'Could not save the payroll change.'));
     }
   };
 
@@ -330,7 +351,15 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   const handleBatchExportExcel = () => {
-    exportRowsToExcel(`Payroll_${monthFilter}`, PAYROLL_EXPORT_COLUMNS, scopedRecords, `Payroll ${monthFilter}`);
+    // Sort by employee code, then enrich with Sr No + resolved code (never UUID).
+    const rows = [...scopedRecords]
+      .sort(byEmployeeCode(r => getFullEmployee(r.employeeId)?.employeeId || r.employeeName))
+      .map((r, i) => ({
+        ...r,
+        srNo: i + 1,
+        employeeId: getFullEmployee(r.employeeId)?.employeeId || (r as any).employee?.employeeId || '',
+      }));
+    exportRowsToExcel(`Payroll_${monthFilter}`, PAYROLL_EXPORT_COLUMNS, rows, `Payroll ${monthFilter}`);
   };
 
   // Mark all eligible records' payslip as generated (persisted) — the actual PDF
@@ -347,18 +376,22 @@ export const Payroll: React.FC<PayrollProps> = ({
   // Bank Transfer Sheet — NEFT/RTGS style export of net payable per employee.
   const handleExportBankSheet = () => {
     const cols: ExportColumn[] = [
+      { header: 'Sr No', key: 'srNo', width: 8 },
       { header: 'Employee Name', key: 'employeeName', width: 26 },
-      { header: 'Employee ID', key: 'employeeId', width: 16 },
+      { header: 'Employee Code', key: 'employeeId', width: 18 },
       { header: 'Bank Name', key: 'bankName', width: 22 },
       { header: 'Account Number', key: 'accountNumber', width: 22 },
       { header: 'IFSC', key: 'ifsc', width: 16 },
       { header: 'Net Amount (INR)', key: 'netSalary', width: 18 },
     ];
-    const rows = scopedRecords.map(r => {
+    const rows = [...scopedRecords]
+      .sort(byEmployeeCode(r => getFullEmployee(r.employeeId)?.employeeId || r.employeeName))
+      .map((r, i) => {
       const emp: any = getFullEmployee(r.employeeId) || {};
       return {
+        srNo: i + 1,
         employeeName: r.employeeName,
-        employeeId: r.employeeId,
+        employeeId: emp.employeeId || '',
         bankName: emp.bankName || '',
         accountNumber: emp.accountNumber || '',
         ifsc: emp.ifsc || '',
@@ -393,7 +426,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       setViewPayslip(null);
     } catch (e) {
       console.error(e);
-      alert('Failed to update payroll on server.');
+      alert(getApiErrorMessage(e, 'Could not update the payroll.'));
     }
   };
 
@@ -409,29 +442,211 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Payslip generated for employee.');
     } catch (e) {
       console.error(e);
-      alert('Failed to update payslip status on server.');
+      alert(getApiErrorMessage(e, 'Could not update the payslip status.'));
     }
   };
 
-  const handleSendEmail = (record: PayrollRecord) => {
-    alert(`Email workflow completed. Payslip sent to ${record.employeeName} securely.`);
-    saveAuditLog(record.id, 'Payslip securely emailed.');
+  const handleSendEmail = async (record: PayrollRecord) => {
+    try {
+      const emp = getFullEmployee(record.employeeId);
+      const att = buildAttendanceSummary(emp);
+      const { base64, fileName } = payslipBase64(record, emp, currentCompany, att);
+      const res: any = await api.payroll.emailSlip(record.id, { pdfBase64: base64, fileName, to: (emp as any)?.email || undefined });
+      // reflect emailSentAt locally
+      onUpdatePayroll(payroll.map(r => r.id === record.id ? { ...r, emailSentAt: new Date().toISOString() } as any : r));
+      saveAuditLog(record.id, res?.smtpConfigured ? 'Payslip emailed to employee.' : 'Payslip email queued (SMTP not configured).', res?.to ? `Recipient: ${res.to}` : undefined);
+      alert(res?.message || `Salary slip email processed for ${record.employeeName}.`);
+    } catch (e: any) {
+      console.error('Email payslip failed:', e);
+      alert(`Failed to email salary slip: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Open the OS print dialog for an individual salary slip.
+  const handlePrintPayslip = (record: PayrollRecord) => {
+    try {
+      const emp = getFullEmployee(record.employeeId);
+      const att = buildAttendanceSummary(emp);
+      printPayslipPDF(record, emp, currentCompany, att);
+      saveAuditLog(record.id, 'Salary slip sent to printer.');
+    } catch (e: any) {
+      console.error('Print payslip failed:', e);
+      alert(`Failed to print salary slip: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Regenerate = re-render the slip PDF and mark generated (fresh timestamp).
+  const handleRegeneratePayslip = async (record: PayrollRecord) => {
+    try {
+      const emp = getFullEmployee(record.employeeId);
+      const att = buildAttendanceSummary(emp);
+      const fileName = generateEnterprisePayslipPDF(record, emp, currentCompany, att);
+      try { await api.payroll.slipEvent(record.id, 'generated', fileName); } catch {}
+      onUpdatePayroll(payroll.map(r => r.id === record.id ? { ...r, payslipGenerated: true, generatedAt: new Date().toISOString(), payslipFileName: fileName } as any : r));
+      saveAuditLog(record.id, 'Salary slip regenerated.');
+    } catch (e: any) {
+      console.error('Regenerate failed:', e);
+      alert(`Failed to regenerate salary slip: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Build the {record, employee, attendance} bundle for ZIP export.
+  const buildBundle = (records: PayrollRecord[]): PayslipBundleItem[] =>
+    records.map(r => { const emp = getFullEmployee(r.employeeId); return { record: r, employee: emp, attendance: buildAttendanceSummary(emp) }; });
+
+  const handleDownloadZip = async (records: PayrollRecord[], zipName: string) => {
+    if (!records.length) { alert('No payroll records in this selection to export.'); return; }
+    try {
+      const n = await downloadPayslipsZip(buildBundle(records), currentCompany, zipName);
+      saveAuditLog('bulk', `Downloaded ${n} salary slips as ZIP (${zipName}).`);
+    } catch (e: any) {
+      console.error('ZIP export failed:', e);
+      alert(`Failed to build salary slip ZIP: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleApprovePayroll = async (ids: string[]) => {
+    try {
+      await api.payroll.approve(ids);
+      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'approved', approvedAt: new Date().toISOString() } as any : r));
+      saveAuditLog('bulk', `Approved ${ids.length} payroll record(s).`);
+      alert(`✓ Approved ${ids.length} payroll record(s).`);
+    } catch (e: any) {
+      console.error('Approve failed:', e);
+      alert(`Failed to approve payroll: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleLockPayroll = async (ids: string[]) => {
+    if (!confirm(`Lock ${ids.length} payroll record(s)? Locked records can no longer be edited.`)) return;
+    try {
+      await api.payroll.lock(ids);
+      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r));
+      saveAuditLog('bulk', `Locked ${ids.length} payroll record(s).`);
+      alert(`🔒 Locked ${ids.length} payroll record(s).`);
+    } catch (e: any) {
+      console.error('Lock failed:', e);
+      alert(`Failed to lock payroll: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Recalculate outdated payroll from the latest attendance summaries.
+  const handleRecalculate = async (ids?: string[]) => {
+    const targetIds = ids && ids.length ? ids : scopedRecords.filter(r => (r as any).isOutdated).map(r => r.id);
+    if (!targetIds.length) { alert('No payroll records require regeneration.'); return; }
+    if (!confirm(`Recalculate ${targetIds.length} payroll record(s) from the latest attendance? Locked records are skipped.`)) return;
+    try {
+      const res = await api.payroll.recalculate({ ids: targetIds });
+      saveAuditLog('bulk', `${roleAudit} recalculated ${res?.recalculated ?? targetIds.length} payroll record(s) from attendance.`);
+      // Re-fetch payroll so the recomputed figures + cleared outdated flags show.
+      try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ }
+      alert(`✓ Recalculated ${res?.recalculated ?? targetIds.length} payroll record(s)${res?.skippedLocked ? ` (${res.skippedLocked} locked skipped)` : ''}.`);
+    } catch (e: any) {
+      console.error('Recalculate failed:', e);
+      alert(`Failed to recalculate payroll: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // ── Workflow-level bulk actions (operate on the whole scoped month) ──
+  const handleApproveAll = () => {
+    const ids = scopedRecords.map(r => r.id);
+    if (!ids.length) { alert('No payroll to approve. Generate payroll first.'); return; }
+    if (!confirm(`Approve all ${ids.length} payroll record(s)? Approved payroll becomes read-only.`)) return;
+    handleApprovePayroll(ids);
+  };
+
+  const handleLockMonth = () => {
+    const ids = scopedRecords.map(r => r.id);
+    if (!ids.length) { alert('No payroll to lock.'); return; }
+    handleLockPayroll(ids);
+  };
+
+  // Role label for audit messages (e.g. "Super Admin generated payroll for 775…").
+  const roleAudit = role === 'Super Admin' ? 'Super Admin' : role === 'Company Head' ? 'Company Admin' : 'Branch HR';
+
+  const handleMarkPaid = async (ids: string[]) => {
+    if (!ids.length) { alert('No employees selected.'); return; }
+    if (!confirm(`Mark ${ids.length} employee salar${ids.length === 1 ? 'y' : 'ies'} as Paid?`)) return;
+    try {
+      await api.payroll.markPaid(ids);
+      const now = new Date().toISOString();
+      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: now } as any : r));
+      saveAuditLog('bulk', `${roleAudit} marked ${ids.length} salary payment(s) as Paid.`);
+      alert(`✓ Marked ${ids.length} salaries as Paid.`);
+    } catch (e: any) {
+      console.error('Mark paid failed:', e);
+      alert(`Failed to mark salaries paid: ${e?.message || 'Unknown error'}`);
+    }
+  };
+  const handleMarkPaidAll = () => handleMarkPaid(scopedRecords.map(r => r.id));
+
+  // Generate slips for the given records: stamp generatedAt + filename, bundle PDFs.
+  const handleGenerateSlips = async (recs: PayrollRecord[]) => {
+    if (!recs.length) { alert('No employees selected. Generate payroll first.'); return; }
+    try {
+      await Promise.all(recs.map(r => {
+        const emp = getFullEmployee(r.employeeId);
+        const fileName = payslipFileName(r, emp);
+        return api.payroll.slipEvent(r.id, 'generated', fileName).catch(() => {});
+      }));
+      const now = new Date().toISOString();
+      onUpdatePayroll(payroll.map(r => recs.find(x => x.id === r.id) ? { ...r, payslipGenerated: true, generatedAt: now } as any : r));
+      saveAuditLog('bulk', `${roleAudit} generated ${recs.length} salary slip(s).`);
+      await handleDownloadZip(recs, `Salary_Slips_${monthFilter}_2026`);
+      alert(`✓ Generated ${recs.length} salary slips (PDF paths stored). ZIP downloaded.`);
+    } catch (e: any) {
+      console.error('Generate slips failed:', e);
+      alert(`Failed to generate salary slips: ${e?.message || 'Unknown error'}`);
+    }
+  };
+  const handleGenerateSlipsAll = () => handleGenerateSlips(scopedRecords);
+
+  const handleEmailAll = async (records: PayrollRecord[]) => {
+    if (!records.length) { alert('No salary slips to email.'); return; }
+    if (!confirm(`Email salary slips to ${records.length} employee(s)?`)) return;
+    let sent = 0, failed = 0;
+    for (const r of records) {
+      try {
+        const emp = getFullEmployee(r.employeeId);
+        const att = buildAttendanceSummary(emp);
+        const { base64, fileName } = payslipBase64(r, emp, currentCompany, att);
+        await api.payroll.emailSlip(r.id, { pdfBase64: base64, fileName, to: (emp as any)?.email || undefined });
+        sent++;
+      } catch { failed++; }
+    }
+    onUpdatePayroll(payroll.map(r => records.find(x => x.id === r.id) ? { ...r, emailSentAt: new Date().toISOString() } as any : r));
+    saveAuditLog('bulk', `Emailed ${sent} salary slips${failed ? ` (${failed} failed)` : ''}.`);
+    alert(`Email All complete: ${sent} processed${failed ? `, ${failed} failed` : ''}.\n(SMTP not configured → logged in dev mode until SMTP_* set in backend/.env.)`);
   };
 
   // Real attendance summary for a payslip — actual Present/Absent/Leave/OT for
   // the record's employee in the payroll month (zeros only when no records).
   const buildAttendanceSummary = (emp: any) => {
+    // Prefer the DB AttendanceSummary (the edited source of truth). It carries
+    // present/CL/PL/SL/LWP/OT and the recomputed payable days.
+    const s = dbSummaryByEmp[String(emp?.id)];
+    if (s) {
+      return {
+        totalDays: 30, workingDays: 26,
+        present: s.presentDays, absent: s.absentDays,
+        leave: (s.cl || 0) + (s.pl || 0) + (s.sl || 0),
+        cl: s.cl, pl: s.pl, sl: s.sl, lwp: s.lwp,
+        weeklyOff: 0, holiday: 0,
+        lop: s.lwp, overtimeHours: s.otHours, payableDays: s.payableDays,
+      };
+    }
+    // Fallback: derive from raw daily attendance rows.
     const MONTHS: Record<string, number> = { january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11 };
     const mIdx = MONTHS[String(monthFilter || '').toLowerCase()] ?? -1;
     const recs = (attendance || []).filter((a: any) => a.employeeId === emp?.id && (mIdx < 0 || new Date(a.date).getMonth() === mIdx));
     let present = 0, absent = 0, leave = 0, weeklyOff = 0, holiday = 0, ot = 0;
     for (const a of recs) {
-      const s = String(a.status || '').toLowerCase();
-      if (/present|on duty|wfo|work from home|wfh/.test(s)) present++;
-      else if (/leave/.test(s)) leave++;
-      else if (/absent/.test(s)) absent++;
-      else if (/weekly off|week off/.test(s)) weeklyOff++;
-      else if (/holiday/.test(s)) holiday++;
+      const st = String(a.status || '').toLowerCase();
+      if (/present|on duty|wfo|work from home|wfh/.test(st)) present++;
+      else if (/leave/.test(st)) leave++;
+      else if (/absent/.test(st)) absent++;
+      else if (/weekly off|week off/.test(st)) weeklyOff++;
+      else if (/holiday/.test(st)) holiday++;
       ot += Number((a as any).overtimeHours ?? 0);
     }
     return { totalDays: 30, workingDays: 26, present, absent, leave, weeklyOff, holiday, lop: absent, overtimeHours: ot };
@@ -442,11 +657,14 @@ export const Payroll: React.FC<PayrollProps> = ({
       const emp = getFullEmployee(record.employeeId);
       const att = buildAttendanceSummary(emp);
       if (format === 'pdf') {
-        generateEnterprisePayslipPDF(record, emp, currentCompany, att);
-        saveAuditLog(record.id, 'Enterprise Payslip PDF downloaded.');
+        const fileName = generateEnterprisePayslipPDF(record, emp, currentCompany, att);
+        // stamp downloadedAt (audit history) — non-blocking
+        api.payroll.slipEvent(record.id, 'downloaded', fileName).catch(() => {});
+        onUpdatePayroll(payroll.map(r => r.id === record.id ? { ...r, downloadedAt: new Date().toISOString(), payslipFileName: fileName } as any : r));
+        saveAuditLog(record.id, 'Salary slip PDF downloaded.');
       } else {
         generateEnterprisePayslipExcel(record, emp, currentCompany, att);
-        saveAuditLog(record.id, 'Enterprise Payslip XLSX downloaded.');
+        saveAuditLog(record.id, 'Salary slip XLSX downloaded.');
       }
     } catch (e: any) {
       console.error('Payslip generation failed:', e);
@@ -550,7 +768,7 @@ export const Payroll: React.FC<PayrollProps> = ({
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">GUJARAT CANCER & RESEARCH INSTITUTE</h4>
                     <p className="text-sm font-bold text-slate-800">{viewPayslip.employeeName}</p>
-                    <p className="text-[10px] text-gray-500 font-medium">Branch: {emp?.branchLocation || 'Ahmedabad'} · Service Book: {emp?.serviceBookNo || '—'} · Code: {viewPayslip.employeeId}</p>
+                    <p className="text-[10px] text-gray-500 font-medium">Branch: {emp?.branchLocation || 'Ahmedabad'} · Service Book: {emp?.serviceBookNo || '—'} · Code: {emp?.employeeId || '—'}</p>
                   </div>
                   <div className="ml-auto text-right">
                     <p className="text-[10px] uppercase text-gray-400 font-bold">Active Cycle</p>
@@ -669,215 +887,50 @@ export const Payroll: React.FC<PayrollProps> = ({
             <p className="text-sm text-slate-500 mt-1">Secure payroll workflow for <strong>{currentCompany.name}</strong> with verification, payment confirmation, and payslip distribution.</p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
+            <Select
+              value={monthFilter}
+              onChange={e => setMonthFilter(e.target.value)}
+              options={[{ value: 'June', label: 'June 2026' }, { value: 'May', label: 'May 2026' }, { value: 'April', label: 'April 2026' }]}
+            />
             <ExportMenu
               fileName={`Payroll_${currentCompany.name}`}
               title={`Payroll - ${currentCompany.name}`}
               subtitle={monthFilter ? `Month: ${monthFilter}` : undefined}
               sheetName="Payroll"
               columns={PAYROLL_EXPORT_COLUMNS}
-              rows={() => filtered}
+              rows={() => [...filtered].sort(byEmployeeCode(r => getFullEmployee(r.employeeId)?.employeeId || r.employeeName)).map((r, i) => ({ ...r, srNo: i + 1, employeeId: getFullEmployee(r.employeeId)?.employeeId || (r as any).employee?.employeeId || '' }))}
             />
-            {canCreate && (
-              <Button
-                onClick={() => setShowPayrollModal(true)}
-                disabled={companyPayrollStatus.status === 'paid' || companyPayrollStatus.status === 'payslip_generated'}
-                className="w-full md:w-auto whitespace-nowrap"
-              >
-                {companyPayrollStatus.status === 'paid' || companyPayrollStatus.status === 'payslip_generated' ? 'Payroll Complete' : 'Generate Payroll'}
-              </Button>
-            )}
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:self-end w-full">
-          <StatCard label="Employees Paid" value={stats.paidCount} icon={<CheckCircle2 size={18} className="text-emerald-600" />} color="bg-emerald-50" />
-          <StatCard label="Pending Payroll" value={stats.pendingCount} icon={<Activity size={18} className="text-amber-600" />} color="bg-amber-50" />
-          <StatCard label="Failed Payments" value={stats.failedCount} icon={<XCircle size={18} className="text-red-600" />} color="bg-red-50" />
-          <StatCard label="Completion %" value={`${stats.percent}%`} icon={<DollarSign size={18} className="text-blue-600" />} color="bg-blue-50" />
         </div>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[1.35fr_0.65fr]">
-        <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <Card>
-              <div className="space-y-2 text-left">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Employees</p>
-                <p className="text-3xl font-semibold text-slate-900">{scopedRecords.length}</p>
-              </div>
-            </Card>
-            <Card>
-              <div className="space-y-2 text-left">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Total Paid</p>
-                <p className="text-3xl font-semibold text-slate-900">₹{stats.totalPaid.toLocaleString('en-IN')}</p>
-              </div>
-            </Card>
-            <Card>
-              <div className="space-y-2 text-left">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Pending Amount</p>
-                <p className="text-3xl font-semibold text-slate-900">₹{stats.totalPending.toLocaleString('en-IN')}</p>
-              </div>
-            </Card>
-            <Card>
-              <div className="space-y-2 text-left">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Monthly Salary Cost</p>
-                <p className="text-3xl font-semibold text-slate-900">₹{stats.totalCap.toLocaleString('en-IN')}</p>
-              </div>
-            </Card>
-          </div>
-
-          <Card>
-            <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between text-left">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Payroll Summary</h3>
-
-              </div>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Select
-                  value={monthFilter}
-                  onChange={e => setMonthFilter(e.target.value)}
-                  options={[
-                    { value: 'June', label: 'June' },
-                    { value: 'May', label: 'May' },
-                    { value: 'April', label: 'April' }
-                  ]}
-                />
-                <Select
-                  value={statusFilter}
-                  onChange={e => setStatusFilter(e.target.value)}
-                  options={[
-                    { value: '', label: 'All Statuses' },
-                    { value: 'draft', label: 'Draft' },
-                    { value: 'prepared', label: 'Prepared' },
-                    { value: 'verified', label: 'Verified' },
-                    { value: 'payment_pending', label: 'Payment Pending' },
-                    { value: 'paid', label: 'Paid' },
-                    { value: 'payslip_generated', label: 'Payslip Generated' },
-                    { value: 'failed', label: 'Failed' }
-                  ]}
-                />
-              </div>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="space-y-4 p-5 text-left">
-              <div className="flex items-center gap-3 text-slate-900">
-                <Activity size={20} />
-                <div>
-                  <p className="text-sm font-semibold">Activity Log</p>
-                  <p className="text-sm text-slate-500">Latest payroll verification and payment events.</p>
-                </div>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {latestLogs.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-sm text-slate-500">No payroll activity has been logged yet.</div>
-                ) : (
-                  latestLogs.map((entry, index) => (
-                    <div key={index} className="flex flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{entry.action}</p>
-                        <p className="text-sm text-slate-500">{entry.remarks || 'No details provided.'}</p>
-                      </div>
-                      <div className="text-right text-sm text-slate-500">
-                        <p>{entry.user}</p>
-                        <p>{entry.timestamp}</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        <div className="space-y-3">
-          <Card>
-            <div className="space-y-4 p-5 text-left">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Company Payroll Status</p>
-                  <h3 className="text-xl font-semibold text-slate-900">{currentCompany.name}</h3>
-                </div>
-                <Badge variant="blue">{currentCompany.plan}</Badge>
-              </div>
-              <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-                The payroll pipeline requires verification before confirmation. Payslip actions are disabled until salary payment is confirmed.
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Pending Routes</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.pendingCount}</p>
-                </div>
-                <div className="rounded-3xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Last Payment Date</p>
-                  <p className="mt-2 text-2xl font-semibold text-slate-900">{scopedRecords.filter(r => r.payrollStatus === 'paid' || r.payrollStatus === 'payslip_generated').map(r => r.paymentDate).find(Boolean) ?? 'Not yet'}</p>
-                </div>
-              </div>
-            </div>
-          </Card>
-          <Card>
-            <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600 text-left">
-              <div className="flex items-start gap-3">
-                <Activity size={20} className="text-blue-600" />
-                <div>
-                  <p className="font-semibold text-slate-900">Payslip Workflow Reminder</p>
-                  <p>Generate payslips only after payment confirmation for audit-grade compliance.</p>
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-      </div>
-
-      {/* ── Enterprise Batch Payroll Processing ─────────────────────────────── */}
-      <EnterprisePayrollBatch
+      {/* ── Simple 6-step payroll workflow + slip management (live data) ── */}
+      <PayrollWorkbench
         records={scopedRecords}
-        employees={uniqueEmployees}
-        attendance={attendance}
         company={currentCompany}
-        month={monthFilter}
+        getEmployee={getFullEmployee}
+        monthLabel={`${monthFilter} 2026`}
+        role={role}
         canEdit={canEdit}
-        onApply={applyBulkStatus}
-        onExportExcel={handleBatchExportExcel}
-        onGenerateAll={handleGeneratePayroll}
-        onGenerateAllPayslips={handleGenerateAllPayslips}
-        onExportBankSheet={handleExportBankSheet}
+        onGeneratePayroll={handleGeneratePayroll}
+        onApproveAll={handleApproveAll}
+        onGenerateSlipsAll={handleGenerateSlipsAll}
+        onExportBank={handleExportBankSheet}
+        onMarkPaidAll={handleMarkPaidAll}
+        onLockMonth={handleLockMonth}
+        onView={setViewPayslip}
+        onDownloadPdf={(r) => handleDownloadPayslip(r, 'pdf')}
+        onPrint={handlePrintPayslip}
+        onEmail={handleSendEmail}
+        onRegenerate={handleRegeneratePayslip}
+        onDownloadZip={handleDownloadZip}
+        onEmailAll={handleEmailAll}
+        onApprove={handleApprovePayroll}
+        onMarkPaid={handleMarkPaid}
+        onGenerateSlips={handleGenerateSlips}
+        onLock={handleLockPayroll}
+        onRecalculate={handleRecalculate}
       />
-
-      <Card padding={false}>
-        <div className="flex flex-col gap-4 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between text-left">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-900">Payroll Records (Detail / Per-Employee Actions)</h3>
-            <p className="text-sm text-slate-500">Drill-down view with verification and payment controls.</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Input
-              placeholder="Search employees, departments..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              icon={<Search size={14} />}
-            />
-            <Button onClick={() => setSearch('')} variant="secondary">Clear Search</Button>
-          </div>
-        </div>
-        <div className="p-5">
-          <PayrollWorkflowTable
-            records={filtered}
-            primaryColor={currentCompany.primaryColor}
-            onViewPayslip={setViewPayslip}
-            onPrepare={handlePreparePayroll}
-            onVerifyClick={record => {
-              setAuditRecord(record);
-            }}
-            onPayClick={handleStartPayment}
-            onPayslipClick={handleGeneratePayslip}
-            onDownload={handleDownloadPayslip}
-            onSendClick={handleSendEmail}
-            role={role}
-            canEdit={canEdit}
-          />
-        </div>
-      </Card>
 
       <Modal
         open={!!auditRecord}
@@ -935,7 +988,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h4 className="text-base font-bold text-slate-900">{viewPayslip.employeeName}</h4>
-                <p className="text-xs text-slate-500">{viewPayslip.department} — ID: {viewPayslip.employeeId}</p>
+                <p className="text-xs text-slate-500">{viewPayslip.department} — Code: {getFullEmployee(viewPayslip.employeeId)?.employeeId || '—'}</p>
               </div>
               <div className="text-right">
                 <p className="text-xs uppercase tracking-[0.1em] text-slate-400 font-semibold">Active Cycle</p>

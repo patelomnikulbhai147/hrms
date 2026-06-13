@@ -1,11 +1,12 @@
 const { getSuperAdminStatistics } = require('../services/superAdminStatisticsService');
+const respondError = require('../utils/respondError');
 
 // GET /api/statistics/super-admin
 // Returns live, database-driven KPI counts for the Super Admin dashboard.
 exports.getSuperAdmin = async (req, res) => {
   try {
     const stats = await getSuperAdminStatistics();
-    // Connectivity validation log: PostgreSQL -> Prisma -> API.
+    // Connectivity validation log: MySQL -> Prisma -> API.
     console.log('[SuperAdminStats][DB->API]', {
       totalCompanies: stats.totalCompanies,
       totalBranches: stats.totalBranches,
@@ -18,7 +19,6 @@ exports.getSuperAdmin = async (req, res) => {
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(stats);
   } catch (error) {
-    console.error('Error computing Super Admin statistics:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };

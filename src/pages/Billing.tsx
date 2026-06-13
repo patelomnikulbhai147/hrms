@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getApiErrorMessage } from '../utils/apiError';
 import { cn } from '../utils/cn';
 import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
@@ -39,7 +40,7 @@ interface BillingProps {
   onUpdateEmployees: (updater: Employee[] | ((prev: Employee[]) => Employee[])) => void;
   userAccounts: UserAccount[];
   onUpdateAccounts: (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => void;
-  onStartMasquerade: (companyId: string) => void;
+  onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
 }
 
 export const Billing: React.FC<BillingProps> = ({
@@ -158,33 +159,50 @@ export const Billing: React.FC<BillingProps> = ({
     const branch = companies.find(c => c.id === branchId);
     if (!branch) return;
 
+    const parentId = branch.parentCompanyId;
+    if (!parentId) {
+      alert('Cannot remove this branch: its parent company could not be determined.');
+      return;
+    }
+
     const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
     if (!confirmDelete) return;
 
-    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
+    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office.\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
 
-    if (reassign) {
-      const updated = uniqueEmployees.map(emp => {
-        if (emp.companyId === branchId) {
-          return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
-        }
-        return emp;
-      });
-      onUpdateEmployees(updated);
-    } else {
-      const updated = uniqueEmployees.map(emp => {
-        if (emp.companyId === branchId) {
-          return { ...emp, status: 'Inactive' as const };
-        }
-        return emp;
-      });
-      onUpdateEmployees(updated);
-    }
+    // Employees belonging to this branch (the list is DB-hydrated, so matching by
+    // companyId === branchId targets the real rows). Each change is persisted via
+    // the API; the local cache update + branch removal only happen after the DB
+    // confirms, so the operation survives refresh/relogin instead of reverting.
+    const affected = uniqueEmployees.filter(emp => emp.companyId === branchId);
 
-    const nextCompanies = companies.filter(c => c.id !== branchId);
-    const finalized = syncAndRecalculateBilling(nextCompanies, branch.parentCompanyId || 'c-gcri');
-    onUpdateCompanies(finalized);
-    alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+    const empWrites = reassign
+      // Reassign to the parent head office and detach from the branch.
+      ? affected.map(emp => api.employees.update(emp.id, { companyId: parentId, branchId: null }))
+      // Preserve records but mark inactive.
+      : affected.map(emp => api.employees.update(emp.id, { status: 'Inactive' }));
+
+    Promise.all(empWrites)
+      // Archive the branch row itself (soft remove — preserves payroll/documents).
+      .then(() => api.branches.archive(branchId))
+      .then(() => {
+        const updatedEmployees = uniqueEmployees.map(emp => {
+          if (emp.companyId !== branchId) return emp;
+          return reassign
+            ? { ...emp, companyId: parentId, branchId: null as any }
+            : { ...emp, status: 'Inactive' as const };
+        });
+        onUpdateEmployees(updatedEmployees);
+
+        const nextCompanies = companies.filter(c => c.id !== branchId);
+        const finalized = syncAndRecalculateBilling(nextCompanies, parentId);
+        onUpdateCompanies(finalized);
+        alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+      })
+      .catch(err => {
+        console.error(err);
+        alert(getApiErrorMessage(err, 'Could not remove the branch. No changes were saved.'));
+      });
   };
 
   const handleToggleBranchStatus = (branchId: string, current: 'Active' | 'Inactive' | 'Pending') => {
@@ -199,8 +217,16 @@ export const Billing: React.FC<BillingProps> = ({
       branchPortalActive: nextStatus === 'Active'
     } : c);
 
-    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
-    onUpdateCompanies(finalized);
+    // Persist the real Branch.status column to the database; the local billing
+    // recalc is only applied after the DB confirms, so a suspended/activated
+    // branch survives refresh instead of reverting.
+    api.branches.update(branchId, { status: nextStatus }).then(() => {
+      const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId!);
+      onUpdateCompanies(finalized);
+    }).catch(err => {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not update the branch status.'));
+    });
   };
 
   const handleAdjustBranchSlots = (parentId: string, action: 'add' | 'remove') => {
@@ -240,10 +266,17 @@ export const Billing: React.FC<BillingProps> = ({
       return c;
     });
 
-    const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId);
-    onUpdateCompanies(finalized);
-    setSuccessMessage(`Branch employee capacity adjusted to ${cap} employees.`);
-    setTimeout(() => setSuccessMessage(''), 3000);
+    // Persist the real Branch.employeeCapacity column; apply the local billing
+    // recalc only after the DB confirms so the new capacity survives refresh.
+    api.branches.update(branchId, { employeeCapacity: cap }).then(() => {
+      const finalized = syncAndRecalculateBilling(updated, branch.parentCompanyId!);
+      onUpdateCompanies(finalized);
+      setSuccessMessage(`Branch employee capacity adjusted to ${cap} employees.`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+    }).catch(err => {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not update the branch capacity.'));
+    });
   };
 
   const handleUpdateBranchRenewal = (branchId: string, date: string) => {
@@ -329,7 +362,7 @@ export const Billing: React.FC<BillingProps> = ({
         alert('Branch updated successfully.');
       }).catch(err => {
         console.error(err);
-        alert('Failed to update branch on backend.');
+        alert(getApiErrorMessage(err, 'Could not update the branch.'));
       });
     } else {
       // Create mode
@@ -405,7 +438,7 @@ export const Billing: React.FC<BillingProps> = ({
         alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
       }).catch(err => {
         console.error(err);
-        alert('Failed to create branch or admin user on the backend.');
+        alert(getApiErrorMessage(err, 'Could not create the branch.'));
       });
     }
 
@@ -502,17 +535,22 @@ export const Billing: React.FC<BillingProps> = ({
 
   // ─── Event Handlers ──────────────────────────────────────────────────────────
   const toggleCompanyStatus = (companyId: string) => {
-    onUpdateCompanies(prev => prev.map(c => {
-      if (c.id === companyId) {
-        const nextStatus = c.accountStatus === 'Active' ? 'Suspended' : 'Active';
-        return {
-          ...c,
-          accountStatus: nextStatus,
-          status: nextStatus === 'Suspended' ? 'Inactive' : 'Active'
-        };
-      }
-      return c;
-    }));
+    const target = companies.find(c => c.id === companyId);
+    if (!target) return;
+    const nextStatus = target.accountStatus === 'Active' ? 'Suspended' : 'Active';
+    const nextEntityStatus = nextStatus === 'Suspended' ? 'Inactive' : 'Active';
+
+    onUpdateCompanies(prev => prev.map(c => c.id === companyId
+      ? { ...c, accountStatus: nextStatus, status: nextEntityStatus }
+      : c));
+
+    // Persist the status change so it survives refresh/relogin. The billing list
+    // only shows parent companies, but guard for branches just in case (branches
+    // only accept `status`; companies accept accountStatus too).
+    const persist = target.parentCompanyId
+      ? api.branches.update(companyId, { status: nextEntityStatus })
+      : api.companies.update(companyId, { accountStatus: nextStatus, status: nextEntityStatus });
+    persist.catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not update the company status.')); });
   };
 
   const performRenewal = (
@@ -554,7 +592,24 @@ export const Billing: React.FC<BillingProps> = ({
     const finalized = syncAndRecalculateBilling(updated, company.id);
     onUpdateCompanies(finalized);
 
-    api.payments.create(newRecord).then(saved => onUpdatePayments(prevTx => [saved, ...prevTx])).catch(() => alert('Failed to create payment record in DB'));
+    // Persist the renewed plan/pricing/status to the company record so it
+    // survives refresh/relogin. Previously only the payment was saved while the
+    // company's plan & status reverted on reload. `renewalDate` is intentionally
+    // omitted (frontend-only display field with no backing Company column).
+    if (!company.parentCompanyId) {
+      api.companies.update(company.id, {
+        plan: chosenPlan,
+        billingCycle: chosenCycle,
+        subscriptionPrice: calculatedPrice,
+        priceMonthly: targetPlan ? targetPlan.priceMonthly : company.priceMonthly,
+        priceYearly: targetPlan ? targetPlan.priceYearly : company.priceYearly,
+        paymentStatus: 'Paid',
+        accountStatus: 'Active',
+        status: 'Active'
+      }).catch((err: any) => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+    }
+
+    api.payments.create(newRecord).then(saved => onUpdatePayments(prevTx => [saved, ...prevTx])).catch((err: any) => alert(getApiErrorMessage(err, 'Could not save the payment record.')));
     setSuccessMessage(`Subscription renewed successfully — Next renewal: ${formatDisplayDate(calculatedDate)}`);
     setRenewalConfirmCompany(null);
     setRenewalStep(1);
@@ -626,7 +681,7 @@ export const Billing: React.FC<BillingProps> = ({
     }
 
     api.plans.update(finalizedPlan.id, finalizedPlan).then(() => {
-      api.plans.update(finalizedPlan.id, finalizedPlan).then(saved => onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? saved : p))).catch(() => alert('Failed to update plan in DB'));
+      api.plans.update(finalizedPlan.id, finalizedPlan).then(saved => onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? saved : p))).catch((err: any) => alert(getApiErrorMessage(err, 'Could not update the plan.')));
       setEditingPlan(null);
     }).catch(console.error);
   };
@@ -654,7 +709,20 @@ export const Billing: React.FC<BillingProps> = ({
 
     const finalized = syncAndRecalculateBilling(updated, changingPlanCompany.id);
     onUpdateCompanies(finalized);
-    
+
+    // Persist the new plan/pricing to the company record so the change survives
+    // refresh/relogin. Previously only the payment was saved while the company's
+    // plan reverted on reload.
+    if (!changingPlanCompany.parentCompanyId) {
+      api.companies.update(changingPlanCompany.id, {
+        plan: selectedPlan.name as any,
+        priceMonthly: selectedPlan.priceMonthly,
+        priceYearly: selectedPlan.priceYearly,
+        subscriptionPrice: selectedPlan.priceMonthly,
+        paymentStatus: 'Paid'
+      }).catch((err: any) => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the plan change to the database.')); });
+    }
+
     const newRecord = {
       id: `tx${Date.now()}`,
       companyId: changingPlanCompany.id,
@@ -1137,7 +1205,7 @@ export const Billing: React.FC<BillingProps> = ({
                                     {canEdit && (
                                       <>
                                         <button
-                                          onClick={() => onStartMasquerade(br.id)}
+                                          onClick={() => onStartMasquerade(br.id, 'branch')}
                                           className="px-4 py-2.5 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-md text-[12px] font-medium transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
                                         >
                                           <Users size={14} className="opacity-80" /> Masquerade

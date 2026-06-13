@@ -326,7 +326,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
                   </td>
                   <td className="py-2.5 px-3">
                     <p className="font-bold text-slate-800">{r.employeeName}</p>
-                    <p className="text-[10px] text-slate-400">{r.employeeId} · {r.department}</p>
+                    <p className="text-[10px] text-slate-400">{emp?.employeeId || '—'} · {r.department}</p>
                   </td>
                   <td className="py-2.5 px-3">
                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border ${STAGE_CLASS[stage]}`}>

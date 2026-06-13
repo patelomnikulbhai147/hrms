@@ -76,7 +76,7 @@ const COMPANY_HEADERS = [
 ];
 
 const BRANCH_HEADERS = [
-  'Type', 'Parent Company ID', 'Branch ID', 'Company Name', 'Branch Name', 'Branch Code',
+  'Type', 'Parent Company ID', 'Branch No', 'Company Name', 'Branch Name', 'Branch Code',
   'Contact Person', 'Email', 'Mobile Number', 'Alternate Contact', 'City / Location',
   'Country', 'Address', 'Employee Capacity', 'Total Employees', 'Active Employees',
   'Subscription Plan', 'Branch Status', 'Is Archived', 'PF Rate (%)', 'ESIC Rate (%)',
@@ -129,7 +129,7 @@ const mapCompanyRow = (c: any): Record<string, any> => ({
 const mapBranchRow = (b: any): Record<string, any> => ({
   'Type': 'Branch',
   'Parent Company ID': fmt(b.companyId),
-  'Branch ID': fmt(b.branchId),
+  'Branch No': fmt(b.branchNo),
   'Company Name': fmt(b.companyName),
   'Branch Name': fmt(b.branchName),
   'Branch Code': fmt(b.branchCode),
@@ -394,9 +394,9 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
   // ── Section 3: Branch Directory ─────────────────────────────────────────────
   heading('3. Branch Directory');
   table(
-    ['Branch Code', 'Branch Name', 'Parent Company', 'Admin Name', 'Admin Email', 'Contact No.', 'Staff Count', 'Status', 'Created', 'Updated'],
+    ['Branch No', 'Branch Code', 'Branch Name', 'Parent Company', 'Admin Name', 'Admin Email', 'Contact No.', 'Staff Count', 'Status', 'Created', 'Updated'],
     branches.map(b => [
-      fmt(b.branchCode) || '-', fmt(b.branchName) || '-', fmt(b.companyName) || '-',
+      fmt(b.branchNo) || '-', fmt(b.branchCode) || '-', fmt(b.branchName) || '-', fmt(b.companyName) || '-',
       fmt(b.contactPerson) || '-', fmt(b.email) || '-', fmt(b.mobileNumber) || '-',
       fmt(b.totalEmployeeCount), fmt(b.branchStatus) || '-', fmt(b.createdDate) || '-', fmt(b.updatedDate) || '-',
     ]),

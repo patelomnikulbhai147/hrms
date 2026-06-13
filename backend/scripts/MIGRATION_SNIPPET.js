@@ -8,7 +8,7 @@
   4. Copy and paste the entire script below into the Console and hit Enter.
 */
 
-(async function migrateToPostgreSQL() {
+(async function migrateToMySQL() {
   console.log("📦 Packaging local enterprise data...");
   
   const parseStorage = (key) => {
@@ -33,7 +33,7 @@
     return;
   }
 
-  console.log("🚀 Firing data to PostgreSQL backend...");
+  console.log("🚀 Firing data to MySQL backend...");
   
   try {
     const response = await fetch('http://localhost:5000/api/migrate/system', {

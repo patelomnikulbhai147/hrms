@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
 
 // Helper to convert numbers to words
 const numberToWords = (num: number): string => {
@@ -42,7 +43,17 @@ export const generateDynamicComponents = (record: any, employee: any, company: a
   if (record.overtimeAmount && record.overtimeAmount > 0) {
     earnings.push({ name: 'Overtime Amount', amount: record.overtimeAmount });
   }
-  
+
+  // Leave Encashment — paid out as an earning. Added before the Special
+  // Allowance fill so it is shown as its own line and not double-counted
+  // (record.allowances already includes this amount once pushed to payroll).
+  if (record.leaveEncashmentAmount && record.leaveEncashmentAmount > 0) {
+    earnings.push({
+      name: `Leave Encashment (${record.leaveEncashmentDays || 0} days)`,
+      amount: Math.round(record.leaveEncashmentAmount),
+    });
+  }
+
   // Fill remaining allowances into Special Allowance
   const currentTotal = earnings.reduce((sum, e) => sum + e.amount, 0);
   const totalExpectedEarnings = basic + (record.allowances || 0) + (record.bonus || 0);
@@ -89,18 +100,32 @@ const attendanceRow = (att: any, record: any): string[] => {
   const a = att || {};
   return [
     String(a.totalDays ?? 30),
-    String(a.workingDays ?? 26),
     String(a.present ?? 0),
     String(a.absent ?? 0),
-    String(a.leave ?? 0),
-    String(a.weeklyOff ?? 0),
-    String(a.holiday ?? 0),
-    String(a.lop ?? 0),
+    String(a.cl ?? 0),
+    String(a.pl ?? 0),
+    String(a.sl ?? 0),
+    String(a.lwp ?? a.lop ?? 0),
+    String(a.payableDays ?? ((a.present ?? 0) + (a.cl ?? 0) + (a.pl ?? 0) + (a.sl ?? 0))),
     Number(a.overtimeHours ?? record?.overtimeHours ?? 0).toFixed(1),
   ];
 };
+const ATTENDANCE_HEAD = ['Total Days', 'Present', 'Absent', 'CL', 'PL', 'SL', 'LWP', 'Payable', 'OT Hrs'];
 
-export const generateEnterprisePayslipPDF = (record: any, employee: any, company: any, attendanceSummary?: any) => {
+// Professional, audit-suitable file name:  VE-AHMD-0048_June_2026_Salary_Slip.pdf
+export const payslipFileName = (record: any, employee: any): string => {
+  const code = employee?.employeeId || record?.employee?.employeeId || record?.employeeId || 'EMP';
+  const month = record?.month || '';
+  const year = record?.year || '';
+  return `${code}_${month}_${year}_Salary_Slip.pdf`.replace(/\s+/g, '_');
+};
+
+/**
+ * Build the payslip jsPDF document WITHOUT saving it, so the same document can
+ * be downloaded individually, bundled into a ZIP, printed, or emailed.
+ * Returns the jsPDF instance plus the canonical file name.
+ */
+export const buildPayslipDoc = (record: any, employee: any, company: any, attendanceSummary?: any): { doc: any; fileName: string } => {
   const doc = new jsPDF();
   const { earnings, deductions, employerContributions } = generateDynamicComponents(record, employee, company);
   
@@ -108,16 +133,28 @@ export const generateEnterprisePayslipPDF = (record: any, employee: any, company
   const totalDeductions = deductions.reduce((sum, d) => sum + d.amount, 0);
   const netSalary = grossEarnings - totalDeductions;
 
-  // 10. COMPANY INFORMATION
+  // 10. COMPANY INFORMATION (uses the managed Company Branding fields)
+  // Optional brand logo image, drawn top-left. Guarded: jsPDF only supports
+  // PNG/JPEG raster data URLs, so SVG/other are skipped without breaking the slip.
+  const brandLogo = company?.logoImage;
+  if (brandLogo && /^data:image\/(png|jpe?g);base64,/i.test(brandLogo)) {
+    try {
+      const fmt = /png/i.test(brandLogo) ? 'PNG' : 'JPEG';
+      doc.addImage(brandLogo, fmt, 14, 8, 22, 22);
+    } catch (e) { /* ignore unsupported image */ }
+  }
+
   doc.setFontSize(16);
   doc.setFont("helvetica", "bold");
   doc.text(company?.name?.toUpperCase() || 'ENTERPRISE INC', 105, 15, { align: 'center' });
-  
+
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text(company?.address || 'Corporate Headquarters', 105, 20, { align: 'center' });
-  doc.text(`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan || 'N/A'} | TAN: ${company?.tan || 'N/A'}`, 105, 25, { align: 'center' });
-  doc.text(`Website: ${company?.domain || 'N/A'} | Contact: ${company?.phone || 'N/A'}`, 105, 30, { align: 'center' });
+  if (company?.tagline) { doc.setFont("helvetica", "italic"); doc.text(String(company.tagline), 105, 19.5, { align: 'center' }); doc.setFont("helvetica", "normal"); }
+  doc.text(company?.address || company?.billingAddress || 'Corporate Headquarters', 105, company?.tagline ? 24 : 20, { align: 'center' });
+  const infoY = company?.tagline ? 28.5 : 25;
+  doc.text(`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan || 'N/A'} | TAN: ${company?.tan || 'N/A'}`, 105, infoY, { align: 'center' });
+  doc.text(`Website: ${company?.website || company?.domain || 'N/A'} | Contact: ${company?.contactNumber || company?.phone || 'N/A'}${(company?.contactEmail || company?.adminEmail) ? ` | ${company?.contactEmail || company?.adminEmail}` : ''}`, 105, infoY + 5, { align: 'center' });
 
   // Divider
   doc.setLineWidth(0.5);
@@ -152,7 +189,7 @@ export const generateEnterprisePayslipPDF = (record: any, employee: any, company
     theme: 'grid',
     headStyles: { fillColor: [240, 244, 248], textColor: 0, fontSize: 8, fontStyle: 'bold' },
     styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
-    head: [['Total Days', 'Working Days', 'Present', 'Absent', 'Leave', 'Weekly Off', 'Holiday', 'LOP', 'Overtime Hrs']],
+    head: [ATTENDANCE_HEAD],
     body: [attendanceRow(attendanceSummary, record)]
   });
 
@@ -241,7 +278,77 @@ export const generateEnterprisePayslipPDF = (record: any, employee: any, company
   doc.text('VERIFY', 182.5, finalY + 10, { align: 'center' });
   doc.text('QR CODE', 182.5, finalY + 15, { align: 'center' });
 
-  doc.save(`Enterprise_Payslip_${String(record.employeeName || 'Employee').replace(/\s+/g, '_')}_${record.month || ''}_${record.year || ''}.pdf`);
+  const fileName = payslipFileName(record, employee);
+  return { doc, fileName };
+};
+
+// Download a single payslip PDF (code-based filename). Returns the filename.
+export const generateEnterprisePayslipPDF = (record: any, employee: any, company: any, attendanceSummary?: any): string => {
+  const { doc, fileName } = buildPayslipDoc(record, employee, company, attendanceSummary);
+  doc.save(fileName);
+  return fileName;
+};
+
+// Open the OS print dialog for a single payslip (no file saved).
+export const printPayslipPDF = (record: any, employee: any, company: any, attendanceSummary?: any): void => {
+  const { doc } = buildPayslipDoc(record, employee, company, attendanceSummary);
+  doc.autoPrint();
+  const blobUrl = doc.output('bloburl');
+  const w = window.open(blobUrl as any, '_blank');
+  if (!w) { // popup blocked — fall back to an iframe print
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = blobUrl as any;
+    document.body.appendChild(iframe);
+    iframe.onload = () => iframe.contentWindow?.print();
+  }
+};
+
+// Build a payslip as a Blob (for ZIP bundling). Returns { blob, fileName }.
+export const payslipBlob = (record: any, employee: any, company: any, attendanceSummary?: any): { blob: Blob; fileName: string } => {
+  const { doc, fileName } = buildPayslipDoc(record, employee, company, attendanceSummary);
+  return { blob: doc.output('blob') as Blob, fileName };
+};
+
+// Build a payslip as a base64 data string (for emailing via the backend).
+export const payslipBase64 = (record: any, employee: any, company: any, attendanceSummary?: any): { base64: string; fileName: string } => {
+  const { doc, fileName } = buildPayslipDoc(record, employee, company, attendanceSummary);
+  return { base64: doc.output('datauristring') as string, fileName };
+};
+
+export interface PayslipBundleItem { record: any; employee: any; attendance?: any; }
+
+/**
+ * Bundle many payslips into a single ZIP and download it. Each PDF inside the
+ * ZIP uses the canonical code-based file name. Returns the number bundled.
+ */
+export const downloadPayslipsZip = async (
+  items: PayslipBundleItem[],
+  company: any,
+  zipName: string,
+): Promise<number> => {
+  if (!items.length) return 0;
+  const zip = new JSZip();
+  const usedNames = new Set<string>();
+  for (const it of items) {
+    const { blob, fileName } = payslipBlob(it.record, it.employee, company, it.attendance);
+    // guard against duplicate filenames inside the archive
+    let name = fileName;
+    let n = 1;
+    while (usedNames.has(name)) { name = fileName.replace(/\.pdf$/i, `_${n++}.pdf`); }
+    usedNames.add(name);
+    zip.file(name, blob);
+  }
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = zipName.endsWith('.zip') ? zipName : `${zipName}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return items.length;
 };
 
 export const generateEnterprisePayslipExcel = (record: any, employee: any, company: any, attendanceSummary?: any) => {

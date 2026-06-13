@@ -1,0 +1,8 @@
+MERGED PRAJAPATI POOJA RAMANIKBHAI (AHMD<-SIDD): dup id840 -> survivor id199 | payroll moved 0, dropped 1; attendance 2; leave 2; overtime 0
+MERGED PRANALI JATINKUMAR MANDANKA (AHMD dup): dup id772 -> survivor id298 | payroll moved 0, dropped 1; attendance 2; leave 0; overtime 0
+MERGED JADAV BHAVIKABEN BATUKBHAI (AHMD<-BHAV): dup id795 -> survivor id569 | payroll moved 0, dropped 1; attendance 1; leave 0; overtime 0
+DELETED blank row id621 (VE-AHMD-0615) — name "-", cascaded its attendance
+DELETED blank row id703 (VE-AHMD-0697) — name "-", cascaded its attendance
+
+FINAL employees=836 payroll=823 attendance=1608 leave=10 overtime=0
+Per-branch: B3=777 B4=15 B5=22 B6=16 B7=3 B8=3

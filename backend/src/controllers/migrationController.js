@@ -1,6 +1,7 @@
-const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
-const prisma = new PrismaClient();
+// Shared PrismaClient singleton — never instantiate a second pool (see note in
+// userController). Extra pools cause "socket connection was closed unexpectedly".
+const prisma = require('../config/prisma');
 
 exports.migrateSystem = async (req, res) => {
   console.log('Starting full system migration...');

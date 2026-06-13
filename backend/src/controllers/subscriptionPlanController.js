@@ -1,4 +1,6 @@
 const prisma = require('../config/prisma');
+const idParam = require('../utils/idParam');
+const respondError = require('../utils/respondError');
 
 exports.getAll = async (req, res) => {
   try {
@@ -7,8 +9,7 @@ exports.getAll = async (req, res) => {
     });
     res.json(plans);
   } catch (error) {
-    console.error('Error fetching plans:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -22,8 +23,7 @@ exports.create = async (req, res) => {
     });
     res.status(201).json(plan);
   } catch (error) {
-    console.error('Error creating plan:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -34,13 +34,12 @@ exports.update = async (req, res) => {
     }
     const { id } = req.params;
     const plan = await prisma.subscriptionPlan.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: req.body
     });
     res.json(plan);
   } catch (error) {
-    console.error('Error updating plan:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };
 
@@ -51,11 +50,10 @@ exports.delete = async (req, res) => {
     }
     const { id } = req.params;
     await prisma.subscriptionPlan.delete({
-      where: { id }
+      where: { id: idParam(id) }
     });
     res.json({ message: 'Plan deleted successfully' });
   } catch (error) {
-    console.error('Error deleting plan:', error);
-    res.status(500).json({ error: 'Server error' });
+    return respondError(res, error);
   }
 };

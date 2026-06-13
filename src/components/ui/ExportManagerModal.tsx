@@ -5,6 +5,7 @@ import { Badge } from './Badge';
 import { Download, FileSpreadsheet, FileText, Filter, Users, DollarSign, Calendar, CheckSquare, Settings2, DownloadCloud } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
 import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../../data/mockData';
+import { resolveActiveWorkspace } from '../../types';
 
 interface ExportManagerModalProps {
   open: boolean;
@@ -129,7 +130,10 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
       // Simulate large processing delay for UI feedback
       await new Promise(res => setTimeout(res, 800));
 
-      const activeCompany = companies.find(c => c.id === activeCompanyId);
+      // Kind-aware so a branch export is prefixed with the branch name, not the
+      // parent company it shares a numeric id with.
+      const activeCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
+        || companies.find(c => String(c.id) === String(activeCompanyId));
       const companyNamePrefix = activeCompany ? activeCompany.name.replace(/[^a-zA-Z0-9]/g, '') : 'Company';
 
       const exportSheets = selectedSources.map(source => {

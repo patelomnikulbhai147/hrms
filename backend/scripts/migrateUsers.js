@@ -47,7 +47,7 @@ async function runMigration() {
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(user.passwordStr || 'defaultPassword123', salt);
 
-      // Insert into PostgreSQL
+      // Insert into MySQL (via Prisma)
       await prisma.user.create({
         data: {
           id: user.id, // preserve existing ID

@@ -25,6 +25,7 @@ import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
 import { getCompanyInitials } from '../utils/workspaceUtils';
 import { api, type SuperAdminStats } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import { downloadCompanyExcel, downloadCompanyPDF } from '../utils/companyExportUtils';
 
 interface CompaniesProps {
@@ -33,7 +34,7 @@ interface CompaniesProps {
   onUpdateCompanies: (companies: Company[]) => void;
   userAccounts: UserAccount[];
   onUpdateAccounts: (accounts: UserAccount[]) => void;
-  onStartMasquerade: (companyId: string) => void;
+  onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
   plans: SubscriptionPlan[];
   employees: Employee[];
   onUpdateEmployees?: (employees: Employee[]) => void;
@@ -240,7 +241,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert('Company details updated successfully.');
     } catch (err) {
       console.error(err);
-      alert('Failed to update company details.');
+      alert(getApiErrorMessage(err, 'Could not update the company.'));
     }
   };
 
@@ -441,7 +442,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       avatar: newCompany.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
-    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert('Failed to create via API'); }
+    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert(getApiErrorMessage(err, 'Could not create the company.')); }
 
     // Reset state
     setNewCompany({
@@ -584,7 +585,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       setEditPlanModal(null);
     }).catch(err => {
       console.error(err);
-      alert('Failed to save plan to backend');
+      alert(getApiErrorMessage(err, 'Could not save the plan.'));
     });
   };
 
@@ -642,7 +643,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         alert('Branch updated successfully.');
       }).catch(err => {
         console.error(err);
-        alert('Failed to update branch on backend.');
+        alert(getApiErrorMessage(err, 'Could not update the branch.'));
       });
     } else {
       // Create mode
@@ -705,7 +706,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
       }).catch(err => {
         console.error(err);
-        alert('Failed to create branch or admin user on the backend.');
+        alert(getApiErrorMessage(err, 'Could not create the branch.'));
       });
     }
 
@@ -722,20 +723,28 @@ export const Companies: React.FC<CompaniesProps> = ({
     setSelectedWorkspaces(user.accessibleCompanyIds || [user.companyId]);
   };
 
-  const handleSaveWorkspaces = () => {
+  const handleSaveWorkspaces = async () => {
     if (!workspaceAssignUser) return;
-    const updated = userAccounts.map(u => {
-      if (u.id === workspaceAssignUser.id) {
-        return {
-          ...u,
-          accessibleCompanyIds: selectedWorkspaces,
-          companyId: selectedWorkspaces.length > 0 ? selectedWorkspaces[0] : u.companyId
-        };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    setWorkspaceAssignUser(null);
+    const newCompanyId = selectedWorkspaces.length > 0 ? selectedWorkspaces[0] : workspaceAssignUser.companyId;
+    try {
+      // Persist to the database FIRST, then mirror into local state. Previously
+      // this only updated React state, so the reassigned workspace access was
+      // lost on the next login/refresh (the app reloads users from the API).
+      await api.users.update(workspaceAssignUser.id, {
+        accessibleCompanyIds: selectedWorkspaces,
+        companyId: newCompanyId,
+      });
+      const updated = userAccounts.map(u =>
+        u.id === workspaceAssignUser.id
+          ? { ...u, accessibleCompanyIds: selectedWorkspaces, companyId: newCompanyId }
+          : u
+      );
+      onUpdateAccounts(updated);
+      setWorkspaceAssignUser(null);
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not save workspace access.'));
+    }
   };
 
   const handleCreateOfficer = () => {
@@ -791,20 +800,24 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
     }).catch(err => {
       console.error(err);
-      alert('Failed to create user account on the backend.');
+      alert(getApiErrorMessage(err, 'Could not create the user account.'));
     });
   };
 
-  const handleToggleUserActivation = (userId: string) => {
-    const updated = userAccounts.map(u => {
-      if (u.id === userId) {
-        const nextStatus = u.status === 'Active' ? 'Disabled' : 'Active';
-        return { ...u, status: nextStatus as 'Active' | 'Disabled' };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    alert('User status toggled successfully.');
+  const handleToggleUserActivation = async (userId: string) => {
+    const target = userAccounts.find(u => u.id === userId);
+    if (!target) return;
+    const nextStatus = target.status === 'Active' ? 'Disabled' : 'Active';
+    try {
+      // Persist the status change to the DB before reflecting it locally — a
+      // toggle that only changed React state reverted on refresh.
+      await api.users.update(userId, { status: nextStatus });
+      onUpdateAccounts(userAccounts.map(u => u.id === userId ? { ...u, status: nextStatus as 'Active' | 'Disabled' } : u));
+      alert('User status toggled successfully.');
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not update the user status.'));
+    }
   };
 
   const handleResetUserPassword = async (userId: string) => {
@@ -830,11 +843,19 @@ export const Companies: React.FC<CompaniesProps> = ({
     }
   };
 
-  const handleRevokeUser = (userId: string) => {
+  const handleRevokeUser = async (userId: string) => {
     if (!confirm('Are you sure you want to revoke this user access?')) return;
-    const updated = userAccounts.filter(u => u.id !== userId);
-    onUpdateAccounts(updated);
-    alert('Access revoked successfully.');
+    try {
+      // Delete in the database first; only then drop from the list. The old
+      // version filtered local state only, so the "revoked" user reappeared on
+      // the next refresh.
+      await api.users.delete(userId);
+      onUpdateAccounts(userAccounts.filter(u => u.id !== userId));
+      alert('Access revoked successfully.');
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not revoke this user.'));
+    }
   };
 
   // Filter accounts
@@ -940,7 +961,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
     }).catch(err => {
       console.error(err);
-      alert('Failed to execute offboarding on backend.');
+      alert(getApiErrorMessage(err, 'Could not offboard this company.'));
     });
   };
 
@@ -1175,7 +1196,9 @@ export const Companies: React.FC<CompaniesProps> = ({
               </tr>
             ) : (
               filtered.filter(c => !c.parentCompanyId).map(c => {
-                const branches = companies.filter(b => b.parentCompanyId === c.id);
+                const branches = companies
+                  .filter(b => b.parentCompanyId === c.id)
+                  .sort((a, b) => ((a as any).branchNo ?? a.id) - ((b as any).branchNo ?? b.id));
                 const hasBranches = branches.length > 0;
                 const isExpanded = expandedParents[c.id];
 
@@ -1252,7 +1275,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                         {canEdit && (
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => onStartMasquerade(c.id)}
+                              onClick={() => onStartMasquerade(c.id, 'company')}
                               className="text-xs px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium transition-colors hover:bg-slate-50 inline-flex items-center gap-1.5 shadow-sm"
                             >
                               Manage {hasBranches ? 'All' : ''} <ChevronRight size={14} className="text-slate-400" />
@@ -1336,6 +1359,12 @@ export const Companies: React.FC<CompaniesProps> = ({
                                     <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
                                       <td className="py-2.5 px-5">
                                         <div className="flex items-center gap-3">
+                                          {(b as any).branchNo != null && (
+                                            <span
+                                              className="text-[11px] font-bold text-slate-400 w-6 text-center"
+                                              title="Branch No"
+                                            >#{(b as any).branchNo}</span>
+                                          )}
                                           <span className="font-bold text-[#1D4ED8] bg-[#EFF6FF] px-2 py-1 rounded border border-[#DBEAFE] text-[10px]">
                                             {b.branchCode || 'BR'}
                                           </span>
@@ -1362,7 +1391,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                         {canEdit && (
                                           <div className="inline-flex items-center gap-2">
                                             <button
-                                              onClick={() => onStartMasquerade(b.id)}
+                                              onClick={() => onStartMasquerade(b.id, 'branch')}
                                               className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium text-[11px] transition-colors hover:bg-slate-50 shadow-sm"
                                             >
                                               Manage
@@ -2069,7 +2098,7 @@ export const Companies: React.FC<CompaniesProps> = ({
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-slate-800">{offboardCompany.name}</h3>
-                <p className="text-slate-500 text-xs">ID: {offboardCompany.id} • Domain: {offboardCompany.domain} • Admin: {offboardCompany.adminName}</p>
+                <p className="text-slate-500 text-xs">{offboardCompany.branchCode ? `Code: ${offboardCompany.branchCode} • ` : ''}Domain: {offboardCompany.domain || '—'} • Admin: {offboardCompany.adminName || '—'}</p>
               </div>
             </div>
             

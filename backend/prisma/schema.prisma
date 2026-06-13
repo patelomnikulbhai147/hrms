@@ -3,32 +3,65 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id                   String     @id @default(uuid())
+  id                   Int        @id @default(autoincrement())
   name                 String
   email                String     @unique
   username             String     @unique
   passwordHash         String
   role                 String
-  companyId            String?
-  accessibleCompanyIds String[]
+  companyId            Int?
+  branchId             Int?       // optional branch a management user is scoped to (for branch-context task assignment)
+  accessibleCompanyIds Json       @default(dbgenerated("(JSON_ARRAY())"))
   status               String     @default("Active")
-  avatar               String?
+  avatar               String?    @db.LongText
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
-  employeeId           String?
+  employeeId           Int?
   permissions          Json?
   password             String?
   userId               String?
+  lastLoginAt          DateTime?
   auditLogs            AuditLog[]
+  passwordResetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        Int   @id @default(autoincrement())
+  userId    Int
+  email     String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+}
+
+model LoginAudit {
+  id        Int   @id @default(autoincrement())
+  userId    Int?
+  email     String
+  success   Boolean
+  reason    String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([email])
+  @@index([createdAt])
 }
 
 model Company {
-  id                          String           @id @default(uuid())
+  id                          Int              @id @default(autoincrement())
   name                        String
   domain                      String?
   adminName                   String?
@@ -41,10 +74,10 @@ model Company {
   plan                        String           @default("Starter")
   employeeCount               Int              @default(0)
   joinDate                    DateTime         @default(now())
-  logo                        String?
-  logoImage                   String?
+  logo                        String?          @db.LongText
+  logoImage                   String?          @db.LongText
   isHeadOffice                Boolean          @default(true)
-  parentCompanyId             String?
+  parentCompanyId             Int?
   offboardingState            Json?
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
@@ -55,6 +88,14 @@ model Company {
   primaryColor                String?
   profTaxRate                 Float?
   themeStyle                  String?
+  // ── Company branding (managed via Settings → Company Branding) ──
+  shortName                   String?
+  tagline                     String?
+  website                     String?
+  contactEmail                String?
+  contactNumber               String?
+  address                     String?  @db.Text
+  description                 String?  @db.Text
   activeHrUsers               Int?
   billingAddress              String?
   billingCycle                String?
@@ -67,7 +108,7 @@ model Company {
   branchPriceAddon            Float?
   branchRenewalDate           String?
   companyIndustry             String?
-  customDepartments           String[]
+  customDepartments           Json             @default(dbgenerated("(JSON_ARRAY())"))
   departmentTemplateType      String?
   employeeCapacity            Int?
   footerText                  String?
@@ -95,11 +136,16 @@ model Company {
   payrolls                    Payroll[]
   overtimes                   Overtime[]
   shifts                      Shift[]
+  leaveCreditConfigs          LeaveCreditConfig[]
+  leaveBalances               LeaveBalance[]
+  leaveEncashments            LeaveEncashment[]
+  attendanceSummaries         AttendanceSummary[]
 }
 
 model Branch {
-  id               String          @id @default(uuid())
-  companyId        String
+  id               Int             @id @default(autoincrement())
+  companyId        Int
+  branchNo         Int?
   branchName       String
   location         String?
   headcount        Int             @default(0)
@@ -124,10 +170,11 @@ model Branch {
 }
 
 model Employee {
-  id                String         @id @default(uuid())
+  id                Int            @id @default(autoincrement())
   employeeId        String         @unique
-  companyId         String
-  branchId          String?
+  legacyEmployeeId  String?
+  companyId         Int
+  branchId          Int?
   name              String
   firstName         String?
   lastName          String?
@@ -141,7 +188,7 @@ model Employee {
   exitDate          DateTime?
   exitReason        String?
   location          String?
-  avatar            String?
+  avatar            String?        @db.LongText
   salary            Float          @default(0)
   manager           String?
   pan               String?
@@ -158,7 +205,7 @@ model Employee {
   updatedAt         DateTime       @updatedAt
   documents         Json?
   aadhaarName       String?
-  aadhaarUpload     String?
+  aadhaarUpload     String?        @db.LongText
   branchLocation    String?
   category          String?
   dob               String?
@@ -169,25 +216,28 @@ model Employee {
   maritalStatus     String?
   middleName        String?
   nationality       String?
-  panUpload         String?
-  permanentAddress  String?
-  photoUpload       String?
-  presentAddress    String?
+  panUpload         String?        @db.LongText
+  permanentAddress  String?        @db.Text
+  photoUpload       String?        @db.LongText
+  presentAddress    String?        @db.Text
   relationType      String?
   serviceBookNo     String?
-  signatureUpload   String?
+  signatureUpload   String?        @db.LongText
   attendance        Attendance[]
   branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
   leaveRequests     LeaveRequest[]
   payroll           Payroll[]
   overtimes         Overtime[]
+  leaveBalances     LeaveBalance[]
+  leaveEncashments  LeaveEncashment[]
+  attendanceSummaries AttendanceSummary[]
 }
 
 model Payroll {
-  id               String   @id @default(uuid())
-  companyId        String   @default("c-gcri")
-  employeeId       String
+  id               Int   @id @default(autoincrement())
+  companyId        Int      @default(1)
+  employeeId       Int
   employeeName     String   @default("Unknown")
   department       String   @default("General")
   month            String
@@ -199,6 +249,17 @@ model Payroll {
   payrollStatus    String   @default("draft")
   paymentStatus    String   @default("pending")
   payslipGenerated Boolean  @default(false)
+  // ── Attendance-derived figures (single source of truth = AttendanceSummary) ──
+  presentDays      Float     @default(0)
+  clDays           Float     @default(0)
+  plDays           Float     @default(0)
+  slDays           Float     @default(0)
+  lwpDays          Float     @default(0)
+  halfDays         Float     @default(0)
+  otHours          Float     @default(0)
+  payableDays      Float     @default(0)
+  isOutdated       Boolean   @default(false)
+  summarySyncedAt  DateTime?
   processedOn      String?
   paymentDate      String?
   dueDate          String?
@@ -206,9 +267,21 @@ model Payroll {
   paidBy           String?
   bonus            Float?
   tax              Float?
+  // ── Leave encashment (paid out as an earning in this payroll) ──
+  leaveEncashmentDays   Float?  @default(0)
+  leaveEncashmentAmount Float?  @default(0)
   notes            String?
   companyPayrollId String?
   branchPayrollId  String?
+  // ── Payslip lifecycle tracking (audit history) ──
+  payslipFileName  String?
+  generatedAt      DateTime?
+  downloadedAt     DateTime?
+  downloadCount    Int       @default(0)
+  emailSentAt      DateTime?
+  approvedAt       DateTime?
+  approvedBy       String?
+  lockedAt         DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -218,8 +291,8 @@ model Payroll {
 }
 
 model CompanyPayroll {
-  id                 String   @id @default(uuid())
-  companyId          String
+  id                 Int   @id @default(autoincrement())
+  companyId          Int
   payrollMonth       String   @map("payroll_month")
   payrollYear        Int      @map("payroll_year")
   totalEmployees     Int      @map("total_employees")
@@ -237,9 +310,9 @@ model CompanyPayroll {
 }
 
 model BranchPayroll {
-  id                 String   @id @default(uuid())
-  branchId           String   @map("branch_id")
-  companyId          String   @map("company_id")
+  id                 Int   @id @default(autoincrement())
+  branchId           Int      @map("branch_id")
+  companyId          Int      @map("company_id")
   payrollMonth       String   @map("payroll_month")
   payrollYear        Int      @map("payroll_year")
   totalEmployees     Int      @map("total_employees")
@@ -257,9 +330,9 @@ model BranchPayroll {
 }
 
 model Attendance {
-  id           String   @id @default(uuid())
-  companyId    String   @default("c-gcri")
-  employeeId   String
+  id           Int   @id @default(autoincrement())
+  companyId    Int      @default(1)
+  employeeId   Int
   employeeName String   @default("Unknown")
   department   String   @default("General")
   branch       String?
@@ -268,7 +341,7 @@ model Attendance {
   clockOut     String   @default("18:00")
   status       String   @default("Present")
   hoursWorked  Float    @default(8)
-  flags        String[] @default([])
+  flags        Json     @default(dbgenerated("(JSON_ARRAY())"))
   leaveType    String?
   shift        String?
   createdAt    DateTime @default(now())
@@ -278,9 +351,9 @@ model Attendance {
 }
 
 model Overtime {
-  id           String   @id @default(uuid())
-  companyId    String
-  employeeId   String
+  id           Int   @id @default(autoincrement())
+  companyId    Int
+  employeeId   Int
   employeeName String
   employeeCode String?
   department   String?
@@ -301,8 +374,8 @@ model Overtime {
 }
 
 model Shift {
-  id           String   @id @default(uuid())
-  companyId    String
+  id           Int   @id @default(autoincrement())
+  companyId    Int
   name         String
   code         String?
   start        String
@@ -317,9 +390,9 @@ model Shift {
 }
 
 model LeaveRequest {
-  id           String   @id @default(uuid())
-  companyId    String
-  employeeId   String
+  id           Int   @id @default(autoincrement())
+  companyId    Int
+  employeeId   Int
   employeeName String
   department   String
   leaveType    String
@@ -331,23 +404,127 @@ model LeaveRequest {
   appliedOn    String
   approvedBy   String?
   approvedOn   String?
+  paidDays     Float    @default(0)
+  lwpDays      Float    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
+model LeaveCreditConfig {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  year         Int      @default(2026)
+  startMonth   Int      @default(1)
+  endMonth     Int      @default(12)
+  clPerMonth   Float    @default(1)
+  plPerMonth   Float    @default(1.5)
+  slPerMonth   Float    @default(1)
+  carryForward Float    @default(5)
+  // ── Carry-forward & encashment policy ──
+  carryForwardEnabled Boolean @default(true)
+  maxCarryForward     Float   @default(5)
+  allowEncashment     Boolean @default(false)
+  encashableTypes     String  @default("PL")   // comma list of CL,PL,SL
+  maxEncashmentDays   Float   @default(30)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, year])
+}
+
+model LeaveEncashment {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  employeeId   Int
+  employeeName String   @default("")
+  year         Int      @default(2026)
+  leaveType    String                       // CL / PL / SL
+  days         Float    @default(0)
+  dailyRate    Float    @default(0)
+  amount       Float    @default(0)
+  status       String   @default("Pending")  // Pending / Approved / Paid
+  processedBy  String?
+  processedOn  String?
+  payrollMonth String?                        // month the amount was pushed to payroll
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model LeaveBalance {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  employeeId          Int
+  year                Int      @default(2026)
+  clBalance           Float    @default(0)
+  plBalance           Float    @default(0)
+  slBalance           Float    @default(0)
+  clUsed              Float    @default(0)
+  plUsed              Float    @default(0)
+  slUsed              Float    @default(0)
+  carryForward        Float    @default(0)
+  accruedThroughMonth Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee            Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year])
+}
+
+model AttendanceSummary {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  month       String
+  year        Int      @default(2026)
+  presentDays Float    @default(0)
+  absentDays  Float    @default(0)
+  cl          Float    @default(0)
+  pl          Float    @default(0)
+  sl          Float    @default(0)
+  lwp         Float    @default(0)
+  halfDays    Float    @default(0)
+  otHours     Float    @default(0)
+  shift       String?
+  payableDays Float    @default(0)
+  locked      Boolean  @default(false)
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, month, year])
+}
+
 model Document {
-  id           String   @id @default(uuid())
-  companyId    String
+  id           Int   @id @default(autoincrement())
+  companyId    Int
+  branchId     Int?                       // branch the document is scoped to (optional)
   name         String
   type         String
-  employeeId   String?
+  employeeId   Int?
   employeeName String?
   uploadedBy   String
   uploadedOn   String
   size         String
-  url          String?
+  url          String?  @db.Text          // external link (Google Drive / OneDrive / Dropbox / direct PDF)
+  fileData     String?  @db.LongText       // base64-encoded uploaded file (device / drag-drop / camera)
+  mimeType     String?                     // MIME type of fileData, drives the preview viewer
+  documentNumber String?                   // e.g. Aadhaar / PAN / passport number (optional)
+  issueDate    String?                     // optional issue date (ISO yyyy-mm-dd)
+  expiryDate   String?                     // optional expiry date — drives "Expiring Soon" / "Expired"
+  remarks      String?  @db.Text           // upload / verification remarks
+  verifiedBy   String?                     // audit: who verified/rejected
+  verifiedOn   String?                     // audit: when verified/rejected
+  editedBy     String?                     // audit: who last edited details
+  editedOn     String?                     // audit: when last edited
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   status       String   @default("Pending")
@@ -355,8 +532,8 @@ model Document {
 }
 
 model PaymentRecord {
-  id           String   @id @default(uuid())
-  companyId    String
+  id           Int   @id @default(autoincrement())
+  companyId    Int
   companyName  String
   planName     String
   amount       Float
@@ -370,30 +547,37 @@ model PaymentRecord {
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  companyId String?
+  id        Int   @id @default(autoincrement())
+  companyId Int?
+  userId    Int?                       // target user (null = company/branch-wide)
+  branchId  Int?
   type      String
+  title     String?
   message   String
   timestamp String
   read      Boolean  @default(false)
+  status    String   @default("unread") // unread / read
   priority  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([companyId])
 }
 
 model AuditLog {
-  id        String   @id @default(uuid())
-  userId    String
+  id        Int   @id @default(autoincrement())
+  userId    Int
   action    String
   module    String
   targetId  String
-  details   String?
+  details   String?  @db.Text
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
 }
 
 model SubscriptionPlan {
-  id                  String   @id @default(uuid())
+  id                  Int   @id @default(autoincrement())
   name                String
   priceMonthly        Float
   priceYearly         Float
@@ -405,4 +589,69 @@ model SubscriptionPlan {
   includedBranchLimit Int
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+// ── Task Manager ─────────────────────────────────────────────────────────────
+// Standalone tables (scalar foreign keys, no relations on existing models) so
+// adding this module cannot alter or break any existing relationship.
+model Task {
+  id             Int      @id @default(autoincrement())
+  title          String
+  description    String?  @db.Text
+  priority       String   @default("Medium")  // Low / Medium / High / Critical
+  status         String   @default("Pending") // Pending / In Progress / Completed / Cancelled / Overdue
+  startDate      String?
+  dueDate        String?
+  startTime      String?
+  endTime        String?
+  companyId      Int?
+  branchId       Int?
+  createdById    Int
+  createdByName  String   @default("")
+  createdByRole  String?
+  assignmentType String   @default("user")    // user / multiple / department / branch / role
+  assigneeIds    Json     @default(dbgenerated("(JSON_ARRAY())")) // [userId, ...]
+  assigneeNames  Json     @default(dbgenerated("(JSON_ARRAY())")) // [name, ...]
+  department     String?
+  targetRole     String?
+  mentions       Json     @default(dbgenerated("(JSON_ARRAY())")) // [username, ...]
+  attachments    Json     @default(dbgenerated("(JSON_ARRAY())")) // [{name,type,url,size}]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([createdById])
+}
+
+model TaskComment {
+  id        Int      @id @default(autoincrement())
+  taskId    Int
+  userId    Int?
+  userName  String   @default("")
+  message   String   @db.Text
+  parentId  Int?     // set when this is a reply to another comment
+  isStatus  Boolean  @default(false) // true for status-change system notes
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+// ── Tender Information (future-ready; placeholder data for now) ───────────────
+model Tender {
+  id           Int      @id @default(autoincrement())
+  tenderNumber String?
+  tenderName   String
+  department   String?
+  tenderValue  Float    @default(0)
+  publishDate  String?
+  closingDate  String?
+  status       String   @default("Upcoming") // Upcoming / Live / Closed
+  documentPath String?
+  category     String?  // Government / Private / HR Service / Recruitment / Vendor
+  companyId    Int?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([companyId])
 }
