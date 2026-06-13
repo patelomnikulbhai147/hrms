@@ -4,24 +4,85 @@ import {
   Award,
   Plus, Edit, Trash2, ZoomIn, ZoomOut, Sparkles, Sliders, Palette, Printer,
   Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, List, Table2, User, Landmark, Tag, Info,
-  Upload, Check, ShieldCheck, ChevronLeft, ChevronRight, Eye
+  Upload, Check, ShieldCheck, ChevronLeft, ChevronRight, Eye, Download,
+  Link2, Camera, RefreshCw, X, Paperclip
 } from 'lucide-react';
 import {
   type Employee,
   type Document,
   type Role,
   type Company,
-  isCompanyIdMatch
+  isCompanyIdMatch,
+  resolveActiveWorkspace
 } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
+import { Input, Select, Textarea } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
+
+const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'Document Name', key: 'name', width: 30 },
+  { header: 'Type', key: 'type', width: 18 },
+  { header: 'Employee', key: 'employeeName', width: 24 },
+  { header: 'Uploaded By', key: 'uploadedBy', width: 18 },
+  { header: 'Uploaded On', key: 'uploadedOn', width: 16 },
+  { header: 'Size', key: 'size', width: 12 },
+  { header: 'Status', key: 'status', width: 14 },
+];
+
+// Supported document types for employee document management (dropdown order).
+const DOCUMENT_TYPES = [
+  'Aadhaar Card', 'PAN Card', 'Passport', 'Driving License', 'Voter ID',
+  'Bank Passbook', 'Cancelled Cheque', 'Education Certificates',
+  'Experience Certificates', 'Joining Letter', 'Offer Letter',
+  'Appointment Letter', 'ESIC Documents', 'PF Documents', 'Medical Documents',
+  'Custom Document',
+];
+
+// File upload rules — files are stored as base64 in the DB, so cap the size to
+// keep payloads and rows reasonable.
+const ALLOWED_DOC_EXT = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'];
+const DOC_ACCEPT = '.jpg,.jpeg,.png,.pdf,.doc,.docx';
+const MAX_DOC_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const formatBytes = (b: number): string => {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+};
+
+type UploadedFile = { dataUrl: string; mimeType: string; size: string; fileName: string };
+
+// Read a File into a base64 data-URL, validating type and size.
+const readFileAsBase64 = (file: File): Promise<UploadedFile> => new Promise((resolve, reject) => {
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if (!ALLOWED_DOC_EXT.includes(ext)) {
+    reject(new Error(`Unsupported file type ".${ext}". Allowed: JPG, JPEG, PNG, PDF, DOC, DOCX.`));
+    return;
+  }
+  if (file.size > MAX_DOC_BYTES) {
+    reject(new Error(`File is too large (${formatBytes(file.size)}). Maximum is ${formatBytes(MAX_DOC_BYTES)}.`));
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => resolve({
+    dataUrl: String(reader.result),
+    mimeType: file.type || `application/${ext}`,
+    size: formatBytes(file.size),
+    fileName: file.name,
+  });
+  reader.onerror = () => reject(new Error('Could not read the selected file.'));
+  reader.readAsDataURL(file);
+});
+
 interface DocumentsProps {
   role: Role;
   activeCompanyId: string;
@@ -205,7 +266,12 @@ export const Documents: React.FC<DocumentsProps> = ({
     const emp = uniqueEmployees.find(e => e.id === d.employeeId || e.employeeId === d.employeeId);
     return isCompanyIdMatch(d.companyId, activeCompanyId, companies, emp?.branchLocation, emp?.branchId);
   });
-  const currentCompany = companies.find(c => c.id === activeCompanyId) || { name: 'Company Name' } as any;
+  // Kind-aware resolution so a branch workspace whose id collides with a
+  // company id resolves to the branch, not the parent company (companies are
+  // listed before branches, so a plain find would return the wrong entity).
+  const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
+    || companies.find(c => String(c.id) === String(activeCompanyId))
+    || { name: 'Company Name' } as any;
 
   // Failsafe fetch if list is 0 but we know this branch should have employees
   useEffect(() => {
@@ -236,13 +302,35 @@ export const Documents: React.FC<DocumentsProps> = ({
   const [selectedEmpId, setSelectedEmpId] = useState('');
   const [uploadForm, setUploadForm] = useState({
     name: '',
-    type: 'Aadhaar' as Document['type'],
+    type: 'Aadhaar Card' as string,
+    documentNumber: '',
+    issueDate: '',
+    expiryDate: '',
+    remarks: '',
   });
+  // Upload sources: a base64 file (device / drag-drop / camera) and/or a link.
+  const [uploadFile, setUploadFile] = useState<UploadedFile | null>(null);
+  const [uploadUrl, setUploadUrl] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const [replaceTargetId, setReplaceTargetId] = useState<string | null>(null);
+  // Preview + edit-details modals
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [editDoc, setEditDoc] = useState<Document | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', type: '', documentNumber: '', issueDate: '', expiryDate: '', remarks: '' });
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const resetUploadForm = () => {
+    setUploadForm({ name: '', type: 'Aadhaar Card', documentNumber: '', issueDate: '', expiryDate: '', remarks: '' });
+    setUploadFile(null);
+    setUploadUrl('');
+    setIsDragging(false);
+  };
+
+  const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('documents');
-  const canCreate = canCreateModule('documents');
-  const canDelete = canDeleteModule('documents');
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
@@ -257,7 +345,10 @@ export const Documents: React.FC<DocumentsProps> = ({
   const handleQuickVerify = async (empId: string) => {
     const updatedPromises = documents.map(async d => {
       if (d.employeeId === empId && d.status === 'Pending') {
-        const u = { ...d, status: 'Verified' as const }; return await api.documents.update(d.id, u).catch(()=>u);
+        // Minimal payload — the backend stamps verifiedBy/verifiedOn. Falls back
+        // to an optimistic local object if the request fails.
+        const optimistic = { ...d, status: 'Verified' as const };
+        return await api.documents.update(d.id, { status: 'Verified' }).catch(() => optimistic);
       }
       return d;
     });
@@ -389,11 +480,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     }
   }, [activeCompanyId, currentCompany.name]);
 
-  // Sync templates back to storage
   const saveTemplatesToStorage = (updated: DocumentTemplate[]) => {
     setTemplates(updated);
-    const storageKey = `hrms_templates_${activeCompanyId}`;
-    
   };
 
   // Filtered templates of the active tab category
@@ -511,42 +599,242 @@ export const Documents: React.FC<DocumentsProps> = ({
     return !q || d.name.toLowerCase().includes(q) || (d.employeeName?.toLowerCase().includes(q) ?? false);
   });
 
+  // ── Upload source pickers (file / drag-drop / camera / link) ──
+  const onPickFile = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const f = await readFileAsBase64(file);
+      setUploadFile(f);
+      setUploadUrl(''); // an attached file takes precedence over a link
+      setUploadForm(prev => ({ ...prev, name: prev.name || f.fileName }));
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Could not read the selected file.'));
+    }
+  };
+  const onDropFile = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    onPickFile(e.dataTransfer.files?.[0]);
+  };
+
   const handleUploadDocument = async () => {
     const emp = companyEmployees.find(e => e.id === selectedEmpId);
-    const newDoc: Document = {
-      id: `doc${Date.now()}`,
+    if (!selectedEmpId) { alert('Please select an employee to associate this document with.'); return; }
+    if (!uploadFile && !uploadUrl.trim()) { alert('Attach a file (or paste a document link) before uploading.'); return; }
+
+    const defaultName = uploadFile?.fileName || `${emp?.name || 'Employee'}_${uploadForm.type}`;
+    const newDoc: any = {
       companyId: emp?.companyId || activeCompanyId,
-      name: uploadForm.name || `${emp?.name || 'Employee'}_${uploadForm.type}.pdf`,
+      branchId: (emp as any)?.branchId ?? undefined,
+      name: uploadForm.name || defaultName,
       type: uploadForm.type,
       employeeId: selectedEmpId,
       employeeName: emp?.name || 'System General',
-      uploadedBy: role === 'HR' ? 'HR Manager' : 'Company Head',
+      uploadedBy: role === 'HR' ? 'HR Manager' : role === 'Super Admin' ? 'Super Admin' : 'Company Head',
       uploadedOn: new Date().toISOString().split('T')[0],
-      size: '1.2 MB',
+      size: uploadFile?.size || (uploadUrl ? 'Link' : '—'),
       status: 'Pending',
+      fileData: uploadFile?.dataUrl,
+      mimeType: uploadFile?.mimeType,
+      url: uploadUrl.trim() || undefined,
+      documentNumber: uploadForm.documentNumber || undefined,
+      issueDate: uploadForm.issueDate || undefined,
+      expiryDate: uploadForm.expiryDate || undefined,
+      remarks: uploadForm.remarks || undefined,
     };
-    try { const saved = await api.documents.create(newDoc); onUpdateDocuments([saved, ...documents]); } catch(e) { alert('Failed to upload to DB'); }
-    setUploadOpen(false);
-    setUploadForm({ name: '', type: 'Aadhaar' });
-    alert('Document registered in compliance vault.');
+    setUploadBusy(true);
+    try {
+      const saved = await api.documents.create(newDoc);
+      onUpdateDocuments([saved, ...documents]);
+      setUploadOpen(false);
+      resetUploadForm();
+      alert('Document uploaded and saved to the database.');
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Failed to upload the document.'));
+    } finally {
+      setUploadBusy(false);
+    }
   };
 
   const handleToggleStatus = async (id: string, nextStatus: 'Verified' | 'Rejected') => {
-    try { const t = documents.find(d => d.id === id); if(!t) return; const saved = await api.documents.update(id, { ...t, status: nextStatus }); onUpdateDocuments(documents.map(d => d.id === id ? saved : d)); } catch(e) { alert('Failed to update in DB'); }
-    alert(`Document audited as ${nextStatus}`);
+    const t = documents.find(d => d.id === id); if (!t) return;
+    let remarks = t.remarks;
+    if (nextStatus === 'Rejected') {
+      const r = prompt('Reason for rejection (optional):', t.remarks || '');
+      if (r === null) return; // cancelled
+      remarks = r || t.remarks;
+    }
+    try {
+      // Minimal payload — backend stamps verifiedBy/verifiedOn from the session.
+      const saved = await api.documents.update(id, { status: nextStatus, remarks });
+      onUpdateDocuments(documents.map(d => d.id === id ? saved : d));
+      alert(`Document ${nextStatus === 'Verified' ? 'verified' : 'rejected'}.`);
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Could not update the document.'));
+    }
+  };
+
+  // ── Preview / download ──
+  const handlePreview = (doc: Document) => setPreviewDoc(doc);
+  const handleDownload = (doc: Document) => {
+    if (doc.fileData) {
+      const a = document.createElement('a');
+      a.href = doc.fileData;
+      a.download = doc.name || 'document';
+      document.body.appendChild(a); a.click(); a.remove();
+    } else if (doc.url) {
+      window.open(doc.url, '_blank', 'noopener');
+    } else {
+      alert('No file or link is attached to this document.');
+    }
+  };
+
+  // ── Edit details ──
+  const openEditDoc = (doc: Document) => {
+    setEditDoc(doc);
+    setEditForm({
+      name: doc.name || '',
+      type: doc.type || 'Custom Document',
+      documentNumber: doc.documentNumber || '',
+      issueDate: doc.issueDate || '',
+      expiryDate: doc.expiryDate || '',
+      remarks: doc.remarks || '',
+    });
+  };
+  const saveEditDoc = async () => {
+    if (!editDoc) return;
+    if (!editForm.name.trim()) { alert('Document name is required.'); return; }
+    try {
+      const saved = await api.documents.update(editDoc.id, {
+        name: editForm.name,
+        type: editForm.type,
+        documentNumber: editForm.documentNumber || null,
+        issueDate: editForm.issueDate || null,
+        expiryDate: editForm.expiryDate || null,
+        remarks: editForm.remarks || null,
+      });
+      onUpdateDocuments(documents.map(d => d.id === editDoc.id ? saved : d));
+      setEditDoc(null);
+      alert('Document details updated.');
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Could not save the changes.'));
+    }
+  };
+
+  // ── Replace the underlying file of an existing document ──
+  const triggerReplace = (docId: string) => { setReplaceTargetId(docId); replaceInputRef.current?.click(); };
+  const onReplaceFile = async (file?: File | null) => {
+    if (!file || !replaceTargetId) { setReplaceTargetId(null); return; }
+    try {
+      const f = await readFileAsBase64(file);
+      const saved = await api.documents.update(replaceTargetId, { fileData: f.dataUrl, mimeType: f.mimeType, size: f.size });
+      onUpdateDocuments(documents.map(d => d.id === replaceTargetId ? saved : d));
+      alert('Document file replaced.');
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Could not replace the file.'));
+    } finally {
+      setReplaceTargetId(null);
+      if (replaceInputRef.current) replaceInputRef.current.value = '';
+    }
+  };
+
+  // ── Delete ──
+  const handleDeleteDoc = async (doc: Document) => {
+    if (!confirm(`Delete "${doc.name}"? This permanently removes it from the database and cannot be undone.`)) return;
+    try {
+      await api.documents.delete(doc.id);
+      onUpdateDocuments(documents.filter(d => d.id !== doc.id));
+      alert('Document deleted.');
+    } catch (e) {
+      alert(getApiErrorMessage(e, 'Could not delete the document.'));
+    }
   };
 
   // High-fidelity print A4 PDF
-  const handlePrint = () => {
+  const [isPrinting, setIsPrinting] = useState(false);
+
+  // WYSIWYG export: the PDF is rasterised directly from the on-screen preview
+  // DOM (#a4-sheet-preview), so the downloaded payslip/letter is a pixel match
+  // of the template designer — no separate hand-coded PDF layout exists.
+  const handlePrint = async () => {
+    const element = document.getElementById('a4-sheet-preview');
+    if (!element || isPrinting) return;
+    setIsPrinting(true);
+
+    // Neutralise the on-screen zoom transform so the capture is full A4
+    // resolution, then restore it afterwards.
+    const prevTransform = element.style.transform;
+    element.style.transform = 'none';
+
+    try {
+      console.log('[Payslip PDF] Step 1 — Template loaded:', currentCategory);
+      console.log('[Payslip PDF] Step 2 — Employee data bound:', docVariables.employee_name);
+      // html2canvas-pro understands modern CSS color functions (oklch) emitted
+      // by Tailwind v4 — the original html2canvas throws on them.
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import('html2canvas-pro'),
+        import('jspdf'),
+      ]);
+      console.log('[Payslip PDF] Step 3 — Rendering HTML to canvas…');
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      console.log('[Payslip PDF] Step 4 — Canvas rendered', canvas.width, 'x', canvas.height);
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageW = 210, pageH = 297;
+      const imgW = pageW;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const imgData = canvas.toDataURL('image/png');
+
+      let heightLeft = imgH;
+      let position = 0;
+      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+      heightLeft -= pageH;
+      while (heightLeft > 0) {
+        position -= pageH;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+        heightLeft -= pageH;
+      }
+
+      const safeName = (docVariables.employee_name || 'Document').replace(/[^a-z0-9]+/gi, '_');
+      const docLabel = (currentCategory || 'Document').replace(/[^a-z0-9]+/gi, '_');
+      console.log('[Payslip PDF] Step 5 — PDF generated, downloading…');
+      pdf.save(`${docLabel}_${safeName}.pdf`);
+      console.log('[Payslip PDF] Step 6 — File downloaded');
+    } catch (err: any) {
+      console.error('[Payslip PDF] Generation failed:', err);
+      const reason = err?.message || String(err);
+      alert(`PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`);
+    } finally {
+      element.style.transform = prevTransform;
+      setIsPrinting(false);
+    }
+  };
+
+  // Native browser print — renders the real preview DOM (full CSS, fonts,
+  // images, watermarks, oklch colours, multi-page) via the print engine. The
+  // global `@media print` rules (index.css) isolate #a4-sheet-preview so only
+  // the payslip prints. Users can print or "Save as PDF" from the dialog.
+  const printPayslip = () => {
     const element = document.getElementById('a4-sheet-preview');
     if (!element) return;
-    
-    element.setAttribute('style', 'width: 210mm; min-height: 297mm; transform: none !important; font-size: 13px; line-height: 1.6; padding: 25mm 20mm;');
-    const printContent = element.outerHTML;
-
-    document.body.innerHTML = `<div style="padding:0; margin:0; background:white;">${printContent}</div>`;
-    window.print();
-    window.location.reload();
+    const prevTransform = element.style.transform;
+    element.style.transform = 'none';
+    document.body.classList.add('printing-payslip');
+    const cleanup = () => {
+      document.body.classList.remove('printing-payslip');
+      element.style.transform = prevTransform;
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    // Defer so the layout reflows (transform reset) before the dialog opens.
+    setTimeout(() => { window.print(); }, 60);
   };
 
   // Open Edit Template Modal
@@ -775,11 +1063,20 @@ export const Documents: React.FC<DocumentsProps> = ({
             <div className="w-72">
               <Input placeholder="Search employee documents..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
             </div>
-            {canEdit && (
-              <Button onClick={() => setUploadOpen(true)}>
-                Upload Verification Doc
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              <ExportMenu
+                fileName="Compliance_Documents"
+                title="Compliance Documents"
+                sheetName="Documents"
+                columns={DOCUMENT_EXPORT_COLUMNS}
+                rows={() => filteredCompliance}
+              />
+              {canEdit && (
+                <Button onClick={() => setUploadOpen(true)}>
+                  Upload Verification Doc
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="space-y-6">
@@ -811,7 +1108,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <Td>
                           <div>
                             <p className="text-xs font-semibold text-gray-900">{d.employeeName || 'Corporate Archive'}</p>
-                            <p className="text-[10px] text-gray-400">ID: {d.employeeId || 'N/A'}</p>
+                            <p className="text-[10px] text-gray-400">Code: {uniqueEmployees.find(e => e.id === d.employeeId || e.employeeId === d.employeeId)?.employeeId || '—'}</p>
                           </div>
                         </Td>
                         <Td>
@@ -833,24 +1130,21 @@ export const Documents: React.FC<DocumentsProps> = ({
                           </div>
                         </Td>
                         <Td>
-                          <div className="flex items-center gap-1.5">
-                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit ? (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => handlePreview(d)} title="Preview" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 flex items-center justify-center transition-colors"><Eye size={12} /></button>
+                            <button onClick={() => handleDownload(d)} title="Download" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-colors"><Download size={12} /></button>
+                            {canEdit && (
                               <>
-                                <button
-                                  onClick={() => handleToggleStatus(d.id, 'Verified')}
-                                  className="text-[10px] px-2 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors"
-                                >
-                                  Verify
-                                </button>
-                                <button
-                                  onClick={() => handleToggleStatus(d.id, 'Rejected')}
-                                  className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors"
-                                >
-                                  Reject
-                                </button>
+                                <button onClick={() => openEditDoc(d)} title="Edit details" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 flex items-center justify-center transition-colors"><Edit size={12} /></button>
+                                <button onClick={() => triggerReplace(d.id)} title="Replace file" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 flex items-center justify-center transition-colors"><RefreshCw size={12} /></button>
+                                <button onClick={() => handleDeleteDoc(d)} title="Delete" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition-colors"><Trash2 size={12} /></button>
                               </>
-                            ) : (
-                              <span className="text-[10px] text-gray-400">Audited</span>
+                            )}
+                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit && (
+                              <>
+                                <button onClick={() => handleToggleStatus(d.id, 'Verified')} className="text-[10px] px-2 py-0.5 ml-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors">Verify</button>
+                                <button onClick={() => handleToggleStatus(d.id, 'Rejected')} className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors">Reject</button>
+                              </>
                             )}
                           </div>
                         </Td>
@@ -1326,10 +1620,20 @@ export const Documents: React.FC<DocumentsProps> = ({
                     )}
                     <Button
                       onClick={handlePrint}
-                      className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow"
+                      disabled={isPrinting}
+                      className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow disabled:opacity-60"
+                    >
+                      <Download size={13} />
+                      {isPrinting ? 'Generating…' : 'Download PDF'}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={printPayslip}
+                      disabled={isPrinting}
+                      className="flex-1 text-xs font-bold flex items-center justify-center gap-1"
                     >
                       <Printer size={13} />
-                      Print PDF
+                      Print Payslip
                     </Button>
                   </div>
                 </div>
@@ -1442,7 +1746,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                               <p>Department: <span className="font-semibold text-slate-800">{docVariables.department}</span></p>
                             </div>
                             <div className="space-y-1">
-                              <p>Base Location: <span className="font-semibold text-slate-800">{currentCompany.address.split(',')[0]}</span></p>
+                              <p>Base Location: <span className="font-semibold text-slate-800">{((currentCompany as any).address || (currentCompany as any).billingAddress || currentCompany.name || '—').split(',')[0]}</span></p>
                               <p>Joining Date: <span className="font-semibold text-slate-800">{docVariables.joining_date}</span></p>
                               <p>Billing Month: <span className="font-semibold text-slate-800">June 2026</span></p>
                             </div>
@@ -1563,49 +1867,203 @@ export const Documents: React.FC<DocumentsProps> = ({
       {/* ─── MODAL: COMPLIANCE UPLOAD ───────────────────────────────────────── */}
       <Modal
         open={uploadOpen}
-        onClose={() => setUploadOpen(false)}
-        title="Upload Verification Document"
-        size="sm"
+        onClose={() => { setUploadOpen(false); }}
+        title="Upload Employee Document"
+        size="lg"
         footer={
           canEdit && (
           <>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
-            <Button onClick={handleUploadDocument} disabled={!selectedEmpId || !uploadForm.name}>
-              Register Document
+            <Button onClick={handleUploadDocument} disabled={uploadBusy || !selectedEmpId || (!uploadFile && !uploadUrl.trim())}>
+              {uploadBusy ? 'Uploading…' : 'Upload Document'}
             </Button>
           </>
           )
         }
       >
         <div className="space-y-3">
-          <Select
-            label="Associate with Employee *"
-            disabled={!canEdit}
-            value={selectedEmpId}
-            onChange={e => setSelectedEmpId(e.target.value)}
-            options={[
-              { value: '', label: 'Select Employee...' },
-              ...companyEmployees.map(e => ({ value: e.id, label: e.name }))
-            ]}
-          />
-          <Select
-            label="Document Verification Type *"
-            disabled={!canEdit}
-            value={uploadForm.type}
-            onChange={e => setUploadForm({ ...uploadForm, type: e.target.value as Document['type'] })}
-            options={[
-              { value: 'Aadhaar', label: 'Aadhaar Card' },
-              { value: 'PAN', label: 'PAN Card' },
-              { value: 'Resume', label: 'Resume / Curriculum Vitae' }
-            ]}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Select
+              label="Associate with Employee *"
+              disabled={!canEdit}
+              value={selectedEmpId}
+              onChange={e => setSelectedEmpId(e.target.value)}
+              options={[
+                { value: '', label: 'Select Employee...' },
+                ...companyEmployees.map(e => ({ value: e.id, label: e.name }))
+              ]}
+            />
+            <Select
+              label="Document Type *"
+              disabled={!canEdit}
+              value={uploadForm.type}
+              onChange={e => setUploadForm({ ...uploadForm, type: e.target.value })}
+              options={DOCUMENT_TYPES.map(t => ({ value: t, label: t }))}
+            />
+          </div>
+
           <Input
-            label="Document Filename *"
+            label="Document Name *"
             disabled={!canEdit}
             placeholder="e.g. Rajesh_Aadhaar.pdf"
             value={uploadForm.name}
             onChange={e => setUploadForm({ ...uploadForm, name: e.target.value })}
           />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input
+              label="Document Number"
+              disabled={!canEdit}
+              placeholder="Optional"
+              value={uploadForm.documentNumber}
+              onChange={e => setUploadForm({ ...uploadForm, documentNumber: e.target.value })}
+            />
+            <Input
+              label="Issue Date"
+              type="date"
+              disabled={!canEdit}
+              value={uploadForm.issueDate}
+              onChange={e => setUploadForm({ ...uploadForm, issueDate: e.target.value })}
+            />
+            <Input
+              label="Expiry Date"
+              type="date"
+              disabled={!canEdit}
+              value={uploadForm.expiryDate}
+              onChange={e => setUploadForm({ ...uploadForm, expiryDate: e.target.value })}
+            />
+          </div>
+
+          {/* Upload source — drag & drop / device file / camera */}
+          <div>
+            <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Upload File</label>
+            <div
+              onDragOver={e => { e.preventDefault(); if (canEdit) setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={e => { if (canEdit) onDropFile(e); }}
+              className={`mt-1 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-900/30'}`}
+            >
+              {uploadFile ? (
+                <div className="flex items-center justify-center gap-2 text-xs text-slate-200">
+                  <FileText size={16} className="text-blue-400" />
+                  <span className="font-semibold">{uploadFile.fileName}</span>
+                  <span className="text-slate-500">({uploadFile.size})</span>
+                  <button type="button" onClick={() => setUploadFile(null)} className="ml-1 text-slate-400 hover:text-rose-400"><X size={14} /></button>
+                </div>
+              ) : (
+                <>
+                  <Upload size={20} className="mx-auto text-slate-500 mb-1" />
+                  <p className="text-[11px] text-slate-400">Drag &amp; drop a file here, or</p>
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <button type="button" disabled={!canEdit} onClick={() => fileInputRef.current?.click()}
+                      className="text-[11px] px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1 disabled:opacity-40"><Paperclip size={12} /> Select File</button>
+                    <button type="button" disabled={!canEdit} onClick={() => cameraInputRef.current?.click()}
+                      className="text-[11px] px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center gap-1 disabled:opacity-40"><Camera size={12} /> Camera</button>
+                  </div>
+                  <p className="text-[9px] text-slate-600 mt-2">JPG · PNG · PDF · DOC · DOCX — max 5 MB</p>
+                </>
+              )}
+            </div>
+            <input ref={fileInputRef} type="file" accept={DOC_ACCEPT} className="hidden" onChange={e => onPickFile(e.target.files?.[0])} />
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => onPickFile(e.target.files?.[0])} />
+          </div>
+
+          <Input
+            label="Or Paste Document Link — Google Drive / OneDrive / Dropbox / PDF"
+            disabled={!canEdit || !!uploadFile}
+            placeholder="https://drive.google.com/..."
+            value={uploadUrl}
+            onChange={e => setUploadUrl(e.target.value)}
+            icon={<Link2 size={14} />}
+          />
+
+          <Textarea
+            label="Remarks"
+            disabled={!canEdit}
+            placeholder="Optional notes about this document"
+            value={uploadForm.remarks}
+            onChange={e => setUploadForm({ ...uploadForm, remarks: e.target.value })}
+          />
+        </div>
+      </Modal>
+
+      {/* Hidden input used by the per-row "Replace file" action */}
+      <input ref={replaceInputRef} type="file" accept={DOC_ACCEPT} className="hidden" onChange={e => onReplaceFile(e.target.files?.[0])} />
+
+      {/* Document preview — inline PDF / image viewer (no download needed) */}
+      <Modal
+        open={!!previewDoc}
+        onClose={() => setPreviewDoc(null)}
+        title={previewDoc?.name || 'Document Preview'}
+        size="xl"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setPreviewDoc(null)}>Close</Button>
+            {previewDoc && <Button onClick={() => handleDownload(previewDoc)}>{previewDoc.url && !previewDoc.fileData ? 'Open Link' : 'Download'}</Button>}
+          </>
+        }
+      >
+        {previewDoc && (() => {
+          const src = previewDoc.fileData || previewDoc.url || '';
+          const mime = previewDoc.mimeType || '';
+          const lower = (previewDoc.url || previewDoc.name || '').toLowerCase();
+          const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp)(\?|$)/.test(lower) || !!previewDoc.fileData?.startsWith('data:image/');
+          const isPdf = mime === 'application/pdf' || /\.pdf(\?|$)/.test(lower) || !!previewDoc.fileData?.startsWith('data:application/pdf');
+          if (!src) return <div className="p-8 text-center text-sm text-slate-500">No file or link is attached to this document.</div>;
+          if (isImage) return <div className="flex justify-center bg-slate-100 rounded-xl p-3 max-h-[68vh] overflow-auto"><img src={src} alt={previewDoc.name} className="max-w-full h-auto rounded" /></div>;
+          if (isPdf) return <iframe src={src} title={previewDoc.name} className="w-full h-[68vh] rounded-xl border border-slate-200 bg-white" />;
+          return (
+            <div className="p-8 text-center">
+              <FileText size={40} className="mx-auto text-slate-300 mb-3" />
+              <p className="text-sm text-slate-600 font-semibold">Inline preview isn't available for this file type.</p>
+              <p className="text-xs text-slate-400 mt-1">{previewDoc.type} · {previewDoc.size}</p>
+              <div className="mt-4"><Button onClick={() => handleDownload(previewDoc)}>{previewDoc.url ? 'Open Link' : 'Download File'}</Button></div>
+            </div>
+          );
+        })()}
+        {previewDoc && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] border-t border-slate-100 pt-3 text-slate-700">
+            {previewDoc.documentNumber && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Doc Number</span>{previewDoc.documentNumber}</div>}
+            {previewDoc.issueDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Issue Date</span>{previewDoc.issueDate}</div>}
+            {previewDoc.expiryDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Expiry Date</span>{previewDoc.expiryDate}</div>}
+            <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Uploaded By</span>{previewDoc.uploadedBy} · {previewDoc.uploadedOn}</div>
+            {previewDoc.verifiedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Verified By</span>{previewDoc.verifiedBy}{previewDoc.verifiedOn ? ` · ${String(previewDoc.verifiedOn).split('T')[0]}` : ''}</div>}
+            {previewDoc.editedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Last Edited By</span>{previewDoc.editedBy}{previewDoc.editedOn ? ` · ${String(previewDoc.editedOn).split('T')[0]}` : ''}</div>}
+            {previewDoc.remarks && <div className="col-span-2 sm:col-span-3"><span className="text-slate-400 font-bold uppercase text-[9px] block">Remarks</span>{previewDoc.remarks}</div>}
+          </div>
+        )}
+      </Modal>
+
+      {/* Edit document details */}
+      <Modal
+        open={!!editDoc}
+        onClose={() => setEditDoc(null)}
+        title="Edit Document Details"
+        size="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditDoc(null)}>Cancel</Button>
+            <Button onClick={saveEditDoc}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Input label="Document Name *" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+          <Select
+            label="Document Type"
+            value={editForm.type}
+            onChange={e => setEditForm({ ...editForm, type: e.target.value })}
+            options={[
+              ...(DOCUMENT_TYPES.includes(editForm.type) || !editForm.type ? [] : [{ value: editForm.type, label: editForm.type }]),
+              ...DOCUMENT_TYPES.map(t => ({ value: t, label: t })),
+            ]}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Input label="Document Number" value={editForm.documentNumber} onChange={e => setEditForm({ ...editForm, documentNumber: e.target.value })} />
+            <Input label="Issue Date" type="date" value={editForm.issueDate} onChange={e => setEditForm({ ...editForm, issueDate: e.target.value })} />
+            <Input label="Expiry Date" type="date" value={editForm.expiryDate} onChange={e => setEditForm({ ...editForm, expiryDate: e.target.value })} />
+          </div>
+          <Textarea label="Remarks" value={editForm.remarks} onChange={e => setEditForm({ ...editForm, remarks: e.target.value })} />
         </div>
       </Modal>
 

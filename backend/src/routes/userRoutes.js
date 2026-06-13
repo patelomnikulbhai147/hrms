@@ -9,7 +9,14 @@ const { protect } = require('../middleware/authMiddleware');
 router.put('/:id/reset-password', protect, requirePermission('users', 'edit'), userController.resetPassword);
 router.put('/:id', protect, requirePermission('users', 'edit'), userController.updateUser);
 // User CRUD routes
-router.get('/', protect, requirePermission('users', 'view'), userController.getAllUsers);
+router.get('/', protect, userController.getAllUsers);
+// Management users assignable in Task Manager (scoped to caller's permissions).
+router.get('/assignable', protect, userController.getAssignableUsers);
+// Company-level permission management (Super Admin all; Company Admin own company;
+// HR if granted — branch only). Authorization is enforced inside the controller.
+router.get('/manageable', protect, userController.getManageableUsers);
+router.put('/:id/permissions', protect, userController.updatePermissions);
+router.get('/audit', protect, requirePermission('users', 'view'), userController.getAuditLogs);
 router.post('/', protect, requirePermission('users', 'create'), userController.createUser);
 router.delete('/:id', protect, requirePermission('users', 'delete'), userController.deleteUser);
 

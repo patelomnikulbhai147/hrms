@@ -8,6 +8,9 @@ router.use(protect);
 
 router.get('/', controller.getAll);
 router.post('/', controller.create);
+router.put('/read-all', controller.markAllRead);
+router.delete('/clear-all', controller.clearAll);
+router.post('/delete-many', controller.deleteMany);
 router.put('/:id', controller.update);
 router.delete('/:id', controller.delete);
 

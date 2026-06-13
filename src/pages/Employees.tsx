@@ -1,14 +1,16 @@
 import { api } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Eye, Edit2, Trash2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
-  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, ArrowRight
+  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   type Employee, type EmployeeStatus, type Role, type Company,
-  isCompanyIdMatch, getCompanyIdFromBranchName
+  isCompanyIdMatch,
+  resolveActiveWorkspace
 } from '../types';
 import { Badge, statusBadge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
@@ -19,13 +21,29 @@ import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModa
 import { Input, Select } from '../components/ui/Input';
 import {
   validatePhone, validateName, validateEmail,
-  validateSalary, validateEmployeeId
+  validateSalary
 } from '../utils/validation';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { ExportMenu } from '../components/ui/ExportMenu';
+import { type ExportColumn } from '../utils/exportUtils';
+import { byEmployeeCode } from '../utils/employeeSort';
 import { usePermissions } from '../context/PermissionContext';
 
-import { exportToExcel } from '../utils/exportUtils';
+const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
+  { header: 'Sr No', key: 'srNo', width: 8 },
+  { header: 'Employee Code', key: 'employeeId', width: 18 },
+  { header: 'Name', key: 'name', width: 26 },
+  { header: 'Designation', key: 'designation', width: 22 },
+  { header: 'Department', key: 'department', width: 20 },
+  { header: 'Branch', key: 'branchLocation', width: 18 },
+  { header: 'Mobile', key: 'mobileNumber', width: 16 },
+  { header: 'Email', key: 'email', width: 28 },
+  { header: 'Salary', key: 'salary', width: 14 },
+  { header: 'Status', key: 'status', width: 14 },
+];
+
+
 
 interface EmployeesProps {
   role: Role;
@@ -62,16 +80,19 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
-  const currentComp = companies.find(c => c.id === activeCompanyId);
+  // Kind-aware: a plain find returns the parent company when a branch shares
+  // its id, which would wrongly flip isBranchWorkspace to false and mis-scope
+  // the whole page. resolveActiveWorkspace honours the active workspace kind.
+  const currentComp = resolveActiveWorkspace(companies as any[], activeCompanyId)
+    || companies.find(c => String(c.id) === String(activeCompanyId));
   const isBranchWorkspace = !!currentComp?.parentCompanyId && !currentComp?.isHeadOffice;
   const parentCompanyId = isBranchWorkspace ? currentComp.parentCompanyId : activeCompanyId;
   const dynamicBranches = useMemo(() => companies.filter(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'), [companies, parentCompanyId]);
   const branchOptions = useMemo(() => dynamicBranches.map(b => b.branchName || b.name), [dynamicBranches]);
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('employees');
   const canCreate = canCreateModule('employees');
-  const canDelete = canDeleteModule('employees');
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
@@ -95,7 +116,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Dynamic Leave History filtering for the currently viewed employee
   
   // Enterprise Lifecycle & Export
-  const [activeMainTab, setActiveMainTab] = useState<'active' | 'previous'>('active');
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous'>('all');
 
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -105,8 +126,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
-  const [offboardStep, setOffboardStep] = useState(1);
-  const [isExporting, setIsExporting] = useState(false);
+
   const empLeavesHistory = useMemo(() => {
     if (!viewEmp) return [];
     return leaves.filter(
@@ -166,6 +186,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     joinDate: '2026-05-20',
     manager: 'Dr. Suresh Babu',
     employeeId: '[ Auto Generated ]',
+    codeMode: 'auto' as 'auto' | 'custom',
 
     // Expanded master fields
     firstName: '',
@@ -197,7 +218,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     permanentAddress: '',
   });
 
-  const [editCountryCode, setEditCountryCode] = useState('+91');
+
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
   // Auto-generate employee code on add open
@@ -209,7 +230,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       department: 'Nursing', designation: 'Staff Nurse', role: 'Staff',
       status: 'Active', location: 'Ahmedabad, Gujarat', salary: '32000',
       joinDate: '2026-05-20', manager: 'Dr. Suresh Babu',
-      employeeId: '[ Auto Generated ]',
+      employeeId: '[ Auto Generated ]', codeMode: 'auto',
       firstName: '', middleName: '', lastName: '', aadhaarName: '',
       gender: 'Female', dob: '1998-08-10', maritalStatus: 'UNMARRIED',
       nationality: 'INDIAN', fatherSpouseName: '', relationType: 'FATHER',
@@ -227,10 +248,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     setEditEmp(emp);
     const parts = (emp.phone || '').split(' ');
     if (parts.length > 1) {
-      setEditCountryCode(parts[0]);
       setEditMobileNumber(parts.slice(1).join(''));
     } else {
-      setEditCountryCode('+91');
       setEditMobileNumber(emp.phone || '');
     }
     setActiveTab('personal');
@@ -335,16 +354,21 @@ export const Employees: React.FC<EmployeesProps> = ({
       const matchesStatus = !statusFilter || emp.status === statusFilter;
       const matchesBranch = !branchFilter || (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
       return matchesSearch && matchesDept && matchesStatus && matchesBranch;
-    });
+    })
+    // Default ordering: Employee ID ascending (Company → Branch → numeric seq).
+    .sort(byEmployeeCode(e => e.employeeId));
   }, [companyEmployees, search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
-    const activeRoster = companyEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
-    const total = activeRoster.length;
-    const active = activeRoster.filter(e => e.status === 'Active').length;
+    const activeRoster = companyEmployees.filter(e => e.status === 'Active');
+    // Total Staff Strength = every employee assigned to this workspace (COUNT),
+    // Active Roster = the active subset. They must not collapse to 0 just because
+    // a branch's staff are archived.
+    const total = companyEmployees.length;
+    const active = activeRoster.length;
     const verifiedPayroll = activeRoster.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
-    const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
+    const pendingExits = companyEmployees.filter(e => e.status === 'Active' && e.exitDate && !e.exitReason).length;
     return { total, active, verifiedPayroll, pendingExits };
   }, [companyEmployees]);
 
@@ -443,8 +467,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       return;
     }
 
-    let resolvedCompanyId = parentCompanyId;
-    let resolvedBranchId = null;
+    let resolvedCompanyId = parentCompanyId || activeCompanyId;
+    let resolvedBranchId: string | undefined = undefined;
 
     if (isBranchWorkspace) {
       resolvedBranchId = activeCompanyId;
@@ -457,9 +481,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       }
     }
 
-    const newEmp: Employee = {
+    const newEmp: any = {
       id: `emp-${Date.now()}`,
-      employeeId: '[ Auto Generated ]',
+      employeeId: form.codeMode === 'custom' ? (form.employeeId || '').trim() : '[ Auto Generated ]',
+      codeMode: form.codeMode,
       companyId: resolvedCompanyId,
       branchId: resolvedBranchId,
       name: form.name,
@@ -535,7 +560,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     setIsOffboardingExecuting(true);
     handleOffboardSubmit();
   };
-  const setIsConfirmingOffboard = (val: boolean) => {};
+  const setIsConfirmingOffboard = (_val: boolean) => {};
   
   // Edit Submission
   const handleEditSubmit = async () => {
@@ -616,8 +641,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       return;
     }
 
-    let resolvedCompanyId = parentCompanyId;
-    let resolvedBranchId = null;
+    let resolvedCompanyId = parentCompanyId || activeCompanyId;
+    let resolvedBranchId: string | undefined = undefined;
 
     if (isBranchWorkspace) {
       resolvedBranchId = activeCompanyId;
@@ -654,10 +679,13 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!offboardEmp) return;
 
     const historyItem = {
-      role: offboardEmp.designation,
-      department: offboardEmp.department,
+      companyId: offboardEmp.companyId,
+      companyName: currentComp?.name || 'Company',
+      role: offboardEmp.role || 'Staff',
+      designation: offboardEmp.designation,
       startDate: offboardEmp.joinDate,
-      endDate: today
+      endDate: today,
+      reason: 'Formal Offboarding Completed'
     };
 
     const updated: Employee = {
@@ -673,19 +701,22 @@ export const Employees: React.FC<EmployeesProps> = ({
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
     
+    // Persist FIRST; only mutate local state if the DB actually accepted it.
+    // Applying the change locally on failure (the old behaviour) made the UI
+    // show an "archived" employee that wasn't archived in the database — the
+    // change vanished on refresh/relogin. Now a failure surfaces the real
+    // reason and leaves the list untouched, so frontend === database.
     api.employees.archive(offboardEmp.id).then(() => {
       onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+      setOffboardEmp(null);
+      setIsWizardOpen(false);
+      setIsOffboardingExecuting(false);
+      alert('Employee successfully archived and removed from active workforce.');
     }).catch(err => {
       console.error(err);
-      alert('Failed to update DB, updated locally');
-      onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
+      setIsOffboardingExecuting(false);
+      alert(getApiErrorMessage(err, 'Could not archive the employee. No changes were saved.'));
     });
-    
-    setOffboardEmp(null);
-    setIsWizardOpen(false);
-    setIsOffboardingExecuting(false);
-    
-    alert('Employee successfully archived and removed from active workforce.');
   };
 
   // Toggling secure field values
@@ -884,7 +915,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       alert(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
     } catch (error) {
       console.error('Bulk commit failed:', error);
-      alert('Failed to save bulk imported employees to the database.');
+      alert(getApiErrorMessage(error, 'Could not save the imported employees.'));
     }
   };
 
@@ -905,20 +936,34 @@ export const Employees: React.FC<EmployeesProps> = ({
           {/* Main Tabs */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
+              onClick={() => setActiveMainTab('all')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              All Staff ({companyEmployees.length})
+            </button>
+            <button
               onClick={() => setActiveMainTab('active')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Active Roster
+              Active Roster ({stats.active})
             </button>
             <button
               onClick={() => setActiveMainTab('previous')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Previous Employees
+              Previous Employees ({companyEmployees.length - stats.active})
             </button>
           </div>
 
-          {isHR && canCreate && activeMainTab === 'active' && (
+          <ExportMenu
+            fileName="Employees"
+            title="Employee Directory"
+            sheetName="Employees"
+            columns={EMPLOYEE_EXPORT_COLUMNS}
+            rows={() => filtered.map((e, i) => ({ ...e, srNo: i + 1 }))}
+          />
+
+          {isHR && canCreate && activeMainTab !== 'previous' && (
             <>
               <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
                 Bulk Importer
@@ -963,8 +1008,9 @@ export const Employees: React.FC<EmployeesProps> = ({
         <Table>
           <Thead>
             <tr>
+              <Th className="px-2 py-1.5 text-[10px] w-[4%] tracking-wider font-bold text-center">Sr No</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[8%] tracking-wider font-bold">Emp Code</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[26%] tracking-wider font-bold">Employee Full Name</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[24%] tracking-wider font-bold">Employee Full Name</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Nationality</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[12%] tracking-wider font-bold">Date of Joining</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[18%] tracking-wider font-bold">Designation</Th>
@@ -975,10 +1021,11 @@ export const Employees: React.FC<EmployeesProps> = ({
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
+              <tr><td colSpan={9} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
-              filtered.slice((page - 1) * pageSize, page * pageSize).map(emp => (
+              filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
                 <Tr key={emp.id} className="hover:bg-slate-50/50">
+                  <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * pageSize + idx + 1}</span></Td>
                   <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
                   <Td className="px-2 py-1">
                     <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
@@ -1016,7 +1063,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                             <Edit2 size={13} />
                           </button>
 
-                          {activeMainTab === 'active' ? (
+                          {(emp.status !== 'Archived' && emp.status !== 'Terminated') ? (
                             <button
                               onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
                               className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
@@ -1573,7 +1620,25 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'personal' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input label="Employee Code *" value="[ Auto Generated ]" disabled />
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Employee Code *</label>
+                  <div className="flex gap-2 mb-1.5">
+                    <button type="button" onClick={() => setForm({ ...form, codeMode: 'auto', employeeId: '[ Auto Generated ]' })}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'auto' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                      Auto Generate
+                    </button>
+                    <button type="button" onClick={() => setForm({ ...form, codeMode: 'custom', employeeId: '' })}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'custom' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                      Custom Code
+                    </button>
+                  </div>
+                  {form.codeMode === 'auto' ? (
+                    <Input value="VE-<BRANCH>-#### (auto on save)" disabled />
+                  ) : (
+                    <Input id="field-employeeId" placeholder="e.g. VE-CONTRACT-001" value={form.employeeId}
+                      onChange={e => setForm({ ...form, employeeId: e.target.value.toUpperCase() })} error={errors.employeeId} />
+                  )}
+                </div>
                 <Input id="field-aadhaarName" label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.aadhaarName || errors.name} />
               </div>
               <div className="grid grid-cols-3 gap-3">

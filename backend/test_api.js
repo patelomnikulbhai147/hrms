@@ -1,17 +1,11 @@
-const axios = require('axios');
+const fetch = require('node-fetch');
 
-async function test() {
+async function testApi() {
   try {
-    const res = await axios.get('http://localhost:5000/api/payroll', {
+    const res = await fetch('http://localhost:5000/api/branches', {
       headers: {
-        'x-workspace-id': 'c-siddhpur',
-        // Wait, auth middleware requires token!
-        // We can't bypass it. Let's just create a test token!
+        // Need to pass a valid token or bypass auth? Wait, the API requires auth!
       }
     });
-    console.log(res.data.length);
-  } catch (e) {
-    console.log("Failed", e.message);
-  }
+  } catch(e) {}
 }
-test();

@@ -57,6 +57,7 @@ export const statusBadge = (status: string) => {
     Placed: 'green', Verified: 'green', Paid: 'green', Completed: 'green',
     Generated: 'purple', Processing: 'blue', Draft: 'gray', Overdue: 'red',
     Inactive: 'gray', Absent: 'red', Rejected: 'red', Failed: 'red', Churned: 'red', Terminated: 'red', Cancelled: 'gray',
+    Archived: 'gray', Resigned: 'orange',
     Pending: 'yellow', 'On Leave': 'orange', Late: 'orange', 'Half Day': 'orange', 'On Hold': 'orange',
     WFH: 'blue', Planning: 'blue', Screening: 'blue', Applied: 'indigo',
     Interview: 'purple', Prospect: 'blue',

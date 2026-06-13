@@ -1,8 +1,0 @@
-Console Error: %o
-
-%s
-
-%s
- ReferenceError: Cannot access 'isAuthenticated' before initialization The above error occurred in the <App> component. React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
-Console Error: ErrorBoundary caught an error: ReferenceError: Cannot access 'isAuthenticated' before initialization [object Object]
-Navigation Error: page.waitForTimeout is not a function

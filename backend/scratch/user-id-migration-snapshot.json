@@ -1,0 +1,302 @@
+{
+  "users": [
+    {
+      "id": "u1",
+      "username": "superadmin",
+      "email": "admin@platform.in",
+      "createdAt": "2026-05-27T09:45:41.042Z"
+    },
+    {
+      "id": "u1779536718323",
+      "username": "om",
+      "email": "om@gmail.com",
+      "createdAt": "2026-05-27T09:45:41.344Z"
+    },
+    {
+      "id": "u2",
+      "username": "nirav",
+      "email": "nirav@gmail.com",
+      "createdAt": "2026-05-28T13:12:15.607Z"
+    },
+    {
+      "id": "5044a6bb-3572-4a1a-b70c-5cd6722c44ef",
+      "username": "jay",
+      "email": "jay@gmail.com",
+      "createdAt": "2026-05-29T05:54:39.883Z"
+    },
+    {
+      "id": "a18a77dd-1677-429b-93f0-1eeadc054587",
+      "username": "parth",
+      "email": "parth@gmail.com",
+      "createdAt": "2026-05-29T05:55:41.384Z"
+    },
+    {
+      "id": "2deb88b7-62d8-4ec5-b2d3-cac838c3923a",
+      "username": "siddhpur",
+      "email": "siddhpur@gcri.in",
+      "createdAt": "2026-06-06T09:24:29.513Z"
+    }
+  ],
+  "passwordResetToken": [
+    {
+      "id": "b89f4e84-ad76-44c3-9ae7-4da10c02a592",
+      "userId": "u1779536718323"
+    }
+  ],
+  "auditLog": [
+    {
+      "id": "496bf089-4cbd-460b-9e63-e4590f778262",
+      "userId": "u1"
+    },
+    {
+      "id": "75a76e8e-4974-4579-a162-68df50a980ac",
+      "userId": "u1"
+    },
+    {
+      "id": "b1a88672-80cb-4f41-a247-4c946ee7bb66",
+      "userId": "u1"
+    },
+    {
+      "id": "f152906c-9993-4d28-81dd-1607f4e02bb0",
+      "userId": "u1"
+    }
+  ],
+  "loginAudit": [
+    {
+      "id": "020c6380-37be-4cd9-ab3e-f1b823630e8b",
+      "userId": null
+    },
+    {
+      "id": "07fe90c4-3ef4-4589-8fe7-af008481635c",
+      "userId": null
+    },
+    {
+      "id": "09da4564-a985-4c0a-839e-61462c4f99c5",
+      "userId": null
+    },
+    {
+      "id": "1bd7ecac-cd0a-4946-915c-0312374ee6c2",
+      "userId": null
+    },
+    {
+      "id": "55070457-f7ca-4f97-b33b-8c2347eb38fe",
+      "userId": null
+    },
+    {
+      "id": "56c6ed4f-a02b-40e2-9241-bf075ffb0fc2",
+      "userId": null
+    },
+    {
+      "id": "5b6cca63-a778-4525-a20d-1f7cb710164c",
+      "userId": null
+    },
+    {
+      "id": "649cef63-9d07-4b89-82d5-2391fa5fe28a",
+      "userId": null
+    },
+    {
+      "id": "81582c10-66bf-4764-bf4b-5f12393ca535",
+      "userId": null
+    },
+    {
+      "id": "96fd6ec0-75d2-41cc-932e-4b8c8b2b548c",
+      "userId": null
+    },
+    {
+      "id": "a7e39a9a-d36b-443f-af80-ccf6da2e3a5a",
+      "userId": null
+    },
+    {
+      "id": "e2db581d-bb18-4381-90d9-12806ac4e1d0",
+      "userId": null
+    },
+    {
+      "id": "ebf9d527-fe2c-4c82-8865-136e2be7dbf2",
+      "userId": null
+    },
+    {
+      "id": "fccf7e1a-404c-45ad-915a-3ea78e1fdbaf",
+      "userId": null
+    },
+    {
+      "id": "5bea0440-adfb-46f6-a4c0-9b8bbbe53c6d",
+      "userId": "2deb88b7-62d8-4ec5-b2d3-cac838c3923a"
+    },
+    {
+      "id": "6019754e-a243-4e6e-84ee-065c1896c9a3",
+      "userId": "2deb88b7-62d8-4ec5-b2d3-cac838c3923a"
+    },
+    {
+      "id": "81d24af5-cab7-47bb-b687-5022e9b766be",
+      "userId": "2deb88b7-62d8-4ec5-b2d3-cac838c3923a"
+    },
+    {
+      "id": "9f555d94-35ae-4457-82ce-e3bba034f119",
+      "userId": "5044a6bb-3572-4a1a-b70c-5cd6722c44ef"
+    },
+    {
+      "id": "b62436fc-1834-4f5c-b4e4-bd984507a0a9",
+      "userId": "5044a6bb-3572-4a1a-b70c-5cd6722c44ef"
+    },
+    {
+      "id": "b790d3fe-45b4-426e-91f9-6112f983a120",
+      "userId": "5044a6bb-3572-4a1a-b70c-5cd6722c44ef"
+    },
+    {
+      "id": "e847103b-85d1-455f-85a4-51f8559e1d4e",
+      "userId": "5044a6bb-3572-4a1a-b70c-5cd6722c44ef"
+    },
+    {
+      "id": "07d7886b-5909-4bd6-9177-684e7667f110",
+      "userId": "a18a77dd-1677-429b-93f0-1eeadc054587"
+    },
+    {
+      "id": "691ca638-9381-4d5f-a6f5-c4d0a213b3a7",
+      "userId": "a18a77dd-1677-429b-93f0-1eeadc054587"
+    },
+    {
+      "id": "9ee56ec5-fc49-4fc5-a7a5-0088afab17f3",
+      "userId": "a18a77dd-1677-429b-93f0-1eeadc054587"
+    },
+    {
+      "id": "a0a3c465-6135-4471-89e0-3f346e119815",
+      "userId": "a18a77dd-1677-429b-93f0-1eeadc054587"
+    },
+    {
+      "id": "18eca374-1148-4600-a7c1-d51e3b04b8c6",
+      "userId": "u1"
+    },
+    {
+      "id": "1dfb86fc-67d2-45b0-946f-0eb9788f5349",
+      "userId": "u1"
+    },
+    {
+      "id": "32d90a74-dbb7-497e-9e0d-0eaddb2d3157",
+      "userId": "u1"
+    },
+    {
+      "id": "4c358cd9-654c-4001-baa9-8399c947d656",
+      "userId": "u1"
+    },
+    {
+      "id": "4d13845c-3383-47f1-8d77-814d0863073b",
+      "userId": "u1"
+    },
+    {
+      "id": "529cd5c1-15a1-4bb9-ba40-7cb289870e09",
+      "userId": "u1"
+    },
+    {
+      "id": "5c376f57-0678-4641-a3a4-02f4ee1c060b",
+      "userId": "u1"
+    },
+    {
+      "id": "6fc06e94-c76e-482b-9fb2-b23c213d2c21",
+      "userId": "u1"
+    },
+    {
+      "id": "78f61211-05db-4a78-b680-c13064644ee8",
+      "userId": "u1"
+    },
+    {
+      "id": "9fd44d32-1ef1-4c5b-9fa0-c9f12c325218",
+      "userId": "u1"
+    },
+    {
+      "id": "b95682b7-b4d4-4f60-9b73-a30c2ca35c10",
+      "userId": "u1"
+    },
+    {
+      "id": "d4e7f789-7d2c-424a-b60e-a7028e4c37eb",
+      "userId": "u1"
+    },
+    {
+      "id": "d92a4033-58a7-4509-a3e1-fc17f1997eb5",
+      "userId": "u1"
+    },
+    {
+      "id": "da2eb6c0-01cf-4a30-a1f4-be6f53b17af2",
+      "userId": "u1"
+    },
+    {
+      "id": "e2302845-b843-4c7d-9267-ad3f7f7e7083",
+      "userId": "u1"
+    },
+    {
+      "id": "e34a4902-7a04-41ac-add8-5c5aa5e815b5",
+      "userId": "u1"
+    },
+    {
+      "id": "f72bdd89-aa0f-4d16-ab3f-1d1eb7c693f7",
+      "userId": "u1"
+    },
+    {
+      "id": "f84cadb6-5663-4d85-a4e6-0e133a5cdaf5",
+      "userId": "u1"
+    },
+    {
+      "id": "0823aa86-1a3b-4986-9807-78ddd320d7c4",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "14ff23e3-adcd-4ed1-ba76-ce75f2035c32",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "280d1da5-de6e-4638-976c-becfb2edddfc",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "3d625316-331b-4068-8fe5-2717d5153cf2",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "542c388e-97ed-44f7-9617-b90e64802aa6",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "56523130-bde1-4274-8889-52e306a2f1f0",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "59802f77-20e5-445b-b448-14173c5175b5",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "59970ef4-fa1b-42a9-8338-88c3ea583bf4",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "85696d99-ed75-407d-9a6a-700c4b1bed1a",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "b611f66a-6105-4bf6-ad4c-eaa57eeb98f4",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "c31d4263-2332-40fb-a07e-28427f67015c",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "c7c79b7c-e627-4af6-8f22-0a06c27dd507",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "cdc8f7ea-c32f-4102-b33c-e4639ec04c20",
+      "userId": "u1779536718323"
+    },
+    {
+      "id": "bdbc284e-955b-4e85-90f2-431ff92c7f60",
+      "userId": "u2"
+    },
+    {
+      "id": "cb456f7b-4393-408d-8d04-13a9cb55afe2",
+      "userId": "u2"
+    },
+    {
+      "id": "f597daa8-3832-4dde-ae74-ceb0fd5caf95",
+      "userId": "u2"
+    }
+  ]
+}

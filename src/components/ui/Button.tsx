@@ -2,16 +2,17 @@ import React from 'react';
 import { cn } from '../../utils/cn';
 import { motion } from 'framer-motion';
 
-type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success';
+type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success' | 'primary-light-blue';
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-gradient-to-r from-blue-600 to-indigo-650 text-white hover:from-blue-500 hover:to-indigo-600 hover:shadow-lg hover:shadow-blue-500/15 border-transparent',
-  secondary: 'bg-slate-800/60 text-slate-200 hover:bg-slate-800/90 hover:text-white border-slate-700/60 hover:shadow-md shadow-sm',
-  danger: 'bg-slate-900/20 border border-red-500/35 text-red-450 hover:bg-rose-955/35 hover:text-red-400 hover:border-red-450/70 hover:shadow-lg hover:shadow-red-955/15',
-  ghost: 'bg-transparent text-slate-400 hover:bg-slate-800/60 hover:text-white border-transparent',
-  outline: 'bg-slate-900/40 border border-slate-800/80 text-slate-300 hover:bg-slate-800/60 hover:text-white hover:border-slate-700 shadow-md',
-  success: 'bg-gradient-to-r from-emerald-600 to-teal-650 text-white hover:from-emerald-500 hover:to-teal-600 hover:shadow-lg hover:shadow-emerald-500/15 border-transparent',
+  primary: 'bg-gradient-to-r from-[#4F7CFF] to-[#6AA8FF] text-white hover:opacity-90 hover:shadow-lg hover:shadow-[#4F7CFF]/20 border-transparent',
+  'primary-light-blue': 'bg-gradient-to-r from-[#4F7CFF] to-[#6AA8FF] text-white hover:opacity-90 hover:shadow-lg hover:shadow-[#4F7CFF]/20 border-transparent',
+  secondary: 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0] hover:text-[#1E293B] border-transparent shadow-sm',
+  danger: 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-700 hover:border-rose-300 shadow-sm',
+  ghost: 'bg-transparent text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#1E293B] border-transparent',
+  outline: 'bg-white border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] hover:text-[#1E293B] hover:border-[#CBD5E1] shadow-sm',
+  success: 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 hover:shadow-lg hover:shadow-emerald-500/15 border-transparent',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {

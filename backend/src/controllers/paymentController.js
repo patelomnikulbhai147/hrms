@@ -1,5 +1,5 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const prisma = require('../config/prisma');
+const idParam = require('../utils/idParam');
 
 const mapToFrontend = (r) => ({
   id: r.id,
@@ -65,7 +65,7 @@ exports.update = async (req, res) => {
     if (req.body.invoiceNumber) updateData.invoiceUrl = req.body.invoiceNumber;
 
     const data = await prisma.paymentRecord.update({
-      where: { id },
+      where: { id: idParam(id) },
       data: updateData
     });
     res.json(mapToFrontend(data));
@@ -79,7 +79,7 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.paymentRecord.delete({
-      where: { id }
+      where: { id: idParam(id) }
     });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {

@@ -6,9 +6,9 @@ const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
 
-router.get('/', controller.getAll);
-router.post('/', controller.create);
-router.put('/:id', controller.update);
-router.delete('/:id', controller.delete);
+router.get('/', requirePermission('documents', 'view'), controller.getAll);
+router.post('/', requirePermission('documents', 'create'), controller.create);
+router.put('/:id', requirePermission('documents', 'edit'), controller.update);
+router.delete('/:id', requirePermission('documents', 'delete'), controller.delete);
 
 module.exports = router;

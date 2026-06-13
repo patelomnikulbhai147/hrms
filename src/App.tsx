@@ -1,42 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { api } from './api/apiClient';
+import { api, type SuperAdminStats } from './api/apiClient';
 import { getAccessibleWorkspaceIds } from './utils/workspaceUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from './components/layout/Sidebar';
 import { Topbar } from './components/layout/Topbar';
-import { Dashboard } from './pages/Dashboard';
-import { SelectWorkspace } from './pages/SelectWorkspace';
-import { Employees } from './pages/Employees';
-import { Leaves } from './pages/Leaves';
-import { Attendance } from './pages/Attendance';
-import { Payroll } from './pages/Payroll';
-import { Companies } from './pages/Companies';
-import { Documents } from './pages/Documents';
-import { Reports } from './pages/Reports';
-import { Settings } from './pages/Settings';
-import { Billing } from './pages/Billing';
-import { Users } from './pages/Users';
-import { Login, type UserAccount, type AppModules } from './pages/Login';
+const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const SelectWorkspace = React.lazy(() => import('./pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
+const Employees = React.lazy(() => import('./pages/Employees').then(m => ({ default: m.Employees })));
+const LeaveManagement = React.lazy(() => import('./pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
+const Attendance = React.lazy(() => import('./pages/Attendance').then(m => ({ default: m.Attendance })));
+const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
+const Companies = React.lazy(() => import('./pages/Companies').then(m => ({ default: m.Companies })));
+const Documents = React.lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
+const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Billing = React.lazy(() => import('./pages/Billing').then(m => ({ default: m.Billing })));
+const Users = React.lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const TaskManager = React.lazy(() => import('./pages/TaskManager').then(m => ({ default: m.TaskManager })));
+const Tenders = React.lazy(() => import('./pages/Tenders').then(m => ({ default: m.Tenders })));
+const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+import type { UserAccount, AppModules } from './pages/Login';
+import { authStorage } from './utils/authStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from './context/PermissionContext';
 import { ShieldAlert } from 'lucide-react';
 import {
   Role,
   Company,
   companies as defaultCompanies,
-  attendanceRecords as defaultAttendance,
-  leaveRequests as defaultLeaves,
-  payrollRecords as defaultPayroll,
-  documents as defaultDocuments,
   Employee,
+  employees as defaultEmployees,
   AttendanceRecord,
+  attendanceRecords as defaultAttendance,
   LeaveRequest,
+  leaveRequests as defaultLeaves,
   PayrollRecord,
+  payrollRecords as defaultPayroll,
   Document,
+  documents as defaultDocuments,
   SubscriptionPlan,
   PaymentRecord,
   Notification,
-  PLAN_LIMITS,
-  getCompanyIdFromBranchName
+  PLAN_LIMITS
 } from './data/mockData';
 import { calculateBranchBilling } from './utils/subscriptionUtils';
 
@@ -51,7 +55,10 @@ const pageTitles: Record<PageId, string> = {
   reports: 'Reports',
   settings: 'Settings',
   billing: 'Billing & Subscriptions',
-  users: 'User Management'
+  users: 'User Management',
+  tasks: 'Task Manager',
+  tenders: 'Tender Information',
+  'select-workspace': 'Select Workspace'
 };
 
 const defaultUsers: UserAccount[] = [
@@ -143,6 +150,9 @@ export default function App() {
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
 
+  // Live, database-driven Super Admin KPI counts (single source of truth).
+  const [superAdminStats, setSuperAdminStats] = useState<SuperAdminStats | null>(null);
+
   // Persistent SaaS plans state
   const [plans, setPlans] = useState<SubscriptionPlan[]>(() => {
     const raw = localStorage.getItem('hrms_plans');
@@ -194,7 +204,7 @@ export default function App() {
   });
 
   const handleUpdatePlans = (updater: SubscriptionPlan[] | ((prev: SubscriptionPlan[]) => SubscriptionPlan[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
       return;
     }
@@ -204,7 +214,7 @@ export default function App() {
   };
 
   const handleUpdatePayments = (updater: PaymentRecord[] | ((prev: PaymentRecord[]) => PaymentRecord[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('billing', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for SaaS Subscriptions.");
       return;
     }
@@ -231,7 +241,7 @@ export default function App() {
   };
 
   const handleUpdateAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('users', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('users', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for User Management.");
       return;
     }
@@ -254,7 +264,7 @@ export default function App() {
   };
 
   const handleUpdateCompanies = (updater: Company[] | ((prev: Company[]) => Company[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('companies', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('companies', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Companies.");
       return;
     }
@@ -265,7 +275,7 @@ export default function App() {
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('employees', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('employees', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Employees.");
       return;
     }
@@ -328,18 +338,22 @@ export default function App() {
     });
   };
 
-  const handleUpdateAttendance = (updater: AttendanceRecord[] | ((prev: AttendanceRecord[]) => AttendanceRecord[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('attendance', authProfile, resolvedRole)) {
+  const handleUpdateAttendance = async (updater: AttendanceRecord[] | ((prev: AttendanceRecord[]) => AttendanceRecord[])) => {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('attendance', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Attendance.");
       return;
     }
     const next = typeof updater === 'function' ? updater(attendance) : updater;
     setAttendance(next);
-    localStorage.setItem('hrms_attendance', JSON.stringify(next));
+    
+    // Auto-sync entire array changes to DB
+    // Assuming updates are synced individually from the Attendance component directly, 
+    // but if App.tsx updates it, we might need a bulk sync. For safety, we only update local state here
+    // and rely on Attendance.tsx to make the granular `api.attendance.create/update` calls.
   };
 
   const handleUpdateLeaves = (updater: LeaveRequest[] | ((prev: LeaveRequest[]) => LeaveRequest[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('leaves', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('leaves', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Leave Management.");
       return;
     }
@@ -401,7 +415,7 @@ export default function App() {
   };
 
   const handleUpdatePayroll = (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('payroll', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('payroll', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Payroll.");
       return;
     }
@@ -434,7 +448,7 @@ export default function App() {
   };
 
   const handleUpdateDocuments = (updater: Document[] | ((prev: Document[]) => Document[])) => {
-    if (resolvedRole !== 'Super Admin' && !checkCanEdit('documents', authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanEdit('documents', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Documents.");
       return;
     }
@@ -445,50 +459,83 @@ export default function App() {
 
   // Authentication states
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('hrms_auth') === 'true';
+    return authStorage.get('hrms_auth') === 'true';
   });
+  const [isHydrating, setIsHydrating] = useState(true);
+
     // Data hydration from backend PostgreSQL
   const hydrateAll = async () => {
+    setIsHydrating(true);
     try {
+      const catchApi = (apiCall: Promise<any>, name: string) => 
+        apiCall.catch((e: any) => {
+          if (e.status === 401 || e.message?.includes('Not authorized')) throw e;
+          console.warn(`[Hydration] API error (${name}):`, e);
+          return null;
+        });
+
       const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments, fetchedLeaves, fetchedAttendance] = await Promise.all([
-        api.companies.getAll().catch(() => null),
-        api.branches.getAll().catch(() => null),
-        api.employees.getAll().catch(() => null),
-        api.users.getAll().catch(() => null),
-        api.payroll.getAll().catch(() => null),
-        api.documents.getAll().catch(() => null),
-        api.leaves.getAll().catch(() => null),
-        api.attendance.getAll().catch(() => null)
+        catchApi(api.companies.getAll(), 'companies'),
+        catchApi(api.branches.getAll(), 'branches'),
+        catchApi(api.employees.getAll(), 'employees'),
+        catchApi(api.users.getAll(), 'users'),
+        catchApi(api.payroll.getAll(), 'payroll'),
+        catchApi(api.documents.getAll(), 'documents'),
+        catchApi(api.leaves.getAll(), 'leaves'),
+        catchApi(api.attendance.getAll(), 'attendance')
       ]);
       
-      if (fetchedCompanies) {
-        let allEntities = [...fetchedCompanies];
-        if (fetchedBranches) {
-          const mappedBranches = fetchedBranches.map((b: any) => ({
-             ...b,
-             name: b.branchName || b.name,
-             isHeadOffice: false,
-             parentCompanyId: b.companyId
-          }));
-          allEntities = [...allEntities, ...mappedBranches];
-        }
-        setCompanies(allEntities);
+      let allEntities: any[] = fetchedCompanies ? [...fetchedCompanies] : [];
+      if (fetchedBranches) {
+        const mappedBranches = fetchedBranches.map((b: any) => ({
+           ...b,
+           name: b.branchName || b.name,
+           isHeadOffice: false,
+           parentCompanyId: b.companyId,
+           parentCompanyName: b.parentCompanyName
+        }));
+        allEntities = [...allEntities, ...mappedBranches];
       }
+      setCompanies(allEntities);
       
-      if (fetchedEmployees) setEmployees(fetchedEmployees);
-      if (fetchedUsers) setUserAccounts(fetchedUsers);
-      if (fetchedPayroll) setPayroll(fetchedPayroll);
-      if (fetchedDocuments) setDocuments(fetchedDocuments);
-      if (fetchedLeaves) setLeaves(fetchedLeaves);
-      if (fetchedAttendance) setAttendance(fetchedAttendance);
-    } catch (err) {
+      setEmployees(fetchedEmployees || []);
+      setUserAccounts(fetchedUsers || []);
+      setPayroll(fetchedPayroll || []);
+      setDocuments(fetchedDocuments || []);
+      setLeaves(fetchedLeaves || []);
+      setAttendance(fetchedAttendance || []);
+
+      // Live Super Admin KPI counts straight from PostgreSQL.
+      // Only fetch for Super Admin — other roles are denied by the backend.
+      // Read role directly from localStorage so we don't reference authProfile
+      // before it is declared (authProfile useMemo is defined further below).
+      const storedRole = (() => {
+        try { return JSON.parse(authStorage.get('hrms_profile') || '{}').role; } catch { return null; }
+      })();
+      if (storedRole === 'Super Admin') {
+        try {
+          const stats = await api.statistics.getSuperAdmin();
+          setSuperAdminStats(stats);
+        } catch (statsErr) {
+          console.error('Failed to load Super Admin statistics:', statsErr);
+        }
+      }
+    } catch (err: any) {
       console.error('Hydration failed:', err);
+      if (err.status === 401 || err.message?.includes('Not authorized')) {
+         authStorage.clearSession();
+         setIsAuthenticated(false);
+         setStoredAuthProfile(null);
+         return;
+      }
+    } finally {
+      setIsHydrating(false);
     }
   };
 
 
 const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>(() => {
-    const raw = localStorage.getItem('hrms_profile');
+    const raw = authStorage.get('hrms_profile');
     return raw ? JSON.parse(raw) : null;
   });
 
@@ -509,7 +556,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     return (raw as PageId) || 'dashboard';
   });
   const [role, setRole] = useState<Role>(() => {
-    const rawProfile = localStorage.getItem('hrms_profile');
+    const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
       const profile = JSON.parse(rawProfile);
       return profile.role;
@@ -519,24 +566,70 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   const [activeCompanyId, setActiveCompanyId] = useState<string>(() => {
     const persisted = localStorage.getItem('hrms_active_company_id');
     if (persisted) return persisted;
-    const rawProfile = localStorage.getItem('hrms_profile');
+    const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
       const profile = JSON.parse(rawProfile);
       return profile.role === 'Employee' ? (profile.companyId || 'c-gcri') : '';
     }
     return '';
-  }); 
+  });
+
+  // Whether the active workspace is a company or a branch. Held in React state
+  // (not just localStorage) so a company→branch switch RE-RENDERS even when the
+  // numeric id is identical — branch id 2 (Bhavnagar) collides with company id 2
+  // (HealthPlus), so without this the view would never refresh on that switch.
+  const [activeWorkspaceKind, setActiveWorkspaceKind] = useState<'company' | 'branch'>(() => {
+    return (localStorage.getItem('hrms_active_workspace_kind') as any) || 'company';
+  });
 
   useEffect(() => {
     if (isAuthenticated) hydrateAll();
   }, [isAuthenticated, activeCompanyId]);
+
+  // Real-time notification bell: poll the server every 20s (and immediately on
+  // login / workspace change) so newly created notifications appear without a
+  // page refresh. The backend scopes the list to the current user/company.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let alive = true;
+    const fetchNotifs = () => {
+      api.notifications.getAll().then((rows: any) => {
+        if (alive && Array.isArray(rows)) {
+          setNotifications(rows as any);
+          localStorage.setItem('hrms_notifications', JSON.stringify(rows));
+        }
+      }).catch(() => {});
+    };
+    fetchNotifs();
+    const t = setInterval(fetchNotifs, 20000);
+    return () => { alive = false; clearInterval(t); };
+  }, [isAuthenticated, activeCompanyId]);
+
+  // Real-time Super Admin KPI sync: whenever companies or employees change
+  // (create / update / delete / suspend / activate / transfer from any page),
+  // re-fetch live counts from PostgreSQL. Debounced to coalesce rapid mutations.
+  // Skipped entirely for non-Super Admin roles — they cannot call this endpoint.
+  // NOTE: We intentionally use storedAuthProfile?.role here (declared above)
+  // rather than permissionRole (declared below) to avoid a TDZ crash.
+  useEffect(() => {
+    if (!isAuthenticated || storedAuthProfile?.role !== 'Super Admin') return;
+    const timer = setTimeout(() => {
+      api.statistics.getSuperAdmin()
+        .then((stats: SuperAdminStats) => {
+          console.log('[SuperAdminStats][API]', stats);
+          setSuperAdminStats(stats);
+        })
+        .catch((err) => console.error('Super Admin statistics refresh failed:', err));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [companies, employees, isAuthenticated, storedAuthProfile?.role]);
   const [isMasquerading, setIsMasquerading] = useState<boolean>(() => {
     return localStorage.getItem('hrms_is_masquerading') === 'true';
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('hrms_theme') as 'dark' | 'light') || 'dark';
+    return (localStorage.getItem('hrms_theme') as 'dark' | 'light') || 'light';
   });
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -556,8 +649,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   const handleLogin = (profile: UserAccount, selectedCompanyId?: string) => {
     setStoredAuthProfile(profile);
     setIsAuthenticated(true);
-    localStorage.setItem('hrms_auth', 'true');
-    localStorage.setItem('hrms_profile', JSON.stringify(profile));
+    // authStorage routes these to localStorage or sessionStorage depending on
+    // the Remember Me choice recorded by the Login page.
+    authStorage.set('hrms_auth', 'true');
+    authStorage.set('hrms_profile', JSON.stringify(profile));
     setRole(profile.role);
     const initialCompanyId = selectedCompanyId !== undefined ? selectedCompanyId : (profile.role === 'Employee' ? profile.companyId || 'c-gcri' : '');
     setActiveCompanyId(initialCompanyId);
@@ -566,6 +661,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     } else {
       localStorage.removeItem('hrms_active_company_id');
     }
+    // A direct login lands on the user's own company workspace (branch-admins are
+    // re-derived when they pick a workspace). Reset so a stale 'branch' kind from
+    // a previous masquerade session can't mis-scope a fresh login.
+    localStorage.setItem('hrms_active_workspace_kind', 'company');
+    setActiveWorkspaceKind('company');
     setCurrentPage('dashboard');
     localStorage.setItem('hrms_current_page', 'dashboard');
     setIsMasquerading(false);
@@ -573,8 +673,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('hrms_auth');
-    localStorage.removeItem('hrms_profile');
+    authStorage.clearSession(); // clears hrms_auth, hrms_profile, hrms_jwt_token from both stores
     localStorage.removeItem('hrms_current_page');
     localStorage.removeItem('hrms_active_company_id');
     localStorage.removeItem('hrms_is_masquerading');
@@ -588,23 +687,61 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.setItem('hrms_current_page', page);
   };
 
-  const handleCompanyChange = (companyId: string) => {
-    // Check if the user is authorized to switch to this company
-    if (resolvedRole !== 'Super Admin' && !isMasquerading) {
-      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies);
-      if (!accessibleIds.includes(companyId)) {
-        return;
-      }
+  // Record whether the entered workspace is a company or a branch. Branch ids
+  // overlap company ids in the DB, so this hint is what lets the scoping layer
+  // (isCompanyIdMatch / resolveActiveWorkspace) tell "Company 1" from "Branch 1".
+  const persistWorkspaceKind = (id: string, hint?: 'company' | 'branch') => {
+    let kind: 'company' | 'branch' = hint || 'company';
+    if (!hint) {
+      const matches = companies.filter(c => String(c.id) === String(id));
+      // Unambiguous → derive; ambiguous (collision) without a hint → default to
+      // company (top-level), which is the safe back-compatible behaviour.
+      if (matches.length === 1) kind = (matches[0] as any).parentCompanyId ? 'branch' : 'company';
+      else if (matches.length > 1) kind = matches.some(m => !(m as any).parentCompanyId) ? 'company' : 'branch';
     }
-    setActiveCompanyId(companyId);
-    localStorage.setItem('hrms_active_company_id', companyId);
-    setCurrentPage('dashboard');
-    localStorage.setItem('hrms_current_page', 'dashboard');
+    localStorage.setItem('hrms_active_workspace_kind', kind);
+    setActiveWorkspaceKind(kind); // React state → forces re-render even when the id is unchanged
+    return kind;
   };
 
-  const handleStartMasquerade = (companyId: string) => {
-    setActiveCompanyId(companyId);
-    localStorage.setItem('hrms_active_company_id', companyId);
+  const handleCompanyChange = async (companyId: string, kind?: 'company' | 'branch') => {
+    console.log('Navigation Started');
+    console.log('Workspace Selected:', companyId);
+    
+    // Check if the user is authorized to switch to this company
+    if (permissionRole !== 'Super Admin' && !isMasquerading) {
+      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies);
+      if (!accessibleIds.includes(companyId)) {
+        console.error(`Access Denied: Workspace ${companyId} is not in accessible list:`, accessibleIds);
+        throw new Error('You do not have permission to enter this workspace. Please contact your administrator.');
+      }
+    }
+    
+    try {
+      console.log('Permissions Loaded');
+      setActiveCompanyId(companyId);
+      localStorage.setItem('hrms_active_company_id', companyId);
+      persistWorkspaceKind(companyId, kind);
+      console.log('Redirecting to Dashboard');
+      setCurrentPage('dashboard');
+      localStorage.setItem('hrms_current_page', 'dashboard');
+    } catch (err) {
+      console.error('Error during workspace navigation:', err);
+      throw new Error('Failed to create session context. Please check console for details.');
+    }
+  };
+
+  const handleStartMasquerade = (companyId: string, kind?: 'company' | 'branch') => {
+    // Normalize to a string so the active workspace id matches the value that is
+    // rehydrated from localStorage on reload (avoids number-vs-string `===`
+    // drift that would otherwise drop the selected branch context). The id may
+    // be a branch id — masquerading into a branch is fully supported and scopes
+    // every module to that branch via isCompanyIdMatch. `kind` disambiguates the
+    // shared company/branch id space.
+    const wsId = String(companyId);
+    setActiveCompanyId(wsId);
+    localStorage.setItem('hrms_active_company_id', wsId);
+    persistWorkspaceKind(wsId, kind);
     setIsMasquerading(true);
     localStorage.setItem('hrms_is_masquerading', 'true');
     setRole('Company Head');
@@ -616,13 +753,23 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     setIsMasquerading(false);
     localStorage.setItem('hrms_is_masquerading', 'false');
     setRole('Super Admin');
-    setActiveCompanyId('c-gcri');
-    localStorage.setItem('hrms_active_company_id', 'c-gcri');
+    setActiveCompanyId('1');
+    localStorage.setItem('hrms_active_company_id', '1');
+    localStorage.setItem('hrms_active_workspace_kind', 'company');
+    setActiveWorkspaceKind('company');
     setCurrentPage('companies');
     localStorage.setItem('hrms_current_page', 'companies');
   };
 
+  // `resolvedRole` drives which workspace VIEW is rendered (a masquerading
+  // Super Admin sees the Company Head dashboard/menus).
   const resolvedRole = isMasquerading ? 'Company Head' : role;
+
+  // `permissionRole` drives ACCESS decisions. The real signed-in user
+  // (authProfile.role) is the source of truth — a Super Admin keeps full
+  // access even while masquerading, so tenant/branch/module restrictions are
+  // bypassed and no "Access Denied" page can appear in masquerade mode.
+  const permissionRole = authProfile?.role === 'Super Admin' ? 'Super Admin' : resolvedRole;
 
   const resolvedCompanyId = activeCompanyId;
 
@@ -632,18 +779,18 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     if (!authProfile) return;
     
     // Explicit RBAC Enforcement for Modules
-    if (resolvedRole !== 'Super Admin') {
-      const isAllowed = checkCanView(currentPage as AppModules, authProfile, resolvedRole);
+    if (permissionRole !== 'Super Admin') {
+      const isAllowed = checkCanView(currentPage as AppModules, authProfile, permissionRole);
       
       if (!isAllowed) {
         // Fallback sequentially to a safe route if the current is blocked
-        if (currentPage !== 'dashboard' && checkCanView('dashboard' as AppModules, authProfile, resolvedRole)) {
+        if (currentPage !== 'dashboard' && checkCanView('dashboard' as AppModules, authProfile, permissionRole)) {
           setCurrentPage('dashboard');
           localStorage.setItem('hrms_current_page', 'dashboard');
-        } else if (currentPage !== 'settings' && checkCanView('settings' as AppModules, authProfile, resolvedRole)) {
+        } else if (currentPage !== 'settings' && checkCanView('settings' as AppModules, authProfile, permissionRole)) {
           setCurrentPage('settings');
           localStorage.setItem('hrms_current_page', 'settings');
-        } else if (currentPage !== 'payroll' && checkCanView('payroll' as AppModules, authProfile, resolvedRole)) {
+        } else if (currentPage !== 'payroll' && checkCanView('payroll' as AppModules, authProfile, permissionRole)) {
           setCurrentPage('payroll');
           localStorage.setItem('hrms_current_page', 'payroll');
         }
@@ -653,16 +800,24 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   }, [resolvedRole, currentPage, authProfile]);
 
   if (!isAuthenticated || !authProfile) {
-    return <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />;
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+        <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />
+      </React.Suspense>
+    );
   }
 
   if (!activeCompanyId && authProfile.role !== 'Super Admin') {
-    return <SelectWorkspace companies={companies} user={authProfile} onSelect={handleCompanyChange} />;
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+        <SelectWorkspace companies={companies} user={authProfile} onSelect={handleCompanyChange} isLoading={isHydrating} />
+      </React.Suspense>
+    );
   }
 
   const renderPage = () => {
     // Secondary render-level check to completely block unauthorized rendering
-    if (resolvedRole !== 'Super Admin' && !checkCanView(currentPage as AppModules, authProfile, resolvedRole)) {
+    if (permissionRole !== 'Super Admin' && !checkCanView(currentPage as AppModules, authProfile, permissionRole)) {
       return (
         <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
           <div className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center mb-6">
@@ -695,9 +850,30 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onUpdatePayments={handleUpdatePayments}
             onUpdateEmployees={handleUpdateEmployees}
             onUpdatePayroll={handleUpdatePayroll}
+            superAdminStats={superAdminStats}
           />
         );
       case 'companies':
+        // Hard frontend gate — even if routing is bypassed, non-Super Admin
+        // users see the Access Denied screen and no company data is rendered.
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6" style={{ background: 'linear-gradient(135deg, #fee2e2, #fecaca)' }}>
+                <ShieldAlert className="w-12 h-12" style={{ color: '#dc2626' }} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2" style={{ color: '#111827' }}>Access Denied</h2>
+              <p className="max-w-md" style={{ color: '#6b7280' }}>
+                The <span className="font-bold" style={{ color: '#374151' }}>Company Management</span> module is exclusively
+                available to <span className="font-bold" style={{ color: '#2563eb' }}>Super Admin</span> accounts.
+                Please contact your system administrator if you require elevated access.
+              </p>
+              <div className="mt-6 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+                Your role: {permissionRole}
+              </div>
+            </div>
+          );
+        }
         return (
           <Companies
             _role={resolvedRole}
@@ -709,6 +885,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             plans={plans}
             employees={employees}
             onUpdateEmployees={handleUpdateEmployees}
+            superAdminStats={superAdminStats}
+            onRefresh={hydrateAll}
           />
         );
       case 'billing':
@@ -742,12 +920,30 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         );
       case 'leaves':
         return (
-          <Leaves
+          <LeaveManagement
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             leaves={leaves}
             onUpdateLeaves={handleUpdateLeaves}
-            _employees={employees}
+            employees={employees}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
+      case 'tasks':
+        return (
+          <TaskManager
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
+      case 'tenders':
+        return (
+          <Tenders
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
             authProfile={authProfile}
           />
         );
@@ -759,6 +955,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             attendance={attendance}
             onUpdateAttendance={handleUpdateAttendance}
             employees={employees}
+            companies={companies}
+            leaves={leaves}
           />
         );
       case 'payroll':
@@ -770,6 +968,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             payroll={payroll}
             onUpdatePayroll={handleUpdatePayroll}
             employees={employees}
+            attendance={attendance}
+            leaves={leaves}
             authProfile={authProfile}
           />
         );
@@ -834,14 +1034,28 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onUpdatePayments={handleUpdatePayments}
             onUpdateEmployees={handleUpdateEmployees}
             onUpdatePayroll={handleUpdatePayroll}
+            superAdminStats={superAdminStats}
           />
         );
     }
   };
 
   return (
-    <PermissionProvider authProfile={authProfile} role={resolvedRole} companies={companies}>
-      <div className="flex h-screen overflow-hidden font-sans antialiased">
+    <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies}>
+      {/* Global Wavy Background (Second Image Style) */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#F8FBFF]">
+        {/* Soft floating circles */}
+        <div className="absolute top-[20%] left-[35%] w-16 h-16 bg-[#E0F2FE] rounded-full opacity-60"></div>
+        <div className="absolute bottom-[10%] right-[10%] w-[350px] h-[350px] bg-[#E0F2FE] rounded-full opacity-70"></div>
+        <div className="absolute top-[-10%] right-[15%] w-[250px] h-[250px] bg-[#E0F2FE] rounded-full opacity-40"></div>
+        
+        {/* Wavy shape at bottom */}
+        <svg className="absolute bottom-0 left-0 w-full text-[#E0F2FE]/50" viewBox="0 0 1440 320" preserveAspectRatio="none" style={{ height: '40vh' }}>
+          <path fill="currentColor" d="M0,160L48,170.7C96,181,192,203,288,197.3C384,192,480,160,576,149.3C672,139,768,149,864,170.7C960,192,1056,224,1152,213.3C1248,203,1344,149,1392,122.7L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+        </svg>
+      </div>
+
+      <div className="flex h-screen overflow-hidden font-sans antialiased relative z-10">
         <Sidebar
           currentPage={currentPage}
           onNavigate={handleNavigate}
@@ -873,17 +1087,19 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           authProfile={authProfile}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto bg-transparent p-4 md:p-6">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
-                key={currentPage}
+                key={`${currentPage}::${resolvedCompanyId}::${activeWorkspaceKind}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
               >
-                {renderPage()}
+                <React.Suspense fallback={<div className="flex items-center justify-center h-full min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+                  {renderPage()}
+                </React.Suspense>
               </motion.div>
             </AnimatePresence>
           </div>

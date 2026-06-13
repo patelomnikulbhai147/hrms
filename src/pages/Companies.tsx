@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
-  Building2, Plus, Search, KeyRound, Lock, Trash2,
-  CheckCircle2, XCircle, ArrowRight, Edit, Mail, Phone, Calendar, ChevronRight, LogOut, FileSpreadsheet, Shield, Cloud, Link, Users,
-  Globe, ShieldCheck, Ban, PauseCircle, Rocket, MinusCircle, Building
+  Building2, Plus, Search, Lock, Trash2,
+  CheckCircle2, Mail, Phone, ChevronRight, Shield, Cloud, Link, Users, Archive, ShieldAlert,
+  FileSpreadsheet, Loader2, FileText
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
-import { Card, StatCard } from '../components/ui/Card';
+import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { PhoneInput } from '../components/ui/PhoneInput';
@@ -18,14 +18,15 @@ import {
 } from '../utils/validation';
 import { Modal } from '../components/ui/Modal';
 import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
-import { Badge, statusBadge } from '../components/ui/Badge';
+import { Badge } from '../components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
-import { exportToExcel } from '../utils/exportUtils';
 import { getCompanyInitials } from '../utils/workspaceUtils';
-import { api } from '../api/apiClient';
+import { api, type SuperAdminStats } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
+import { downloadCompanyExcel, downloadCompanyPDF } from '../utils/companyExportUtils';
 
 interface CompaniesProps {
   _role: Role;
@@ -33,11 +34,12 @@ interface CompaniesProps {
   onUpdateCompanies: (companies: Company[]) => void;
   userAccounts: UserAccount[];
   onUpdateAccounts: (accounts: UserAccount[]) => void;
-  onStartMasquerade: (companyId: string) => void;
+  onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
   plans: SubscriptionPlan[];
   employees: Employee[];
   onUpdateEmployees?: (employees: Employee[]) => void;
   onRefresh?: () => void;
+  superAdminStats?: SuperAdminStats | null;
 }
 
 export const Companies: React.FC<CompaniesProps> = ({
@@ -50,16 +52,58 @@ export const Companies: React.FC<CompaniesProps> = ({
   plans,
   employees,
   onUpdateEmployees,
-  onRefresh
+  onRefresh,
+  superAdminStats
 }) => {
   if (false as boolean) {
     console.log(_role);
   }
 
-  const { canEdit: canEditModule, canCreate: canCreateModule, canDelete: canDeleteModule } = usePermissions();
+  const { canEdit: canEditModule, canView: canViewModule } = usePermissions();
+
+  // === SUPER ADMIN GUARD ===
+  // Triple-layer security: even if routing & App.tsx guards are bypassed, the
+  // component itself refuses to render any company data for non-Super Admin.
+  if (!canViewModule('companies')) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-full p-8 text-center"
+        style={{ minHeight: '60vh' }}
+      >
+        <div
+          className="w-24 h-24 rounded-full flex items-center justify-center mb-6"
+          style={{ background: 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)' }}
+        >
+          <ShieldAlert className="w-12 h-12" style={{ color: '#dc2626' }} />
+        </div>
+        <h2 className="text-2xl font-bold mb-3" style={{ color: '#111827' }}>Access Denied</h2>
+        <p className="max-w-md leading-relaxed mb-2" style={{ color: '#6b7280' }}>
+          The <span className="font-bold" style={{ color: '#374151' }}>Company Management</span> dashboard
+          is exclusively available to{' '}
+          <span
+            className="font-bold px-1.5 py-0.5 rounded"
+            style={{ color: '#1d4ed8', background: '#eff6ff' }}
+          >
+            Super Admin
+          </span>{' '}
+          accounts.
+        </p>
+        <p style={{ color: '#9ca3af', fontSize: '0.875rem' }}>
+          Contact your system administrator if you require elevated access.
+        </p>
+        <div
+          className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold"
+          style={{ background: '#f3f4f6', color: '#6b7280', border: '1px solid #e5e7eb' }}
+        >
+          <Shield size={14} />
+          Your role: {_role}
+        </div>
+      </div>
+    );
+  }
+  // === END SUPER ADMIN GUARD ===
+
   const canEdit = canEditModule('companies');
-  const canCreate = canCreateModule('companies');
-  const canDelete = canDeleteModule('companies');
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -67,29 +111,76 @@ export const Companies: React.FC<CompaniesProps> = ({
   
   // Dependency Check & Delete State
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
-  const [deleteDependencies, setDeleteDependencies] = useState<{employees: number, branches: number, payrolls: number, attendances: number, documents: number} | null>(null);
-  const [isCheckingDependencies, setIsCheckingDependencies] = useState(false);
+  const [deleteDependencies] = useState<{employees: number, branches: number, payrolls: number, attendances: number, documents: number} | null>(null);
+  const [isCheckingDependencies] = useState(false);
 
   // Enterprise Lifecycle & Export
   const [activeMainTab, setActiveMainTab] = useState<'active' | 'archived'>('active');
   const [offboardCompany, setOffboardCompany] = useState<Company | null>(null);
-  const [offboardStep, setOffboardStep] = useState(1);
-  const [isExporting, setIsExporting] = useState(false);
 
   // Activate/Suspend Toggle State
   const [statusModalTarget, setStatusModalTarget] = useState<{ id: string, currentStatus: string, name: string, isBranch: boolean } | null>(null);
   const [isStatusUpdating, setIsStatusUpdating] = useState(false);
+
+  // ── Export (Excel + PDF) ──────────────────────────────────────────────────
+  const [isExporting, setIsExporting] = useState<'excel' | 'pdf' | null>(null);
+  const [exportDropOpen, setExportDropOpen] = useState(false);
+  const exportDropRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  React.useEffect(() => {
+    if (!exportDropOpen) return;
+    const close = (e: MouseEvent) => {
+      if (exportDropRef.current && !exportDropRef.current.contains(e.target as Node)) {
+        setExportDropOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [exportDropOpen]);
+
+  const handleExportExcel = async () => {
+    if (isExporting) return;
+    setExportDropOpen(false);
+    setIsExporting('excel');
+    try {
+      const payload = await api.companies.getExportData();
+      downloadCompanyExcel(payload);
+    } catch (err: any) {
+      console.error('Company Excel export failed:', err);
+      alert(`Excel export failed: ${err?.message || 'Unknown error.'}`);
+    } finally {
+      setIsExporting(null);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (isExporting) return;
+    setExportDropOpen(false);
+    setIsExporting('pdf');
+    try {
+      const payload = await api.companies.getExportData();
+      await downloadCompanyPDF(payload, superAdminStats);
+    } catch (err: any) {
+      console.error('Company PDF export failed:', err);
+      alert(`PDF export failed: ${err?.message || 'Unknown error.'}`);
+    } finally {
+      setIsExporting(null);
+    }
+  };
+  // ── End Export ────────────────────────────────────────────────────────────
+
 
   const uniqueEmployees = React.useMemo(() => getUniqueEmployees(employees), [employees]);
   const activeUniqueEmployees = React.useMemo(() => uniqueEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated'), [uniqueEmployees]);
 
   const [addOpen, setAddOpen] = useState(false);
   const [editPlanModal, setEditPlanModal] = useState<Company | null>(null);
-  const [viewBranchModal, setViewBranchModal] = useState<Company | null>(null);
+
   const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
   const [workspaceAssignUser, setWorkspaceAssignUser] = useState<UserAccount | null>(null);
-  const [isSubmittingOfficer, setIsSubmittingOfficer] = useState(false);
+
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
 
   const [newPlan, setNewPlan] = useState<'Starter' | 'Professional' | 'Enterprise'>('Starter');
@@ -121,9 +212,9 @@ export const Companies: React.FC<CompaniesProps> = ({
       industry: company.industry || 'Technology',
       adminEmail: company.adminEmail || company.email || '',
       phone: company.phone || '',
-      billingAddress: company.billingAddress || company.address || company.location || '',
+      billingAddress: company.billingAddress || company.address || '',
       domain: company.domain || '',
-      status: company.status || 'Active'
+      status: (company.status as any) || 'Active'
     });
     setEditCompanyModalOpen(true);
   };
@@ -145,11 +236,12 @@ export const Companies: React.FC<CompaniesProps> = ({
       const saved = await api.companies.update(editingCompanyId, payload);
       const updatedCompany = { ...companies.find(c => c.id === editingCompanyId), ...saved, isHeadOffice: true };
       onUpdateCompanies(companies.map(c => c.id === editingCompanyId ? updatedCompany : c));
+      onRefresh?.();
       setEditCompanyModalOpen(false);
       alert('Company details updated successfully.');
     } catch (err) {
       console.error(err);
-      alert('Failed to update company details.');
+      alert(getApiErrorMessage(err, 'Could not update the company.'));
     }
   };
 
@@ -200,7 +292,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     setBranchForm({
       name: branch.name || branch.branchName || '',
       branchCode: branch.branchCode || '',
-      location: branch.location || branch.address || '',
+      location: branch.address || '',
       email: branch.email || branch.adminEmail || '',
       phone: branch.phone || '',
       adminName: branch.adminName || '',
@@ -217,68 +309,9 @@ export const Companies: React.FC<CompaniesProps> = ({
     setBranchModalOpen(true);
   };
 
-  const handleDeleteClick = async (company: Company) => {
-    setDeleteTarget(company);
-    setIsCheckingDependencies(true);
-    setDeleteDependencies(null);
-    try {
-      const deps = await api.companies.getDependencies(company.id);
-      setDeleteDependencies(deps);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to check dependencies.');
-      setDeleteTarget(null);
-    } finally {
-      setIsCheckingDependencies(false);
-    }
-  };
 
-  const handleRemoveBranch = (branchId: string) => {
-    const branch = companies.find(c => c.id === branchId);
-    if (!branch) return;
 
-    const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
-    if (!confirmDelete) return;
 
-    // Ask for reassignment or archive
-    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office (GCRI Ahmedabad).\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
-
-    if (reassign) {
-      if (onUpdateEmployees) {
-        const toUpdate = uniqueEmployees.filter(emp => emp.companyId === branchId);
-        Promise.all(toUpdate.map(emp => api.employees.update(emp.id, { companyId: 'c-gcri', branchLocation: 'Ahmedabad' })))
-          .catch(err => console.error('Failed to update reassigned employees on backend', err));
-
-        const updated = uniqueEmployees.map(emp => {
-          if (emp.companyId === branchId) {
-            return { ...emp, companyId: 'c-gcri', branchLocation: 'Ahmedabad' };
-          }
-          return emp;
-        });
-        onUpdateEmployees(updated);
-      }
-    } else {
-      if (onUpdateEmployees) {
-        const updated = uniqueEmployees.map(emp => {
-          if (emp.companyId === branchId) {
-            return { ...emp, status: 'Inactive' as const };
-          }
-          return emp;
-        });
-        onUpdateEmployees(updated);
-      }
-    }
-
-    // Delete company/branch
-    api.companies.archive(branchId).then(() => {
-      const nextCompanies = companies.filter(c => c.id !== branchId);
-      onUpdateCompanies(nextCompanies);
-      alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
-    }).catch(err => {
-      console.error(err);
-      alert('Failed to archive branch on the backend.');
-    });
-  };
 
   const [expandedParents, setExpandedParents] = useState<Record<string, boolean>>({
     'c-gcri': true
@@ -409,7 +442,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       avatar: newCompany.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
-    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert('Failed to create via API'); }
+    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert(getApiErrorMessage(err, 'Could not create the company.')); }
 
     // Reset state
     setNewCompany({
@@ -461,29 +494,49 @@ export const Companies: React.FC<CompaniesProps> = ({
             accountStatus: nextStatus === 'Active' ? 'Active' : 'Suspended',
             branchPortalActive: nextStatus === 'Active',
             branchLicenseActive: nextStatus === 'Active',
-            branchLicenseStatus: nextStatus === 'Active' ? 'Active License' : 'Suspended'
+            branchLicenseStatus: nextStatus === 'Active' ? 'Active License' : 'Suspended',
+            isArchived: nextStatus === 'Active' ? false : c.isArchived
           } as Company;
         }
         return c;
       });
       
-      // Update state and backend
-      const updates = updatedCompanies.filter(c => relatedCompanyIds.includes(c.id)).map(c => {
-        return c.parentCompanyId ? api.branches.update(c.id, { 
-          status: c.status, accountStatus: c.accountStatus, branchPortalActive: c.branchPortalActive, branchLicenseActive: c.branchLicenseActive, branchLicenseStatus: c.branchLicenseStatus
-        }).catch(e => console.error(e)) : api.companies.update(c.id, { 
-          status: c.status, accountStatus: c.accountStatus, branchPortalActive: c.branchPortalActive, branchLicenseActive: c.branchLicenseActive, branchLicenseStatus: c.branchLicenseStatus
-        }).catch(e => console.error(e));
+      // Update state and backend. Branches only accept branch-valid fields;
+      // companies accept the access/license flags too.
+      const targets = updatedCompanies.filter(c => relatedCompanyIds.includes(c.id));
+      const updates = targets.map(c => {
+        return c.parentCompanyId
+          ? api.branches.update(c.id, { status: c.status, isArchived: c.isArchived })
+          : api.companies.update(c.id, {
+              status: c.status, accountStatus: c.accountStatus, branchPortalActive: c.branchPortalActive,
+              branchLicenseActive: c.branchLicenseActive, branchLicenseStatus: c.branchLicenseStatus, isArchived: c.isArchived
+            });
       });
-      Promise.all(updates);
+
+      // Optimistic UI update first, then reconcile with the backend result.
       onUpdateCompanies(updatedCompanies);
+
+      Promise.allSettled(updates).then((results) => {
+        const failures = results.filter(r => r.status === 'rejected');
+        if (failures.length > 0) {
+          console.error('Status update failures:', failures.map(f => (f as PromiseRejectedResult).reason));
+          alert(`Failed to ${nextStatus === 'Active' ? 'restore/reactivate' : 'suspend'} ${failures.length} of ${targets.length} record(s). The change was not saved. Please try again.`);
+        }
+        // Always re-sync from the database so the UI reflects the true persisted
+        // state (reverts the optimistic update if the backend rejected it).
+        onRefresh?.();
+      });
 
       // Forceful Employee Restoration: If company becomes Active, ALL its archived employees should become Active
       if (nextStatus === 'Active' && onUpdateEmployees) {
         const empUpdates: Promise<any>[] = [];
         const updatedEmployees = employees.map(emp => {
-          if (relatedCompanyIds.includes(emp.companyId) && emp.status === 'Archived') {
-            empUpdates.push(api.employees.update(emp.id, { status: 'Active' }).catch(e => console.error(e)));
+          // Match by company OR branch — branch employees carry companyId = parent
+          // and branchId = the branch, so a branch restore must check branchId too.
+          const belongs = relatedCompanyIds.includes(emp.companyId) ||
+            (!!(emp as any).branchId && relatedCompanyIds.includes((emp as any).branchId));
+          if (belongs && emp.status === 'Archived') {
+            empUpdates.push(api.employees.update(emp.id, { status: 'Active', exitDate: null, exitReason: null }).catch(e => console.error(e)));
             return {
               ...emp,
               status: 'Active' as const,
@@ -532,7 +585,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       setEditPlanModal(null);
     }).catch(err => {
       console.error(err);
-      alert('Failed to save plan to backend');
+      alert(getApiErrorMessage(err, 'Could not save the plan.'));
     });
   };
 
@@ -585,11 +638,12 @@ export const Companies: React.FC<CompaniesProps> = ({
         overtimeRate: Number(branchForm.overtimeRate) || 1.5,
       }).then(() => {
         onUpdateCompanies(updatedCompanies);
+        onRefresh?.();
         setBranchModalOpen(false);
         alert('Branch updated successfully.');
       }).catch(err => {
         console.error(err);
-        alert('Failed to update branch on backend.');
+        alert(getApiErrorMessage(err, 'Could not update the branch.'));
       });
     } else {
       // Create mode
@@ -648,10 +702,11 @@ export const Companies: React.FC<CompaniesProps> = ({
       ]).then(() => {
         onUpdateAccounts([...userAccounts, newAdminUser]);
         onUpdateCompanies([...companies, newBranchObj]);
+        onRefresh?.();
         alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
       }).catch(err => {
         console.error(err);
-        alert('Failed to create branch or admin user on the backend.');
+        alert(getApiErrorMessage(err, 'Could not create the branch.'));
       });
     }
 
@@ -668,20 +723,28 @@ export const Companies: React.FC<CompaniesProps> = ({
     setSelectedWorkspaces(user.accessibleCompanyIds || [user.companyId]);
   };
 
-  const handleSaveWorkspaces = () => {
+  const handleSaveWorkspaces = async () => {
     if (!workspaceAssignUser) return;
-    const updated = userAccounts.map(u => {
-      if (u.id === workspaceAssignUser.id) {
-        return {
-          ...u,
-          accessibleCompanyIds: selectedWorkspaces,
-          companyId: selectedWorkspaces.length > 0 ? selectedWorkspaces[0] : u.companyId
-        };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    setWorkspaceAssignUser(null);
+    const newCompanyId = selectedWorkspaces.length > 0 ? selectedWorkspaces[0] : workspaceAssignUser.companyId;
+    try {
+      // Persist to the database FIRST, then mirror into local state. Previously
+      // this only updated React state, so the reassigned workspace access was
+      // lost on the next login/refresh (the app reloads users from the API).
+      await api.users.update(workspaceAssignUser.id, {
+        accessibleCompanyIds: selectedWorkspaces,
+        companyId: newCompanyId,
+      });
+      const updated = userAccounts.map(u =>
+        u.id === workspaceAssignUser.id
+          ? { ...u, accessibleCompanyIds: selectedWorkspaces, companyId: newCompanyId }
+          : u
+      );
+      onUpdateAccounts(updated);
+      setWorkspaceAssignUser(null);
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not save workspace access.'));
+    }
   };
 
   const handleCreateOfficer = () => {
@@ -737,20 +800,24 @@ export const Companies: React.FC<CompaniesProps> = ({
       alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
     }).catch(err => {
       console.error(err);
-      alert('Failed to create user account on the backend.');
+      alert(getApiErrorMessage(err, 'Could not create the user account.'));
     });
   };
 
-  const handleToggleUserActivation = (userId: string) => {
-    const updated = userAccounts.map(u => {
-      if (u.id === userId) {
-        const nextStatus = u.status === 'Active' ? 'Disabled' : 'Active';
-        return { ...u, status: nextStatus as 'Active' | 'Disabled' };
-      }
-      return u;
-    });
-    onUpdateAccounts(updated);
-    alert('User status toggled successfully.');
+  const handleToggleUserActivation = async (userId: string) => {
+    const target = userAccounts.find(u => u.id === userId);
+    if (!target) return;
+    const nextStatus = target.status === 'Active' ? 'Disabled' : 'Active';
+    try {
+      // Persist the status change to the DB before reflecting it locally — a
+      // toggle that only changed React state reverted on refresh.
+      await api.users.update(userId, { status: nextStatus });
+      onUpdateAccounts(userAccounts.map(u => u.id === userId ? { ...u, status: nextStatus as 'Active' | 'Disabled' } : u));
+      alert('User status toggled successfully.');
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not update the user status.'));
+    }
   };
 
   const handleResetUserPassword = async (userId: string) => {
@@ -776,11 +843,19 @@ export const Companies: React.FC<CompaniesProps> = ({
     }
   };
 
-  const handleRevokeUser = (userId: string) => {
+  const handleRevokeUser = async (userId: string) => {
     if (!confirm('Are you sure you want to revoke this user access?')) return;
-    const updated = userAccounts.filter(u => u.id !== userId);
-    onUpdateAccounts(updated);
-    alert('Access revoked successfully.');
+    try {
+      // Delete in the database first; only then drop from the list. The old
+      // version filtered local state only, so the "revoked" user reappeared on
+      // the next refresh.
+      await api.users.delete(userId);
+      onUpdateAccounts(userAccounts.filter(u => u.id !== userId));
+      alert('Access revoked successfully.');
+    } catch (err) {
+      console.error(err);
+      alert(getApiErrorMessage(err, 'Could not revoke this user.'));
+    }
   };
 
   // Filter accounts
@@ -794,31 +869,6 @@ export const Companies: React.FC<CompaniesProps> = ({
     const matchPlan = !planFilter || c.plan === planFilter;
     return matchSearch && matchStatus && matchPlan;
   });
-
-  const handleExport = () => {
-    setIsExporting(true);
-    setTimeout(() => {
-      exportToExcel({
-        fileName: activeMainTab === 'active' ? 'Active_Tenders' : 'Archived_Tenders',
-        sheets: [
-          {
-            sheetName: 'Companies',
-            columns: [
-              { header: 'Company/Branch ID', key: 'id', width: 15 },
-              { header: 'Name', key: 'name', width: 30 },
-              { header: 'Email', key: 'email', width: 25 },
-              { header: 'Industry', key: 'industry', width: 20 },
-              { header: 'Join Date', key: 'joinDate', width: 15 },
-              { header: 'Status', key: 'status', width: 15 },
-              { header: 'Plan', key: 'plan', width: 15 }
-            ],
-            data: filtered
-          }
-        ]
-      });
-      setIsExporting(false);
-    }, 500);
-  };
 
   const handleStartOffboarding = (company: Company) => {
     if (company.status === 'Archived') {
@@ -837,7 +887,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         financialSettlement: false
       }
     });
-    setOffboardStep(1);
+
   };
 
   const handleCompleteOffboarding = () => {
@@ -905,12 +955,13 @@ export const Companies: React.FC<CompaniesProps> = ({
         if (c.parentCompanyId === offboardCompany.id) return { ...c, status: 'Archived' };
         return c;
       }));
+      onRefresh?.();
       setIsConfirmingOffboard(false);
       setOffboardCompany(null);
       alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
     }).catch(err => {
       console.error(err);
-      alert('Failed to execute offboarding on backend.');
+      alert(getApiErrorMessage(err, 'Could not offboard this company.'));
     });
   };
 
@@ -918,9 +969,14 @@ export const Companies: React.FC<CompaniesProps> = ({
     setIsConfirmingOffboard(true);
   };
 
-  const parentCompanies = companies.filter(c => !c.parentCompanyId);
-  const activeCount = companies.filter(c => c.status === 'Active' && c.status !== 'Archived').length;
-  const suspendedCount = companies.filter(c => c.status === 'Inactive' || c.accountStatus === 'Suspended' || c.accountStatus === 'Blocked' || c.status === 'Archived').length;
+  // KPI counts — straight from the database via SuperAdminStatisticsService.
+  // No client-side recomputation; the API is the single source of truth.
+  // Cards auto-update because superAdminStats is re-fetched after every
+  // create / edit / suspend / activate / archive / delete action (see App.tsx).
+  const kpiTotalCompanies    = superAdminStats?.totalCompanies      ?? 0;
+  const kpiTotalBranches     = superAdminStats?.totalBranches        ?? 0;
+  const kpiDeactivatedCompanies = superAdminStats?.deactivatedCompanies ?? 0;
+  const kpiDeactivatedBranches  = superAdminStats?.deactivatedBranches  ?? 0;
 
   // Determine if save button should be disabled
   console.log('Companies.tsx render. Total companies:', companies.length, 'Filtered:', filtered.length); const isSaveDisabled =
@@ -957,14 +1013,50 @@ export const Companies: React.FC<CompaniesProps> = ({
           </button>
           
           {canEdit && (
-            <button 
-              onClick={handleExport} 
-              disabled={isExporting}
-              className="px-4 py-2 text-sm font-medium bg-white text-slate-700 border border-slate-200 shadow-sm rounded-full inline-flex items-center gap-2 hover:bg-slate-50 transition-colors"
-            >
-              <FileSpreadsheet size={16} />
-              {isExporting ? 'Exporting...' : 'Export to Excel'}
-            </button>
+            <div className="relative" ref={exportDropRef}>
+              <button
+                id="btn-export-company-dropdown"
+                onClick={() => setExportDropOpen(o => !o)}
+                disabled={!!isExporting}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl border transition-all duration-200 select-none disabled:opacity-50 disabled:cursor-not-allowed bg-white border-emerald-200 text-emerald-700 shadow-sm hover:bg-emerald-50 hover:border-emerald-300 hover:shadow-md active:scale-[0.98]"
+              >
+                {isExporting ? (
+                  <><Loader2 size={13} className="animate-spin" /> Exporting…</>
+                ) : (
+                  <><FileSpreadsheet size={13} className="text-emerald-600" /> Export <ChevronRight size={12} className={`transition-transform ml-0.5 ${exportDropOpen ? 'rotate-90' : 'rotate-0'}`} /></>
+                )}
+              </button>
+
+              {exportDropOpen && (
+                <div className="absolute right-0 z-50 mt-1.5 w-52 rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60 overflow-hidden">
+                  {/* Excel option */}
+                  <button
+                    type="button"
+                    onClick={handleExportExcel}
+                    className="flex w-full items-center gap-2.5 px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
+                  >
+                    <FileSpreadsheet size={15} className="text-emerald-600 flex-shrink-0" />
+                    <div className="text-left">
+                      <div className="font-bold">Export to Excel</div>
+                      <div className="text-[10px] text-slate-400 font-normal">Companies · Branches · Plans (.xlsx)</div>
+                    </div>
+                  </button>
+                  <div className="h-px bg-slate-100" />
+                  {/* PDF option */}
+                  <button
+                    type="button"
+                    onClick={handleExportPDF}
+                    className="flex w-full items-center gap-2.5 px-4 py-3 text-xs font-semibold text-slate-600 hover:bg-rose-50 hover:text-rose-700 transition-colors"
+                  >
+                    <FileText size={15} className="text-rose-600 flex-shrink-0" />
+                    <div className="text-left">
+                      <div className="font-bold">Export to PDF</div>
+                      <div className="text-[10px] text-slate-400 font-normal">Dashboard report (.pdf)</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           
           {canEdit && activeMainTab === 'active' && (
@@ -979,41 +1071,62 @@ export const Companies: React.FC<CompaniesProps> = ({
         </div>
       </div>
 
-      {/* KPI stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Card 1 */}
-        <div className="bg-gradient-to-br from-[#EFF6FF] to-[#F8FBFF] rounded-[14px] p-5 flex items-start gap-4 border border-[#DBEAFE] shadow-sm hover:shadow-md transition-shadow">
-          <div className="w-12 h-12 rounded-2xl bg-[#EFF6FF] flex items-center justify-center flex-shrink-0 border border-[#DBEAFE] shadow-sm">
-            <Building2 size={24} className="text-[#2563EB]" />
+      {/* ── KPI Cards ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+        {/* Card 1 — Total Companies */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#EFF6FF] via-[#F0F7FF] to-white rounded-2xl p-5 flex items-start gap-4 border border-[#BFDBFE] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+          {/* Decorative ring */}
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-[#2563EB]/8 pointer-events-none" />
+          <div className="w-11 h-11 rounded-xl bg-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-200">
+            <Building2 size={20} className="text-white" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-600">Active Companies</h3>
-            <p className="text-2xl font-bold text-slate-800 mt-1">{activeCount}</p>
-            <p className="text-xs text-slate-500 mt-1">Access allowed to portal</p>
-          </div>
-        </div>
-        {/* Card 2 */}
-        <div className="bg-gradient-to-br from-rose-50 to-[#FFF0F0] rounded-[14px] p-5 flex items-start gap-4 border border-rose-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center flex-shrink-0 border border-rose-200 shadow-sm">
-            <Shield size={24} className="text-rose-600" />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-600">Suspended Accounts</h3>
-            <p className="text-2xl font-bold text-slate-800 mt-1">{suspendedCount}</p>
-            <p className="text-xs text-slate-500 mt-1">Portal entry blocked</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-[#2563EB] uppercase tracking-wide mb-0.5">Total Companies</p>
+            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiTotalCompanies}</p>
+            <p className="text-xs text-slate-500 mt-1.5">Registered organizations</p>
           </div>
         </div>
-        {/* Card 3 */}
-        <div className="bg-gradient-to-br from-indigo-50 to-[#F8FAFF] rounded-[14px] p-5 flex items-start gap-4 border border-indigo-100 shadow-sm hover:shadow-md transition-shadow">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-100 flex items-center justify-center flex-shrink-0 border border-indigo-200 shadow-sm">
-            <Cloud size={24} className="text-indigo-600" />
+
+        {/* Card 2 — Total Branches */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-50 via-indigo-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-indigo-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-indigo-400/10 pointer-events-none" />
+          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-indigo-200">
+            <Link size={20} className="text-white" />
           </div>
-          <div>
-            <h3 className="text-sm font-semibold text-slate-600">Total Scoped Tenants</h3>
-            <p className="text-2xl font-bold text-slate-800 mt-1">{companies.length}</p>
-            <p className="text-xs text-slate-500 mt-1">Active cloud subscriptions</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-0.5">Total Branches</p>
+            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiTotalBranches}</p>
+            <p className="text-xs text-slate-500 mt-1.5">All company branches</p>
           </div>
         </div>
+
+        {/* Card 3 — Deactivated Companies */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-amber-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-amber-400/10 pointer-events-none" />
+          <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-200">
+            <Lock size={20} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-0.5">Deactivated Companies</p>
+            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiDeactivatedCompanies}</p>
+            <p className="text-xs text-slate-500 mt-1.5">Company access disabled</p>
+          </div>
+        </div>
+
+        {/* Card 4 — Deactivated Branches */}
+        <div className="relative overflow-hidden bg-gradient-to-br from-rose-50 via-red-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-rose-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-rose-400/10 pointer-events-none" />
+          <div className="w-11 h-11 rounded-xl bg-rose-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-rose-200">
+            <Shield size={20} className="text-white" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-rose-600 uppercase tracking-wide mb-0.5">Deactivated Branches</p>
+            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiDeactivatedBranches}</p>
+            <p className="text-xs text-slate-500 mt-1.5">Branch access disabled</p>
+          </div>
+        </div>
+
       </div>
 
       {/* Filters bar */}
@@ -1061,7 +1174,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-[#DBEAFE] flex items-center justify-between bg-white">
           <span className="text-sm font-bold text-slate-800">Tenant Directory</span>
-          <span className="text-xs text-slate-500 font-medium">{filtered.length} clients registered</span>
+          <span className="text-xs text-slate-500 font-medium">{filtered.filter(c => !c.parentCompanyId).length} clients registered</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -1083,7 +1196,9 @@ export const Companies: React.FC<CompaniesProps> = ({
               </tr>
             ) : (
               filtered.filter(c => !c.parentCompanyId).map(c => {
-                const branches = companies.filter(b => b.parentCompanyId === c.id);
+                const branches = companies
+                  .filter(b => b.parentCompanyId === c.id)
+                  .sort((a, b) => ((a as any).branchNo ?? a.id) - ((b as any).branchNo ?? b.id));
                 const hasBranches = branches.length > 0;
                 const isExpanded = expandedParents[c.id];
 
@@ -1160,7 +1275,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                         {canEdit && (
                           <div className="flex items-center gap-2">
                             <button
-                              onClick={() => onStartMasquerade(c.id)}
+                              onClick={() => onStartMasquerade(c.id, 'company')}
                               className="text-xs px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium transition-colors hover:bg-slate-50 inline-flex items-center gap-1.5 shadow-sm"
                             >
                               Manage {hasBranches ? 'All' : ''} <ChevronRight size={14} className="text-slate-400" />
@@ -1182,7 +1297,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               <Users size={14} />
                             </button>
 
-                            {activeMainTab === 'active' ? (
+                            {c.status !== 'Archived' ? (
                                <button
                                 onClick={() => handleStartOffboarding(c)}
                                 className="p-1.5 bg-white text-rose-400 hover:text-rose-600 border border-slate-200 rounded-md transition-colors shadow-sm"
@@ -1195,7 +1310,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                 onClick={() => openStatusModal(c)}
                                 className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${c.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
                               >
-                                {c.status === 'Active' ? 'Suspend' : 'Activate'}
+                                {c.status === 'Active' ? 'Suspend' : (c.status === 'Archived' ? 'Restore' : 'Activate')}
                               </button>
                             )}
                           </div>
@@ -1234,11 +1349,22 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </thead>
                               <tbody className="divide-y divide-[#E2EFEA] text-xs text-slate-600">
                                 {branches.map(b => {
-                                  const branchEmpCount = activeUniqueEmployees.filter(emp => emp.companyId === b.id || (emp.companyId === b.parentCompanyId && emp.branchLocation?.toLowerCase() === (b.branchName || b.name)?.toLowerCase()) || emp.branchId === b.id).length;
+                                  // Total staff assigned to this branch — the live count computed by
+                                  // the backend (getBranches: COUNT(employees WHERE branchId = b.id)).
+                                  // Falls back to a direct count over the loaded employee list so the
+                                  // number always reflects real DB records, never a cached/placeholder 0.
+                                  const branchEmpCount = (b as any).headcount ??
+                                    uniqueEmployees.filter(emp => emp.branchId === b.id).length;
                                   return (
                                     <tr key={b.id} className="hover:bg-slate-50/50 transition-colors">
                                       <td className="py-2.5 px-5">
                                         <div className="flex items-center gap-3">
+                                          {(b as any).branchNo != null && (
+                                            <span
+                                              className="text-[11px] font-bold text-slate-400 w-6 text-center"
+                                              title="Branch No"
+                                            >#{(b as any).branchNo}</span>
+                                          )}
                                           <span className="font-bold text-[#1D4ED8] bg-[#EFF6FF] px-2 py-1 rounded border border-[#DBEAFE] text-[10px]">
                                             {b.branchCode || 'BR'}
                                           </span>
@@ -1265,7 +1391,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                         {canEdit && (
                                           <div className="inline-flex items-center gap-2">
                                             <button
-                                              onClick={() => onStartMasquerade(b.id)}
+                                              onClick={() => onStartMasquerade(b.id, 'branch')}
                                               className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium text-[11px] transition-colors hover:bg-slate-50 shadow-sm"
                                             >
                                               Manage
@@ -1284,7 +1410,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                             >
                                               <Users size={12} />
                                             </button>
-                                            {activeMainTab === 'active' ? (
+                                            {b.status !== 'Archived' ? (
                                               <button
                                                 onClick={() => handleStartOffboarding(b)}
                                                 className="p-1.5 bg-white text-rose-400 hover:text-rose-600 border border-slate-200 rounded-md transition-colors shadow-sm"
@@ -1297,7 +1423,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                                 onClick={() => openStatusModal(b)}
                                                 className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${b.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
                                               >
-                                                {b.status === 'Active' ? 'Suspend' : 'Activate'}
+                                                {b.status === 'Active' ? 'Suspend' : (b.status === 'Archived' ? 'Restore' : 'Activate')}
                                               </button>
                                             )}
                                           </div>
@@ -1972,7 +2098,7 @@ export const Companies: React.FC<CompaniesProps> = ({
               </div>
               <div>
                 <h3 className="font-semibold text-lg text-slate-800">{offboardCompany.name}</h3>
-                <p className="text-slate-500 text-xs">ID: {offboardCompany.id} • Domain: {offboardCompany.domain} • Admin: {offboardCompany.adminName}</p>
+                <p className="text-slate-500 text-xs">{offboardCompany.branchCode ? `Code: ${offboardCompany.branchCode} • ` : ''}Domain: {offboardCompany.domain || '—'} • Admin: {offboardCompany.adminName || '—'}</p>
               </div>
             </div>
             
@@ -2100,8 +2226,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                   onClick={() => {
                     api.companies.archive(deleteTarget.id).then(() => {
                       const updated = companies.map(c => {
-                        if (c.id === deleteTarget.id) return { ...c, status: 'Archived', isArchived: true };
-                        if (c.parentCompanyId === deleteTarget.id) return { ...c, status: 'Archived', isArchived: true };
+                        if (c.id === deleteTarget.id) return { ...c, status: 'Archived' as any, isArchived: true };
+                        if (c.parentCompanyId === deleteTarget.id) return { ...c, status: 'Archived' as any, isArchived: true };
                         return c;
                       });
                       onUpdateCompanies(updated);

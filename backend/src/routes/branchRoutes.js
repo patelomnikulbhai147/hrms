@@ -7,8 +7,8 @@ const { protect } = require('../middleware/authMiddleware');
 router.use(protect);
 
 router.get('/', branchController.getBranches);
-router.post('/', branchController.createBranch);
-router.put('/:id', branchController.updateBranch);
-router.delete('/:id', branchController.deleteBranch);
+router.post('/', requirePermission('companies', 'create'), branchController.createBranch);
+router.put('/:id', requirePermission('companies', 'edit'), branchController.updateBranch);
+router.delete('/:id', requirePermission('companies', 'delete'), branchController.deleteBranch);
 
 module.exports = router;

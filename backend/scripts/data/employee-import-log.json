@@ -1,0 +1,144 @@
+{
+  "generatedAt": "2026-06-12T03:34:34.585Z",
+  "mode": "analyze",
+  "file": "C:/Users/HP/OneDrive/Desktop/GCRI FINAL MASTER DATA FROM 01.11......xlsx",
+  "perSheet": {
+    "AHMEDABAD": 780,
+    "BHAVNAGAR": 16,
+    "RAJKOT": 22,
+    "SIDDHPUR": 17
+  },
+  "totalParsed": 835,
+  "uniqueEmployees": 835,
+  "counts": {
+    "matched": 831,
+    "missingToCreate": 4,
+    "generatedCode": 4,
+    "invalid": 0,
+    "duplicates": 0,
+    "branchMismatch": 0,
+    "dbNotInExcel": 4,
+    "created": 0,
+    "createFailed": 0
+  },
+  "createdWithGeneratedCode": [
+    {
+      "sheet": "BHAVNAGAR",
+      "row": 19,
+      "code": "NOCODE-BHA-19",
+      "name": "SHASHI RANJAN KUMAR"
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 23,
+      "code": "NOCODE-RAJ-23",
+      "name": "JYOTI H GONDALIYA"
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 24,
+      "code": "NOCODE-RAJ-24",
+      "name": "NANDANIYA VIPUL"
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 25,
+      "code": "NOCODE-RAJ-25",
+      "name": "CHANDANI DAVE"
+    }
+  ],
+  "duplicates": [],
+  "branchMismatch": [],
+  "invalidRows": [],
+  "validationWarnings": [
+    {
+      "sheet": "AHMEDABAD",
+      "row": 577,
+      "code": "-",
+      "name": "DISHABEN NIRMIT PANCHAL",
+      "issues": [
+        "unusual code \"-\""
+      ]
+    },
+    {
+      "sheet": "AHMEDABAD",
+      "row": 618,
+      "code": "VE1660",
+      "name": "-",
+      "issues": [
+        "invalid mobile \"-\"",
+        "invalid email \"-\""
+      ]
+    },
+    {
+      "sheet": "AHMEDABAD",
+      "row": 700,
+      "code": "VE1742",
+      "name": "-",
+      "issues": [
+        "invalid mobile \"-\""
+      ]
+    },
+    {
+      "sheet": "BHAVNAGAR",
+      "row": 19,
+      "code": "NOCODE-BHA-19",
+      "name": "SHASHI RANJAN KUMAR",
+      "issues": [
+        "missing employee code"
+      ]
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 23,
+      "code": "NOCODE-RAJ-23",
+      "name": "JYOTI H GONDALIYA",
+      "issues": [
+        "missing employee code"
+      ]
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 24,
+      "code": "NOCODE-RAJ-24",
+      "name": "NANDANIYA VIPUL",
+      "issues": [
+        "missing employee code"
+      ]
+    },
+    {
+      "sheet": "RAJKOT",
+      "row": 25,
+      "code": "NOCODE-RAJ-25",
+      "name": "CHANDANI DAVE",
+      "issues": [
+        "missing employee code"
+      ]
+    }
+  ],
+  "dbNotInExcel": [
+    {
+      "employeeId": "NOCODE-RAJ-25",
+      "name": "Chandani Dave",
+      "branchId": "c-rajkot"
+    },
+    {
+      "employeeId": "NOCODE-RAJ-23",
+      "name": "Jyoti H Gondaliya",
+      "branchId": "c-rajkot"
+    },
+    {
+      "employeeId": "NOCODE-RAJ-24",
+      "name": "Nandaniya Vipul",
+      "branchId": "c-rajkot"
+    },
+    {
+      "employeeId": "NOCODE-BHA-19",
+      "name": "Shashi Ranjan Kumar",
+      "branchId": "c-bhavnagar"
+    }
+  ],
+  "testRecords": [],
+  "createFailed": [],
+  "parseIssues": []
+}

@@ -2,11 +2,45 @@ import React, { createContext, useContext, useMemo } from 'react';
 import { type AppModules, type UserAccount } from '../pages/Login';
 import { type Company } from '../types';
 
+// Role-based defaults for NEWLY ADDED modules that do not yet have per-user
+// granular permission rows in the database (Task Manager, Tender Information).
+// This is intentionally scoped to ONLY these modules: any module not listed here
+// returns `false` from roleDefault(), so every EXISTING module keeps its current
+// strict deny-by-default behaviour and no existing isolation is weakened.
+const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string, string[]>>>> = {
+  tasks: {
+    view: ['Company Head', 'HR', 'Finance', 'Employee'],
+    edit: ['Company Head', 'HR', 'Finance'],
+    create: ['Company Head', 'HR', 'Finance'],
+    delete: ['Company Head', 'HR'],
+    export: ['Company Head', 'HR', 'Finance'],
+    approve: ['Company Head', 'HR'],
+    print: ['Company Head', 'HR', 'Finance'],
+    manage: ['Company Head', 'HR'],
+  },
+  tenders: {
+    view: ['Company Head', 'HR', 'Finance'],
+    edit: ['Company Head', 'HR'],
+    create: ['Company Head', 'HR'],
+    delete: ['Company Head'],
+    export: ['Company Head', 'HR'],
+    approve: ['Company Head'],
+    print: ['Company Head', 'HR'],
+    manage: ['Company Head', 'HR'],
+  },
+};
+const roleDefault = (module: AppModules, action: string, role: string): boolean =>
+  NEW_MODULE_ROLE_DEFAULTS[module]?.[action]?.includes(role) ?? false;
+
 interface PermissionContextType {
   canView: (module: AppModules) => boolean;
   canEdit: (module: AppModules) => boolean;
   canCreate: (module: AppModules) => boolean;
   canDelete: (module: AppModules) => boolean;
+  canExport: (module: AppModules) => boolean;
+  canApprove: (module: AppModules) => boolean;
+  canPrint: (module: AppModules) => boolean;
+  canManage: (module: AppModules) => boolean;
   hasBranchAccess: (companyId: string) => boolean;
   getInheritedBranches: (companyId: string) => string[];
 }
@@ -16,6 +50,10 @@ const PermissionContext = createContext<PermissionContextType>({
   canEdit: () => false,
   canCreate: () => false,
   canDelete: () => false,
+  canExport: () => false,
+  canApprove: () => false,
+  canPrint: () => false,
+  canManage: () => false,
   hasBranchAccess: () => false,
   getInheritedBranches: () => [],
 });
@@ -33,18 +71,32 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
 
-  // If moduleAccess is explicitly defined and set to false, they cannot view (highest priority)
+  // Module kill-switch (highest priority): an admin un-checking "Access" for a
+  // module (moduleAccess[module] === false) hides it regardless of any granular
+  // action flags. Applies to every module, dashboard included.
   if (authProfile.moduleAccess && authProfile.moduleAccess[module] === false) {
     return false;
   }
 
+  // Dashboard is the landing page and only ever renders the user's OWN scoped
+  // workspace summary (no cross-tenant data), so it is viewable by any
+  // authenticated user unless explicitly disabled by the kill-switch above.
+  // This removes the false "Access Denied – dashboard" that hit users who were
+  // enabled at the module level but never had a granular `view` row written,
+  // and keeps the sidebar menu and the route guard (both call this function) in
+  // lock-step. Other modules keep their stricter behaviour below.
+  if (module === 'dashboard') {
+    return true;
+  }
+
   // Then check granular action permissions if they exist
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].view;
+    return authProfile.permissions[module].view === true;
   }
-  
-  // Default fallback if no permissions are set yet
-  return true;
+
+  // Default fallback: deny-by-default for existing modules; role-default for the
+  // newly added modules (Task Manager / Tender Information) only.
+  return roleDefault(module, 'view', role);
 };
 
 
@@ -53,13 +105,9 @@ export const checkCanCreate = (module: AppModules, authProfile: UserAccount | nu
   if (!authProfile) return false;
   if (!checkCanEdit(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].create;
+    return authProfile.permissions[module].create === true;
   }
-  if (!authProfile.permissions) {
-    if (role === 'Company Head' || role === 'HR') return true;
-    return false;
-  }
-  return false;
+  return roleDefault(module, 'create', role);
 };
 
 export const checkCanDelete = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
@@ -67,13 +115,9 @@ export const checkCanDelete = (module: AppModules, authProfile: UserAccount | nu
   if (!authProfile) return false;
   if (!checkCanEdit(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].delete;
+    return authProfile.permissions[module].delete === true;
   }
-  if (!authProfile.permissions) {
-    if (role === 'Company Head') return true;
-    return false;
-  }
-  return false;
+  return roleDefault(module, 'delete', role);
 };
 
 export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
@@ -85,17 +129,51 @@ export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null
 
   // Check granular action permissions
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].edit;
+    return authProfile.permissions[module].edit === true;
   }
 
   // Fallback defaults if permissions matrix is completely missing
-  if (!authProfile.permissions) {
-     if (role === 'Employee' && (module === 'settings' || module === 'leaves' || module === 'attendance')) return true;
-     if (role === 'Company Head' || role === 'HR' || role === 'Finance') return true;
-     return false;
+  return roleDefault(module, 'edit', role);
+};
+
+export const checkCanExport = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanView(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].export === true;
   }
-  
-  return false;
+  return roleDefault(module, 'export', role);
+};
+
+export const checkCanApprove = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanView(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].approve === true;
+  }
+  return roleDefault(module, 'approve', role);
+};
+
+export const checkCanPrint = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanView(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].print === true;
+  }
+  return roleDefault(module, 'print', role);
+};
+
+export const checkCanManage = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
+  if (role === 'Super Admin') return true;
+  if (!authProfile) return false;
+  if (!checkCanView(module, authProfile, role)) return false;
+  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
+    return authProfile.permissions[module].manage === true;
+  }
+  return roleDefault(module, 'manage', role);
 };
 
 export const PermissionProvider: React.FC<PermissionProviderProps> = ({
@@ -141,12 +219,20 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
     const canEdit = (module: AppModules): boolean => checkCanEdit(module, authProfile, role);
     const canCreate = (module: AppModules): boolean => checkCanCreate(module, authProfile, role);
     const canDelete = (module: AppModules): boolean => checkCanDelete(module, authProfile, role);
+    const canExport = (module: AppModules): boolean => checkCanExport(module, authProfile, role);
+    const canApprove = (module: AppModules): boolean => checkCanApprove(module, authProfile, role);
+    const canPrint = (module: AppModules): boolean => checkCanPrint(module, authProfile, role);
+    const canManage = (module: AppModules): boolean => checkCanManage(module, authProfile, role);
 
     return {
       canView,
       canEdit,
       canCreate,
       canDelete,
+      canExport,
+      canApprove,
+      canPrint,
+      canManage,
       hasBranchAccess,
       getInheritedBranches,
     };

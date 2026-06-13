@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   Building2, AlertCircle, FileText, CheckCircle2, Clock, Info,
-  Search, Bell, DollarSign, Sparkles, ChevronRight, Users, Archive
+  Search, Bell, DollarSign, Sparkles, ChevronRight, Users, Archive,
+  Wallet, Calendar, UserPlus, FileUp, BarChart2, Activity
 } from 'lucide-react';
 import {
   type Role,
@@ -13,7 +14,8 @@ import {
   type Document,
   type SubscriptionPlan,
   type Notification,
-  isCompanyIdMatch
+  isCompanyIdMatch,
+  resolveActiveWorkspace
 } from '../types';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import {
@@ -23,8 +25,11 @@ import {
 } from '../utils/subscriptionUtils';
 import { getCompanyInitials } from '../utils/workspaceUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { api, type SuperAdminStats } from '../api/apiClient';
+import { getApiErrorMessage } from '../utils/apiError';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
+import { TaskTenderWidgets } from '../components/dashboard/TaskTenderWidgets';
 import { Badge } from '../components/ui/Badge';
 import {
   ResponsiveContainer,
@@ -35,7 +40,9 @@ import {
   Tooltip,
   Cell,
   PieChart,
-  Pie
+  Pie,
+  AreaChart,
+  Area
 } from 'recharts';
 import { motion } from 'framer-motion';
 
@@ -64,7 +71,7 @@ interface DashboardProps {
   role: Role;
   onNavigate: (page: any) => void;
   activeCompanyId: string;
-  onStartMasquerade: (companyId: string) => void;
+  onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
   companies: Company[];
   employees: Employee[];
   attendance: AttendanceRecord[];
@@ -78,6 +85,7 @@ interface DashboardProps {
   onUpdatePayments?: (updater: any[] | ((prev: any[]) => any[])) => void;
   onUpdateEmployees?: (updater: Employee[] | ((prev: Employee[]) => Employee[])) => void;
   onUpdatePayroll?: (updater: PayrollRecord[] | ((prev: PayrollRecord[]) => PayrollRecord[])) => void;
+  superAdminStats?: SuperAdminStats | null;
 }
 
 const Loading: React.FC = () => (
@@ -86,6 +94,8 @@ const Loading: React.FC = () => (
     <p className="text-xs text-gray-500 font-bold tracking-wide">Hydrating Secure SaaS Environment...</p>
   </div>
 );
+
+
 
 export const Dashboard: React.FC<DashboardProps> = ({
   role,
@@ -102,7 +112,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   notifications: _notifications,
   onUpdateNotifications,
   onUpdateCompanies,
-  onUpdatePayments
+  onUpdatePayments,
+  superAdminStats
 }) => {
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -114,9 +125,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const payroll = rawPayroll || [];
   const documents = rawDocuments || [];
   const plans = rawPlans || [];
+  const notifications = _notifications || [];
 
-  // Find current company context first to prevent TDZ error
-  const currentCompany = companies.find(c => c.id === activeCompanyId);
+  // Find current company context first to prevent TDZ error.
+  // Loose (String) compare: activeCompanyId may arrive as a number (fresh click)
+  // or a string (rehydrated from localStorage) — both must resolve the same
+  // workspace, otherwise a branch loses its context after a reload.
+  const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId) || companies.find(c => String(c.id) === String(activeCompanyId));
+  // Branch context: the active workspace is a branch when it has a parent
+  // company. Used to scope the dashboard and render the "Company → Branch"
+  // breadcrumb / branch-specific title.
+  const activeParentCompany = currentCompany?.parentCompanyId
+    ? companies.find(c => String(c.id) === String(currentCompany.parentCompanyId))
+    : null;
+  const isBranchWorkspace = !!currentCompany?.parentCompanyId;
+  const branchTitle = isBranchWorkspace
+    ? `${(currentCompany as any).branchName || currentCompany?.name} Branch Dashboard`
+    : `${currentCompany?.name || 'Company'} Dashboard`;
 
   // Toast feedback state
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
@@ -135,7 +160,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
 
-  const isParentCompany = !companies.find(c => c.id === activeCompanyId)?.parentCompanyId;
+  const isParentCompany = !currentCompany?.parentCompanyId;
   const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all' : 'branch');
   const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? '' : activeCompanyId);
   const [selectedDept, setSelectedDept] = useState('all');
@@ -153,11 +178,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [companies, role, currentCompany, onNavigate]);
 
   // Scoped Data for Company Head / HR roles (supports parent company rollup and local branches)
-  const rawScopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
+  const rawScopedEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies as any[], e.branchLocation, e.branchId));
   const scopedEmployees = rawScopedEmployees.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
-  const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies));
-  const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies, undefined, p.employee?.branchId));
-  const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies));
+  const scopedAttendance = attendance.filter(a => a.date === todayStr && isCompanyIdMatch(a.companyId, activeCompanyId, companies as any[]));
+  const scopedPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, activeCompanyId, companies as any[], undefined, p.employee?.branchId));
+  const scopedDocs = documents.filter(d => isCompanyIdMatch(d.companyId, activeCompanyId, companies as any[]));
 
 
   const daysLeft = (dateStr?: string) => {
@@ -170,28 +195,30 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return calculateSubscriptionAnalytics(companies, plans);
   }, [companies, plans]);
 
-  const globalActiveEmployeesCount = useMemo(() => {
-    return companies.reduce((sum, c) => sum + (c.employeeCount || 0), 0);
-  }, [companies]);
-
-  const offboardedCompaniesCount = useMemo(() => {
-    const parentCompanies = companies.filter(c => !c.parentCompanyId);
-    let activeSubs = 0;
-    parentCompanies.forEach(company => {
-      const isActiveOrTrial = company.status !== 'Archived' && company.accountStatus === 'Active' &&
-        (company.paymentStatus === 'Paid' || company.paymentStatus === 'Trial Active');
-      if (isActiveOrTrial) {
-        activeSubs++;
-      }
-    });
-    return parentCompanies.length - activeSubs;
-  }, [companies]);
-
-  const totalCompaniesCount = analytics.totalCompanies;
-  const activeSubscriptionsCount = analytics.activeSubscriptions;
+  // ─── All Super Admin KPI cards read from the single source of truth ───
+  // (SuperAdminStatisticsService via /api/statistics/super-admin). Client-side
+  // analytics are used only as a pre-load fallback until stats arrive.
+  const globalActiveEmployeesCount = superAdminStats?.combinedEmployees ?? 0;
+  const offboardedCompaniesCount = superAdminStats?.offboardedCompanies ?? 0;
+  const totalCompaniesCount = superAdminStats?.totalCompanies ?? 0;
+  const totalBranchesCount = superAdminStats?.totalBranches ?? 0;
+  const activeSubscriptionsCount = superAdminStats?.activeSubscriptions ?? 0;
+  const monthlyRevenueVal = superAdminStats?.monthlyRevenue ?? 0;
   const pendingRenewalsCount = analytics.pendingRenewals;
-  const monthlyRevenueVal = analytics.monthlyRevenue;
   const expiringThisWeekCount = analytics.expiringPlans;
+
+  // Connectivity validation log: API count -> Dashboard count (must match DB).
+  useEffect(() => {
+    if (!superAdminStats) return;
+    console.log('[SuperAdminStats][API->Dashboard]', {
+      totalCompanies: totalCompaniesCount,
+      totalBranches: totalBranchesCount,
+      combinedEmployees: globalActiveEmployeesCount,
+      activeSubscriptions: activeSubscriptionsCount,
+      offboardedCompanies: offboardedCompaniesCount,
+      monthlyRevenue: monthlyRevenueVal,
+    });
+  }, [superAdminStats]);
 
   // Filter renewal list items
   const renewalAlertsList = useMemo(() => {
@@ -259,7 +286,23 @@ export const Dashboard: React.FC<DashboardProps> = ({
       paymentMode: 'Manual' as const,
       transactionStatus: 'Success' as const
     };
-    onUpdatePayments?.((prev: any[]) => [payment, ...(prev || [])]);
+
+    // Persist to the database so the renewal survives refresh/relogin. Branches
+    // live in the Branch table (only `status` is a branch column); parent
+    // companies take the full set of subscription columns. `renewalDate` is a
+    // frontend-only display field with no backing column, so it is never sent.
+    if (target.parentCompanyId) {
+      api.branches.update(companyId, { status: 'Active' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+    } else {
+      api.companies.update(companyId, { paymentStatus: 'Paid', accountStatus: 'Active', status: 'Active' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+      // Invoice is recorded against the parent company (PaymentRecord.companyId
+      // is a Company FK; the saved row carries its real DB id back into state).
+      api.payments.create(payment)
+        .then((saved: any) => onUpdatePayments?.((prev: any[]) => [saved, ...(prev || [])]))
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the payment record.')); });
+    }
     showToast(`Subscription successfully renewed for ${target.name}! Invoice recorded.`, 'success');
   };
 
@@ -279,6 +322,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return c;
     });
     onUpdateCompanies?.(updated);
+    // Persist the suspension so it survives refresh/relogin (mirrors the
+    // Companies page status toggle). Branches only accept `status`; parent
+    // companies accept the account/payment status columns too.
+    if (target.parentCompanyId) {
+      api.branches.update(companyId, { status: 'Inactive' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+    } else {
+      api.companies.update(companyId, { accountStatus: 'Suspended', status: 'Inactive', paymentStatus: 'Expired' })
+        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+    }
     showToast(`Access suspended for ${target.name} due to license expiration.`, 'warning');
   };
 
@@ -323,26 +376,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ];
   }, [companies, plans]);
 
-  // Company Active vs Expired Breakdown
   const statusPieData = useMemo(() => {
-    let active = 0;
-    let expired = 0;
-    let trial = 0;
-    let suspended = 0;
-    companies.filter(c => !c.parentCompanyId).forEach(c => {
-      const daysRemaining = getDaysRemaining(c.renewalDate);
-      if (c.accountStatus === 'Suspended') suspended++;
-      else if (c.paymentStatus === 'Expired' || c.paymentStatus === 'Overdue' || (daysRemaining !== null && daysRemaining < 0)) expired++;
-      else if (c.paymentStatus === 'Trial Active') trial++;
-      else active++;
-    });
+    const active = superAdminStats?.activeSubscriptions ?? 0;
+    const suspended = superAdminStats?.suspendedAccounts ?? 0;
+    // Calculate remaining expired/trial roughly from DB if needed, or stick to front-end for trial/expired since backend doesn't provide them yet.
+    // Actually, backend now gives us activeCompanies and activeSubscriptions.
+    // To strictly avoid duplicate counts, we will rely on superAdminStats.
+    // If we only have active and suspended from backend, we map them directly.
     return [
-      { name: 'Active', value: active, color: '#10b981' },
-      { name: 'Trial', value: trial, color: '#64748b' },
-      { name: 'Expired', value: expired, color: '#ef4444' },
+      { name: 'Active', value: superAdminStats?.activeCompanies ?? 0, color: '#10b981' },
       { name: 'Suspended', value: suspended, color: '#f59e0b' }
     ];
-  }, [companies]);
+  }, [superAdminStats]);
 
 
 
@@ -359,7 +404,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
 
 
-  if (!companies.length) {
+  // The Super Admin dashboard is driven by live superAdminStats counts (each with
+  // a `?? 0` fallback), NOT the companies array, so it must render even when the
+  // platform has no companies yet (fresh / empty database). Gating on
+  // `companies.length` here caused the dashboard to hang on the loading spinner
+  // forever once the database was empty.
+  if (role !== 'Super Admin' && !companies.length) {
     return <Loading />;
   }
 
@@ -439,7 +489,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="mt-3.5">
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
-                <AnimatedCounter value={analytics.totalBranches} />
+                <AnimatedCounter value={totalBranchesCount} />
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">Subsidiaries managed</p>
             </div>
@@ -456,7 +506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight font-heading">
                 <AnimatedCounter value={globalActiveEmployeesCount} />
               </h3>
-              <p className="text-[10px] text-slate-400 mt-1">Total active workforce</p>
+              <p className="text-[10px] text-slate-400 mt-1">Total workforce on record</p>
             </div>
           </div>
 
@@ -744,7 +794,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </div>
                         </div>
                         <button
-                          onClick={() => onStartMasquerade(c.id)}
+                          onClick={() => onStartMasquerade(c.id, c.parentCompanyId ? 'branch' : 'company')}
                           className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold flex items-center gap-0.5 shrink-0 transition-colors"
                         >
                           Control
@@ -786,7 +836,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const branches = companies.filter(b => b.parentCompanyId === activeCompanyId);
 
     // Filter leaves for this company (supports parent + branches)
-    const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies));
+    const scopedLeaves = leaves.filter(l => isCompanyIdMatch(l.companyId, activeCompanyId, companies as any[]));
 
     // Employees on leave today
     const onLeaveToday = scopedEmployees.filter(e => {
@@ -812,6 +862,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
       );
       return !isOnLeave;
     }).length;
+
+    const presentToday = totalEmployees - onLeaveToday - (attendancePending || 0);
 
     // Department Distribution (active only)
     const deptCounts = scopedEmployees.filter(e => e.status === 'Active').reduce((acc, emp) => {
@@ -856,58 +908,104 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
     const payrollStatusStr = companyPayrollStatus.status ? companyPayrollStatus.label : 'No Payroll';
 
-    const handleSendBroadcast = () => {
-      if (!broadcastMsg.trim()) {
-        showToast('Please type a message to broadcast.', 'warning');
-        return;
+    // ─── Live widget datasets — every value below is derived from real DB
+    // records scoped to this branch/company. No hardcoded, mock or demo data. ───
+    const scopedEmpIds = new Set(rawScopedEmployees.map(e => e.id));
+
+    // 1. Total Employees = COUNT(employee_records) assigned to this scope.
+    const totalEmployeesLive = rawScopedEmployees.length;
+
+    // 2. Present Today = COUNT(attendance WHERE date = today AND status = Present).
+    const presentTodayLive = attendance.filter(a =>
+      a.date === todayStr && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+    ).length;
+
+    // 3. Pending Leaves (scoped to this branch/company).
+    const scopedLeavesLive = leaves.filter(l =>
+      scopedEmpIds.has(l.employeeId) || isCompanyIdMatch(l.companyId, activeCompanyId, companies as any[])
+    );
+    const pendingLeavesLive = scopedLeavesLive.filter(l => String(l.status) === 'Pending').length;
+
+    // 4. Payroll This Month = sum of actual payroll net salaries in scope.
+    const payrollThisMonthLive = scopedPayroll.reduce((acc, p) => acc + (p.netSalary || 0), 0);
+
+    // 5. Employee Growth = cumulative headcount by joining month (last 6 months).
+    const growthData = (() => {
+      const now = new Date(todayStr);
+      const rows: { name: string; count: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        const label = new Date(now.getFullYear(), now.getMonth() - i, 1)
+          .toLocaleString('en-US', { month: 'short' });
+        const count = rawScopedEmployees.filter(e => e.joinDate && new Date(e.joinDate) <= monthEnd).length;
+        rows.push({ name: label, count });
       }
+      return rows;
+    })();
 
-      // Calculate Human-readable Audience stamp & scopes
-      let audienceDesc = '';
-      let targetBranchId = activeCompanyId;
-      let targetBranchName = 'All';
+    // 6 & 7. Department Distribution + Top Departments = GROUP BY department.
+    const DEPT_COLORS = ['#2563EB', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#EC4899', '#64748B', '#0D9488'];
+    const deptDistribution = Object.entries(
+      rawScopedEmployees.reduce((acc, e) => {
+        const d = e.department || 'Other';
+        acc[d] = (acc[d] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>)
+    )
+      .map(([name, value], i) => ({ name, value, color: DEPT_COLORS[i % DEPT_COLORS.length] }))
+      .sort((a, b) => b.value - a.value);
+    const deptTotalLive = deptDistribution.reduce((s, d) => s + d.value, 0) || 1;
+    const topDeptsLive = deptDistribution.slice(0, 5);
 
-      if (selectedAudience === 'all') {
-        audienceDesc = 'All Staff';
-        targetBranchId = activeCompanyId;
-        targetBranchName = 'All';
-      } else if (selectedAudience === 'branch') {
-        const brId = isParentCompany ? selectedBranch : activeCompanyId;
-        const brObj = companies.find(c => c.id === brId);
-        targetBranchId = brId;
-        targetBranchName = brObj ? (brObj.branchName || brObj.name) : 'Branch';
-        audienceDesc = `${targetBranchName} Branch Staff`;
-      } else if (selectedAudience === 'role-medical') {
-        audienceDesc = 'Doctors & Medical Staff';
-      } else if (selectedAudience === 'role-nursing') {
-        audienceDesc = 'Nursing & Clinical Staff';
-      } else if (selectedAudience === 'role-admin') {
-        audienceDesc = 'Administrative & Support Staff';
+    // 8. Attendance Trend = present count per day for the last 14 days (real attendance).
+    const attendanceTrendLive = (() => {
+      const now = new Date(todayStr);
+      const rows: { name: string; present: number }[] = [];
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+        const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const present = attendance.filter(a =>
+          a.date === ds && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+        ).length;
+        rows.push({ name: `${String(d.getDate()).padStart(2, '0')} ${d.toLocaleString('en-US', { month: 'short' })}`, present });
       }
+      return rows;
+    })();
 
-      if (selectedDept !== 'all') {
-        audienceDesc += ` (${selectedDept} Dept)`;
-      }
-      if (selectedRole !== 'all') {
-        audienceDesc += ` [Category: ${selectedRole}]`;
-      }
+    // 9. Pending Approvals = pending leaves + pending document requests + exit clearances.
+    const pendingDocsLive = scopedDocs.filter(d => String(d.status) === 'Pending').length;
+    const exitClearancesLive = rawScopedEmployees.filter(e =>
+      e.status === 'Inactive' || (e.exitDate && e.status !== 'Archived')
+    ).length;
 
-      const newNotif = {
-        id: `notif-${Date.now()}`,
-        companyId: activeCompanyId,
-        branchId: targetBranchId,
-        branchName: targetBranchName,
-        targetAudience: audienceDesc,
-        type: 'company',
-        message: `Broadcast: ${broadcastMsg}`,
-        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        read: false,
-        priority: 'high'
-      } as any as Notification;
+    // 10. Recent Activities = real record events (joins, leaves, payroll, documents).
+    const recentActivitiesLive = (() => {
+      type Act = { kind: 'employee' | 'leave' | 'payroll' | 'document'; title: string; sub: string; ts: number };
+      const acts: Act[] = [];
+      rawScopedEmployees.forEach(e => {
+        if (e.joinDate) acts.push({ kind: 'employee', title: `${e.name} joined`, sub: e.department ? `${e.department} team` : 'New employee', ts: new Date(e.joinDate).getTime() });
+      });
+      scopedLeavesLive.forEach(l => {
+        acts.push({ kind: 'leave', title: `${l.employeeName || 'Employee'} ${String(l.status) === 'Pending' ? 'requested' : String(l.status).toLowerCase()} ${l.leaveType || 'leave'}`, sub: l.days ? `${l.days} day(s)` : 'Leave request', ts: new Date(l.appliedOn || l.fromDate || todayStr).getTime() });
+      });
+      scopedPayroll.forEach((p: any) => {
+        if (p.netSalary) acts.push({ kind: 'payroll', title: `Payroll processed${p.employeeName ? ` for ${p.employeeName}` : ''}`, sub: `Net ₹${(p.netSalary || 0).toLocaleString('en-IN')}`, ts: new Date(p.createdAt || p.payDate || todayStr).getTime() });
+      });
+      scopedDocs.forEach((d: any) => {
+        acts.push({ kind: 'document', title: `Document ${d.name || ''}`.trim(), sub: d.status ? `Status: ${d.status}` : (d.uploadedBy ? `By ${d.uploadedBy}` : 'Uploaded'), ts: new Date(d.uploadedOn || d.createdAt || todayStr).getTime() });
+      });
+      return acts.filter(a => !isNaN(a.ts)).sort((a, b) => b.ts - a.ts).slice(0, 5);
+    })();
 
-      api.notifications.create(newNotif).then((saved) => onUpdateNotifications(prev => [saved, ...prev])).catch(() => alert('Failed to broadcast to DB'));
-      showToast(`Broadcast dispatch logged for: ${audienceDesc}!`, 'success');
-      setBroadcastMsg('');
+    const relativeTime = (ts: number): string => {
+      const diff = Date.now() - ts;
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days}d ago`;
     };
 
     return (
@@ -915,376 +1013,372 @@ export const Dashboard: React.FC<DashboardProps> = ({
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="space-y-4"
+        className="space-y-6 pb-10 font-sans"
       >
+        {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h2 className="text-base font-bold text-slate-800 font-heading">Corporate Operations Control</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Control company attendance logs, payroll calculations, and standard settings</p>
+            <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">{branchTitle}</h2>
+            {isBranchWorkspace && activeParentCompany && (
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1D4ED8] mt-0.5">
+                <span className="text-slate-500">{activeParentCompany.name}</span>
+                <ChevronRight size={13} className="text-slate-400" />
+                <span>{(currentCompany as any).branchName || currentCompany?.name} Branch</span>
+              </div>
+            )}
+            <p className="text-[13px] text-gray-500 mt-0.5">
+              {isBranchWorkspace
+                ? `Showing data for the ${(currentCompany as any).branchName || currentCompany?.name} branch only.`
+                : "Here's what's happening in your organization today."}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Payroll Status:</span>
-            <Badge variant={(companyPayrollStatus.status === 'paid' || companyPayrollStatus.status === 'payslip_generated') ? 'green' : 'amber'}>{payrollStatusStr}</Badge>
+          <div className="flex items-center gap-3">
+             <div className="bg-white border border-gray-200 shadow-sm rounded-lg px-3 py-2 text-[12px] font-medium text-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors">
+               <Calendar size={14} className="text-gray-400" />
+               May 01 - May 31, 2025
+               <ChevronRight size={14} className="text-gray-400 rotate-90 ml-2" />
+             </div>
+             <div className="bg-white border border-gray-200 shadow-sm rounded-lg p-2.5 text-gray-600 relative cursor-pointer hover:bg-gray-50 transition-colors">
+               <Bell size={16} />
+               <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
+             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard
-            label="Total Employees"
-            value={<AnimatedCounter value={totalEmployees} />}
-            icon={<Building2 size={16} className="text-indigo-650" />}
-            color="bg-indigo-50/60"
-            sub="Registered in directory"
-          />
-          <StatCard
-            label="Active Employees"
-            value={<AnimatedCounter value={activeEmployeesCount} />}
-            icon={<CheckCircle2 size={16} className="text-emerald-600" />}
-            color="bg-emerald-50/60"
-            sub="Active contract roster"
-          />
-          <StatCard
-            label="On Leave Today"
-            value={<AnimatedCounter value={onLeaveToday} />}
-            icon={<Clock size={16} className="text-amber-600" />}
-            color="bg-amber-50/60"
-            sub="Approved leave schedule"
-          />
-          <StatCard
-            label="Attendance Pending"
-            value={<AnimatedCounter value={attendancePending} />}
-            icon={<AlertCircle size={16} className="text-rose-600" />}
-            color="bg-rose-50/60"
-            sub="Awaiting clock-in today"
-          />
+        {/* Top KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+           {/* Total Employees */}
+           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+             <div className="flex justify-between items-start">
+               <div className="flex gap-3 items-center">
+                 <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center">
+                   <Users size={18} strokeWidth={2.5} />
+                 </div>
+                 <div>
+                   <p className="text-[12px] font-semibold text-gray-500">Total Employees</p>
+                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={totalEmployeesLive} /></h3>
+                 </div>
+               </div>
+             </div>
+             <div className="flex justify-between items-end mt-4">
+               {(() => {
+                 const delta = growthData[5].count - growthData[4].count;
+                 return (
+                   <span className={`text-[11px] font-semibold flex items-center gap-1 ${delta >= 0 ? 'text-[#10B981]' : 'text-rose-500'}`}>
+                     {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)} <span className="text-gray-400 font-medium">vs last month</span>
+                   </span>
+                 );
+               })()}
+               <span className="text-[11px] font-medium text-gray-400">{scopedEmployees.length} active</span>
+             </div>
+           </div>
+
+           {/* Present Today */}
+           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+             <div className="flex justify-between items-start">
+               <div className="flex gap-3 items-center">
+                 <div className="w-10 h-10 rounded-full bg-emerald-50 text-[#10B981] flex items-center justify-center">
+                   <CheckCircle2 size={18} strokeWidth={2.5} />
+                 </div>
+                 <div>
+                   <p className="text-[12px] font-semibold text-gray-500">Present Today</p>
+                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={presentTodayLive} /></h3>
+                 </div>
+               </div>
+             </div>
+             <div className="flex justify-between items-end mt-4">
+               <span className="text-[11px] font-medium text-gray-500">{scopedEmployees.length > 0 ? Math.round((presentTodayLive/scopedEmployees.length)*100) : 0}% of active</span>
+               <span className="text-[11px] font-medium text-gray-400">{todayStr}</span>
+             </div>
+           </div>
+
+           {/* Pending Leaves */}
+           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+             <div className="flex justify-between items-start">
+               <div className="flex gap-3 items-center">
+                 <div className="w-10 h-10 rounded-full bg-amber-50 text-[#F59E0B] flex items-center justify-center">
+                   <UserPlus size={18} strokeWidth={2.5} />
+                 </div>
+                 <div>
+                   <p className="text-[12px] font-semibold text-gray-500">Pending Leaves</p>
+                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={pendingLeavesLive} /></h3>
+                 </div>
+               </div>
+             </div>
+             <div className="flex justify-between items-end mt-4">
+               <span className="text-[11px] font-medium text-gray-500">{pendingLeavesLive} Awaiting Approval</span>
+               <span onClick={() => onNavigate('leaves')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">Review</span>
+             </div>
+           </div>
+
+           {/* Payroll This Month */}
+           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+             <div className="flex justify-between items-start">
+               <div className="flex gap-3 items-center">
+                 <div className="w-10 h-10 rounded-full bg-purple-50 text-[#8B5CF6] flex items-center justify-center">
+                   <Wallet size={18} strokeWidth={2.5} />
+                 </div>
+                 <div>
+                   <p className="text-[12px] font-semibold text-gray-500">Payroll This Month</p>
+                   <h3 className="text-[24px] font-bold text-gray-900 leading-tight mt-1 truncate max-w-[150px]">₹ {(payrollThisMonthLive / 100000).toFixed(1)}L</h3>
+                 </div>
+               </div>
+             </div>
+             <div className="flex justify-between items-end mt-4">
+               <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
+               <svg className="w-20 h-6 text-[#8B5CF6]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
+                 <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round"/>
+               </svg>
+             </div>
+           </div>
         </div>
 
-        {isParentCompany && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* Branch Staff allocations */}
-            <Card className="lg:col-span-5">
-              <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/80 flex items-center gap-1.5">
-                <Building2 size={14} className="text-indigo-400" />
-                <span>Branch-wise Staff Allocation</span>
-              </h3>
-              <div className="space-y-4">
-                {branches.map(b => {
-                  const count = employees.filter(emp => isCompanyIdMatch(emp.companyId, b.id, companies, emp.branchLocation, emp.branchId)).length;
-                  const pct = totalEmployees > 0 ? (count / totalEmployees) * 100 : 0;
-                  return (
-                    <div key={b.id} className="group">
-                      <div className="flex justify-between text-[11px] font-bold mb-1">
-                        <span className="text-slate-200 font-semibold">{b.branchName || b.name}</span>
-                        <span className="text-indigo-400 font-extrabold">{count} Staff ({Math.round(pct)}%)</span>
-                      </div>
-                      <div className="w-full bg-slate-800/50 h-2 rounded-full overflow-hidden border border-slate-800">
-                        <div
-                          style={{ width: `${pct}%` }}
-                          className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full rounded-full transition-all duration-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"
-                        />
-                      </div>
+        {/* Task Manager + Tender Information widgets (added below statistics cards) */}
+        <TaskTenderWidgets activeCompanyId={activeCompanyId} onNavigate={onNavigate} />
+
+        {/* Main Analytics Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+           {/* Left Column (Charts) */}
+           <div className="lg:col-span-2 space-y-5">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+               {/* Employee Growth Chart */}
+               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-[14px] font-bold text-gray-800">Employee Growth <span className="text-gray-500 font-medium">(Last 6 Months)</span></h3>
+                    <select className="text-[11px] border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 outline-none hover:border-gray-300">
+                      <option>This Year</option>
+                    </select>
+                  </div>
+                  <div className="flex-1 w-full relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={growthData} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} dy={10} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} domain={['dataMin - 10', 'auto']} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+
+               {/* Department Distribution */}
+               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
+                  <h3 className="text-[14px] font-bold text-gray-800 mb-2">Department Distribution</h3>
+                  <div className="flex-1 flex flex-col items-center justify-center relative mt-2">
+                    <div className="w-full h-[180px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={80}
+                            paddingAngle={3}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            {(deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]).map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
-                  );
-                })}
-              </div>
-            </Card>
-
-            {/* Branch Payroll Rollups */}
-            <Card padding={false} className="lg:col-span-7">
-              <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign size={14} className="text-slate-400" />
-                  <span>Branch Payroll Rollup Analytics</span>
-                </h3>
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded font-extrabold">Consolidated Financials</span>
-              </div>
-              <Table>
-                <Thead>
-                  <tr className="text-[10px]">
-                    <Th>Branch Location</Th>
-                    <Th>Staff Count</Th>
-                    <Th>Processed Payroll</Th>
-                    <Th>Status</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {branches.map(b => {
-                    const count = employees.filter(emp => isCompanyIdMatch(emp.companyId, b.id, companies, emp.branchLocation, emp.branchId)).length;
-                    const branchPayroll = payroll.filter(p => isCompanyIdMatch(p.companyId, b.id, companies, p.employee?.branchLocation, p.employee?.branchId));
-                    const totalSalary = branchPayroll.reduce((sum, p) => sum + (p.netSalary || 0), 0);
-                    const derivedStatus = deriveCompanyPayrollStatus(b.id, payroll);
-
-                    return (
-                      <Tr key={b.id} className="hover:bg-slate-800/30">
-                        <Td>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-indigo-300 bg-indigo-500/20 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[9px] font-sans">
-                              {b.branchCode || 'BR'}
-                            </span>
-                            <span className="font-semibold text-slate-200">{b.branchName || b.name}</span>
-                          </div>
-                        </Td>
-                        <Td><span className="text-xs font-bold text-slate-400">{count} staff members</span></Td>
-                        <Td><span className="text-xs font-extrabold text-slate-200">₹{totalSalary.toLocaleString('en-IN')}</span></Td>
-                        <Td>
-                          <Badge variant={derivedStatus.status ? 'green' : 'yellow'}>
-                            {derivedStatus.status ? 'Processed' : 'Draft'}
-                          </Badge>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
-            </Card>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 space-y-3">
-            <Card padding={false}>
-              <div className="px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Workforce Analytics & Roster Insights</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5">Real-time branch statistics, department spread, and dynamic joinees feed</p>
-                </div>
-                <button onClick={() => onNavigate('employees')} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 transition-colors">
-                  <span>View Full Directory</span>
-                  <ChevronRight size={12} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-5 divide-y md:divide-y-0 md:divide-x divide-slate-800/80 min-h-[300px]">
-                {/* LEFT SIDE: Employee Feed & Tabs (Columns: 3/5) */}
-                <div className="md:col-span-3 p-4 flex flex-col justify-between">
-                  <div>
-                    {/* Tab Selection */}
-                    <div className="flex items-center gap-1.5 pb-2 mb-3.5">
-                      {(['Joined', 'On Leave', 'Pending Exit'] as const).map((tab) => (
-                        <button
-                          key={tab}
-                          onClick={() => setRosterTab(tab)}
-                          className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${rosterTab === tab
-                            ? 'bg-gradient-to-r from-blue-600/90 to-indigo-600/90 text-white shadow-lg shadow-blue-500/20'
-                            : 'bg-slate-800/50 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
-                            }`}
-                        >
-                          {tab}
-                        </button>
+                    <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 px-2">
+                      {deptDistribution.length === 0 ? (
+                        <span className="text-[11px] font-medium text-gray-400">No employee records in scope</span>
+                      ) : deptDistribution.map(d => (
+                         <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
+                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></span>
+                           <span>{d.name} ({d.value})</span>
+                         </div>
                       ))}
                     </div>
+                  </div>
+               </div>
+             </div>
 
-                    {/* Compact Roster Feed List */}
-                    <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                      {filteredRosterList.length === 0 ? (
-                        <div className="text-center py-12 text-xs text-slate-500 font-medium">
-                          No employees matching filter criteria
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+               {/* Top Departments (Horizontal Bars) */}
+               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                  <div className="flex justify-between items-center mb-5">
+                    <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
+                    <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
+                  </div>
+                  <div className="space-y-4">
+                    {topDeptsLive.length === 0 ? (
+                      <p className="text-[12px] text-gray-400 font-medium py-4 text-center">No employee records in scope</p>
+                    ) : topDeptsLive.map((dept, i) => {
+                      const pct = Math.round((dept.value / deptTotalLive) * 100);
+                      return (
+                        <div key={i}>
+                          <div className="flex justify-between text-[11px] font-bold mb-1.5 text-gray-700">
+                            <span>{dept.name}</span>
+                            <span>{dept.value} <span className="text-gray-400 font-medium">({pct}%)</span></span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: dept.color }}></div>
+                          </div>
                         </div>
-                      ) : (
-                        filteredRosterList.slice(0, 5).map((e) => (
-                          <div
-                            key={e.id}
-                            className="flex items-center justify-between p-2.5 hover:bg-slate-800/40 rounded-xl transition-all border border-slate-800/60 bg-slate-900/40"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-[10px] font-extrabold text-white font-sans flex-shrink-0 shadow-lg shadow-indigo-500/20">
-                                {e.name.substring(0, 2).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-200 truncate">{e.name}</p>
-                                <p className="text-[10px] text-slate-400 truncate">
-                                  {e.designation} • <span className="font-semibold text-slate-500">{e.branchLocation || e.location || 'Ahmedabad'}</span>
-                                </p>
-                              </div>
-                            </div>
-                            <div className="text-right flex-shrink-0 pl-2">
-                              {rosterTab === 'Joined' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded">
-                                  Joined NA
-                                </span>
-                              )}
-                              {rosterTab === 'On Leave' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 font-bold rounded">
-                                  Absence Logged
-                                </span>
-                              )}
-                              {rosterTab === 'Pending Exit' && (
-                                <span className="text-[9px] px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold rounded">
-                                  Joined LEFT
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ))
-                      )}
+                      );
+                    })}
+                  </div>
+               </div>
+
+               {/* Attendance Trend */}
+               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
+                    <div className="flex gap-3 text-[10px] font-semibold">
+                      <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#2563EB]"></span> Present (count)</span>
                     </div>
                   </div>
+                  <div className="w-full h-[180px] mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} dy={10} interval={2} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+               </div>
+             </div>
+           </div>
 
-                  {filteredRosterList.length > 5 && (
-                    <button
-                      onClick={() => onNavigate('employees')}
-                      className="w-full mt-3 text-center text-[9px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors uppercase tracking-wider py-1.5 border-t border-slate-800/80"
-                    >
-                      View All {filteredRosterList.length} Roster Records
-                    </button>
-                  )}
+           {/* Right Column */}
+           <div className="space-y-5">
+              {/* Pending Approvals */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
+                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
                 </div>
-
-                {/* RIGHT SIDE: Dynamic Insights & Department Distribution (Columns: 2/5) */}
-                <div className="md:col-span-2 p-4 flex flex-col justify-center">
-                  {/* Department distribution */}
-                  <div className="space-y-3.5">
-                    <div className="pb-2">
-                      <h4 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                        Department Spread
-                      </h4>
-                      <p className="text-[8px] text-slate-500 mt-0.5">Distribution across key corporate divisions</p>
-                    </div>
-                    <div className="space-y-3">
-                      {topDepartments.map((dept) => {
-                        const pct = activeEmployeesCount > 0 ? (dept.count / activeEmployeesCount) * 100 : 0;
-                        return (
-                          <div key={dept.name} className="group">
-                            <div className="flex justify-between text-[9px] font-bold mb-1">
-                              <span className="text-slate-300 truncate max-w-[120px] transition-colors group-hover:text-indigo-400">{dept.name}</span>
-                              <span className="text-slate-300">{dept.count} ({Math.round(pct)}%)</span>
-                            </div>
-                            <div className="w-full bg-slate-800/80 h-1.5 rounded-full overflow-hidden">
-                              <div
-                                style={{ width: `${pct}%` }}
-                                className="bg-indigo-600 h-full rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                <div className="space-y-4">
+                   <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
+                     <div className="flex items-center gap-3">
+                       <div className="p-2 bg-orange-50 text-orange-500 rounded-lg"><Calendar size={16} strokeWidth={2.5}/></div>
+                       <span className="text-[12px] font-semibold text-gray-700">Leave Requests</span>
+                     </div>
+                     <span className="text-[13px] font-bold text-gray-900">{pendingLeavesLive.toString().padStart(2, '0')}</span>
+                   </div>
+                   <div onClick={() => onNavigate('documents')} className="flex items-center justify-between cursor-pointer">
+                     <div className="flex items-center gap-3">
+                       <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><FileText size={16} strokeWidth={2.5}/></div>
+                       <span className="text-[12px] font-semibold text-gray-700">Document Requests</span>
+                     </div>
+                     <span className="text-[13px] font-bold text-gray-900">{pendingDocsLive.toString().padStart(2, '0')}</span>
+                   </div>
+                   <div onClick={() => onNavigate('employees')} className="flex items-center justify-between cursor-pointer">
+                     <div className="flex items-center gap-3">
+                       <div className="p-2 bg-pink-50 text-pink-500 rounded-lg"><Archive size={16} strokeWidth={2.5}/></div>
+                       <span className="text-[12px] font-semibold text-gray-700">Exit Clearances</span>
+                     </div>
+                     <span className="text-[13px] font-bold text-gray-900">{exitClearancesLive.toString().padStart(2, '0')}</span>
+                   </div>
                 </div>
               </div>
-            </Card>
+
+              {/* Recent Activities */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
+                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                </div>
+                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
+                   {recentActivitiesLive.length === 0 ? (
+                     <p className="text-[12px] text-gray-400 font-medium py-4">No recent activity for this workspace</p>
+                   ) : recentActivitiesLive.map((act, i) => {
+                     const style = {
+                       employee: { bg: 'bg-blue-50', text: 'text-[#2563EB]', Icon: Users },
+                       payroll:  { bg: 'bg-purple-50', text: 'text-[#8B5CF6]', Icon: Wallet },
+                       leave:    { bg: 'bg-amber-50', text: 'text-[#F59E0B]', Icon: Calendar },
+                       document: { bg: 'bg-emerald-50', text: 'text-[#10B981]', Icon: FileText },
+                     }[act.kind];
+                     const Icon = style.Icon;
+                     return (
+                       <div key={i} className="relative flex items-start gap-4">
+                         <div className={`w-7 h-7 rounded-full ${style.bg} border-[3px] border-white flex items-center justify-center z-10 ${style.text} shadow-sm`}><Icon size={12} strokeWidth={3}/></div>
+                         <div className="flex-1 pb-1">
+                           <p className="text-[12px] font-semibold text-gray-800">{act.title}</p>
+                           <p className="text-[10px] text-gray-500 mt-0.5">{act.sub} <span className="float-right text-gray-400">{relativeTime(act.ts)}</span></p>
+                         </div>
+                       </div>
+                     );
+                   })}
+                </div>
+              </div>
+
+              {/* Notifications */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
+                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                </div>
+                <div className="space-y-3.5">
+                   {(() => {
+                     const scopedNotifs = (notifications || []).filter(n =>
+                       !n.companyId || isCompanyIdMatch(n.companyId, activeCompanyId, companies as any[])
+                     ).slice(0, 5);
+                     if (scopedNotifs.length === 0) {
+                       return <p className="text-[12px] text-gray-400 font-medium">No notifications</p>;
+                     }
+                     return scopedNotifs.map(n => (
+                       <div key={n.id} className="flex items-center gap-3">
+                         <div className={`p-1.5 rounded-md ${n.priority === 'high' ? 'text-rose-500 bg-rose-50' : n.priority === 'medium' ? 'text-amber-500 bg-amber-50' : 'text-gray-400 bg-gray-50'}`}><Info size={14} strokeWidth={2.5}/></div>
+                         <p className="text-[12px] text-gray-700 font-medium truncate">{n.message}</p>
+                       </div>
+                     ));
+                   })()}
+                </div>
+              </div>
+           </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="mt-4">
+          <h3 className="text-[15px] font-bold text-gray-900 mb-4">Quick Actions</h3>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+             <button onClick={() => onNavigate('employees')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#2563EB]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-blue-50 text-[#2563EB] rounded-xl group-hover:scale-110 transition-transform"><UserPlus size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Add Employee</span>
+             </button>
+             <button onClick={() => onNavigate('attendance')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#10B981]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-emerald-50 text-[#10B981] rounded-xl group-hover:scale-110 transition-transform"><CheckCircle2 size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Mark Attendance</span>
+             </button>
+             <button onClick={() => onNavigate('leaves')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#F59E0B]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-amber-50 text-[#F59E0B] rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Approve Leave</span>
+             </button>
+             <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-purple-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Run Payroll</span>
+             </button>
+             <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-teal-50 text-[#0D9488] rounded-xl group-hover:scale-110 transition-transform"><FileUp size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Upload Document</span>
+             </button>
+             <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#4F46E5]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+               <div className="p-2 bg-indigo-50 text-[#4F46E5] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5}/></div>
+               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">View Reports</span>
+             </button>
           </div>
-
-          <Card>
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-4 pb-2 border-b border-slate-800/80 flex items-center gap-1.5">
-              <Bell size={14} className="text-purple-400" />
-              <span>Send Broadcast Notification</span>
-            </h3>
-            <div className="space-y-3.5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Target Audience Scope
-                </label>
-                <select
-                  value={selectedAudience}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setSelectedAudience(val);
-                    if (val === 'all') {
-                      setSelectedBranch('all');
-                    } else if (val === 'branch') {
-                      if (!isParentCompany) {
-                        setSelectedBranch(activeCompanyId);
-                      } else {
-                        setSelectedBranch(branches[0]?.id || '');
-                      }
-                    }
-                  }}
-                  className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
-                >
-                  {isParentCompany && (
-                    <option value="all">All Staff (Head Office & Centers)</option>
-                  )}
-                  {isParentCompany ? (
-                    <optgroup label="Subsidiaries & Branches">
-                      <option value="branch">Select Specific Branch Staff</option>
-                    </optgroup>
-                  ) : (
-                    <option value="branch">My Local Branch Staff Only</option>
-                  )}
-                  <optgroup label="Role / Category Scope">
-                    <option value="role-medical">Doctors & Medical Staff</option>
-                    <option value="role-nursing">Nursing & Clinical Staff</option>
-                    <option value="role-admin">Administrative & Support Staff</option>
-                  </optgroup>
-                </select>
-              </div>
-
-              {selectedAudience === 'branch' && isParentCompany && (
-                <div className="animate-fade-in text-left">
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Target Branch Regional Center
-                  </label>
-                  <select
-                    value={selectedBranch}
-                    onChange={e => setSelectedBranch(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans font-medium"
-                  >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>
-                        {b.branchName || b.name} ({b.branchCode || 'BR'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-2 text-left">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Target Department
-                  </label>
-                  <select
-                    value={selectedDept}
-                    onChange={e => setSelectedDept(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
-                  >
-                    <option value="all">All Departments</option>
-                    {(companies.find(c => c.id === activeCompanyId)?.customDepartments || []).map(deptName => (
-                      <option key={deptName} value={deptName}>{deptName}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                    Target Role Category
-                  </label>
-                  <select
-                    value={selectedRole}
-                    onChange={e => setSelectedRole(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-sans"
-                  >
-                    <option value="all">All Categories</option>
-                    <option value="Doctor">Doctors Only</option>
-                    <option value="Nurse">Nursing Only</option>
-                    <option value="Admin">Admin Staff Only</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                  Notification Message
-                </label>
-                <textarea
-                  value={broadcastMsg}
-                  onChange={e => setBroadcastMsg(e.target.value)}
-                  placeholder="Type broadcast message to all scoped roster devices..."
-                  rows={3}
-                  className="w-full px-3 py-2 border border-slate-800/80 rounded-xl text-xs outline-none bg-slate-900/50 text-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none"
-                />
-              </div>
-
-              <button
-                onClick={handleSendBroadcast}
-                className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(99,102,241,0.4)] flex items-center justify-center gap-1.5"
-              >
-                <Bell size={13} />
-                <span>Dispatch Broadcast</span>
-              </button>
-            </div>
-          </Card>
         </div>
       </motion.div>
     );

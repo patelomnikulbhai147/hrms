@@ -1,0 +1,44 @@
+[
+  {
+    "id": 3,
+    "companyId": 1,
+    "branchNo": 1,
+    "branchName": "Ahmedabad",
+    "newId": 1
+  },
+  {
+    "id": 4,
+    "companyId": 1,
+    "branchNo": 2,
+    "branchName": "Bhavnagar",
+    "newId": 2
+  },
+  {
+    "id": 5,
+    "companyId": 1,
+    "branchNo": 3,
+    "branchName": "Rajkot",
+    "newId": 3
+  },
+  {
+    "id": 6,
+    "companyId": 1,
+    "branchNo": 4,
+    "branchName": "Siddhpur",
+    "newId": 4
+  },
+  {
+    "id": 7,
+    "companyId": 2,
+    "branchNo": 1,
+    "branchName": "East Clinic",
+    "newId": 5
+  },
+  {
+    "id": 8,
+    "companyId": 2,
+    "branchNo": 2,
+    "branchName": "West Labs",
+    "newId": 6
+  }
+]

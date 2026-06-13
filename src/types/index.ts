@@ -4,7 +4,8 @@ export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated' |
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
 export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
-export type AttendanceStatus = 'Present' | 'Absent' | 'Late' | 'Half Day' | 'WFH';
+export type AttendanceStatus = 'Present' | 'Absent' | 'Half Day' | 'Weekly Off' | 'Holiday' | 'Leave' | 'Work From Home' | 'On Duty';
+export type AttendanceFlag = 'Late Mark' | 'Early Exit' | 'Overtime' | 'Night Shift' | 'Missed Punch' | 'Double Shift' | 'Field Work';
 
 export interface Company {
   id: string;
@@ -175,6 +176,9 @@ export interface AttendanceRecord {
   clockOut: string;
   status: AttendanceStatus;
   hoursWorked: number;
+  flags?: AttendanceFlag[];
+  leaveType?: string;
+  shift?: string;
 }
 
 export interface LeaveRequest {
@@ -231,13 +235,20 @@ export interface PayrollRecord {
 
   bonus?: number;
   tax?: number;
+  leaveEncashmentDays?: number;
+  leaveEncashmentAmount?: number;
   notes?: string;
 }
 
 export interface Document {
   id: string;
   companyId: string;
+  branchId?: string;
   name: string;
+  // NOTE: kept as the original narrow union for now to stay structurally
+  // compatible with the parallel mockData.Document. The full supported set
+  // (see DOCUMENT_TYPES in pages/Documents.tsx) is stored at runtime regardless;
+  // Phase 2 will widen this together with mockData.Document.
   type: 'Contract' | 'Resume' | 'BGV' | 'Payslip' | 'Offer Letter' | 'Appointment Letter' | 'Experience Letter' | 'Relieving Letter' | 'Aadhaar' | 'PAN' | 'Other';
   employeeId?: string;
   employeeName?: string;
@@ -245,6 +256,20 @@ export interface Document {
   uploadedOn: string;
   size: string;
   status: 'Verified' | 'Pending' | 'Rejected';
+  // ── File storage (base64 in DB + external link) ──
+  url?: string;        // external link (Google Drive / OneDrive / Dropbox / direct PDF)
+  fileData?: string;   // base64 data-URL of the uploaded file (device / drag-drop / camera)
+  mimeType?: string;   // drives the preview viewer (image vs PDF vs download-only)
+  // ── Identity / validity ──
+  documentNumber?: string;
+  issueDate?: string;
+  expiryDate?: string;
+  remarks?: string;
+  // ── Audit trail ──
+  verifiedBy?: string;
+  verifiedOn?: string;
+  editedBy?: string;
+  editedOn?: string;
 }
 
 export interface Notification {
@@ -314,10 +339,39 @@ export const getCompanyIdFromBranchName = (branchName: string, activeCompanyId: 
   return match ? match.id : activeCompanyId;
 };
 
-export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, companiesList?: Company[], recordBranchLocation?: string, recordEmployeeBranchId?: string): boolean => {
-  if (recordCompanyId === activeId) return true;
-  
-  let list = companiesList;
+// The workspace "kind" hint disambiguates the shared company/branch id space.
+// Branch ids (1..N) overlap company ids (1..N) in the database, so an id alone
+// is ambiguous — id 1 may be Company "Vishv" OR Branch "Ahmedabad". The active
+// workspace's kind is recorded when it is entered (see App.tsx) and read here.
+const getActiveWorkspaceKind = (): 'company' | 'branch' | null => {
+  if (typeof window === 'undefined') return null;
+  try { return localStorage.getItem('hrms_active_workspace_kind') as any; } catch { return null; }
+};
+
+// Resolve which entity `activeId` refers to, using the kind hint to break a
+// company/branch id collision (prefer the branch when kind === 'branch').
+export const resolveActiveWorkspace = (list: any[] | undefined, activeId: any, kind?: 'company' | 'branch' | null): any => {
+  const eq = (a: any, b: any) => a != null && b != null && String(a) === String(b);
+  if (!list || !list.length) return null;
+  const matches = list.filter(c => eq(c.id, activeId));
+  if (matches.length <= 1) return matches[0] || null;
+  const k = kind ?? getActiveWorkspaceKind();
+  if (k === 'branch') return matches.find(c => !!c.parentCompanyId) || matches[0];
+  if (k === 'company') return matches.find(c => !c.parentCompanyId) || matches[0];
+  return matches[0];
+};
+
+// Company/Branch ids are integers but may arrive as numeric strings ("1") from
+// the workspace/localStorage layer — compare them type-insensitively via `eq`.
+//
+// Because branch ids overlap company ids, scoping is driven by the active
+// workspace KIND (resolved via resolveActiveWorkspace), never by a bare
+// `recordCompanyId === activeId` shortcut that would leak a sibling company's
+// rows into a branch view (and vice-versa).
+export const isCompanyIdMatch = (recordCompanyId: any, activeId: any, companiesList?: Company[], recordBranchLocation?: string, recordEmployeeBranchId?: any): boolean => {
+  const eq = (a: any, b: any) => a != null && b != null && String(a) === String(b);
+
+  let list: any[] | undefined = companiesList;
   if (!list || list.length === 0) {
     if (typeof window !== 'undefined') {
       const raw = localStorage.getItem('hrms_companies');
@@ -326,31 +380,78 @@ export const isCompanyIdMatch = (recordCompanyId: string, activeId: string, comp
       }
     }
   }
-  if (!list || list.length === 0) return false;
-  
-  const activeComp = list.find(c => c.id === activeId);
-  
-  // Branch mode: If active is a branch (has parentCompanyId and not head office)
-  if (activeComp && activeComp.parentCompanyId && !activeComp.isHeadOffice) {
-     // If the record specifically belongs to this branch's ID, it's a match
-     if (recordEmployeeBranchId && recordEmployeeBranchId === activeId) return true;
-     
-     // Record must belong to the parent company
-     if (recordCompanyId === activeComp.parentCompanyId && recordBranchLocation) {
-       const activeBranchName = (activeComp.name || activeComp.branchName || '').toUpperCase().trim();
-       if (recordBranchLocation.toUpperCase().trim() === activeBranchName) return true;
-     }
-     
-     // Fallback: If it's a branch but record only has parentCompanyId, it belongs to head office, so don't show it in branch
-     return false;
+
+  const kind = getActiveWorkspaceKind();
+  const activeComp = resolveActiveWorkspace(list, activeId, kind);
+  const activeIsBranch = activeComp
+    ? (!!activeComp.parentCompanyId && !activeComp.isHeadOffice)
+    : (kind === 'branch');
+
+  if (activeIsBranch) {
+    // BRANCH scope — a record belongs here only if it is tied to THIS branch.
+    // Employee rows carry branchId; child rows (attendance/payroll/leave) carry
+    // no branchId and are scoped elsewhere by employee membership, so they
+    // correctly fall through to `false` here.
+    if (eq(recordEmployeeBranchId, activeId)) return true;
+    if (activeComp && recordBranchLocation && eq(recordCompanyId, activeComp.parentCompanyId)) {
+      const activeBranchName = (activeComp.name || activeComp.branchName || '').toUpperCase().trim();
+      if (String(recordBranchLocation).toUpperCase().trim() === activeBranchName) return true;
+    }
+    return false;
   }
-  
-  // Parent mode: active is a head office
-  if (activeComp && (!activeComp.parentCompanyId || activeComp.isHeadOffice)) {
-    const recordComp = list.find(c => c.id === recordCompanyId);
-    return recordCompanyId === activeId || recordComp?.parentCompanyId === activeComp.id;
+
+  // COMPANY scope — the company itself plus any sub-companies that roll up to it.
+  // (Branch employees already carry the parent companyId, so they are included.)
+  if (eq(recordCompanyId, activeId)) return true;
+  if (list && list.length) {
+    const recordComp = list.find(c => eq(c.id, recordCompanyId));
+    if (activeComp && eq(recordComp?.parentCompanyId, activeComp.id)) return true;
+  } else {
+    // No list available — fall back to the legacy direct comparisons.
+    return eq(recordCompanyId, activeId) || eq(recordEmployeeBranchId, activeId);
   }
-  
+  return false;
+};
+
+/**
+ * buildScopedEmployeeIdSet
+ *
+ * Returns the set of employee identifiers (both the uuid `id` and the business
+ * `employeeId`) that belong to the active company/branch workspace. This is the
+ * single source of truth used to scope CHILD records (attendance, leaves,
+ * payroll, documents) — those records carry an `employeeId` but no `branchId`,
+ * so they can only be scoped to a branch through employee membership.
+ */
+export const buildScopedEmployeeIdSet = (
+  employees: Array<{ id?: string; employeeId?: string; companyId: string; branchLocation?: string; branchId?: string }>,
+  activeId: string,
+  companiesList?: Company[]
+): Set<string> => {
+  const ids = new Set<string>();
+  for (const e of employees) {
+    if (isCompanyIdMatch(e.companyId, activeId, companiesList, e.branchLocation, e.branchId)) {
+      if (e.id) ids.add(e.id);
+      if (e.employeeId) ids.add(e.employeeId);
+    }
+  }
+  return ids;
+};
+
+/**
+ * isRecordInWorkspace
+ *
+ * True when a child record belongs to the active workspace — by employee
+ * membership first (works for both company and branch workspaces), falling back
+ * to a direct company match for company-level records with no employee link.
+ */
+export const isRecordInWorkspace = (
+  record: { employeeId?: string; companyId?: string },
+  activeId: string,
+  scopedEmployeeIds: Set<string>,
+  companiesList?: Company[]
+): boolean => {
+  if (record.employeeId && scopedEmployeeIds.has(record.employeeId)) return true;
+  if (record.companyId) return isCompanyIdMatch(record.companyId, activeId, companiesList);
   return false;
 };
 

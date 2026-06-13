@@ -1,4 +1,4 @@
-import { type Company, type SubscriptionPlan, PLAN_LIMITS } from '../types';
+import { type Company, type SubscriptionPlan, PLAN_LIMITS } from '../data/mockData';
 
 export type SubscriptionStatus = 'Suspended' | 'Overdue' | 'Expiring Soon' | 'Trial Ending' | 'Active';
 
