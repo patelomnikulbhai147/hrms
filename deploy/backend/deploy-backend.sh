@@ -19,9 +19,11 @@ echo "==> Installing backend deps"
 cd "$BACKEND_DIR"
 npm ci --omit=dev || npm install --omit=dev
 
-echo "==> Prisma generate + migrate deploy"
+echo "==> Prisma generate + schema sync (db push)"
 npx prisma generate
-npx prisma migrate deploy
+# db push (not migrate deploy) — the committed migrations mix table-name casing
+# which fails on case-sensitive MySQL/RDS. Syncs schema.prisma; never drops data.
+npx prisma db push
 
 echo "==> Reloading PM2 (zero downtime)"
 pm2 reload hrms-backend
