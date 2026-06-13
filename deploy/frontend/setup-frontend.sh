@@ -32,6 +32,13 @@ if [ ! -f .env.production ]; then
 fi
 
 echo "==> [4/6] Install deps + build"
+# Skip Puppeteer's bundled-Chromium download — it's a devDependency not needed
+# to build, and the ~150MB download stalls small instances.
+export PUPPETEER_SKIP_DOWNLOAD=true
+# Raise V8's heap limit so the Vite build doesn't OOM on small (1GB) instances.
+# V8 otherwise caps the heap based on physical RAM (~460MB on a t3.micro).
+# Pair this with a swap file on 1GB instances (see deploy guide).
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=2048}"
 npm ci || npm install
 npm run build   # outputs ./dist
 
