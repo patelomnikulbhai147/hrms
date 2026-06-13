@@ -338,7 +338,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   // Bulk-apply a status/payment change to many payroll records at once, then
-  // persist every change to PostgreSQL and reconcile local state.
+  // persist every change to the database and reconcile local state.
   const applyBulkStatus = async (ids: string[], changes: any) => {
     const results = await Promise.all(
       ids.map(id => api.payroll.update(id, changes).then(saved => ({ id, saved })).catch(e => { console.error('Bulk update failed for', id, e); return null; }))
@@ -370,7 +370,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       .map(r => r.id);
     if (ids.length === 0) { alert('Approve or pay payroll before generating payslips.'); return; }
     await applyBulkStatus(ids, { payslipGenerated: true });
-    alert(`✅ ${ids.length} payslip(s) marked generated and saved to PostgreSQL. Use the PDF/XLSX buttons (or the payslip view) to download an individual slip.`);
+    alert(`✅ ${ids.length} payslip(s) marked generated and saved to the database. Use the PDF/XLSX buttons (or the payslip view) to download an individual slip.`);
   };
 
   // Bank Transfer Sheet — NEFT/RTGS style export of net payable per employee.
@@ -691,7 +691,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         currentYear
       );
 
-      // Save generated records to PostgreSQL
+      // Save generated records to the database
       const dbSavedRecords = await Promise.all(
          generatedRecords.map(async (record) => {
             // Generated payroll moves to the GENERATED stage (salary computed
@@ -707,7 +707,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       
       onUpdatePayroll(newPayrollList);
 
-      alert('✅ ENTERPRISE PAYROLL GENERATED\n\nAttendance, Unpaid Leaves, and Overtime have been successfully processed. Salary Slips are now saved to PostgreSQL and ready for verification.');
+      alert('✅ ENTERPRISE PAYROLL GENERATED\n\nAttendance, Unpaid Leaves, and Overtime have been successfully processed. Salary Slips are now saved to the database and ready for verification.');
       setShowPayrollModal(false);
       
     } catch (err: any) {

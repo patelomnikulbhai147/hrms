@@ -398,7 +398,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       }));
       onUpdateAttendance(updatedAttendance);
       setSelectedIds([]);
-      alert(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved directly to PostgreSQL.`);
+      alert(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved to the database.`);
     } catch (e) {
       console.error(e);
       alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));

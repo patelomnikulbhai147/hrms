@@ -463,7 +463,7 @@ export default function App() {
   });
   const [isHydrating, setIsHydrating] = useState(true);
 
-    // Data hydration from backend PostgreSQL
+    // Data hydration from backend MySQL
   const hydrateAll = async () => {
     setIsHydrating(true);
     try {
@@ -505,7 +505,7 @@ export default function App() {
       setLeaves(fetchedLeaves || []);
       setAttendance(fetchedAttendance || []);
 
-      // Live Super Admin KPI counts straight from PostgreSQL.
+      // Live Super Admin KPI counts straight from MySQL.
       // Only fetch for Super Admin — other roles are denied by the backend.
       // Read role directly from localStorage so we don't reference authProfile
       // before it is declared (authProfile useMemo is defined further below).
@@ -607,7 +607,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
   // Real-time Super Admin KPI sync: whenever companies or employees change
   // (create / update / delete / suspend / activate / transfer from any page),
-  // re-fetch live counts from PostgreSQL. Debounced to coalesce rapid mutations.
+  // re-fetch live counts from MySQL. Debounced to coalesce rapid mutations.
   // Skipped entirely for non-Super Admin roles — they cannot call this endpoint.
   // NOTE: We intentionally use storedAuthProfile?.role here (declared above)
   // rather than permissionRole (declared below) to avoid a TDZ crash.
