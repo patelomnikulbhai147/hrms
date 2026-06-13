@@ -35,10 +35,14 @@ if [ ! -f .env ]; then
 fi
 npm ci --omit=dev || npm install --omit=dev
 
-echo "==> [5/6] Prisma client + database migrations"
+echo "==> [5/6] Prisma client + database schema sync"
 npx prisma generate
-# Applies all committed migrations to the RDS database. Safe & idempotent.
-npx prisma migrate deploy
+# Sync the database to schema.prisma. We use `db push` (not `migrate deploy`)
+# because the committed migration SQL mixes table-name casing (CREATE `Attendance`
+# vs ALTER `attendance`), which breaks on case-sensitive MySQL (Linux/RDS).
+# `db push` builds straight from schema.prisma in one consistent pass.
+# Idempotent and non-destructive: it only applies the diff, never drops data.
+npx prisma db push
 
 echo "==> [6/6] Start under PM2 + enable on boot"
 pm2 start "$REPO_DIR/deploy/backend/ecosystem.config.cjs" || pm2 reload hrms-backend
