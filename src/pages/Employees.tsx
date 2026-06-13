@@ -668,7 +668,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         alert('Employee successfully updated.');
       }).catch(err => {
         console.error(err);
-        alert(`Failed to save to PostgreSQL: ${err.message}`);
+        alert(`Failed to save to the database: ${err.message}`);
       });
     } catch (err: any) {
       console.error(err);

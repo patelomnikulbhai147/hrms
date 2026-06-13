@@ -9,7 +9,7 @@ import { authStorage } from '../utils/authStorage';
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 // Live Super Admin KPI counts returned by GET /api/statistics/super-admin.
-// Single source of truth — every field is computed directly from PostgreSQL.
+// Single source of truth — every field is computed directly from MySQL.
 export interface SuperAdminStats {
   totalCompanies: number;           // Total Companies / Total Scoped Tenants / Directory
   activeCompanies: number;          // Active Companies KPI

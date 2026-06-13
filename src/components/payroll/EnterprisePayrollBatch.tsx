@@ -44,7 +44,7 @@ interface Props {
   company: Company | any;
   month: string;
   canEdit: boolean;
-  // Persists status/payment changes for the given record ids to PostgreSQL.
+  // Persists status/payment changes for the given record ids to the database.
   onApply: (ids: string[], changes: Partial<PayrollRecord> & Record<string, any>) => Promise<void>;
   onExportExcel: () => void;
   onGenerateAll: () => Promise<void>;

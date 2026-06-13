@@ -32,7 +32,7 @@ Key modules include:
 
 **Backend Architecture**
 * **Framework**: Node.js with Express.js
-* **Database**: PostgreSQL (Relational Database)
+* **Database**: MySQL (Relational Database)
 * **ORM**: Prisma (Schema migrations and typed database client)
 * **Authentication**: JWT (JSON Web Tokens) & `bcryptjs`
 * **File Storage**: Relational BLOB storage (Base64) / Path-based file persistence
@@ -79,7 +79,7 @@ enterprise-hrms-crm-application/
 
 ## Database Structure
 
-The PostgreSQL database is managed via Prisma and includes the following active tables:
+The MySQL database is managed via Prisma and includes the following active tables:
 
 * `User`: Application users, credentials, role mapping, and session data.
 * `Company`: Parent tenant organizations, billing details, and SaaS configurations.
@@ -111,10 +111,10 @@ The PostgreSQL database is managed via Prisma and includes the following active 
 
 ### Prerequisites
 * Node.js (v18+)
-* PostgreSQL server
+* MySQL server (local, e.g. Laragon/phpMyAdmin, or AWS RDS for MySQL)
 
 ### 1. Database Setup
-1. Create a blank PostgreSQL database.
+1. Create a blank MySQL database (e.g. `corehrms`).
 2. Update the `.env` file in the `backend/` directory with your `DATABASE_URL`.
 
 ### 2. Backend Initialization
@@ -122,7 +122,7 @@ The PostgreSQL database is managed via Prisma and includes the following active 
 cd backend
 npm install
 npx prisma generate
-npx prisma migrate deploy
+npx prisma db push
 npm run dev
 ```
 *(The backend will start on port 5000)*
@@ -144,8 +144,8 @@ npm run dev
 # Server Port Configuration
 PORT=5000
 
-# PostgreSQL Connection String
-DATABASE_URL="postgresql://user:password@localhost:5432/corehrms"
+# MySQL Connection String
+DATABASE_URL="mysql://user:password@localhost:3306/corehrms"
 
 # JWT Security
 JWT_SECRET="your_secure_random_string_here"
