@@ -128,18 +128,15 @@ export default function App() {
   }
 
 
-  // Persistent user credentials
-  const [userAccounts, setUserAccounts] = useState<UserAccount[]>(() => {
-    const raw = localStorage.getItem('hrms_accounts');
-    if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_accounts', JSON.stringify(defaultUsers));
-    return defaultUsers;
-  });
+  // Users come EXCLUSIVELY from the live MySQL database via hydrateAll()
+  // (api.users.getAll). Initialized strictly empty — no mock/localStorage seed —
+  // so the user list and counts can never show stale or mock ("defaultUsers")
+  // data. This mirrors the companies/employees models above.
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
 
   const handleUpdateUserAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
     const next = typeof updater === 'function' ? updater(userAccounts) : updater;
     setUserAccounts(next);
-    localStorage.setItem('hrms_accounts', JSON.stringify(next));
   };
 
   // Database models initialized strictly empty to enforce live DB queries (No stale localStorage caching)
@@ -247,7 +244,6 @@ export default function App() {
     }
     const next = typeof updater === 'function' ? updater(userAccounts) : updater;
     setUserAccounts(next);
-    localStorage.setItem('hrms_accounts', JSON.stringify(next));
 
     if (authProfile) {
       const updatedProfile = next.find(u => u.id === authProfile.id);
