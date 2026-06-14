@@ -79,9 +79,8 @@ const isActive = (status) => (status || '').toLowerCase() === 'active';
 
 // Find a user by email or username.
 // NOTE: MySQL string comparisons are case-insensitive by default (collation
-// utf8mb4_*_ci), so no `mode: 'insensitive'` is needed — that option is a
-// PostgreSQL-only Prisma feature and throws on the MySQL connector. Email is
-// also normalized to lowercase before lookup.
+// utf8mb4_*_ci), so no `mode: 'insensitive'` is needed on the MySQL connector.
+// Email is also normalized to lowercase before lookup.
 const findUserByLogin = async (identifier) => {
   const email = normalizeEmail(identifier);
   const username = normalizeIdentifier(identifier);

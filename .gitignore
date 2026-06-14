@@ -4,3 +4,9 @@ dist/
 .env.production
 .env.*.local
 # (deploy/**/.env.production.example templates are NOT ignored — they have no secrets)
+
+# Logs — never commit runtime logs
+*.log
+# Local scratch / one-off debug dumps & snapshots (kept out of the tree)
+backend/scratch/
+*.tmp

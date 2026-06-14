@@ -37,8 +37,8 @@ for (const sig of ['SIGINT', 'SIGTERM', 'beforeExit']) {
 // ─────────────────────────────────────────────────────────────────────────────
 const INT_PK_MODELS = new Set([
   'Company', 'Branch', 'Employee', 'User',
-  // Transactional / log tables whose PKs were migrated from UUID to Int — a
-  // string id from a URL param ("/payroll/5") is coerced to a number here.
+  // Transactional / log tables with integer PKs — a string id from a URL param
+  // ("/payroll/5") is coerced to a number here.
   'Attendance', 'Payroll', 'Document', 'LeaveRequest', 'Overtime',
   'Notification', 'PaymentRecord', 'CompanyPayroll', 'BranchPayroll',
   'AuditLog', 'Shift', 'LoginAudit', 'PasswordResetToken', 'SubscriptionPlan',
