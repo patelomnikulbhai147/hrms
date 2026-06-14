@@ -22,7 +22,7 @@ const prisma = require('../config/prisma');
  */
 
 // Non-active status values accepted from the database (case-insensitive match
-// because some rows were written with mixed casing during early migrations).
+// because some rows were written with mixed casing).
 const DEACTIVATED_STATUSES = [
   'Archived', 'ARCHIVED',
   'Suspended', 'SUSPENDED',

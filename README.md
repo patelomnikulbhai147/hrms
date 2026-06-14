@@ -33,7 +33,7 @@ Key modules include:
 **Backend Architecture**
 * **Framework**: Node.js with Express.js
 * **Database**: MySQL (Relational Database)
-* **ORM**: Prisma (Schema migrations and typed database client)
+* **ORM**: Prisma (schema management and typed database client)
 * **Authentication**: JWT (JSON Web Tokens) & `bcryptjs`
 * **File Storage**: Relational BLOB storage (Base64) / Path-based file persistence
 

@@ -41,16 +41,23 @@ exports.getAll = async (req, res) => {
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
-      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      whereClause.companyId = { in: allowedIds };
+      // Scope to the user's companies AND the branches under them, so a branch
+      // sub-workspace resolves (branch ids no longer collide with company ids).
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      const allowedIds = [...companyScope, ...branchScope];
+      whereClause.OR = [
+        { companyId: { in: companyScope } },
+        { branchId: { in: branchScope.length ? branchScope : companyScope } }
+      ];
       if (companyId) {
         if (!allowedIds.includes(companyId)) {
           return res.status(403).json({ error: 'Unauthorized' });
         }
-        whereClause.companyId = companyId;
+        whereClause = { OR: [{ companyId: companyId }, { branchId: companyId }] };
       }
     } else if (companyId) {
-      whereClause.companyId = companyId;
+      whereClause = { OR: [{ companyId: companyId }, { branchId: companyId }] };
     }
 
     const data = await prisma.document.findMany({

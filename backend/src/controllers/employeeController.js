@@ -11,15 +11,22 @@ exports.getEmployees = async (req, res) => {
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
-      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      // A user is scoped to their companies AND the branches under those companies.
+      // accessibleBranchIds is derived in the protect middleware. Including branch
+      // ids here lets a Company Head / HR open a BRANCH sub-workspace (a branch id
+      // is no longer ambiguous with a company id — the namespaces no longer collide).
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      const allowedIds = [...companyScope, ...branchScope];
       whereClause.OR = [
-        { companyId: { in: allowedIds } },
-        { branchId: { in: allowedIds } }
+        { companyId: { in: companyScope } },
+        { branchId: { in: branchScope.length ? branchScope : companyScope } }
       ];
       if (companyId) {
         if (!allowedIds.includes(companyId)) {
-          return res.status(403).json({ error: 'Unauthorized to view this company employees' });
+          return res.status(403).json({ error: 'Unauthorized to view this workspace\'s employees' });
         }
+        // The selected workspace id may be a company OR a branch — match either column.
         whereClause.OR = [
           { companyId: companyId },
           { branchId: companyId }

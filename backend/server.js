@@ -5,7 +5,6 @@ const cors = require('cors');
 const authRoutes = require('./src/routes/authRoutes');
 const companyRoutes = require('./src/routes/companyRoutes');
 const branchRoutes = require('./src/routes/branchRoutes');
-const migrationRoutes = require('./src/routes/migrationRoutes');
 const employeeRoutes = require('./src/routes/employeeRoutes');
 const leaveRoutes = require('./src/routes/leaveRoutes');
 const { creditRouter: leaveCreditRoutes, balanceRouter: leaveBalanceRoutes } = require('./src/routes/leaveSystemRoutes');
@@ -62,7 +61,6 @@ app.use((req, res, next) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);
-app.use('/api/migrate', migrationRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/leave-credit', leaveCreditRoutes);
@@ -115,6 +113,3 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-
-// trigger nodemon restart
-// trigger nodemon restart
