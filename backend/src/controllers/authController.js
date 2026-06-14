@@ -30,7 +30,7 @@ const normalizeIdentifier = (value) => (value || '').trim();
 
 // Build a safe, client-facing user object (never leak password material).
 const toSafeUser = (user) => {
-  const { passwordHash, password, permissions: rawPermissions, ...rest } = user;
+  const { passwordHash, permissions: rawPermissions, ...rest } = user;
   const parsedPerms = rawPermissions || {};
   return {
     ...rest,
@@ -111,6 +111,17 @@ exports.login = async (req, res) => {
 
     const user = await findUserByLogin(rawIdentifier);
 
+    // --- AUTH DEBUG: user lookup ---------------------------------------------
+    // Never logs the plaintext password or the full hash — only enough to trace
+    // which field auth uses and why a login passed/failed. bcrypt hashes always
+    // start with "$2a$"/"$2b$"; a value that doesn't is NOT a bcrypt hash (e.g.
+    // someone pasted a plaintext password into passwordHash in phpMyAdmin).
+    console.log('[AUTH] login attempt:', {
+      identifier: rawIdentifier,
+      userFound: !!user,
+      userId: user?.id,
+    });
+
     if (!user) {
       await recordLogin({
         email: normalizeEmail(rawIdentifier),
@@ -135,7 +146,26 @@ exports.login = async (req, res) => {
       return res.status(403).json({ error: statusMessage(user.status) });
     }
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash || '');
+    // --- AUTH DEBUG: hash loaded ---------------------------------------------
+    const hash = user.passwordHash || '';
+    const looksLikeBcrypt = /^\$2[aby]\$/.test(hash);
+    console.log('[AUTH] passwordHash loaded:', {
+      userId: user.id,
+      hashPresent: !!hash,
+      hashPrefix: hash.slice(0, 7),          // e.g. "$2a$10$" — safe, identifies the algorithm
+      looksLikeBcrypt,
+    });
+    if (!looksLikeBcrypt) {
+      // Defensive: a non-bcrypt passwordHash means the column was hand-edited with
+      // a plaintext value. bcrypt.compare would just return false forever.
+      console.warn('[AUTH] passwordHash is NOT a bcrypt hash — login will fail. '
+        + 'Set the password via the app or scripts/setUserPassword.js, never by typing plaintext into passwordHash.');
+    }
+
+    // Authentication is bcrypt(plaintext, passwordHash). The plain `password`
+    // column is NEVER read here — passwordHash is the single source of truth.
+    const isMatch = await bcrypt.compare(password, hash);
+    console.log('[AUTH] bcrypt.compare result:', { userId: user.id, isMatch });
     if (!isMatch) {
       await recordLogin({
         userId: user.id,
@@ -205,6 +235,61 @@ exports.getMe = async (req, res) => {
   } catch (error) {
     console.error('GetMe Error:', error);
     return res.status(500).json({ error: 'Server error fetching user details.' });
+  }
+};
+
+// ----------------------------------------------------------------------------
+// Change own password (authenticated self-service)
+//   Verifies the CURRENT password (bcrypt) before setting a new one. The new
+//   password is bcrypt-hashed and written ONLY to passwordHash — the single
+//   source of truth. The old hash is overwritten, so the old password stops
+//   working immediately and the new one works immediately.
+// ----------------------------------------------------------------------------
+exports.changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id; // set by `protect` middleware from the JWT
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Please provide your current and new password.' });
+    }
+    if (String(newPassword).length < 8) {
+      return res.status(400).json({ error: 'Your new password must be at least 8 characters long.' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'Your new password must be different from your current password.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'Account not found.' });
+    }
+
+    console.log('[CHANGE-PW] request:', { userId, username: user.username });
+    const currentOk = await bcrypt.compare(currentPassword, user.passwordHash || '');
+    console.log('[CHANGE-PW] current password verify:', { userId, isMatch: currentOk });
+    if (!currentOk) {
+      return res.status(401).json({ error: 'Your current password is incorrect.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    console.log('[CHANGE-PW] passwordHash updated in MySQL:', { userId, newHashPrefix: passwordHash.slice(0, 7) });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'CHANGE_PASSWORD',
+        module: 'Auth',
+        targetId: String(user.id),
+        details: JSON.stringify({ self: true }),
+      },
+    }).catch((err) => console.error('Failed to write audit log:', err.message));
+
+    return res.json({ message: 'Your password has been changed successfully. Use your new password next time you sign in.' });
+  } catch (error) {
+    console.error('ChangePassword Error:', error);
+    return res.status(500).json({ error: 'Server error while changing your password. Please try again.' });
   }
 };
 
@@ -382,7 +467,7 @@ exports.resetPassword = async (req, res) => {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
-        data: { passwordHash, password: 'REDACTED' },
+        data: { passwordHash },
       }),
       // Consume every outstanding token for this user.
       prisma.passwordResetToken.updateMany({

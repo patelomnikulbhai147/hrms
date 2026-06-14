@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getApiErrorMessage } from '../../utils/apiError';
-import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History } from 'lucide-react';
+import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History, KeyRound, CheckCircle2 } from 'lucide-react';
 import { type Role, type Company, type Notification } from '../../data/mockData';
 import { type UserAccount } from '../../pages/Login';
 import { Badge } from '../ui/Badge';
@@ -53,6 +53,39 @@ export const Topbar: React.FC<TopbarProps> = ({
 
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  // ── Self-service "Change Password" modal ──────────────────────────────────
+  const [cpwOpen, setCpwOpen] = useState(false);
+  const [cpwCurrent, setCpwCurrent] = useState('');
+  const [cpwNew, setCpwNew] = useState('');
+  const [cpwConfirm, setCpwConfirm] = useState('');
+  const [cpwShow, setCpwShow] = useState(false);
+  const [cpwBusy, setCpwBusy] = useState(false);
+  const [cpwError, setCpwError] = useState('');
+  const [cpwDone, setCpwDone] = useState(false);
+
+  const openChangePassword = () => {
+    setProfileOpen(false);
+    setCpwCurrent(''); setCpwNew(''); setCpwConfirm(''); setCpwShow(false);
+    setCpwError(''); setCpwDone(false); setCpwBusy(false); setCpwOpen(true);
+  };
+
+  const handleChangePassword = async () => {
+    setCpwError('');
+    if (!cpwCurrent) { setCpwError('Please enter your current password.'); return; }
+    if (cpwNew.length < 8) { setCpwError('Your new password must be at least 8 characters long.'); return; }
+    if (cpwNew !== cpwConfirm) { setCpwError('New passwords do not match.'); return; }
+    if (cpwNew === cpwCurrent) { setCpwError('Your new password must be different from your current one.'); return; }
+    setCpwBusy(true);
+    try {
+      await api.auth.changePassword({ currentPassword: cpwCurrent, newPassword: cpwNew });
+      setCpwDone(true);
+    } catch (err) {
+      setCpwError(getApiErrorMessage(err, 'Could not change your password.'));
+    } finally {
+      setCpwBusy(false);
+    }
+  };
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [wsSearchTerm, setWsSearchTerm] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
@@ -490,6 +523,13 @@ export const Topbar: React.FC<TopbarProps> = ({
                     <p className="text-[9px] text-slate-500 uppercase font-bold tracking-wider mt-1">{activeRole}</p>
                   </div>
                   <button
+                    onClick={openChangePassword}
+                    className="w-full text-left px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800/60 flex items-center gap-2 font-semibold transition-all"
+                  >
+                    <KeyRound size={13} />
+                    <span>Change Password</span>
+                  </button>
+                  <button
                     onClick={handleLogoutAction}
                     className="w-full text-left px-4 py-2.5 text-xs text-rose-400 hover:bg-rose-955/40 flex items-center gap-2 font-semibold transition-all"
                   >
@@ -502,6 +542,62 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
         </div>
       </header>
+
+      {/* Change Password (self-service) modal */}
+      {cpwOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !cpwBusy && setCpwOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                <KeyRound size={18} className="text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[15px] font-black text-slate-900">Change Password</h3>
+                <p className="text-[12px] text-slate-500 font-medium">{userName}</p>
+              </div>
+              <button onClick={() => !cpwBusy && setCpwOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+            </div>
+
+            {cpwDone ? (
+              <div className="px-6 py-8 text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={28} className="text-emerald-500" />
+                </div>
+                <h4 className="text-[15px] font-black text-slate-900">Password changed successfully</h4>
+                <p className="text-[13px] text-slate-500 mt-1">Your new password is active now. Use it the next time you sign in.</p>
+                <button onClick={() => setCpwOpen(false)} className="mt-5 w-full h-11 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[13px] font-bold transition-all">Done</button>
+              </div>
+            ) : (
+              <div className="px-6 py-5">
+                <label className="block text-[12px] font-bold text-slate-600 mb-1.5">Current password</label>
+                <input type={cpwShow ? 'text' : 'password'} value={cpwCurrent} onChange={e => setCpwCurrent(e.target.value)} placeholder="Your current password"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" autoFocus />
+                <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">New password</label>
+                <input type={cpwShow ? 'text' : 'password'} value={cpwNew} onChange={e => setCpwNew(e.target.value)} placeholder="At least 8 characters"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">Confirm new password</label>
+                <input type={cpwShow ? 'text' : 'password'} value={cpwConfirm} onChange={e => setCpwConfirm(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }} placeholder="Re-enter the new password"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                <button type="button" onClick={() => setCpwShow(s => !s)} className="mt-2 text-[12px] font-bold text-slate-500 hover:text-slate-700">
+                  {cpwShow ? 'Hide' : 'Show'} passwords
+                </button>
+                {cpwError && (
+                  <div className="mt-3 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-[12px] font-semibold text-red-600">{cpwError}</div>
+                )}
+                <div className="flex items-center justify-end gap-2 mt-5">
+                  <button onClick={() => setCpwOpen(false)} disabled={cpwBusy} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 disabled:opacity-50">Cancel</button>
+                  <button onClick={handleChangePassword} disabled={cpwBusy}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm disabled:opacity-60">
+                    {cpwBusy ? 'Saving…' : 'Update Password'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

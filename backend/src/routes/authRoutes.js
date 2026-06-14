@@ -14,4 +14,7 @@ router.post('/reset-password', authController.resetPassword);   // step 3: set n
 // Protected routes — any authenticated user may read their own profile.
 router.get('/me', protect, authController.getMe);
 
+// Self-service: change own password (verifies current password first).
+router.post('/change-password', protect, authController.changePassword);
+
 module.exports = router;

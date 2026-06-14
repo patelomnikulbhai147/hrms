@@ -113,8 +113,11 @@ exports.getCompanies = async (req, res) => {
 
     const enrichedCompanies = companies.map(c => {
       const { _count, ...rest } = c;
+      // Always serve a LIVE staff count computed from employee rows so the stored
+      // (denormalized) employeeCount can never drift from MySQL reality.
       return {
         ...rest,
+        employeeCount: _count.employees,
         headcount: _count.employees
       };
     });

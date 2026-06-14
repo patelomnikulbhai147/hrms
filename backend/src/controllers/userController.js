@@ -8,6 +8,41 @@ const respondError = require('../utils/respondError');
 // unexpectedly". One pool for the whole server.
 const prisma = require('../config/prisma');
 
+// Role-based default permissions. A user created WITHOUT a permissions blob gets
+// denied everywhere by the RBAC middleware (it checks permissions[module][action]),
+// which is the cause of "new user can log in but sees nothing". Defined inline so
+// it cannot be lost as a separate module file.
+const PERMISSION_MODULES = [
+  'dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents',
+  'reports', 'settings', 'companies', 'billing', 'tasks', 'tenders', 'permissions',
+];
+function defaultPermissionsForRole(role) {
+  if (role === 'Super Admin') return { permissions: {}, moduleAccess: {} };
+  const full = () => ({ view: true, edit: true, create: true, delete: true });
+  const view = () => ({ view: true, edit: false, create: false, delete: false });
+  const none = () => ({ view: false, edit: false, create: false, delete: false });
+  const FULL = {
+    'Company Head': PERMISSION_MODULES,
+    'HR': ['dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents', 'reports', 'tasks', 'tenders'],
+    'Finance': ['dashboard', 'payroll', 'reports', 'documents'],
+    'Employee': [],
+  };
+  const VIEW = {
+    'HR': ['settings'],
+    'Finance': ['employees', 'attendance', 'leaves'],
+    'Employee': ['dashboard', 'attendance', 'leaves', 'payroll', 'documents'],
+  };
+  const fullSet = new Set(FULL[role] || []);
+  const viewSet = new Set(VIEW[role] || []);
+  const permissions = {};
+  for (const m of PERMISSION_MODULES) {
+    if (fullSet.has(m)) permissions[m] = full();
+    else if (viewSet.has(m)) permissions[m] = view();
+    else permissions[m] = (role === 'Employee') ? none() : view();
+  }
+  return { permissions, moduleAccess: {} };
+}
+
 exports.resetPassword = async (req, res) => {
   try {
     const { id } = req.params;
@@ -22,15 +57,24 @@ exports.resetPassword = async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
+    // Generate a fresh bcrypt hash and save it to passwordHash — the SINGLE source
+    // of truth for authentication. The legacy plaintext `password` column is
+    // deliberately NOT stored anymore (it could desync from passwordHash and was a
+    // security leak); it is nulled out so no plaintext lingers.
     const passwordHash = await bcrypt.hash(newPassword, 10);
+    console.log('[RESET] hashing new password:', {
+      userId: user.id,
+      username: user.username,
+      newHashPrefix: passwordHash.slice(0, 7),
+    });
 
     const updatedUser = await prisma.user.update({
       where: { id: idParam(id) },
       data: {
-        password: newPassword, // Store plaintext just for fallback if needed, but strictly use hash for auth
-        passwordHash: passwordHash
+        passwordHash: passwordHash // auth reads ONLY this (single source of truth)
       }
     });
+    console.log('[RESET] passwordHash updated in MySQL:', { userId: updatedUser.id });
 
     // We can log this to audit logs
     await prisma.auditLog.create({
@@ -38,7 +82,7 @@ exports.resetPassword = async (req, res) => {
         userId: req.user ? req.user.id : user.id,
         action: 'RESET_PASSWORD',
         module: 'Users',
-        targetId: user.id,
+        targetId: String(user.id),
         details: JSON.stringify({ message: 'Admin reset password' })
       }
     });
@@ -82,7 +126,7 @@ exports.updateUser = async (req, res) => {
           userId: req.user ? req.user.id : user.id,
           action: 'UPDATE_PERMISSIONS',
           module: 'Users',
-          targetId: user.id,
+          targetId: String(user.id),
           details: JSON.stringify({
             workspaces: accessibleCompanyIds,
             permissionsUpdated: !!permissions,
@@ -146,16 +190,23 @@ exports.createUser = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password || 'welcome123', 10);
 
-    let combinedPermissions = {};
-    if (permissions) combinedPermissions.permissions = permissions;
-    if (moduleAccess) combinedPermissions.moduleAccess = moduleAccess;
+    // Build the permissions blob. If the caller supplies explicit permissions or
+    // moduleAccess, honour them; otherwise seed sensible role-based defaults so the
+    // new user can actually use the app (an empty blob = denied everywhere).
+    let combinedPermissions;
+    if (permissions || moduleAccess) {
+      combinedPermissions = {};
+      if (permissions) combinedPermissions.permissions = permissions;
+      if (moduleAccess) combinedPermissions.moduleAccess = moduleAccess;
+    } else {
+      combinedPermissions = defaultPermissionsForRole(role || 'Employee');
+    }
 
     const newUser = await prisma.user.create({
       data: {
         name,
         email,
         username,
-        password: 'REDACTED',
         passwordHash,
         role: role || 'Employee',
         companyId,
@@ -184,14 +235,15 @@ exports.getAllUsers = async (req, res) => {
       // never re-sequenced; the UI shows a derived SR No instead of the raw id.
       orderBy: { id: 'asc' }
     });
-    // Remove passwordHash before sending
+    // Strip ALL password material before sending. We never expose passwordHash
+    // OR the legacy plaintext `password` column — passwordHash is the source of
+    // truth used only server-side by bcrypt.compare. Passwords are write-only via
+    // the reset endpoint; they are never readable through the API.
     const safeUsers = users.map(u => {
-      const { passwordHash, password, permissions: rawPermissions, ...rest } = u;
+      const { passwordHash, permissions: rawPermissions, ...rest } = u;
       const parsedPerms = rawPermissions || {};
-      return { 
-        ...rest, 
-        passwordStr: password, 
-        password,
+      return {
+        ...rest,
         permissions: parsedPerms.permissions || {},
         moduleAccess: parsedPerms.moduleAccess || {}
       };

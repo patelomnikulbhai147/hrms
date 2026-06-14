@@ -101,6 +101,37 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
   // Modal state
   const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
+
+  // ── Admin "Reset Password" modal state ────────────────────────────────────
+  const [resetUser, setResetUser] = useState<UserAccount | null>(null);
+  const [resetPw, setResetPw] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetShow, setResetShow] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [resetDone, setResetDone] = useState(false);
+
+  const openReset = (user: UserAccount) => {
+    setResetUser(user); setResetPw(''); setResetConfirm(''); setResetShow(false);
+    setResetError(''); setResetDone(false); setResetBusy(false);
+  };
+  const closeReset = () => { setResetUser(null); setResetBusy(false); };
+
+  const handleResetPassword = async () => {
+    if (!resetUser) return;
+    setResetError('');
+    if (resetPw.length < 8) { setResetError('Password must be at least 8 characters long.'); return; }
+    if (resetPw !== resetConfirm) { setResetError('Passwords do not match.'); return; }
+    setResetBusy(true);
+    try {
+      await api.users.resetPassword(String(resetUser.id), resetPw);
+      setResetDone(true); // show success confirmation
+    } catch (err) {
+      setResetError(getApiErrorMessage(err, 'Could not reset the password.'));
+    } finally {
+      setResetBusy(false);
+    }
+  };
   // Workspace Access matrix: which company groups are collapsed (default: all expanded).
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
@@ -820,10 +851,17 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                     <td className="px-3 py-3 text-right">
                       {canDelete && (
                         <div className="flex items-center justify-end gap-1 flex-nowrap">
+                          <button
+                            onClick={() => openReset(user)}
+                            title="Reset password"
+                            className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 flex items-center justify-center transition-colors"
+                          >
+                            <Key size={13} />
+                          </button>
                           <button className="w-7 h-7 shrink-0 rounded-lg border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-colors">
                             <Shield size={13} />
                           </button>
-                          
+
                           <button
                             onClick={() => handleOpenPermissions(user)}
                             className="px-2.5 py-1.5 shrink-0 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-[11px] font-bold transition-all shadow-sm flex items-center gap-1"
@@ -1210,6 +1248,82 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
           </div>
         )}
       </AnimatePresence>
+
+      {/* Reset Password Modal (admin resets any user's password) */}
+      {resetUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={closeReset} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                <Key size={18} className="text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-black text-slate-900">Reset Password</h3>
+                <p className="text-[12px] text-slate-500 font-medium">
+                  {resetUser.name} <span className="text-slate-400">· @{resetUser.username}</span>
+                </p>
+              </div>
+            </div>
+
+            {resetDone ? (
+              <div className="px-6 py-8 text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 size={28} className="text-emerald-500" />
+                </div>
+                <h4 className="text-[15px] font-black text-slate-900">Password reset successfully</h4>
+                <p className="text-[13px] text-slate-500 mt-1">
+                  <span className="font-bold">@{resetUser.username}</span> can now sign in with the new password. The old password no longer works.
+                </p>
+                <button onClick={closeReset} className="mt-5 w-full h-11 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[13px] font-bold transition-all">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <div className="px-6 py-5">
+                <label className="block text-[12px] font-bold text-slate-600 mb-1.5">New password</label>
+                <input
+                  type={resetShow ? 'text' : 'password'}
+                  value={resetPw}
+                  onChange={e => setResetPw(e.target.value)}
+                  placeholder="At least 8 characters"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                  autoFocus
+                />
+                <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">Confirm new password</label>
+                <input
+                  type={resetShow ? 'text' : 'password'}
+                  value={resetConfirm}
+                  onChange={e => setResetConfirm(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleResetPassword(); }}
+                  placeholder="Re-enter the password"
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                />
+                <button type="button" onClick={() => setResetShow(s => !s)} className="mt-2 text-[12px] font-bold text-slate-500 hover:text-slate-700">
+                  {resetShow ? 'Hide' : 'Show'} passwords
+                </button>
+
+                {resetError && (
+                  <div className="mt-3 px-3 py-2 bg-red-50 border border-red-100 rounded-lg text-[12px] font-semibold text-red-600">
+                    {resetError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2 mt-5">
+                  <button onClick={closeReset} disabled={resetBusy} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 disabled:opacity-50">Cancel</button>
+                  <button
+                    onClick={handleResetPassword}
+                    disabled={resetBusy}
+                    className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {resetBusy ? <><RotateCw size={14} className="animate-spin" /> Resetting…</> : <>Reset Password</>}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Add User Modal */}
       <AnimatePresence>

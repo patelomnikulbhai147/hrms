@@ -121,6 +121,14 @@ export const api = {
         headers: getHeaders()
       });
     },
+    // Self-service: change own password (verifies current password server-side).
+    changePassword: async (data: { currentPassword: string; newPassword: string }) => {
+      return await apiFetch(`${BASE_URL}/auth/change-password`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
     // Step 1 — request an OTP to the registered email.
     forgotPassword: async (data: { email: string }) => {
       return await apiFetch(`${BASE_URL}/auth/forgot-password`, {
