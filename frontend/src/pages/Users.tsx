@@ -845,7 +845,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                     <td className="px-3 py-3">
                       <p className="text-[12px] font-semibold text-slate-700 whitespace-nowrap">Today, 10:42 AM</p>
                       <p className="text-[11px] font-bold text-emerald-500 mt-0.5 flex items-center gap-1">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Online
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> Online
                       </p>
                     </td>
                     <td className="px-3 py-3 text-right">
@@ -1284,6 +1284,8 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                 <label className="block text-[12px] font-bold text-slate-600 mb-1.5">New password</label>
                 <input
                   type={resetShow ? 'text' : 'password'}
+                  name="newUserPassword"
+                  autoComplete="new-password"
                   value={resetPw}
                   onChange={e => setResetPw(e.target.value)}
                   placeholder="At least 8 characters"
@@ -1293,6 +1295,8 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                 <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">Confirm new password</label>
                 <input
                   type={resetShow ? 'text' : 'password'}
+                  name="confirmNewUserPassword"
+                  autoComplete="new-password"
                   value={resetConfirm}
                   onChange={e => setResetConfirm(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleResetPassword(); }}
@@ -1369,7 +1373,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                 </div>
                 <div>
                   <label className="block text-[12px] font-bold text-slate-700 mb-1.5">Password <span className="text-rose-500">*</span></label>
-                  <input type="password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="••••••••" />
+                  <input type="password" name="createUserPassword" autoComplete="new-password" value={newUser.password} onChange={e => setNewUser({...newUser, password: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" placeholder="••••••••" />
                 </div>
                 <div>
                   <label className="block text-[12px] font-bold text-slate-700 mb-1.5">Role</label>
