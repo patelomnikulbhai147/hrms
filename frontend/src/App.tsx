@@ -1008,10 +1008,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
       case 'users':
         return (
-          <Users 
-            userAccounts={userAccounts} 
-            companies={companies} 
-            onUpdateAccounts={handleUpdateUserAccounts} 
+          <Users
+            userAccounts={userAccounts}
+            companies={companies}
+            onUpdateAccounts={handleUpdateUserAccounts}
+            onRefresh={hydrateAll}
           />
         );
       default:

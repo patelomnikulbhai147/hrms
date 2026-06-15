@@ -22,6 +22,10 @@ interface UsersProps {
   userAccounts: UserAccount[];
   companies: Company[];
   onUpdateAccounts: (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => void;
+  // Re-fetch the live, backend-scoped data (users + companies + branches) so a
+  // permission change reflects in the Workspace Selector immediately, with no
+  // page refresh. Wired to hydrateAll() in App.tsx.
+  onRefresh?: () => Promise<void> | void;
 }
 
 const MODULES_LIST: { id: AppModules; name: string }[] = [
@@ -48,7 +52,7 @@ const DEFAULT_PERMISSIONS: ModulePermissions = {
   manage: false
 };
 
-export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateAccounts }) => {
+export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateAccounts, onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
   const [companyFilter, setCompanyFilter] = useState<string>('All');
@@ -301,6 +305,10 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
       
       onUpdateAccounts(prev => prev.map(u => u.id === selectedUser.id ? updatedUserFromApi : u));
       setSelectedUser(null);
+      // Pull the fresh, backend-scoped workspace data so the Workspace Selector
+      // (and branch access) reflect the new permissions immediately — no page
+      // refresh, no re-login.
+      await onRefresh?.();
     } catch (err) {
       console.error('Failed to save permissions to backend:', err);
       alert(getApiErrorMessage(err, 'Could not save permissions.'));
