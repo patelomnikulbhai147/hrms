@@ -704,10 +704,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     console.log('Navigation Started');
     console.log('Workspace Selected:', companyId);
     
-    // Check if the user is authorized to switch to this company
+    // Check if the user is authorized to switch to this company.
+    // Compare as strings: accessible ids and the selected workspace id may be
+    // number or string (branch ids come back numeric, legacy company ids are
+    // strings like "c-gcri"), so a strict `includes` would wrongly reject a
+    // valid branch (e.g. ['5'].includes(5) === false).
     if (permissionRole !== 'Super Admin' && !isMasquerading) {
-      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies);
-      if (!accessibleIds.includes(companyId)) {
+      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies).map(String);
+      if (!accessibleIds.includes(String(companyId))) {
         console.error(`Access Denied: Workspace ${companyId} is not in accessible list:`, accessibleIds);
         throw new Error('You do not have permission to enter this workspace. Please contact your administrator.');
       }
