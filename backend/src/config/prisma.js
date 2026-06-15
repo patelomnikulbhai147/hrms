@@ -88,4 +88,60 @@ prisma.$use(async (params, next) => {
   return next(params);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GLOBAL AUDIT TRAIL middleware.
+//
+// Auto-writes an AuditLog row for every create/update/delete on a business
+// entity, recording WHO (from auditContext), WHAT (action + model + target) and
+// WHEN (createdAt default). One mechanism covers Users, Employees, Attendance,
+// Leave, Payroll, Companies, Branches, Documents, Tasks — no per-controller
+// wiring. Fully guarded: a logging failure can NEVER break the underlying op.
+// ─────────────────────────────────────────────────────────────────────────────
+const auditContext = require('../utils/auditContext');
+
+// High-volume / log tables (AuditLog, LoginAudit, Notification, AttendanceSummary)
+// are excluded to avoid noise and recursion.
+const AUDIT_MODELS = new Set([
+  'User', 'Employee', 'Attendance', 'Payroll', 'Company', 'Branch',
+  'Document', 'Task', 'TaskComment', 'LeaveRequest', 'LeaveBalance',
+  'LeaveCreditConfig', 'Shift', 'Overtime', 'CompanyPayroll', 'BranchPayroll',
+]);
+const AUDIT_ACTION = {
+  create: 'CREATE', upsert: 'UPSERT', update: 'UPDATE',
+  updateMany: 'UPDATE', delete: 'DELETE', deleteMany: 'DELETE',
+};
+
+prisma.$use(async (params, next) => {
+  const result = await next(params); // ALWAYS run the real op first
+  try {
+    const { model, action } = params;
+    if (model && AUDIT_MODELS.has(model) && AUDIT_ACTION[action]) {
+      const actor = auditContext.getUser();
+      // userId is a required FK to User — only log when we know the actor.
+      if (actor && actor.id) {
+        const whereId = params.args && params.args.where ? params.args.where.id : undefined;
+        const targetId =
+          result && result.id != null ? String(result.id)
+          : (whereId != null && typeof whereId !== 'object' ? String(whereId) : '');
+        await prisma.auditLog.create({
+          data: {
+            userId: actor.id,
+            action: `${AUDIT_ACTION[action]}_${model.toUpperCase()}`,
+            module: model,
+            targetId: targetId || '',
+            details: JSON.stringify({
+              by: actor.name || actor.email || `user#${actor.id}`,
+              role: actor.role,
+              op: action,
+            }).slice(0, 1000),
+          },
+        });
+      }
+    }
+  } catch (_) {
+    // Audit logging must never affect the primary operation.
+  }
+  return result;
+});
+
 module.exports = prisma;

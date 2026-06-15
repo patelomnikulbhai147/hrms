@@ -5,6 +5,7 @@ const employeeController = require('../controllers/employeeController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // offboarded company → read-only
 
 router.get('/', requirePermission('employees', 'view'), employeeController.getEmployees);
 router.get('/next-code', requirePermission('employees', 'view'), employeeController.nextCode);

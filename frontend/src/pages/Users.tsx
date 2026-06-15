@@ -52,6 +52,43 @@ const DEFAULT_PERMISSIONS: ModulePermissions = {
   manage: false
 };
 
+// Every granular action under a module's ACCESS master.
+const ALL_ACTIONS: Array<keyof ModulePermissions> = ['view', 'create', 'edit', 'delete', 'export', 'approve', 'print', 'manage'];
+const fullPerms = (val: boolean): ModulePermissions =>
+  ALL_ACTIONS.reduce((o, a) => { (o as any)[a] = val; return o; }, {} as ModulePermissions);
+
+// Role templates — one click applies a sensible permission preset across modules.
+const ROLE_TEMPLATES: { id: string; label: string; build: (modules: AppModules[]) => { access: Record<string, boolean>; perms: Record<string, ModulePermissions> } }[] = [
+  {
+    id: 'fullAccess', label: 'Full Access',
+    build: (mods) => ({
+      access: Object.fromEntries(mods.map(m => [m, true])),
+      perms: Object.fromEntries(mods.map(m => [m, fullPerms(true)])),
+    }),
+  },
+  {
+    id: 'readOnly', label: 'Read Only',
+    build: (mods) => ({
+      access: Object.fromEntries(mods.map(m => [m, true])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, export: true, print: true }])),
+    }),
+  },
+  {
+    id: 'manager', label: 'Manager (no delete)',
+    build: (mods) => ({
+      access: Object.fromEntries(mods.map(m => [m, true])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(true), delete: false, manage: false }])),
+    }),
+  },
+  {
+    id: 'none', label: 'No Access',
+    build: (mods) => ({
+      access: Object.fromEntries(mods.map(m => [m, false])),
+      perms: Object.fromEntries(mods.map(m => [m, fullPerms(false)])),
+    }),
+  },
+];
+
 export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateAccounts, onRefresh }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('All');
@@ -198,26 +235,61 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     setSelectedUser(null);
   };
 
+  // ACCESS is the MASTER permission: granting it grants every action; removing
+  // it removes them all. Keeps access and granular actions from contradicting.
   const handleToggleModuleAccess = (moduleId: AppModules) => {
     if (!selectedUser) return;
-    const currentAccess = selectedUser.moduleAccess?.[moduleId] ?? true;
-    
+    const next = !(selectedUser.moduleAccess?.[moduleId] ?? true);
     const updatedUser = { ...selectedUser };
-    if (!updatedUser.moduleAccess) updatedUser.moduleAccess = {} as Record<AppModules, boolean>;
-    
-    updatedUser.moduleAccess[moduleId] = !currentAccess;
+    updatedUser.moduleAccess = { ...(updatedUser.moduleAccess || {}) } as Record<AppModules, boolean>;
+    updatedUser.permissions = { ...(updatedUser.permissions || {}) } as Record<AppModules, ModulePermissions>;
+    updatedUser.moduleAccess[moduleId] = next;
+    updatedUser.permissions[moduleId] = fullPerms(next);
     setSelectedUser(updatedUser);
   };
 
   const handleToggleActionPermission = (moduleId: AppModules, action: keyof ModulePermissions) => {
     if (!selectedUser) return;
-    
     const updatedUser = { ...selectedUser };
-    if (!updatedUser.permissions) updatedUser.permissions = {} as Record<AppModules, ModulePermissions>;
-    if (!updatedUser.permissions[moduleId]) updatedUser.permissions[moduleId] = { ...DEFAULT_PERMISSIONS };
-    
-    updatedUser.permissions[moduleId][action] = !updatedUser.permissions[moduleId][action];
+    updatedUser.permissions = { ...(updatedUser.permissions || {}) } as Record<AppModules, ModulePermissions>;
+    updatedUser.moduleAccess = { ...(updatedUser.moduleAccess || {}) } as Record<AppModules, boolean>;
+    const perms = { ...(updatedUser.permissions[moduleId] || DEFAULT_PERMISSIONS) };
+    const turningOn = !perms[action];
+    perms[action] = turningOn;
+
+    // MANAGE implies every lower permission.
+    if (action === 'manage' && turningOn) ALL_ACTIONS.forEach(a => { (perms as any)[a] = true; });
+    // Removing any lower permission must drop MANAGE (no contradictory state).
+    if (action !== 'manage' && !turningOn && perms.manage) perms.manage = false;
+
+    // ACCESS reflects whether ANY action is granted (no "permission without access").
+    updatedUser.permissions[moduleId] = perms;
+    updatedUser.moduleAccess[moduleId] = ALL_ACTIONS.some(a => perms[a]);
     setSelectedUser(updatedUser);
+  };
+
+  // Bulk + template controls for the whole matrix.
+  const applyMatrix = (access: Record<string, boolean>, perms: Record<string, ModulePermissions>) => {
+    if (!selectedUser) return;
+    setSelectedUser({
+      ...selectedUser,
+      moduleAccess: { ...(selectedUser.moduleAccess || {}), ...access } as Record<AppModules, boolean>,
+      permissions: { ...(selectedUser.permissions || {}), ...perms } as Record<AppModules, ModulePermissions>,
+    });
+  };
+  const handleSelectAllPermissions = () => {
+    const mods = MODULES_LIST.map(m => m.id);
+    applyMatrix(Object.fromEntries(mods.map(m => [m, true])), Object.fromEntries(mods.map(m => [m, fullPerms(true)])));
+  };
+  const handleClearAllPermissions = () => {
+    const mods = MODULES_LIST.map(m => m.id);
+    applyMatrix(Object.fromEntries(mods.map(m => [m, false])), Object.fromEntries(mods.map(m => [m, fullPerms(false)])));
+  };
+  const handleApplyTemplate = (templateId: string) => {
+    const tpl = ROLE_TEMPLATES.find(t => t.id === templateId);
+    if (!tpl) return;
+    const { access, perms } = tpl.build(MODULES_LIST.map(m => m.id));
+    applyMatrix(access, perms);
   };
 
   // --- Workspace Access selection ----------------------------------------
@@ -1166,10 +1238,29 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
                     {/* RBAC Modules */}
                     <div>
-                      <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2 mb-4">
-                        <Key size={16} className="text-emerald-400" />
-                        Module Permissions
-                      </h3>
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                        <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2">
+                          <Key size={16} className="text-emerald-400" />
+                          Module Permissions
+                        </h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button type="button" onClick={handleSelectAllPermissions}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 transition-colors">
+                            Select All
+                          </button>
+                          <button type="button" onClick={handleClearAllPermissions}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30 hover:bg-rose-500/25 transition-colors">
+                            Clear All
+                          </button>
+                          <select
+                            defaultValue=""
+                            onChange={e => { if (e.target.value) { handleApplyTemplate(e.target.value); e.target.value = ''; } }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-200 ring-1 ring-slate-700 hover:bg-slate-700 transition-colors focus:outline-none cursor-pointer">
+                            <option value="" disabled className="bg-slate-900">Apply role template…</option>
+                            {ROLE_TEMPLATES.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.label}</option>)}
+                          </select>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {MODULES_LIST.map((module) => {
                           const isEnabled = selectedUser.moduleAccess?.[module.id] ?? true;

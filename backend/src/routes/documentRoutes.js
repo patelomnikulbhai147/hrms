@@ -5,6 +5,7 @@ const controller = require('../controllers/documentController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // offboarded company → read-only
 
 router.get('/', requirePermission('documents', 'view'), controller.getAll);
 router.post('/', requirePermission('documents', 'create'), controller.create);

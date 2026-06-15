@@ -61,7 +61,10 @@ const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
-const statusOptions: EmployeeStatus[] = ['Active', 'Inactive', 'On Leave', 'Terminated'];
+// Employee lifecycle: Active operations vs Archived (offboarded — retained for
+// history, excluded from payroll/attendance/leave credits). 'Inactive' is
+// retired in favour of 'Archived'.
+const statusOptions: EmployeeStatus[] = ['Active', 'Archived', 'On Leave'];
 const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
 const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
 
@@ -852,7 +855,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               department: designation !== '-' && designation.toLowerCase().includes('nurse') ? 'Nursing' : 'Clinical',
               designation: designation,
               role: 'Staff' as Role,
-              status: cleanExcelValue(row[29]) !== '-' ? 'Inactive' : 'Active' as EmployeeStatus,
+              status: cleanExcelValue(row[29]) !== '-' ? 'Archived' : 'Active' as EmployeeStatus,
               joinDate: cleanExcelValue(row[13]),
               location: `${capitalize(sheetName)}, Gujarat`,
               avatar: firstName !== '-' ? firstName.slice(0, 2).toUpperCase() : 'EM',
@@ -951,7 +954,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               onClick={() => setActiveMainTab('previous')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Previous Employees ({companyEmployees.length - stats.active})
+              Archived Employees ({companyEmployees.length - stats.active})
             </button>
           </div>
 

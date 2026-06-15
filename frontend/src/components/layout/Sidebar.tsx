@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase
+  ClipboardList, Briefcase, History
 } from 'lucide-react';
 import type { Role, Company } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
@@ -12,7 +12,7 @@ import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
-  | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders';
+  | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
 
 interface NavItem {
   id: PageId;
@@ -40,6 +40,7 @@ const navItems: NavItem[] = [
   // appears. Platform configuration lives under Companies / Subscriptions.
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
+  { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'] },
 ];
 
 interface SidebarProps {
