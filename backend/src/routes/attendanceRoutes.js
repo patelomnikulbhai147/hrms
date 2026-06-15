@@ -5,6 +5,7 @@ const controller = require('../controllers/attendanceController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // offboarded company → read-only
 
 router.get('/', requirePermission('attendance', 'view'), controller.getAll);
 router.get('/analytics', requirePermission('attendance', 'view'), controller.getAnalytics);

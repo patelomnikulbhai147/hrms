@@ -1,4 +1,8 @@
 const prisma = require('../config/prisma');
+// Coerces a string/number id to an integer PK. Used by update/delete/emailSlip
+// below; previously only require()'d inline in one spot, leaving `idParam` undefined
+// in the rest of the file (payroll edit/delete 500'd with "idParam is not defined").
+const idParam = require('../utils/idParam');
 
 // Helper to sync payroll for missing employees
 const syncPayrollForEmployees = async (companyWhere, month, year) => {
@@ -326,7 +330,9 @@ exports.generate = async (req, res) => {
         allowances,
         deductions,
         netSalary,
-        payrollStatus: 'processed',
+        // Workflow: generate → Pending Approval (NOT paid). Approval and payment
+        // are separate explicit stages (approve, then mark-paid).
+        payrollStatus: 'pending_approval',
         paymentStatus: 'pending',
         payslipGenerated: false,
         paymentDate: new Date().toISOString()
@@ -479,6 +485,9 @@ exports.update = async (req, res) => {
     delete payload.updatedAt;
     delete payload.designation;
     delete payload.id;
+    // `reason` is metadata for the revision log, not a Payroll column.
+    const reason = (payload.reason || '').toString();
+    delete payload.reason;
 
     const existingRecord = await prisma.payroll.findUnique({
       where: { id: idParam(id) }
@@ -492,10 +501,38 @@ exports.update = async (req, res) => {
       return res.status(400).json({ error: 'Payroll already paid.' });
     }
 
+    // ── Revision history (replaces the old hard "lock") ──────────────────────
+    // Authorized users may edit payroll at any stage; every amount change is
+    // captured as a traceable revision: original → modified, by whom, when, why.
+    const REVISION_FIELDS = ['basicSalary', 'allowances', 'deductions', 'netSalary', 'bonus', 'tax', 'leaveEncashmentAmount'];
+    const changes = [];
+    for (const f of REVISION_FIELDS) {
+      if (payload[f] !== undefined && Number(payload[f]) !== Number(existingRecord[f] ?? 0)) {
+        changes.push({ field: f, original: Number(existingRecord[f] ?? 0), modified: Number(payload[f]) });
+      }
+    }
+
     const data = await prisma.payroll.update({
       where: { id: idParam(id) },
       data: payload
     });
+
+    if (changes.length && req.user?.id) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'REVISE_PAYROLL',
+          module: 'Payroll',
+          targetId: String(existingRecord.id),
+          details: JSON.stringify({
+            employee: existingRecord.employeeName,
+            by: req.user.name || req.user.email,
+            reason: reason || '(no reason given)',
+            changes,
+          }).slice(0, 1500),
+        },
+      }).catch(() => {});
+    }
 
     // If marked as paid, update the master tables
     if (payload.paymentStatus === 'paid' && existingRecord.paymentStatus !== 'paid') {

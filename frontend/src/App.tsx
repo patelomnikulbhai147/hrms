@@ -16,6 +16,7 @@ const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default:
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('./pages/Billing').then(m => ({ default: m.Billing })));
 const Users = React.lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
+const AuditTrail = React.lazy(() => import('./pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
 const TaskManager = React.lazy(() => import('./pages/TaskManager').then(m => ({ default: m.TaskManager })));
 const Tenders = React.lazy(() => import('./pages/Tenders').then(m => ({ default: m.Tenders })));
 const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
@@ -65,7 +66,7 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employees', 'leaves', 'payroll', 'attendance',
-  'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders',
+  'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'audit',
   'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
@@ -1059,6 +1060,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onRefresh={hydrateAll}
           />
         );
+      case 'audit':
+        return <AuditTrail />;
       default:
         return (
           <Dashboard

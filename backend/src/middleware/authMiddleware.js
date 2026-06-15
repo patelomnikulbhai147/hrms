@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { resolveAccess } = require('../utils/accessScope');
+const auditContext = require('../utils/auditContext');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -55,6 +56,8 @@ exports.protect = async (req, res, next) => {
     }
 
     req.user = user;
+    // Record the actor for the global audit-trail middleware (who did what).
+    auditContext.setUser(user);
     next();
   } catch (error) {
     console.error('Auth Middleware Error:', error);

@@ -179,8 +179,8 @@ export const Billing: React.FC<BillingProps> = ({
     const empWrites = reassign
       // Reassign to the parent head office and detach from the branch.
       ? affected.map(emp => api.employees.update(emp.id, { companyId: parentId, branchId: null }))
-      // Preserve records but mark inactive.
-      : affected.map(emp => api.employees.update(emp.id, { status: 'Inactive' }));
+      // Preserve records but archive (offboard) them.
+      : affected.map(emp => api.employees.update(emp.id, { status: 'Archived' }));
 
     Promise.all(empWrites)
       // Archive the branch row itself (soft remove — preserves payroll/documents).
@@ -190,7 +190,7 @@ export const Billing: React.FC<BillingProps> = ({
           if (emp.companyId !== branchId) return emp;
           return reassign
             ? { ...emp, companyId: parentId, branchId: null as any }
-            : { ...emp, status: 'Inactive' as const };
+            : { ...emp, status: 'Archived' as const };
         });
         onUpdateEmployees(updatedEmployees);
 

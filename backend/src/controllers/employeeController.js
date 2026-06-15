@@ -309,6 +309,17 @@ exports.updateEmployee = async (req, res) => {
     const { id } = req.params;
     let data = coerceEntityIds({ ...req.body });
 
+    // Offboarding policy: an Archived (offboarded) employee is read-only —
+    // history is preserved and cannot be edited. The only permitted change is
+    // reactivation (status → Active).
+    const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true } });
+    if (existingEmp && existingEmp.status === 'Archived' && data.status !== 'Active') {
+      return res.status(403).json({
+        code: 'EMPLOYEE_OFFBOARDED',
+        error: 'This employee is offboarded (archived) and is read-only. Reactivate the employee to make changes.',
+      });
+    }
+
     // Validation for critical fields if they are provided
     const criticalFields = ['name', 'email', 'employeeId', 'companyId', 'department', 'designation'];
     for (const field of criticalFields) {

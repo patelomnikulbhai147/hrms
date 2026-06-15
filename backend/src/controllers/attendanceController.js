@@ -1,6 +1,26 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+// System-wide sync: when an attendance record changes, the payroll already
+// computed for that employee/month is now stale — flag it isOutdated so the UI
+// shows it needs a recalculation. This keeps payroll, summaries and reports from
+// going stale after an attendance correction. Guarded so it can never block the
+// attendance operation.
+async function flagPayrollOutdated(employeeId, dateStr) {
+  try {
+    if (!employeeId || !dateStr) return;
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return;
+    await prisma.payroll.updateMany({
+      where: { employeeId: Number(employeeId), month: MONTH_NAMES[d.getMonth()], year: d.getFullYear() },
+      data: { isOutdated: true },
+    });
+  } catch (_) { /* never block the attendance op */ }
+}
+
 exports.getAll = async (req, res) => {
   try {
     const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
@@ -336,9 +356,23 @@ exports.syncPayroll = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const data = await prisma.attendance.create({
-      data: req.body
-    });
+    const body = { ...req.body };
+    delete body.reason; // metadata, not a column
+
+    // Offboarding policy: no attendance may be marked for an Archived employee.
+    if (body.employeeId) {
+      const emp = await prisma.employee.findUnique({ where: { id: Number(body.employeeId) }, select: { status: true, name: true } });
+      if (emp && emp.status === 'Archived') {
+        return res.status(403).json({
+          code: 'EMPLOYEE_OFFBOARDED',
+          error: `${emp.name} is offboarded (archived) — attendance cannot be marked.`,
+        });
+      }
+    }
+
+    const data = await prisma.attendance.create({ data: body });
+    // A new attendance record changes the month's totals → payroll is now stale.
+    await flagPayrollOutdated(data.employeeId, data.date);
     res.status(201).json(data);
   } catch (error) {
     console.error('Error creating', error);
@@ -349,10 +383,36 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    const data = await prisma.attendance.update({
-      where: { id: idParam(id) },
-      data: req.body
-    });
+    const body = { ...req.body };
+    const reason = (body.reason || '').toString();
+    delete body.reason; // metadata, not a column
+
+    const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    const data = await prisma.attendance.update({ where: { id: idParam(id) }, data: body });
+
+    // ── System-wide sync: flag the affected month's payroll as outdated ──────
+    await flagPayrollOutdated(data.employeeId, data.date);
+
+    // Traceable correction: who / when / why / what (visible in the Audit Trail).
+    if (req.user && req.user.id) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'CORRECT_ATTENDANCE',
+          module: 'Attendance',
+          targetId: String(data.id),
+          details: JSON.stringify({
+            employeeId: data.employeeId,
+            date: data.date,
+            by: req.user.name || req.user.email,
+            reason: reason || '(no reason given)',
+            from: existing ? existing.status : undefined,
+            to: data.status,
+          }).slice(0, 1000),
+        },
+      }).catch(() => {});
+    }
+
     res.json(data);
   } catch (error) {
     console.error('Error updating', error);
@@ -363,9 +423,10 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.attendance.delete({
-      where: { id: idParam(id) }
-    });
+    const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    await prisma.attendance.delete({ where: { id: idParam(id) } });
+    // Removing a record also changes the month's totals → payroll is now stale.
+    if (existing) await flagPayrollOutdated(existing.employeeId, existing.date);
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting', error);

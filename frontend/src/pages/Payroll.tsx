@@ -164,7 +164,8 @@ export const Payroll: React.FC<PayrollProps> = ({
     deductions: 0,
     status: 'draft' as PayrollStatus,
     paymentStatus: 'pending' as 'pending' | 'paid' | 'failed',
-    notes: ''
+    notes: '',
+    reason: '' // captured into the payroll revision history on save
   });
 
   // Kind-aware: resolve a branch workspace to the branch (not the parent
@@ -196,7 +197,8 @@ export const Payroll: React.FC<PayrollProps> = ({
         deductions: viewPayslip.deductions || 0,
         status: viewPayslip.payrollStatus || viewPayslip.status,
         paymentStatus: viewPayslip.paymentStatus || 'pending',
-        notes: viewPayslip.notes || ''
+        notes: viewPayslip.notes || '',
+        reason: ''
       });
     }
   }, [viewPayslip]);
@@ -421,6 +423,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       payrollStatus: editForm.status,
       paymentStatus: editForm.paymentStatus,
       notes: editForm.notes,
+      reason: editForm.reason, // recorded in the payroll revision history (audit trail)
       paymentDate: editForm.paymentStatus === 'paid' ? (viewPayslip.paymentDate || new Date().toISOString().split('T')[0]) : undefined
     };
 
@@ -711,9 +714,9 @@ export const Payroll: React.FC<PayrollProps> = ({
       // Save generated records to the database
       const dbSavedRecords = await Promise.all(
          generatedRecords.map(async (record) => {
-            // Generated payroll moves to the GENERATED stage (salary computed
-            // from attendance/leave/OT) — ready for "Approve All".
-            const cleanRecord = { ...record, payrollStatus: 'generated', status: 'generated', id: undefined };
+            // Generated payroll enters PENDING APPROVAL (salary computed from
+            // attendance/leave/OT) — awaiting "Approve", then a separate "Mark Paid".
+            const cleanRecord = { ...record, payrollStatus: 'pending_approval', status: 'pending_approval', paymentStatus: 'pending', id: undefined };
             return await api.payroll.create(cleanRecord);
          })
       );
@@ -1091,6 +1094,14 @@ export const Payroll: React.FC<PayrollProps> = ({
                 disabled={!canEdit}
                 value={editForm.notes}
                 onChange={e => setEditForm({ ...editForm, notes: e.target.value })}
+              />
+
+              <Input
+                label="Reason for change (recorded in revision history)"
+                placeholder="e.g. Corrected overtime amount"
+                disabled={!canEdit}
+                value={editForm.reason}
+                onChange={e => setEditForm({ ...editForm, reason: e.target.value })}
               />
 
               {/* ── Real-time Payroll Formula Engine ──────────────────────────

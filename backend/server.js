@@ -39,6 +39,11 @@ app.use(cors({ origin: corsOrigin, credentials: true }));
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
+// Open the audit-trail actor context for every request so the global audit
+// middleware (in config/prisma) can record who performed each mutation.
+const auditContext = require('./src/utils/auditContext');
+app.use((req, res, next) => auditContext.run(next));
+
 // ── Request diagnostic logging ───────────────────────────────────────────────
 // Logs method, path, response status and duration for every API call so a
 // failure (slow query, 4xx/5xx, dropped socket) is traceable in the server log.
@@ -58,6 +63,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);

@@ -273,6 +273,9 @@ export const api = {
     }
   },
   
+  audit: {
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
+  },
   users: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/users`, { headers: getHeaders() });

@@ -84,12 +84,13 @@ exports.accrue = async (req, res) => {
     const throughMonth = Number(req.body.throughMonth) || (new Date(req.body.asOf || '2026-06-15')).getMonth() + 1;
     const companyId = idParam(req.body.companyId || req.headers['x-workspace-id']);
 
-    let empWhere = {};
+    // Archived (offboarded) employees are EXCLUDED from leave credits.
+    let empWhere = { status: 'Active' };
     if (req.user && req.user.role !== 'Super Admin') {
       const ids = allowedIdsFor(req);
-      empWhere = { OR: [{ companyId: { in: ids } }, { branchId: { in: ids } }] };
+      empWhere.OR = [{ companyId: { in: ids } }, { branchId: { in: ids } }];
     } else if (companyId) {
-      empWhere = { OR: [{ companyId }, { branchId: companyId }] };
+      empWhere.OR = [{ companyId }, { branchId: companyId }];
     }
     const emps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
     for (const e of emps) await leaveService.accrue(e.id, throughMonth, year);

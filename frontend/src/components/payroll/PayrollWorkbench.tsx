@@ -10,12 +10,16 @@ import { Button } from '../ui/Button';
 import { byEmployeeCode } from '../../utils/employeeSort';
 
 // ── Payment status (only Pending / Approved / Paid) ───────────────────────
+// Enterprise payroll workflow: Draft → Pending Approval → Approved → Paid.
+// Approval and payment are SEPARATE stages (approved ≠ paid), and payroll is
+// never marked paid automatically — only the explicit "Mark Paid" action sets it.
 const paymentBadge = (r: any): { label: string; variant: any } => {
   const pay = String(r.paymentStatus || '').toLowerCase();
   const pr = String(r.payrollStatus || r.status || '').toLowerCase();
   if (pay === 'paid' || pr === 'paid') return { label: 'Paid', variant: 'green' };
   if (pr === 'approved' || r.approvedAt) return { label: 'Approved', variant: 'blue' };
-  return { label: 'Pending', variant: 'yellow' };
+  if (pr === 'draft') return { label: 'Draft', variant: 'gray' };
+  return { label: 'Pending Approval', variant: 'yellow' };
 };
 
 const inr = (n: number) => `₹${Math.round(n || 0).toLocaleString('en-IN')}`;
@@ -177,7 +181,9 @@ export const PayrollWorkbench: React.FC<Props> = ({
     { key: 'generate', title: 'Generate Payroll', icon: <Calculator size={15} />, done: allGenerated, status: allGenerated ? 'Generated' : (total > 0 ? `${m.generated}/${total}` : 'Pending'),
       btn: perms.generate && { label: 'Generate Payroll', onClick: onGeneratePayroll } },
     { key: 'approve', title: 'Approve Payroll', icon: <ShieldCheck size={15} />, done: allApproved, status: allApproved ? 'Approved' : (perms.approve ? `${m.approved}/${total || 0}` : 'No access'),
-      btn: perms.approve && !anyLocked && { label: 'Approve Payroll', onClick: onApproveAll } },
+      // Permission-based, not lock-based: authorized users may approve at any time
+      // (the hard lock is removed; revision history tracks any later change).
+      btn: perms.approve && { label: 'Approve Payroll', onClick: onApproveAll } },
     { key: 'slips', title: 'Generate Salary Slips', icon: <FileText size={15} />, done: allGenerated, status: allGenerated ? 'Slips Ready' : 'Pending',
       btn: perms.generateSlips && { label: 'Generate Salary Slips', onClick: onGenerateSlipsAll } },
     { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
@@ -228,7 +234,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
                   <p className={`text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-indigo-600' : 'text-slate-400'}`}>{s.status}</p>
                 </div>
                 {s.key === 'pay' ? (
-                  perms.markPaid && !anyLocked && (
+                  perms.markPaid && (
                     <div className="mt-auto flex flex-col gap-1.5">
                       <Button size="sm" variant="outline" onClick={onExportBank}><Banknote size={12} className="mr-1" />Bank Sheet</Button>
                       <Button size="sm" variant="primary" onClick={onMarkPaidAll}>Mark Paid</Button>

@@ -5,6 +5,7 @@ const controller = require('../controllers/payrollController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // offboarded company → read-only
 
 router.get('/', requirePermission('payroll', 'view'), controller.getAll);
 router.post('/generate', requirePermission('payroll', 'create'), controller.generate);
