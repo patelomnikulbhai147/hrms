@@ -245,30 +245,20 @@ exports.getAll = async (req, res) => {
 
 exports.generate = async (req, res) => {
   try {
-    const { companyId, branchId, month, year, role } = req.body;
-    
+    const { companyId, branchId, month, year, role, employeeIds } = req.body;
+
     if ((!companyId && !branchId) || !month || !year) {
       return res.status(400).json({ error: 'Missing required parameters.' });
     }
 
     const isBranch = !!branchId && role !== 'Company Head';
 
-    // Duplicate Check
-    if (isBranch) {
-      const existingBranchPayroll = await prisma.branchPayroll.findUnique({
-        where: { branchId_payrollMonth_payrollYear: { branchId, payrollMonth: month, payrollYear: year } }
-      });
-      if (existingBranchPayroll) {
-        return res.status(409).json({ error: 'Payroll already generated for this period.' });
-      }
-    } else {
-      const existingCompanyPayroll = await prisma.companyPayroll.findUnique({
-        where: { companyId_payrollMonth_payrollYear: { companyId, payrollMonth: month, payrollYear: year } }
-      });
-      if (existingCompanyPayroll) {
-        return res.status(409).json({ error: 'Payroll already generated for this period.' });
-      }
-    }
+    // Selective generation: when employeeIds is provided, generate ONLY for those
+    // employees (still scoped to the workspace below). No employeeIds = every
+    // active employee in the workspace (the original bulk behaviour). We no longer
+    // hard-block when a period already exists — generate now find-or-creates the
+    // period record and APPENDS, so payroll can be run for a few employees now and
+    // more later without a 409.
 
     // Fetch scoped employees
     const employeeWhere = { status: 'Active' };
@@ -279,6 +269,9 @@ exports.generate = async (req, res) => {
         { companyId: companyId },
         { branchId: companyId } // fallback in case branch is passed as companyId
       ];
+    }
+    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
+      employeeWhere.id = { in: employeeIds.map(Number).filter(Boolean) };
     }
 
     const employeesRaw = await prisma.employee.findMany({
@@ -340,48 +333,48 @@ exports.generate = async (req, res) => {
       });
     }
 
+    // Find-or-create the period's parent payroll record so SELECTIVE generation
+    // can APPEND employees to an existing period instead of being blocked.
     let result;
 
     if (isBranch) {
-      result = await prisma.branchPayroll.create({
-        data: {
+      result = await prisma.branchPayroll.upsert({
+        where: { branchId_payrollMonth_payrollYear: { branchId, payrollMonth: month, payrollYear: year } },
+        update: { generatedBy: req.user?.name || 'System' },
+        create: {
           branchId,
           companyId,
           payrollMonth: month,
           payrollYear: year,
-          totalEmployees: employees.length,
+          totalEmployees: 0,
           processedEmployees: 0,
-          pendingEmployees: employees.length,
-          totalAmount,
+          pendingEmployees: 0,
+          totalAmount: 0,
           status: 'Pending',
           generatedBy: req.user?.name || 'System'
         }
       });
-      // Set branchPayrollId for the bulk inserts
-      payrollRecordsToCreate.forEach(record => {
-        record.branchPayrollId = result.id;
-      });
+      payrollRecordsToCreate.forEach(record => { record.branchPayrollId = String(result.id); });
     } else {
-      result = await prisma.companyPayroll.create({
-        data: {
+      result = await prisma.companyPayroll.upsert({
+        where: { companyId_payrollMonth_payrollYear: { companyId, payrollMonth: month, payrollYear: year } },
+        update: { generatedBy: req.user?.name || 'System' },
+        create: {
           companyId,
           payrollMonth: month,
           payrollYear: year,
-          totalEmployees: employees.length,
+          totalEmployees: 0,
           processedEmployees: 0,
-          pendingEmployees: employees.length,
-          totalAmount,
+          pendingEmployees: 0,
+          totalAmount: 0,
           status: 'Pending',
           generatedBy: req.user?.name || 'System'
         }
       });
-      // Set companyPayrollId for the bulk inserts
-      payrollRecordsToCreate.forEach(record => {
-        record.companyPayrollId = result.id;
-      });
+      payrollRecordsToCreate.forEach(record => { record.companyPayrollId = String(result.id); });
     }
 
-    // Upsert employee payroll records (to handle duplicates from drafts)
+    // Upsert employee payroll records (idempotent — re-generating updates).
     for (const record of payrollRecordsToCreate) {
       await prisma.payroll.upsert({
         where: {
@@ -397,7 +390,29 @@ exports.generate = async (req, res) => {
       });
     }
 
-    res.status(201).json({ message: 'Payroll Generated Successfully', data: result });
+    // Recompute the period's totals from ALL its child rows so appends keep the
+    // summary accurate.
+    const linkWhere = isBranch ? { branchPayrollId: String(result.id) } : { companyPayrollId: String(result.id) };
+    const childRows = await prisma.payroll.findMany({ where: linkWhere });
+    const sumAmount = childRows.reduce((s, r) => s + (r.netSalary || 0), 0);
+    const paidCount = childRows.filter(r => String(r.paymentStatus).toLowerCase() === 'paid').length;
+    const parentUpdate = {
+      totalEmployees: childRows.length,
+      processedEmployees: paidCount,
+      pendingEmployees: childRows.length - paidCount,
+      totalAmount: sumAmount,
+    };
+    if (isBranch) {
+      await prisma.branchPayroll.update({ where: { id: result.id }, data: parentUpdate });
+    } else {
+      await prisma.companyPayroll.update({ where: { id: result.id }, data: parentUpdate });
+    }
+
+    res.status(201).json({
+      message: `Payroll generated for ${payrollRecordsToCreate.length} employee(s).`,
+      data: result,
+      count: payrollRecordsToCreate.length,
+    });
   } catch (error) {
     console.error('Error generating payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -421,6 +436,15 @@ exports.create = async (req, res) => {
     delete payload.updatedAt;
     delete payload.designation;
     delete payload.id;
+    // The client generator sends OT as overtimeAmount/overtimeHours, which are NOT
+    // columns on Payroll (OT is already folded into `allowances`). Map the hours
+    // onto the real `otHours` column and drop the unknown fields so the upsert
+    // doesn't fail with "Unknown argument overtimeAmount".
+    if (payload.overtimeHours != null && payload.otHours == null) {
+      payload.otHours = Number(payload.overtimeHours) || 0;
+    }
+    delete payload.overtimeHours;
+    delete payload.overtimeAmount;
 
     // Prevent duplicates by upserting based on unique constraint
     const data = await prisma.payroll.upsert({

@@ -79,6 +79,10 @@ exports.create = async (req, res) => {
     const employeeId = Number(body.employeeId);
     const days = Number(body.days) || 0;
     const year = yearOf(body.fromDate);
+    // appliedOn is a required column with no DB default; default it to today so a
+    // client that omits it can't 500 the request.
+    if (!body.appliedOn) body.appliedOn = new Date().toISOString().slice(0, 10);
+    delete body.allowLWP; // control flag, not a column
 
     // Balance validation: CL/PL/SL cannot be requested beyond available balance.
     // LWP and special types (maternity etc.) are always allowed.

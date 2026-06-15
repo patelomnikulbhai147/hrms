@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { resolveAccess } = require('../utils/accessScope');
 
 exports.protect = async (req, res, next) => {
   let token;
@@ -20,19 +21,37 @@ exports.protect = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
-    // Child branches a user can reach, derived from their company-level access.
-    // CRITICAL: these are kept in a SEPARATE field and are NOT merged into
-    // accessibleCompanyIds. Branch ids share the company id space (e.g. Vishv's
-    // branch #2 collides with company #2 "HealthPlus"), so merging them would let
-    // a `companyId IN (...)` filter match a foreign company — a cross-company data
-    // leak. Controllers scope on companyId via accessibleCompanyIds; branch rows
-    // are already reachable because branch employees carry their parent companyId.
-    const companyScope = [user.companyId, ...(user.accessibleCompanyIds || [])].filter(Boolean);
-    if (companyScope.length > 0) {
-      const branches = await prisma.branch.findMany({ where: { companyId: { in: companyScope } } });
-      user.accessibleBranchIds = branches.map(b => b.id);
-    } else {
+    // ---- Branch-aware RBAC scope --------------------------------------------
+    // A user's grant set (companyId + accessibleCompanyIds) mixes COMPANY and
+    // BRANCH ids (they share an id space). resolveAccess turns it into:
+    //   accessibleBranchIds – the exact branches the user may enter, and
+    //   companyWideIds       – the companies they own in FULL.
+    // We then OVERRIDE accessibleCompanyIds with the company-wide set, so every
+    // controller that scopes by `companyId IN accessibleCompanyIds` enforces
+    // branch-level access automatically: assigning a single branch (e.g. Rajkot)
+    // no longer pulls in its siblings, because the parent company is only kept
+    // when the user has NO specific branch of it. Super Admin is unrestricted.
+    //
+    // Guarded: a scope-resolution failure must NEVER become a 401 (that would
+    // lock the user out of every request). On error we fail CLOSED to the user's
+    // own primary workspace only.
+    try {
+      if (user.role === 'Super Admin') {
+        user.accessibleBranchIds = [];
+      } else {
+        const [companies, branches] = await Promise.all([
+          prisma.company.findMany({ select: { id: true } }),
+          prisma.branch.findMany({ select: { id: true, companyId: true } }),
+        ]);
+        const raw = [user.companyId, ...(Array.isArray(user.accessibleCompanyIds) ? user.accessibleCompanyIds : [])];
+        const { branchIds, companyWideIds } = resolveAccess(raw, companies, branches);
+        user.accessibleBranchIds = branchIds.map(Number);
+        user.accessibleCompanyIds = companyWideIds.map(Number);
+      }
+    } catch (scopeErr) {
+      console.error('RBAC scope resolution failed (non-fatal):', scopeErr.message);
       user.accessibleBranchIds = [];
+      user.accessibleCompanyIds = [];
     }
 
     req.user = user;

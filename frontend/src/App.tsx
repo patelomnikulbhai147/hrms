@@ -61,6 +61,18 @@ const pageTitles: Record<PageId, string> = {
   'select-workspace': 'Select Workspace'
 };
 
+// Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
+// routing: refresh, deep links and the browser Back button all work.
+const PAGE_IDS = [
+  'dashboard', 'companies', 'employees', 'leaves', 'payroll', 'attendance',
+  'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders',
+  'select-workspace',
+] as const;
+const pathToPage = (pathname: string): PageId | null => {
+  const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
+  return (PAGE_IDS as readonly string[]).includes(seg) ? (seg as PageId) : null;
+};
+
 const defaultUsers: UserAccount[] = [
   { id: 'u1', name: 'Super Admin', email: 'admin@platform.in', username: 'superadmin', passwordStr: 'admin123', role: 'Super Admin', companyId: '', status: 'Active', avatar: 'SA' }
 ];
@@ -548,6 +560,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   }, [storedAuthProfile, userAccounts, companies]);
 
   const [currentPage, setCurrentPage] = useState<PageId>(() => {
+    // Deep link / refresh: honour the URL path first, then the last-visited page.
+    const fromUrl = pathToPage(window.location.pathname);
+    if (fromUrl) return fromUrl;
     const raw = localStorage.getItem('hrms_current_page');
     return (raw as PageId) || 'dashboard';
   });
@@ -681,7 +696,33 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   const handleNavigate = (page: PageId) => {
     setCurrentPage(page);
     localStorage.setItem('hrms_current_page', page);
+    // Push a history entry so the browser Back button returns to the previous
+    // in-app page (instead of leaving the application).
+    const path = '/' + page;
+    if (window.location.pathname !== path) {
+      window.history.pushState({ page }, '', path);
+    }
   };
+
+  // Browser Back/Forward → switch the in-app page (never exit the app).
+  useEffect(() => {
+    const onPop = () => {
+      const p = pathToPage(window.location.pathname);
+      if (p) { setCurrentPage(p); localStorage.setItem('hrms_current_page', p); }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  // Keep the URL in sync when the page changes programmatically (login, workspace
+  // entry, RBAC fallback). replaceState so these don't clutter the back history.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const path = '/' + currentPage;
+    if (window.location.pathname !== path) {
+      window.history.replaceState({ page: currentPage }, '', path);
+    }
+  }, [currentPage, isAuthenticated]);
 
   // Record whether the entered workspace is a company or a branch. Branch ids
   // overlap company ids in the DB, so this hint is what lets the scoping layer
@@ -704,10 +745,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     console.log('Navigation Started');
     console.log('Workspace Selected:', companyId);
     
-    // Check if the user is authorized to switch to this company
+    // Check if the user is authorized to switch to this workspace.
+    // authProfile.accessibleCompanyIds is ALREADY the fully-resolved set of
+    // workspace ids the user may enter (App.tsx computes it via
+    // getAccessibleWorkspaceIds). We must NOT resolve it a second time — doing so
+    // would treat the resolved branch ids as "specific branches" and drop the
+    // company-level id, wrongly denying a company-wide user from entering their
+    // company. Compare as strings (ids may be number or legacy string like
+    // "c-gcri"), so ['5'].includes(5) can't wrongly reject a valid workspace.
     if (permissionRole !== 'Super Admin' && !isMasquerading) {
-      const accessibleIds = getAccessibleWorkspaceIds(authProfile, companies);
-      if (!accessibleIds.includes(companyId)) {
+      const accessibleIds = (authProfile.accessibleCompanyIds || []).map(String);
+      if (!accessibleIds.includes(String(companyId))) {
         console.error(`Access Denied: Workspace ${companyId} is not in accessible list:`, accessibleIds);
         throw new Error('You do not have permission to enter this workspace. Please contact your administrator.');
       }
@@ -1004,10 +1052,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
       case 'users':
         return (
-          <Users 
-            userAccounts={userAccounts} 
-            companies={companies} 
-            onUpdateAccounts={handleUpdateUserAccounts} 
+          <Users
+            userAccounts={userAccounts}
+            companies={companies}
+            onUpdateAccounts={handleUpdateUserAccounts}
+            onRefresh={hydrateAll}
           />
         );
       default:
@@ -1084,7 +1133,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         />
 
         <main className="flex-1 overflow-y-auto bg-transparent p-4 md:p-6">
-          <div className="max-w-7xl mx-auto">
+          {/* Full-width content: fill the viewport, capped at 1800px so it does
+              not sprawl on ultrawide monitors. Previously max-w-7xl (1280px)
+              wasted ~340px of width on a 1920 display. */}
+          <div className="max-w-[1800px] mx-auto">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${currentPage}::${resolvedCompanyId}::${activeWorkspaceKind}`}

@@ -33,7 +33,12 @@ const navItems: NavItem[] = [
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'tenders', label: 'Tender Information', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
-  { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
+  // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
+  // — not a platform concern. It is intentionally hidden from the Super Admin
+  // root menu; a Super Admin configures a company's settings by entering that
+  // company (masquerade), where the role resolves to Company Head and Settings
+  // appears. Platform configuration lives under Companies / Subscriptions.
+  { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
 ];
 

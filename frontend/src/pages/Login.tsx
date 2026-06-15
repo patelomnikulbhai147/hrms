@@ -3,7 +3,6 @@ import { User, Lock, Mail, Eye, EyeOff, ShieldCheck, Users, Building2, BarChart3
 import { motion } from 'framer-motion';
 import { Company } from '../data/mockData';
 import { api } from '../api/apiClient';
-import { getAccessibleWorkspaceIds } from '../utils/workspaceUtils';
 import { authStorage } from '../utils/authStorage';
 
 export interface ModulePermissions {

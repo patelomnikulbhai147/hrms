@@ -202,31 +202,51 @@ export const getCompanyInitials = (name?: string): string => {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 };
 
+// Branch-aware RBAC resolution — MUST match the backend rule in
+// backend/src/utils/accessScope.js (resolveAccess). A user's grant set
+// (companyId + accessibleCompanyIds) mixes company and branch ids. An explicitly
+// granted BRANCH is always accessible; a granted COMPANY expands to all its
+// branches ONLY when the user has no specific branch of it. Assigning Rajkot
+// must never reveal its sibling branches.
 export function getAccessibleWorkspaceIds(user: any, companies: any[]): string[] {
   if (!user) return [];
-  
+
   if (user.role === 'Super Admin') {
     return companies.map(c => c.id);
   }
-  
-  const directIds = [user.companyId, ...(user.accessibleCompanyIds || [])].filter(Boolean);
-  const idSet = new Set<string>();
-  
-  // Only add ids if they are in the companies list
-  directIds.forEach(id => {
-     if (companies.some(c => c.id === id)) {
-        idSet.add(id);
-     }
+
+  const sameId = (a: any, b: any) => String(a) === String(b);
+  // In the merged workspace list a top-level company has no parent (or is a head
+  // office); everything else is a branch.
+  const isCompany = (c: any) => !!c && (c.isHeadOffice === true || !c.parentCompanyId);
+
+  const raw = [user.companyId, ...(user.accessibleCompanyIds || [])]
+    .filter(v => v !== null && v !== undefined && v !== '');
+
+  const grantedBranchIds = new Set<string>();
+  const grantedCompanyIds = new Set<string>();
+  raw.forEach(id => {
+    const rec = companies.find(c => sameId(c.id, id));
+    if (!rec) return;                       // resolves to nothing loaded — ignore
+    if (isCompany(rec)) grantedCompanyIds.add(String(rec.id));
+    else grantedBranchIds.add(String(rec.id));
   });
-  
-  directIds.forEach(pid => {
-    const parent = companies.find(c => c.id === pid);
-    if (parent && (pid === 'c-gcri' || parent.isHeadOffice || !parent.parentCompanyId)) {
-      companies.filter(c => c.parentCompanyId === pid).forEach(b => idSet.add(b.id));
-    }
+
+  const result = new Set<string>();
+  // 1) Every explicitly granted branch.
+  grantedBranchIds.forEach(id => result.add(id));
+
+  // 2) A granted company expands to all its branches ONLY when no specific
+  //    branch of it is granted (otherwise access is branch-level).
+  grantedCompanyIds.forEach(cid => {
+    const children = companies.filter(c => sameId(c.parentCompanyId, cid));
+    const hasSpecificBranch = children.some(b => grantedBranchIds.has(String(b.id)));
+    if (hasSpecificBranch) return;          // branch-level — leave company & siblings hidden
+    result.add(cid);
+    children.forEach(b => result.add(String(b.id)));
   });
-  
-  return Array.from(idSet);
+
+  return Array.from(result);
 }
 
 export function isWorkspaceInherited(companyId: string, user: any, companies: any[]): boolean {

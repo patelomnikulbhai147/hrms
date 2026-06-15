@@ -185,14 +185,19 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
   const value = useMemo(() => {
     const isSuperAdmin = role === 'Super Admin';
 
+    // Ids may be number or string (branch ids are numeric, legacy company ids
+    // like "c-gcri" are strings); compare as strings throughout to avoid
+    // number-vs-string mismatches that would silently deny valid access.
+    const eq = (a: any, b: any) => String(a) === String(b);
+
     const getInheritedBranches = (companyId: string): string[] => {
-      const parentCompany = companies.find(c => c.id === companyId);
+      const parentCompany = companies.find(c => eq(c.id, companyId));
       if (!parentCompany) return [];
-      
-      if (companyId === 'c-gcri' || parentCompany.isHeadOffice) {
+
+      if (String(companyId) === 'c-gcri' || parentCompany.isHeadOffice || !parentCompany.parentCompanyId) {
         return companies
-          .filter(c => c.parentCompanyId === companyId)
-          .map(c => c.id);
+          .filter(c => eq(c.parentCompanyId, companyId))
+          .map(c => String(c.id));
       }
       return [];
     };
@@ -201,15 +206,15 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
       if (isSuperAdmin) return true;
       if (!authProfile) return false;
 
-      if (authProfile.companyId === companyId) return true;
+      if (eq(authProfile.companyId, companyId)) return true;
 
-      const accessibleIds = authProfile.accessibleCompanyIds || [authProfile.companyId];
-      if (accessibleIds.includes(companyId)) return true;
+      const accessibleIds = (authProfile.accessibleCompanyIds || [authProfile.companyId]).map(String);
+      if (accessibleIds.includes(String(companyId))) return true;
 
       for (const accId of accessibleIds) {
         if (!accId) continue;
         const inherited = getInheritedBranches(accId);
-        if (inherited.includes(companyId)) return true;
+        if (inherited.map(String).includes(String(companyId))) return true;
       }
 
       return false;
