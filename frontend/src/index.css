@@ -58,7 +58,13 @@
 }
 
 html {
-  font-size: 14px;
+  /* Root size drives every rem-based size (Tailwind text-sm/base/lg, spacing).
+     Was 14px, which scaled the whole UI to 87.5% and made it feel "zoomed out"
+     with small text. 16px is the browser default and restores professional
+     enterprise typography: text-sm = 14px (table/form/button content & headers),
+     text-base = 16px, text-lg = 18px (section titles) — larger and clearer
+     without changing any layout structure (all spacing is rem and scales with it). */
+  font-size: 16px;
 }
 
 body {
