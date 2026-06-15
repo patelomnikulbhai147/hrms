@@ -332,6 +332,49 @@ export const Settings: React.FC<SettingsProps> = ({
 
 
 
+  // ── Super Admin → PLATFORM settings only ─────────────────────────────────
+  // Company-specific configuration (profile, payroll, branding, departments,
+  // roles) is managed INSIDE each company; a Super Admin enters a company
+  // (masquerade) to edit it. This guard ensures even a direct /settings URL
+  // never exposes a single tenant's config to a platform admin.
+  if (role === 'Super Admin') {
+    return (
+      <div className="space-y-4 font-sans">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Platform Settings</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Platform-level configuration for the HRMS SaaS.</p>
+        </div>
+        <Card>
+          <div className="p-6 flex items-start gap-4">
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+              <ShieldCheck size={22} />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Company settings are managed per company</h3>
+              <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+                Corporate profile, payroll &amp; statutory rates, branding, departments and role
+                policies are <strong>company-specific</strong>. Open a company from the{' '}
+                <strong>Companies</strong> module and choose <strong>Manage</strong> to enter it —
+                its Settings become available there. This keeps each tenant's configuration
+                isolated from the platform admin view.
+              </p>
+            </div>
+          </div>
+        </Card>
+        <Card>
+          <div className="p-6">
+            <h3 className="text-sm font-semibold text-gray-900 mb-1">Platform administration</h3>
+            <p className="text-sm text-gray-500 max-w-2xl">
+              Tenant provisioning and plans live under <strong>Companies</strong> and{' '}
+              <strong>SaaS Subscriptions</strong>; user &amp; access control is under{' '}
+              <strong>Users</strong>.
+            </p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 font-sans">
       {/* Header */}

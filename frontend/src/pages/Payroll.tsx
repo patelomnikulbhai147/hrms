@@ -124,6 +124,11 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [showPayrollModal, setShowPayrollModal] = useState(false);
   const [isPayrollGenerating, setIsPayrollGenerating] = useState(false);
+  // ── Selective payroll generation: pick exactly which employees to run ──
+  const [genSelectedIds, setGenSelectedIds] = useState<Set<string>>(new Set());
+  const [genDept, setGenDept] = useState('All');
+  const [genDesig, setGenDesig] = useState('All');
+  const [genSearch, setGenSearch] = useState('');
   const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('payroll');
   const canCreate = canCreateModule('payroll');
@@ -681,10 +686,22 @@ export const Payroll: React.FC<PayrollProps> = ({
       const currentMonth = monthFilter || monthNames[now.getMonth()];
       const currentYear = now.getFullYear();
 
-      // Enterprise Local Automation Engine Trigger
+      // Selective generation: run ONLY for the chosen employees. If none are
+      // explicitly selected, fall back to every employee in the workspace.
+      const targetEmployees = genSelectedIds.size > 0
+        ? companyEmployees.filter(e => genSelectedIds.has(String(e.id)))
+        : companyEmployees;
+
+      if (targetEmployees.length === 0) {
+        alert('No employees selected to generate payroll for.');
+        setIsPayrollGenerating(false);
+        return;
+      }
+
+      // Enterprise Local Automation Engine Trigger (attendance + leave + OT aware)
       const generatedRecords = generateAutomatedPayroll(
         currentCompany,
-        companyEmployees,
+        targetEmployees,
         attendance,
         leaves,
         currentMonth,
@@ -701,8 +718,10 @@ export const Payroll: React.FC<PayrollProps> = ({
          })
       );
 
-      // Merge generated records, replacing old drafts for the month
-      const filteredPayroll = payroll.filter(p => !(p.month === currentMonth && p.year === currentYear && p.companyId === currentCompany.id));
+      // Merge generated records, replacing ONLY the employees we just generated
+      // for (so a selective run never wipes other employees' records this month).
+      const genEmpIds = new Set(dbSavedRecords.map((r: any) => String(r.employeeId)));
+      const filteredPayroll = payroll.filter(p => !(p.month === currentMonth && p.year === currentYear && p.companyId === currentCompany.id && genEmpIds.has(String(p.employeeId))));
       const newPayrollList = [...filteredPayroll, ...dbSavedRecords];
       
       onUpdatePayroll(newPayrollList);
@@ -912,7 +931,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         monthLabel={`${monthFilter} 2026`}
         role={role}
         canEdit={canEdit}
-        onGeneratePayroll={handleGeneratePayroll}
+        onGeneratePayroll={() => { setGenSelectedIds(new Set()); setGenSearch(''); setGenDept('All'); setGenDesig('All'); setShowPayrollModal(true); }}
         onApproveAll={handleApproveAll}
         onGenerateSlipsAll={handleGenerateSlipsAll}
         onExportBank={handleExportBankSheet}
@@ -1174,7 +1193,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         open={showPayrollModal}
         onClose={() => !isPayrollGenerating && setShowPayrollModal(false)}
         title="Generate Payroll"
-        size="md"
+        size="lg"
         footer={
           <>
             <Button
@@ -1194,16 +1213,74 @@ export const Payroll: React.FC<PayrollProps> = ({
                   Processing...
                 </>
               ) : (
-                'Generate Payroll'
+                genSelectedIds.size > 0 ? `Generate for ${genSelectedIds.size} selected` : 'Generate for all'
               )}
             </Button>
           </>
         }
       >
         <div className="p-4 text-left">
-          <p className="text-[13px] text-slate-600 leading-relaxed mb-2">
-            Are you sure you want to generate payroll for all <strong className="text-slate-900">{companyEmployees.length} employees</strong> in this branch/company? This will process salaries for the current billing cycle and mark them as ready for disbursement.
-          </p>
+          {(() => {
+            const depts = ['All', ...Array.from(new Set(companyEmployees.map((e: any) => e.department).filter(Boolean))).sort()];
+            const desigs = ['All', ...Array.from(new Set(companyEmployees.map((e: any) => e.designation).filter(Boolean))).sort()];
+            const q = genSearch.trim().toLowerCase();
+            const list = companyEmployees.filter((e: any) =>
+              (genDept === 'All' || e.department === genDept) &&
+              (genDesig === 'All' || e.designation === genDesig) &&
+              (!q || (e.name || '').toLowerCase().includes(q) || String(e.employeeCode || e.id).toLowerCase().includes(q))
+            );
+            const allChecked = list.length > 0 && list.every((e: any) => genSelectedIds.has(String(e.id)));
+            const toggle = (id: string) => setGenSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+            const toggleAll = () => setGenSelectedIds(prev => {
+              const n = new Set(prev);
+              if (allChecked) list.forEach((e: any) => n.delete(String(e.id)));
+              else list.forEach((e: any) => n.add(String(e.id)));
+              return n;
+            });
+            return (
+              <>
+                <p className="text-[13px] text-slate-600 mb-3">
+                  Period: <strong className="text-slate-900">{monthFilter} 2026</strong>. Select the employees to run payroll for — <strong>only the selected employees are generated</strong>. Salary uses attendance, leave &amp; overtime.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                  <Input placeholder="Search name…" value={genSearch} onChange={(e: any) => setGenSearch(e.target.value)} />
+                  <Select
+                    value={genDept}
+                    onChange={(e: any) => setGenDept(e.target.value)}
+                    options={depts.map(d => ({ value: d, label: d === 'All' ? 'All departments' : d }))}
+                  />
+                  <Select
+                    value={genDesig}
+                    onChange={(e: any) => setGenDesig(e.target.value)}
+                    options={desigs.map(d => ({ value: d, label: d === 'All' ? 'All designations' : d }))}
+                  />
+                </div>
+                <div className="flex items-center justify-between mb-2 text-[12px]">
+                  <label className="flex items-center gap-2 font-medium text-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={allChecked} onChange={toggleAll} className="accent-indigo-600 w-4 h-4" />
+                    Select all ({list.length})
+                  </label>
+                  <span className="text-indigo-600 font-semibold">{genSelectedIds.size} selected</span>
+                </div>
+                <div className="border border-slate-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-slate-100">
+                  {list.length === 0 && <div className="p-4 text-center text-slate-400 text-[13px]">No employees match the filters.</div>}
+                  {list.map((e: any) => {
+                    const id = String(e.id); const checked = genSelectedIds.has(id);
+                    return (
+                      <label key={id} className={"flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 " + (checked ? "bg-indigo-50/60" : "")}>
+                        <input type="checkbox" checked={checked} onChange={() => toggle(id)} className="accent-indigo-600 w-4 h-4" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[13px] font-medium text-slate-900 truncate">{e.name}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{e.designation || '—'} · {e.department || '—'}</div>
+                        </div>
+                        <div className="text-[12px] text-slate-600 font-medium">₹{Number(e.salary || 0).toLocaleString('en-IN')}</div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
         </div>
       </Modal>
     </div>

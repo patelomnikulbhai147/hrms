@@ -86,33 +86,33 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
 
   if (isLoading || (companies.length === 0 && isLoading !== false)) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 border-2 border-indigo-500/30 border-t-indigo-400 rounded-full animate-spin" />
-        <div className="text-slate-400 text-sm font-medium">Loading your workspaces…</div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
+        <div className="w-10 h-10 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        <div className="text-slate-500 text-sm font-medium">Loading your workspaces…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-10 border-b border-white/5 bg-slate-950/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <ShieldCheck size={18} className="text-white" />
             </div>
             <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-tight">Enterprise HRMS</div>
-              <div className="text-[11px] text-slate-400">Workspace access</div>
+              <div className="text-sm font-semibold tracking-tight text-slate-900">Enterprise HRMS</div>
+              <div className="text-[11px] text-slate-500">Workspace access</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right leading-tight hidden sm:block">
-              <div className="text-sm font-medium">{user.name || user.username}</div>
-              <div className="text-[11px] text-slate-400">{user.role}</div>
+              <div className="text-sm font-medium text-slate-900">{user.name || user.username}</div>
+              <div className="text-[11px] text-slate-500">{user.role}</div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-slate-800 ring-1 ring-white/10 flex items-center justify-center text-sm font-semibold text-indigo-300">
+            <div className="w-9 h-9 rounded-full bg-indigo-50 ring-1 ring-indigo-100 flex items-center justify-center text-sm font-semibold text-indigo-600">
               {initials}
             </div>
           </div>
@@ -123,33 +123,33 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
       <main className="flex-1 mx-auto w-full max-w-7xl px-6 lg:px-10 py-8 lg:py-10 pb-32">
         <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Select a workspace</h1>
-            <p className="text-slate-400 mt-1.5 text-sm">
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-slate-900">Select a workspace</h1>
+            <p className="text-slate-500 mt-1.5 text-sm">
               Choose the company or branch you want to work in. You have access to{' '}
-              <span className="text-slate-200 font-semibold">{totalCount}</span>{' '}
+              <span className="text-slate-900 font-semibold">{totalCount}</span>{' '}
               workspace{totalCount === 1 ? '' : 's'}.
             </p>
           </div>
           {totalCount > 6 && (
             <div className="relative w-full lg:w-72">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search workspaces…"
-                className="w-full bg-slate-900/70 border border-white/10 rounded-xl pl-9 pr-3 py-2.5 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/50"
+                className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
               />
             </div>
           )}
         </div>
 
         {errorMsg && (
-          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-sm font-medium">
+          <div className="mb-6 p-4 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm font-medium">
             {errorMsg}
           </div>
         )}
         {hierarchyError && (
-          <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-sm font-medium">
+          <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-medium">
             Workspace hierarchy could not be validated: {hierarchyError}
           </div>
         )}
@@ -170,16 +170,16 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                 <section key={group.companyId}>
                   {/* Group header */}
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-slate-800 ring-1 ring-white/10 flex items-center justify-center">
-                      <Building2 size={16} className="text-slate-300" />
+                    <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center">
+                      <Building2 size={16} className="text-slate-600" />
                     </div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700">
                       {group.companyName}
                     </h2>
-                    <span className="text-[11px] font-medium text-slate-400 bg-slate-800/80 rounded-full px-2 py-0.5 ring-1 ring-white/5">
+                    <span className="text-[11px] font-medium text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 ring-1 ring-slate-200">
                       {group.cards.length} {group.cards.length === 1 ? 'workspace' : 'workspaces'}
                     </span>
-                    <div className="flex-1 h-px bg-white/5" />
+                    <div className="flex-1 h-px bg-slate-200" />
                   </div>
 
                   {/* Cards */}
@@ -196,8 +196,8 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                           className={cn(
                             "group relative text-left rounded-2xl p-5 transition-all duration-150 ring-1 focus:outline-none",
                             isSelected
-                              ? "bg-indigo-500/10 ring-2 ring-indigo-500 shadow-xl shadow-indigo-900/30"
-                              : "bg-slate-900/60 ring-white/10 hover:ring-white/25 hover:bg-slate-800/60"
+                              ? "bg-indigo-50 ring-2 ring-indigo-500 shadow-md"
+                              : "bg-white ring-slate-200 shadow-sm hover:ring-slate-300 hover:shadow-md"
                           )}
                         >
                           {/* selected check */}
@@ -205,30 +205,30 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                             "absolute top-4 right-4 transition-opacity",
                             isSelected ? "opacity-100" : "opacity-0"
                           )}>
-                            <CheckCircle2 size={20} className="text-indigo-400" />
+                            <CheckCircle2 size={20} className="text-indigo-600" />
                           </div>
 
                           <div className={cn(
                             "w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-colors",
-                            isSelected ? "bg-indigo-500/20 text-indigo-300" : "bg-slate-800 text-slate-400 group-hover:text-slate-200"
+                            isSelected ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
                           )}>
                             <MapPin size={20} />
                           </div>
 
-                          <h3 className="text-base font-semibold tracking-tight text-white truncate pr-6">
+                          <h3 className="text-base font-semibold tracking-tight text-slate-900 truncate pr-6">
                             {wsName(workspace)}
                           </h3>
-                          <p className="text-xs text-slate-400 mt-0.5 truncate">{group.companyName}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 truncate">{group.companyName}</p>
 
                           <div className="mt-4 flex items-center gap-2 min-h-[20px]">
                             {isPrimary && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-300 bg-amber-400/10 ring-1 ring-amber-400/20 rounded-full px-2 py-0.5">
-                                <Star size={10} className="fill-amber-300" /> Primary
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-amber-600 bg-amber-50 ring-1 ring-amber-200 rounded-full px-2 py-0.5">
+                                <Star size={10} className="fill-amber-500 text-amber-500" /> Primary
                               </span>
                             )}
                             <span className={cn(
                               "ml-auto text-xs font-medium transition-colors",
-                              isSelected ? "text-indigo-300" : "text-slate-500 group-hover:text-slate-300"
+                              isSelected ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
                             )}>
                               {isSelected ? 'Selected' : 'Click to select'}
                             </span>
@@ -242,7 +242,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
             })}
 
             {filteredHierarchy.length === 0 && totalCount > 0 && (
-              <div className="text-center text-slate-400 py-16">
+              <div className="text-center text-slate-500 py-16">
                 No workspaces match “{query}”.
               </div>
             )}
@@ -251,11 +251,11 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
 
         {totalCount === 0 && (
           <div className="flex flex-col items-center text-center gap-3 py-20">
-            <div className="w-14 h-14 rounded-2xl bg-slate-800 ring-1 ring-white/10 flex items-center justify-center">
-              <LayoutGrid size={24} className="text-slate-500" />
+            <div className="w-14 h-14 rounded-2xl bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center">
+              <LayoutGrid size={24} className="text-slate-400" />
             </div>
-            <div className="text-slate-200 font-semibold">No workspaces assigned</div>
-            <p className="text-slate-400 text-sm max-w-sm">
+            <div className="text-slate-800 font-semibold">No workspaces assigned</div>
+            <p className="text-slate-500 text-sm max-w-sm">
               Your account doesn’t have access to any company or branch yet. Please contact your administrator.
             </p>
           </div>
@@ -264,21 +264,21 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
 
       {/* ── Sticky action bar ───────────────────────────────────────────── */}
       {totalCount > 0 && (
-        <footer className="fixed bottom-0 inset-x-0 z-10 border-t border-white/5 bg-slate-950/80 backdrop-blur-xl">
+        <footer className="fixed bottom-0 inset-x-0 z-10 border-t border-slate-200 bg-white/90 backdrop-blur-xl shadow-[0_-2px_12px_rgba(15,23,42,0.04)]">
           <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 h-20 flex items-center justify-between gap-4">
             <div className="min-w-0">
               {selectedWs ? (
                 <>
-                  <div className="text-[11px] uppercase tracking-wider text-slate-500">Selected workspace</div>
-                  <div className="text-sm font-semibold text-white truncate">
+                  <div className="text-[11px] uppercase tracking-wider text-slate-400">Selected workspace</div>
+                  <div className="text-sm font-semibold text-slate-900 truncate">
                     {wsName(selectedWs)}
                     {selectedGroup && (
-                      <span className="text-slate-400 font-normal"> · {selectedGroup.companyName}</span>
+                      <span className="text-slate-500 font-normal"> · {selectedGroup.companyName}</span>
                     )}
                   </div>
                 </>
               ) : (
-                <div className="text-sm text-slate-400">Choose a workspace to continue</div>
+                <div className="text-sm text-slate-500">Choose a workspace to continue</div>
               )}
             </div>
             <button
