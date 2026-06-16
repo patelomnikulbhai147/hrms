@@ -1,0 +1,6 @@
+{
+  "watch": ["server.js", "src", "prisma", ".env", "seedPlans.js"],
+  "ext": "js,mjs,cjs,json",
+  "ignore": ["node_modules", "scratch", "scripts", "*.log"],
+  "delay": 1500
+}
