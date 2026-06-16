@@ -122,6 +122,7 @@ export interface Employee {
   serviceBookNo?: string;
   branchLocation?: string;
   branchId?: string;
+  shiftId?: number | string | null;
 
   aadhaar?: string;
   pan?: string;

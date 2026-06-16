@@ -24,6 +24,10 @@ function coerceEntityIds(data) {
     if (data.branchId === '' || data.branchId === null) data.branchId = null;
     else { const n = Number(data.branchId); if (Number.isFinite(n)) data.branchId = n; }
   }
+  if (data.shiftId !== undefined) {
+    if (data.shiftId === '' || data.shiftId === null) data.shiftId = null;
+    else { const n = Number(data.shiftId); data.shiftId = Number.isFinite(n) ? n : null; }
+  }
   if (data.parentCompanyId !== undefined && data.parentCompanyId !== null && data.parentCompanyId !== '') {
     const n = Number(data.parentCompanyId);
     if (Number.isFinite(n)) data.parentCompanyId = n;

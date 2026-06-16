@@ -17,6 +17,45 @@ const BRANDING_FIELDS = [
   'headerText', 'footerText', 'signatureText', 'gstNumber',
 ];
 
+// Every writable scalar column on the Company model. Any other key in a
+// create/update payload (frontend-only fields like `email`, `renewalDate`,
+// `branches`, `parentCompanyName`) is dropped so Prisma never rejects the whole
+// write with "Unknown argument …" — the root cause of Create Company silently
+// failing. Mirrors the whitelist pattern already used for branches & shifts.
+const COMPANY_FIELDS = [
+  'name', 'domain', 'adminName', 'adminEmail', 'phone', 'industry', 'status',
+  'accountStatus', 'paymentStatus', 'plan', 'employeeCount', 'joinDate', 'logo',
+  'logoImage', 'isHeadOffice', 'parentCompanyId', 'offboardingState', 'basicPercent',
+  'esicRate', 'overtimeRate', 'pfRate', 'primaryColor', 'profTaxRate', 'themeStyle',
+  'shortName', 'tagline', 'website', 'contactEmail', 'contactNumber', 'address',
+  'description', 'activeHrUsers', 'billingAddress', 'billingCycle', 'billingIncluded',
+  'branchCode', 'branchLicenseActive', 'branchLicenseStatus', 'branchName',
+  'branchPortalActive', 'branchPriceAddon', 'branchRenewalDate', 'companyIndustry',
+  'customDepartments', 'departmentTemplateType', 'employeeCapacity', 'footerText',
+  'gstNumber', 'headerText', 'inheritParentDepartments', 'licensedEmployeeLimit',
+  'monthlyBranchCost', 'monthlyUsage', 'payrollLoad', 'priceMonthly', 'priceYearly',
+  'purchasedAdditionalBranches', 'signatureText', 'storageUsed', 'subscriptionPrice',
+  'isArchived',
+];
+
+// Build a Prisma-safe Company payload from an arbitrary request body:
+//  • keep only real columns,
+//  • map the frontend's `email` → `contactEmail` (Company has no bare `email`),
+//  • coerce `joinDate` (which arrives as "YYYY-MM-DD") to a full ISO DateTime.
+function pickCompanyData(body) {
+  const src = { ...body };
+  if (src.email && !src.contactEmail) src.contactEmail = src.email;
+  const data = {};
+  for (const k of COMPANY_FIELDS) if (src[k] !== undefined && src[k] !== null) data[k] = src[k];
+  if (data.joinDate !== undefined) {
+    const d = new Date(data.joinDate);
+    if (isNaN(d.getTime())) delete data.joinDate;   // let the DB default (now()) apply
+    else data.joinDate = d;
+  }
+  coerceEntityIds(data);
+  return data;
+}
+
 exports.updateBranding = async (req, res) => {
   try {
     const role = req.user?.role;
@@ -158,11 +197,21 @@ exports.createCompany = async (req, res) => {
       return res.status(201).json({ ...branch, name: branch.branchName, isHeadOffice: false, parentCompanyId: branch.companyId });
     }
 
-    const companyData = coerceEntityIds({ ...req.body });
-    delete companyData.id;
+    const companyData = pickCompanyData(req.body);
+    if (!companyData.name || String(companyData.name).trim() === '') {
+      return res.status(400).json({ error: 'Company name is required.', code: 'REQUIRED_MISSING' });
+    }
     const company = await prisma.company.create({
       data: { ...companyData, id: await nextEntityId() }
     });
+
+    // Audit the creation (best-effort — never block the create on an audit write).
+    if (req.user?.id) {
+      AuditService.logAudit(req.user.id, 'CREATE_COMPANY', 'Companies', String(company.id), {
+        name: company.name, plan: company.plan, by: req.user.name || req.user.email,
+      }).catch(() => {});
+    }
+
     res.status(201).json(company);
   } catch (error) {
     return respondError(res, error);
@@ -240,12 +289,10 @@ exports.updateCompany = async (req, res) => {
       return res.json({ ...branch, name: branch.branchName, isHeadOffice: false });
     }
 
-    const payload = { ...req.body };
-    delete payload.email;
-    delete payload.address;
-    delete payload.isHeadOffice;
-    delete payload.branches;
-    
+    const payload = pickCompanyData(req.body);
+    if (Object.keys(payload).length === 0) {
+      return res.status(400).json({ error: 'No valid company fields supplied to update.' });
+    }
     const company = await prisma.company.update({
       where: { id: idParam(id) },
       data: payload

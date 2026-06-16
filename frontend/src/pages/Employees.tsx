@@ -1,8 +1,9 @@
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { formatDate } from '../utils/formatDate';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
-  Plus, Search, Eye, Edit2, Trash2,
+  Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
   Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive
 } from 'lucide-react';
@@ -117,7 +118,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
 
   // Dynamic Leave History filtering for the currently viewed employee
-  
+
   // Enterprise Lifecycle & Export
   const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous'>('all');
 
@@ -129,6 +130,19 @@ export const Employees: React.FC<EmployeesProps> = ({
   }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
+
+  // Active shifts for the optional shift-assignment dropdown on the employee form.
+  const [shiftOptions, setShiftOptions] = useState<any[]>([]);
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    api.shifts.getAll()
+      .then((rows: any[]) => setShiftOptions((rows || []).filter((s: any) => s.status === 'Active')))
+      .catch(() => setShiftOptions([]));
+  }, [activeCompanyId]);
+  const shiftSelectOptions = useMemo(
+    () => [{ value: '', label: 'No shift (assign later)' }, ...shiftOptions.map((s: any) => ({ value: String(s.id), label: `${s.name}${s.start ? ` (${s.start}–${s.end})` : ''}` }))],
+    [shiftOptions]
+  );
 
   const empLeavesHistory = useMemo(() => {
     if (!viewEmp) return [];
@@ -241,6 +255,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       exitDate: '', exitReason: '', serviceBookNo: '', branchLocation: initialBranch,
       aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
       bankName: '', accountNumber: '', ifsc: '', presentAddress: '', permanentAddress: '',
+      shiftId: '',
     });
     setErrors({});
     setActiveTab('personal');
@@ -284,7 +299,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const formDepartments = useMemo(() => {
     const set = new Set<string>();
     const branchName = form.branchLocation;
-    const branchEmps = employees.filter(e => 
+    const branchEmps = employees.filter(e =>
       isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId) &&
       (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
     );
@@ -302,7 +317,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const editFormDepartments = useMemo(() => {
     const set = new Set<string>();
     const branchName = editEmp?.branchLocation;
-    const branchEmps = employees.filter(e => 
+    const branchEmps = employees.filter(e =>
       isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId) &&
       (!branchName || (e.branchLocation || '').toUpperCase() === branchName.toUpperCase())
     );
@@ -351,15 +366,15 @@ export const Employees: React.FC<EmployeesProps> = ({
       if (activeMainTab === 'previous' && !isArchived) return false;
 
       const matchesSearch = (emp.name || '').toLowerCase().includes(search.toLowerCase()) ||
-                            (emp.employeeId || '').toLowerCase().includes(search.toLowerCase()) ||
-                            (emp.designation || '').toLowerCase().includes(search.toLowerCase());
+        (emp.employeeId || '').toLowerCase().includes(search.toLowerCase()) ||
+        (emp.designation || '').toLowerCase().includes(search.toLowerCase());
       const matchesDept = !deptFilter || emp.department === deptFilter || emp.designation === deptFilter;
       const matchesStatus = !statusFilter || emp.status === statusFilter;
       const matchesBranch = !branchFilter || (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
       return matchesSearch && matchesDept && matchesStatus && matchesBranch;
     })
-    // Default ordering: Employee ID ascending (Company → Branch → numeric seq).
-    .sort(byEmployeeCode(e => e.employeeId));
+      // Default ordering: Employee ID ascending (Company → Branch → numeric seq).
+      .sort(byEmployeeCode(e => e.employeeId));
   }, [companyEmployees, search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   // Master Statistics Calculations
@@ -450,7 +465,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (hasErrors) {
       setErrors(activeErrors);
       const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
-      
+
       // Map error key to tab
       if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
@@ -531,6 +546,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       ifsc: form.ifsc,
       presentAddress: form.presentAddress,
       permanentAddress: form.permanentAddress,
+      shiftId: form.shiftId ? Number(form.shiftId) : null,
     };
 
     try {
@@ -563,8 +579,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     setIsOffboardingExecuting(true);
     handleOffboardSubmit();
   };
-  const setIsConfirmingOffboard = (_val: boolean) => {};
-  
+  const setIsConfirmingOffboard = (_val: boolean) => { };
+
   // Edit Submission
   const handleEditSubmit = async () => {
     if (!editEmp) return;
@@ -624,7 +640,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (hasErrors) {
       setErrors(activeErrors);
       const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
-      
+
       // Map error key to tab
       if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
@@ -657,7 +673,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
       }
     }
-    
+
     const updatedEmp = {
       ...editEmp,
       companyId: resolvedCompanyId,
@@ -703,7 +719,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       },
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
-    
+
     // Persist FIRST; only mutate local state if the DB actually accepted it.
     // Applying the change locally on failure (the old behaviour) made the UI
     // show an "archived" employee that wasn't archived in the database — the
@@ -817,7 +833,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             // Check duplicate against existing AND newly parsed rows
             const isDup = employees.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase()) ||
-                          allRows.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
+              allRows.some(e => e.employeeId.toUpperCase() === empCode.toUpperCase());
             if (isDup) {
               dupCount++;
               continue;
@@ -908,7 +924,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleBulkCommit = async () => {
     setIsConfirmingBulk(false);
     if (importedRows.length === 0) return;
-    
+
     try {
       const response = await api.employees.bulkCreate(importedRows);
       onUpdateEmployees([...response.employees, ...employees]);
@@ -972,7 +988,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 Bulk Importer
               </Button>
               <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
-                Register
+                Add Employee
               </Button>
             </>
           )}
@@ -1042,10 +1058,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                     </div>
                   </Td>
                   <Td className="px-2 py-1"><span className="text-[11px] font-semibold text-slate-700">{emp.nationality || 'INDIAN'}</span></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{emp.joinDate}</span></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{formatDate(emp.joinDate)}</span></Td>
                   <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[130px]">{emp.designation}</span></Td>
                   <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{emp.exitDate || '—'}</span></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{formatDate(emp.exitDate)}</span></Td>
                   <Td className="px-2 py-1 w-24">
                     <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                       <button
@@ -1077,10 +1093,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                           ) : (
                             <button
                               onClick={() => { setDeleteEmp(emp); setIsConfirmingDelete(true); }}
-                              className="p-1 hover:bg-red-50 rounded text-red-500 hover:text-red-600 transition"
-                              title="Delete Employee"
+                              className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
+                              title="Archive Employee"
                             >
-                              <Trash2 size={13} />
+                              <Archive size={13} />
                             </button>
                           )}
                         </>
@@ -1100,19 +1116,19 @@ export const Employees: React.FC<EmployeesProps> = ({
               Showing <span className="font-bold text-slate-700">{(page - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-bold text-slate-700">{filtered.length}</span> entries
             </span>
             <div className="flex gap-1">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setPage(p => Math.max(1, p - 1))} 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
                 className="text-xs py-1 px-3"
               >
                 Previous
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))} 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))}
                 disabled={page >= Math.ceil(filtered.length / pageSize)}
                 className="text-xs py-1 px-3"
               >
@@ -1159,7 +1175,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <div><p className="text-[10px] text-gray-400">Last Name / Surname</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.lastName || '—'}</p></div>
                   <div><p className="text-[10px] text-gray-400">Name on Aadhaar</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.aadhaarName || viewEmp.name}</p></div>
                   <div><p className="text-[10px] text-gray-400">Gender</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.gender || 'Female'}</p></div>
-                  <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.dob || '—'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{formatDate(viewEmp.dob)}</p></div>
                   <div><p className="text-[10px] text-gray-400">Marital Status</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.maritalStatus || 'UNMARRIED'}</p></div>
                   <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
                   <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
@@ -1183,12 +1199,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div><p className="text-[10px] text-gray-400">Branch Location</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.branchLocation || 'AHMEDABAD'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Employment Class</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.category || 'Skilled'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Type of Employment</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.employmentType || 'CONTRACTUAL'}</p></div>
-                <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.joinDate}</p></div>
+                <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{formatDate(viewEmp.joinDate)}</p></div>
                 <div><p className="text-[10px] text-gray-400">Service Book No</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.serviceBookNo || '—'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Monthly Basic Salary</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
                 {viewEmp.exitDate && (
                   <>
-                    <div><p className="text-[10px] text-gray-400">Exit Date</p><p className="font-semibold text-red-600 mt-0.5">{viewEmp.exitDate}</p></div>
+                    <div><p className="text-[10px] text-gray-400">Exit Date</p><p className="font-semibold text-red-600 mt-0.5">{formatDate(viewEmp.exitDate)}</p></div>
                     <div><p className="text-[10px] text-gray-400">Exit Reason</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.exitReason || '—'}</p></div>
                   </>
                 )}
@@ -1688,6 +1704,9 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
                 <Input id="field-manager" label="Manager" value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Select id="field-shift" label="Shift (Optional)" value={form.shiftId || ''} onChange={e => setForm({ ...form, shiftId: e.target.value })} options={shiftSelectOptions} />
+              </div>
             </div>
           )}
 
@@ -1758,7 +1777,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <Select id="field-gender" label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
-                  <Input id="field-dob" label="Date of Birth *" type="date" value={editEmp.dob || ''} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} error={errors.dob} />
+                  <Input id="field-dob" label="Date of Birth *" type="date" value={(editEmp.dob || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} error={errors.dob} />
                   <Select id="field-maritalStatus" label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -1788,15 +1807,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <Select id="field-employmentType" label="Employment Type *" value={editEmp.employmentType || 'CONTRACTUAL'} onChange={e => setEditEmp({ ...editEmp, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
-                  <Input id="field-joinDate" label="Joining Date *" type="date" value={editEmp.joinDate} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} error={errors.joinDate} />
+                  <Input id="field-joinDate" label="Joining Date *" type="date" value={(editEmp.joinDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} error={errors.joinDate} />
                   <Input id="field-serviceBookNo" label="Service Book No" value={editEmp.serviceBookNo || ''} onChange={e => setEditEmp({ ...editEmp, serviceBookNo: e.target.value })} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} error={errors.salary} />
                   <Input id="field-manager" label="Manager" value={editEmp.manager} onChange={e => setEditEmp({ ...editEmp, manager: e.target.value })} />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Select id="field-shift" label="Shift (Optional)" value={editEmp.shiftId != null ? String(editEmp.shiftId) : ''} onChange={e => setEditEmp({ ...editEmp, shiftId: e.target.value ? Number(e.target.value) : null } as any)} options={shiftSelectOptions} />
+                </div>
                 <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
-                  <Input id="field-exitDate" label="Exit Date" type="date" value={editEmp.exitDate || ''} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
+                  <Input id="field-exitDate" label="Exit Date" type="date" value={(editEmp.exitDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
                   <Input id="field-exitReason" label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} error={errors.exitReason} />
                 </div>
               </div>
@@ -1862,7 +1884,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       />
 
       {/* Enterprise Offboarding Wizard Modal */}
-      <Modal open={isWizardOpen} onClose={() => {}} title="Enterprise Offboarding Workflow" size="xl">
+      <Modal open={isWizardOpen} onClose={() => { }} title="Enterprise Offboarding Workflow" size="xl">
         {offboardEmp && (
           <div className="flex flex-col md:flex-row gap-6">
             {/* Stepper Sidebar */}
@@ -1949,10 +1971,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
                   <div className="flex gap-3 mt-4">
                     <Button variant="outline" className="w-1/3" onClick={() => { setIsWizardOpen(false); setOffboardEmp(null); }}>Cancel</Button>
-                    <Button 
-                      onClick={handleFinalArchive} 
+                    <Button
+                      onClick={handleFinalArchive}
                       disabled={isOffboardingExecuting}
-                      className="w-2/3 bg-rose-600 hover:bg-rose-700 text-white border-0" 
+                      className="w-2/3 bg-rose-600 hover:bg-rose-700 text-white border-0"
                       icon={isOffboardingExecuting ? undefined : <Archive size={16} />}
                     >
                       {isOffboardingExecuting ? 'Processing Archive...' : 'Archive Employee Record'}

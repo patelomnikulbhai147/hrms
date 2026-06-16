@@ -146,6 +146,33 @@ async function recalcOne(payroll, summary, emp, company) {
   });
 }
 
+// Auto-sync helper: recompute every (unlocked) payroll row for one employee &
+// month directly from its AttendanceSummary. Called automatically whenever the
+// monthly attendance summary is edited, so payroll/dashboard/reports reflect
+// attendance changes WITHOUT a manual "recalculate"/"push" step (Changes #24/#25).
+// Locked payroll is left untouched (only an explicit Super-Admin recalc may
+// change a locked month). Best-effort: returns count, never throws to the caller
+// who should not have their attendance edit fail because of payroll.
+async function recalcForEmployeeMonth(employeeId, month, year) {
+  const eid = Number(employeeId);
+  const records = await prisma.payroll.findMany({
+    where: { employeeId: eid, month, year },
+    include: { employee: true, company: true },
+  });
+  if (!records.length) return 0;
+  const summary = await prisma.attendanceSummary.findUnique({
+    where: { employeeId_month_year: { employeeId: eid, month, year } },
+  });
+  let n = 0;
+  for (const p of records) {
+    if (p.payrollStatus === 'locked') continue;
+    await recalcOne(p, summary, p.employee, p.company);
+    n++;
+  }
+  return n;
+}
+exports.recalcForEmployeeMonth = recalcForEmployeeMonth;
+
 // POST /api/payroll/recalculate  { ids?, month?, year?, companyId? }
 // Re-syncs payroll from AttendanceSummary. Without ids, recalculates every
 // outdated record in scope. Locked records are skipped unless Super Admin.

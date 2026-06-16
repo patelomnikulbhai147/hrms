@@ -1032,7 +1032,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 : "Here's what's happening in your organization today."}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          {/* <div className="flex items-center gap-3">
              <div className="bg-white border border-gray-200 shadow-sm rounded-lg px-3 py-2 text-[12px] font-medium text-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors">
                <Calendar size={14} className="text-gray-400" />
                May 01 - May 31, 2025
@@ -1042,95 +1042,95 @@ export const Dashboard: React.FC<DashboardProps> = ({
                <Bell size={16} />
                <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
              </div>
-          </div>
+          </div> */}
         </div>
 
         {/* Top KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-           {/* Total Employees */}
-           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
-             <div className="flex justify-between items-start">
-               <div className="flex gap-3 items-center">
-                 <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center">
-                   <Users size={18} strokeWidth={2.5} />
-                 </div>
-                 <div>
-                   <p className="text-[12px] font-semibold text-gray-500">Total Employees</p>
-                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={totalEmployeesLive} /></h3>
-                 </div>
-               </div>
-             </div>
-             <div className="flex justify-between items-end mt-4">
-               {(() => {
-                 const delta = growthData[5].count - growthData[4].count;
-                 return (
-                   <span className={`text-[11px] font-semibold flex items-center gap-1 ${delta >= 0 ? 'text-[#10B981]' : 'text-rose-500'}`}>
-                     {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)} <span className="text-gray-400 font-medium">vs last month</span>
-                   </span>
-                 );
-               })()}
-               <span className="text-[11px] font-medium text-gray-400">{scopedEmployees.length} active</span>
-             </div>
-           </div>
+          {/* Total Employees */}
+          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-3 items-center">
+                <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center">
+                  <Users size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold text-gray-500">Total Employees</p>
+                  <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={totalEmployeesLive} /></h3>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-end mt-4">
+              {(() => {
+                const delta = growthData[5].count - growthData[4].count;
+                return (
+                  <span className={`text-[11px] font-semibold flex items-center gap-1 ${delta >= 0 ? 'text-[#10B981]' : 'text-rose-500'}`}>
+                    {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)} <span className="text-gray-400 font-medium">vs last month</span>
+                  </span>
+                );
+              })()}
+              <span className="text-[11px] font-medium text-gray-400">{scopedEmployees.length} active</span>
+            </div>
+          </div>
 
-           {/* Present Today */}
-           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
-             <div className="flex justify-between items-start">
-               <div className="flex gap-3 items-center">
-                 <div className="w-10 h-10 rounded-full bg-emerald-50 text-[#10B981] flex items-center justify-center">
-                   <CheckCircle2 size={18} strokeWidth={2.5} />
-                 </div>
-                 <div>
-                   <p className="text-[12px] font-semibold text-gray-500">Present Today</p>
-                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={presentTodayLive} /></h3>
-                 </div>
-               </div>
-             </div>
-             <div className="flex justify-between items-end mt-4">
-               <span className="text-[11px] font-medium text-gray-500">{scopedEmployees.length > 0 ? Math.round((presentTodayLive/scopedEmployees.length)*100) : 0}% of active</span>
-               <span className="text-[11px] font-medium text-gray-400">{todayStr}</span>
-             </div>
-           </div>
+          {/* Present Today */}
+          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-3 items-center">
+                <div className="w-10 h-10 rounded-full bg-emerald-50 text-[#10B981] flex items-center justify-center">
+                  <CheckCircle2 size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold text-gray-500">Present Today</p>
+                  <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={presentTodayLive} /></h3>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-end mt-4">
+              <span className="text-[11px] font-medium text-gray-500">{scopedEmployees.length > 0 ? Math.round((presentTodayLive / scopedEmployees.length) * 100) : 0}% of active</span>
+              <span className="text-[11px] font-medium text-gray-400">{todayStr}</span>
+            </div>
+          </div>
 
-           {/* Pending Leaves */}
-           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
-             <div className="flex justify-between items-start">
-               <div className="flex gap-3 items-center">
-                 <div className="w-10 h-10 rounded-full bg-amber-50 text-[#F59E0B] flex items-center justify-center">
-                   <UserPlus size={18} strokeWidth={2.5} />
-                 </div>
-                 <div>
-                   <p className="text-[12px] font-semibold text-gray-500">Pending Leaves</p>
-                   <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={pendingLeavesLive} /></h3>
-                 </div>
-               </div>
-             </div>
-             <div className="flex justify-between items-end mt-4">
-               <span className="text-[11px] font-medium text-gray-500">{pendingLeavesLive} Awaiting Approval</span>
-               <span onClick={() => onNavigate('leaves')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">Review</span>
-             </div>
-           </div>
+          {/* Pending Leaves */}
+          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-3 items-center">
+                <div className="w-10 h-10 rounded-full bg-amber-50 text-[#F59E0B] flex items-center justify-center">
+                  <UserPlus size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold text-gray-500">Pending Leaves</p>
+                  <h3 className="text-[28px] font-bold text-gray-900 leading-tight mt-1"><AnimatedCounter value={pendingLeavesLive} /></h3>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-end mt-4">
+              <span className="text-[11px] font-medium text-gray-500">{pendingLeavesLive} Awaiting Approval</span>
+              <span onClick={() => onNavigate('leaves')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">Review</span>
+            </div>
+          </div>
 
-           {/* Payroll This Month */}
-           <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
-             <div className="flex justify-between items-start">
-               <div className="flex gap-3 items-center">
-                 <div className="w-10 h-10 rounded-full bg-purple-50 text-[#8B5CF6] flex items-center justify-center">
-                   <Wallet size={18} strokeWidth={2.5} />
-                 </div>
-                 <div>
-                   <p className="text-[12px] font-semibold text-gray-500">Payroll This Month</p>
-                   <h3 className="text-[24px] font-bold text-gray-900 leading-tight mt-1 truncate max-w-[150px]">₹ {(payrollThisMonthLive / 100000).toFixed(1)}L</h3>
-                 </div>
-               </div>
-             </div>
-             <div className="flex justify-between items-end mt-4">
-               <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
-               <svg className="w-20 h-6 text-[#8B5CF6]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
-                 <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round"/>
-               </svg>
-             </div>
-           </div>
+          {/* Payroll This Month */}
+          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+            <div className="flex justify-between items-start">
+              <div className="flex gap-3 items-center">
+                <div className="w-10 h-10 rounded-full bg-purple-50 text-[#8B5CF6] flex items-center justify-center">
+                  <Wallet size={18} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold text-gray-500">Payroll This Month</p>
+                  <h3 className="text-[24px] font-bold text-gray-900 leading-tight mt-1 truncate max-w-[150px]">₹ {(payrollThisMonthLive / 100000).toFixed(1)}L</h3>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-between items-end mt-4">
+              <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
+              <svg className="w-20 h-6 text-[#8B5CF6]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          </div>
         </div>
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
@@ -1138,246 +1138,246 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Main Analytics Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-           {/* Left Column (Charts) */}
-           <div className="lg:col-span-2 space-y-5">
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-               {/* Employee Growth Chart */}
-               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-[14px] font-bold text-gray-800">Employee Growth <span className="text-gray-500 font-medium">(Last 6 Months)</span></h3>
-                    <select className="text-[11px] border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 outline-none hover:border-gray-300">
-                      <option>This Year</option>
-                    </select>
-                  </div>
-                  <div className="flex-1 w-full relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={growthData} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} dy={10} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} domain={['dataMin - 10', 'auto']} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-               </div>
-
-               {/* Department Distribution */}
-               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
-                  <h3 className="text-[14px] font-bold text-gray-800 mb-2">Department Distribution</h3>
-                  <div className="flex-1 flex flex-col items-center justify-center relative mt-2">
-                    <div className="w-full h-[180px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={55}
-                            outerRadius={80}
-                            paddingAngle={3}
-                            dataKey="value"
-                            stroke="none"
-                          >
-                            {(deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]).map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 px-2">
-                      {deptDistribution.length === 0 ? (
-                        <span className="text-[11px] font-medium text-gray-400">No employee records in scope</span>
-                      ) : deptDistribution.map(d => (
-                         <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
-                           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></span>
-                           <span>{d.name} ({d.value})</span>
-                         </div>
-                      ))}
-                    </div>
-                  </div>
-               </div>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-               {/* Top Departments (Horizontal Bars) */}
-               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
-                  <div className="flex justify-between items-center mb-5">
-                    <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
-                    <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
-                  </div>
-                  <div className="space-y-4">
-                    {topDeptsLive.length === 0 ? (
-                      <p className="text-[12px] text-gray-400 font-medium py-4 text-center">No employee records in scope</p>
-                    ) : topDeptsLive.map((dept, i) => {
-                      const pct = Math.round((dept.value / deptTotalLive) * 100);
-                      return (
-                        <div key={i}>
-                          <div className="flex justify-between text-[11px] font-bold mb-1.5 text-gray-700">
-                            <span>{dept.name}</span>
-                            <span>{dept.value} <span className="text-gray-400 font-medium">({pct}%)</span></span>
-                          </div>
-                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: dept.color }}></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-               </div>
-
-               {/* Attendance Trend */}
-               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
-                    <div className="flex gap-3 text-[10px] font-semibold">
-                      <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#2563EB]"></span> Present (count)</span>
-                    </div>
-                  </div>
-                  <div className="w-full h-[180px] mt-4">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                        <defs>
-                          <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2}/>
-                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} dy={10} interval={2} />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-               </div>
-             </div>
-           </div>
-
-           {/* Right Column */}
-           <div className="space-y-5">
-              {/* Pending Approvals */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+          {/* Left Column (Charts) */}
+          <div className="lg:col-span-2 space-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Employee Growth Chart */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
-                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                  <h3 className="text-[14px] font-bold text-gray-800">Employee Growth <span className="text-gray-500 font-medium">(Last 6 Months)</span></h3>
+                  <select className="text-[11px] border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 outline-none hover:border-gray-300">
+                    <option>This Year</option>
+                  </select>
+                </div>
+                <div className="flex-1 w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={growthData} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} domain={['dataMin - 10', 'auto']} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Department Distribution */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
+                <h3 className="text-[14px] font-bold text-gray-800 mb-2">Department Distribution</h3>
+                <div className="flex-1 flex flex-col items-center justify-center relative mt-2">
+                  <div className="w-full h-[180px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={55}
+                          outerRadius={80}
+                          paddingAngle={3}
+                          dataKey="value"
+                          stroke="none"
+                        >
+                          {(deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]).map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 px-2">
+                    {deptDistribution.length === 0 ? (
+                      <span className="text-[11px] font-medium text-gray-400">No employee records in scope</span>
+                    ) : deptDistribution.map(d => (
+                      <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></span>
+                        <span>{d.name} ({d.value})</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Top Departments (Horizontal Bars) */}
+              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
+                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
                 </div>
                 <div className="space-y-4">
-                   <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
-                     <div className="flex items-center gap-3">
-                       <div className="p-2 bg-orange-50 text-orange-500 rounded-lg"><Calendar size={16} strokeWidth={2.5}/></div>
-                       <span className="text-[12px] font-semibold text-gray-700">Leave Requests</span>
-                     </div>
-                     <span className="text-[13px] font-bold text-gray-900">{pendingLeavesLive.toString().padStart(2, '0')}</span>
-                   </div>
-                   <div onClick={() => onNavigate('documents')} className="flex items-center justify-between cursor-pointer">
-                     <div className="flex items-center gap-3">
-                       <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><FileText size={16} strokeWidth={2.5}/></div>
-                       <span className="text-[12px] font-semibold text-gray-700">Document Requests</span>
-                     </div>
-                     <span className="text-[13px] font-bold text-gray-900">{pendingDocsLive.toString().padStart(2, '0')}</span>
-                   </div>
-                   <div onClick={() => onNavigate('employees')} className="flex items-center justify-between cursor-pointer">
-                     <div className="flex items-center gap-3">
-                       <div className="p-2 bg-pink-50 text-pink-500 rounded-lg"><Archive size={16} strokeWidth={2.5}/></div>
-                       <span className="text-[12px] font-semibold text-gray-700">Exit Clearances</span>
-                     </div>
-                     <span className="text-[13px] font-bold text-gray-900">{exitClearancesLive.toString().padStart(2, '0')}</span>
-                   </div>
+                  {topDeptsLive.length === 0 ? (
+                    <p className="text-[12px] text-gray-400 font-medium py-4 text-center">No employee records in scope</p>
+                  ) : topDeptsLive.map((dept, i) => {
+                    const pct = Math.round((dept.value / deptTotalLive) * 100);
+                    return (
+                      <div key={i}>
+                        <div className="flex justify-between text-[11px] font-bold mb-1.5 text-gray-700">
+                          <span>{dept.name}</span>
+                          <span>{dept.value} <span className="text-gray-400 font-medium">({pct}%)</span></span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: dept.color }}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Recent Activities */}
+              {/* Attendance Trend */}
               <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
-                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
+                  <div className="flex gap-3 text-[10px] font-semibold">
+                    <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#2563EB]"></span> Present (count)</span>
+                  </div>
                 </div>
-                <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
-                   {recentActivitiesLive.length === 0 ? (
-                     <p className="text-[12px] text-gray-400 font-medium py-4">No recent activity for this workspace</p>
-                   ) : recentActivitiesLive.map((act, i) => {
-                     const style = {
-                       employee: { bg: 'bg-blue-50', text: 'text-[#2563EB]', Icon: Users },
-                       payroll:  { bg: 'bg-purple-50', text: 'text-[#8B5CF6]', Icon: Wallet },
-                       leave:    { bg: 'bg-amber-50', text: 'text-[#F59E0B]', Icon: Calendar },
-                       document: { bg: 'bg-emerald-50', text: 'text-[#10B981]', Icon: FileText },
-                     }[act.kind];
-                     const Icon = style.Icon;
-                     return (
-                       <div key={i} className="relative flex items-start gap-4">
-                         <div className={`w-7 h-7 rounded-full ${style.bg} border-[3px] border-white flex items-center justify-center z-10 ${style.text} shadow-sm`}><Icon size={12} strokeWidth={3}/></div>
-                         <div className="flex-1 pb-1">
-                           <p className="text-[12px] font-semibold text-gray-800">{act.title}</p>
-                           <p className="text-[10px] text-gray-500 mt-0.5">{act.sub} <span className="float-right text-gray-400">{relativeTime(act.ts)}</span></p>
-                         </div>
-                       </div>
-                     );
-                   })}
+                <div className="w-full h-[180px] mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} dy={10} interval={2} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
+            </div>
+          </div>
 
-              {/* Notifications */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
-                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+          {/* Right Column */}
+          <div className="space-y-5">
+            {/* Pending Approvals */}
+            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
+                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+              </div>
+              <div className="space-y-4">
+                <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-orange-50 text-orange-500 rounded-lg"><Calendar size={16} strokeWidth={2.5} /></div>
+                    <span className="text-[12px] font-semibold text-gray-700">Leave Requests</span>
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-900">{pendingLeavesLive.toString().padStart(2, '0')}</span>
                 </div>
-                <div className="space-y-3.5">
-                   {(() => {
-                     const scopedNotifs = (notifications || []).filter(n =>
-                       !n.companyId || isCompanyIdMatch(n.companyId, activeCompanyId, companies as any[])
-                     ).slice(0, 5);
-                     if (scopedNotifs.length === 0) {
-                       return <p className="text-[12px] text-gray-400 font-medium">No notifications</p>;
-                     }
-                     return scopedNotifs.map(n => (
-                       <div key={n.id} className="flex items-center gap-3">
-                         <div className={`p-1.5 rounded-md ${n.priority === 'high' ? 'text-rose-500 bg-rose-50' : n.priority === 'medium' ? 'text-amber-500 bg-amber-50' : 'text-gray-400 bg-gray-50'}`}><Info size={14} strokeWidth={2.5}/></div>
-                         <p className="text-[12px] text-gray-700 font-medium truncate">{n.message}</p>
-                       </div>
-                     ));
-                   })()}
+                <div onClick={() => onNavigate('documents')} className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><FileText size={16} strokeWidth={2.5} /></div>
+                    <span className="text-[12px] font-semibold text-gray-700">Document Requests</span>
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-900">{pendingDocsLive.toString().padStart(2, '0')}</span>
+                </div>
+                <div onClick={() => onNavigate('employees')} className="flex items-center justify-between cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-pink-50 text-pink-500 rounded-lg"><Archive size={16} strokeWidth={2.5} /></div>
+                    <span className="text-[12px] font-semibold text-gray-700">Exit Clearances</span>
+                  </div>
+                  <span className="text-[13px] font-bold text-gray-900">{exitClearancesLive.toString().padStart(2, '0')}</span>
                 </div>
               </div>
-           </div>
+            </div>
+
+            {/* Recent Activities */}
+            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
+                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+              </div>
+              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
+                {recentActivitiesLive.length === 0 ? (
+                  <p className="text-[12px] text-gray-400 font-medium py-4">No recent activity for this workspace</p>
+                ) : recentActivitiesLive.map((act, i) => {
+                  const style = {
+                    employee: { bg: 'bg-blue-50', text: 'text-[#2563EB]', Icon: Users },
+                    payroll: { bg: 'bg-purple-50', text: 'text-[#8B5CF6]', Icon: Wallet },
+                    leave: { bg: 'bg-amber-50', text: 'text-[#F59E0B]', Icon: Calendar },
+                    document: { bg: 'bg-emerald-50', text: 'text-[#10B981]', Icon: FileText },
+                  }[act.kind];
+                  const Icon = style.Icon;
+                  return (
+                    <div key={i} className="relative flex items-start gap-4">
+                      <div className={`w-7 h-7 rounded-full ${style.bg} border-[3px] border-white flex items-center justify-center z-10 ${style.text} shadow-sm`}><Icon size={12} strokeWidth={3} /></div>
+                      <div className="flex-1 pb-1">
+                        <p className="text-[12px] font-semibold text-gray-800">{act.title}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{act.sub} <span className="float-right text-gray-400">{relativeTime(act.ts)}</span></p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Notifications */}
+            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
+                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+              </div>
+              <div className="space-y-3.5">
+                {(() => {
+                  const scopedNotifs = (notifications || []).filter(n =>
+                    !n.companyId || isCompanyIdMatch(n.companyId, activeCompanyId, companies as any[])
+                  ).slice(0, 5);
+                  if (scopedNotifs.length === 0) {
+                    return <p className="text-[12px] text-gray-400 font-medium">No notifications</p>;
+                  }
+                  return scopedNotifs.map(n => (
+                    <div key={n.id} className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-md ${n.priority === 'high' ? 'text-rose-500 bg-rose-50' : n.priority === 'medium' ? 'text-amber-500 bg-amber-50' : 'text-gray-400 bg-gray-50'}`}><Info size={14} strokeWidth={2.5} /></div>
+                      <p className="text-[12px] text-gray-700 font-medium truncate">{n.message}</p>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Quick Actions */}
         <div className="mt-4">
           <h3 className="text-[15px] font-bold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-             <button onClick={() => onNavigate('employees')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#2563EB]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-blue-50 text-[#2563EB] rounded-xl group-hover:scale-110 transition-transform"><UserPlus size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Add Employee</span>
-             </button>
-             <button onClick={() => onNavigate('attendance')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#10B981]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-emerald-50 text-[#10B981] rounded-xl group-hover:scale-110 transition-transform"><CheckCircle2 size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Mark Attendance</span>
-             </button>
-             <button onClick={() => onNavigate('leaves')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#F59E0B]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-amber-50 text-[#F59E0B] rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Approve Leave</span>
-             </button>
-             <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-purple-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Run Payroll</span>
-             </button>
-             <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-teal-50 text-[#0D9488] rounded-xl group-hover:scale-110 transition-transform"><FileUp size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Upload Document</span>
-             </button>
-             <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#4F46E5]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-               <div className="p-2 bg-indigo-50 text-[#4F46E5] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5}/></div>
-               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">View Reports</span>
-             </button>
+            <button onClick={() => onNavigate('employees')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#2563EB]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-blue-50 text-[#2563EB] rounded-xl group-hover:scale-110 transition-transform"><UserPlus size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Add Employee</span>
+            </button>
+            <button onClick={() => onNavigate('attendance')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#10B981]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-emerald-50 text-[#10B981] rounded-xl group-hover:scale-110 transition-transform"><CheckCircle2 size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Mark Attendance</span>
+            </button>
+            <button onClick={() => onNavigate('leaves')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#F59E0B]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-amber-50 text-[#F59E0B] rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Approve Leave</span>
+            </button>
+            <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-purple-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Run Payroll</span>
+            </button>
+            <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-teal-50 text-[#0D9488] rounded-xl group-hover:scale-110 transition-transform"><FileUp size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Upload Document</span>
+            </button>
+            <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#4F46E5]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-indigo-50 text-[#4F46E5] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5} /></div>
+              <span className="text-[12px] font-bold text-gray-700 hidden sm:block">View Reports</span>
+            </button>
           </div>
         </div>
       </motion.div>

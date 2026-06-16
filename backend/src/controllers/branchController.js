@@ -84,6 +84,31 @@ exports.createBranch = async (req, res) => {
     const data = require('../utils/idParam').coerceEntityIds({ ...req.body });
     delete data.id;
     delete data.branchNo;
+
+    // ── Branch slot / subscription enforcement (Change #27) ──
+    // A company gets a base of 1 branch slot plus any purchased slots
+    // (Company.purchasedAdditionalBranches). Super Admin is exempt and manages
+    // the slots. Company Head (and anyone below) is capped at the purchased
+    // allowance — they cannot create a 2nd branch on the default 1-slot plan.
+    if (req.user && req.user.role !== 'Super Admin' && data.companyId) {
+      const company = await prisma.company.findUnique({
+        where: { id: data.companyId },
+        select: { purchasedAdditionalBranches: true, name: true },
+      });
+      const allowed = 1 + (company?.purchasedAdditionalBranches || 0);
+      const existing = await prisma.branch.count({
+        where: { companyId: data.companyId, isArchived: false },
+      });
+      if (existing >= allowed) {
+        return res.status(403).json({
+          code: 'BRANCH_LIMIT_REACHED',
+          error: `Branch limit reached. You have used all ${allowed} available branch slot${allowed === 1 ? '' : 's'} for ${company?.name || 'this company'}. Please upgrade your subscription to add more branches.`,
+          limit: allowed,
+          used: existing,
+        });
+      }
+    }
+
     const branch = await prisma.branch.create({
       data: {
         ...data,

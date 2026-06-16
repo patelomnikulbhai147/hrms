@@ -27,6 +27,7 @@ interface AttendanceCenterProps {
   employees: Employee[];
   companies: Company[];
   leaves?: LeaveRequest[];
+  onRefresh?: () => void;
 }
 
 const today = new Date().toISOString().split('T')[0];
@@ -55,7 +56,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   onUpdateAttendance,
   employees,
   companies,
-  leaves = []
+  leaves = [],
+  onRefresh
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard'|'entry'|'overtime'|'shifts'|'import'|'reports'|'config'>('dashboard');
   const [selectedDate, setSelectedDate] = useState(today);
@@ -111,9 +113,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [editingShiftId, setEditingShiftId] = useState<string | null>(null);
+  const [shiftError, setShiftError] = useState<string | null>(null);
   const [shiftForm, setShiftForm] = useState({
-    name: '', code: '', start: '', end: '', grace: '15 mins', break: '1 hr', otEnabled: true, status: 'Active'
+    name: '', code: '', start: '', end: '', grace: '15 mins', breakTime: '1 hr', otEnabled: true, status: 'Active'
   });
+  // Shift roster assignment modal
+  const [assignShift, setAssignShift] = useState<any | null>(null);
+  const [assignIds, setAssignIds] = useState<string[]>([]);
+  const [assignBusy, setAssignBusy] = useState(false);
 
   // OT DB State
   const [overtimeData, setOvertimeData] = useState<any[]>([]);
@@ -134,7 +141,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   useEffect(() => {
     if (activeCompanyId) {
-      api.shifts.getAll().then(res => setShifts(res)).catch(e => console.error("Failed to load shifts", e));
+      api.shifts.getAll()
+        .then(res => { setShifts(Array.isArray(res) ? res : []); setShiftError(null); })
+        .catch(e => { console.error("Failed to load shifts", e); setShiftError(e?.message || 'Failed to load shifts.'); });
       api.overtime.getAll().then(res => setOvertimeData(res)).catch(e => console.error("Failed to load overtime", e));
       api.attendance.getAnalytics(activeCompanyId, today).then(res => setAttendanceAnalytics(res)).catch(console.error);
       loadSummaries();
@@ -173,7 +182,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       });
       setEditSummary(null);
       setSummaryRefresh(x => x + 1);
-      alert('Attendance updated. Payroll for this month now requires regeneration.');
+      onRefresh?.();   // attendance is source of truth — payroll already auto-synced server-side; refresh app data so dashboard/reports/payroll reflect it with no manual step
+      alert('Attendance updated. Payroll, dashboard and reports have been recalculated automatically.');
     } catch (e: any) {
       alert(e?.message || 'Failed to save attendance summary.');
     } finally {
@@ -468,12 +478,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setShiftForm({ ...shift });
     } else {
       setEditingShiftId(null);
-      setShiftForm({ name: '', code: '', start: '09:00', end: '18:00', grace: '15 mins', break: '1 hr', otEnabled: true, status: 'Active' });
+      setShiftForm({ name: '', code: '', start: '09:00', end: '18:00', grace: '15 mins', breakTime: '1 hr', otEnabled: true, status: 'Active' });
     }
     setShowShiftModal(true);
   };
 
   const handleSaveShift = async () => {
+    if (!shiftForm.name?.trim() || !shiftForm.start || !shiftForm.end) {
+      alert('Please enter a shift name, start time and end time.');
+      return;
+    }
     try {
       if (editingShiftId) {
         const res = await api.shifts.update(editingShiftId, { ...shiftForm, companyId: activeCompanyId });
@@ -483,22 +497,54 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         setShifts([...shifts, res]);
       }
       setShowShiftModal(false);
-      alert('Shift saved successfully to database!');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert('Database error: failed to save shift');
+      alert(`Failed to save shift: ${e?.message || 'database error'}`);
     }
   };
 
   const handleDeleteShift = async (id: string) => {
-    if (confirm("Are you sure you want to delete this shift? Employees assigned to it will default to the General Shift.")) {
+    if (confirm("Permanently delete this shift? Employees assigned to it will be unassigned. Use Archive instead to keep history.")) {
       try {
         await api.shifts.delete(id);
         setShifts(shifts.filter(s => s.id !== id));
-      } catch (e) {
+      } catch (e: any) {
         console.error(e);
-        alert('Database error: failed to delete shift');
+        alert(`Failed to delete shift: ${e?.message || 'database error'}`);
       }
+    }
+  };
+
+  const handleArchiveShift = async (id: string) => {
+    try {
+      const res = await api.shifts.archive(id);
+      setShifts(shifts.map(s => s.id === id ? res : s));
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to archive shift: ${e?.message || 'database error'}`);
+    }
+  };
+
+  const openAssignShift = (shift: any) => {
+    setAssignShift(shift);
+    const assigned = (employees || [])
+      .filter((e: any) => String(e.shiftId) === String(shift.id))
+      .map((e: any) => String(e.id));
+    setAssignIds(assigned);
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!assignShift) return;
+    setAssignBusy(true);
+    try {
+      await api.shifts.assign(assignShift.id, assignIds.map(Number));
+      setAssignShift(null);
+      onRefresh?.();
+    } catch (e: any) {
+      console.error(e);
+      alert(`Failed to assign employees: ${e?.message || 'database error'}`);
+    } finally {
+      setAssignBusy(false);
     }
   };
 
@@ -1332,29 +1378,43 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             </div>
             {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenShiftModal()}>Create New Shift</Button>}
           </div>
+          {shiftError && (
+            <div className="m-4 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold">
+              {shiftError}
+            </div>
+          )}
           <Table>
-            <Thead><tr><Th>Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
+            <Thead><tr><Th>Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
             <Tbody>
-              {shifts.map(s => (
-                <Tr key={s.id}>
+              {shifts.length === 0 && !shiftError && (
+                <Tr><Td colSpan={isAdmin ? 10 : 9}><span className="text-slate-400 text-xs py-3 block text-center">No shifts defined yet. Click “Create New Shift” to add one.</span></Td></Tr>
+              )}
+              {shifts.map(s => {
+                const assignedCount = (employees || []).filter((e: any) => String(e.shiftId) === String(s.id)).length;
+                return (
+                <Tr key={s.id} className={s.status === 'Archived' ? 'opacity-50' : ''}>
                   <Td><span className="font-bold text-xs">{s.name}</span></Td>
                   <Td><span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded">{s.code || 'N/A'}</span></Td>
                   <Td><span className="text-xs font-mono">{s.start}</span></Td>
                   <Td><span className="text-xs font-mono">{s.end}</span></Td>
                   <Td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded">{s.grace}</span></Td>
-                  <Td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded">{s.break}</span></Td>
+                  <Td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded">{s.breakTime || s.break || '—'}</span></Td>
+                  <Td><Badge variant={assignedCount ? 'blue' : 'gray'}>{assignedCount}</Badge></Td>
                   <Td><Badge variant={s.otEnabled ? 'green' : 'gray'}>{s.otEnabled ? 'Eligible' : 'N/A'}</Badge></Td>
                   <Td><Badge variant={s.status === 'Active' ? 'blue' : 'gray'}>{s.status}</Badge></Td>
                   {isAdmin && (
                     <Td>
                       <div className="flex items-center gap-2">
+                        <button className="text-[10px] text-indigo-600 hover:underline font-bold" onClick={() => openAssignShift(s)}>Assign</button>
                         <button className="text-[10px] text-blue-600 hover:underline font-bold" onClick={() => handleOpenShiftModal(s)}>Edit</button>
+                        {s.status !== 'Archived' && <button className="text-[10px] text-amber-600 hover:underline font-bold" onClick={() => handleArchiveShift(s.id)}>Archive</button>}
                         <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteShift(s.id)}>Delete</button>
                       </div>
                     </Td>
                   )}
                 </Tr>
-              ))}
+                );
+              })}
             </Tbody>
           </Table>
         </Card>
@@ -1378,7 +1438,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Grace Period" value={shiftForm.grace} onChange={e => setShiftForm({...shiftForm, grace: e.target.value})} placeholder="e.g. 15 mins" />
-            <Input label="Break Time" value={shiftForm.break} onChange={e => setShiftForm({...shiftForm, break: e.target.value})} placeholder="e.g. 1 hr" />
+            <Input label="Break Time" value={shiftForm.breakTime} onChange={e => setShiftForm({...shiftForm, breakTime: e.target.value})} placeholder="e.g. 1 hr" />
           </div>
           <div className="grid grid-cols-2 gap-4">
              <div>
@@ -1401,8 +1461,44 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 >
                   <option value="Active">Active</option>
                   <option value="Inactive">Inactive</option>
+                  <option value="Archived">Archived</option>
                 </select>
              </div>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ASSIGN EMPLOYEES TO SHIFT MODAL */}
+      <Modal
+        open={!!assignShift}
+        onClose={() => setAssignShift(null)}
+        title={assignShift ? `Assign Employees — ${assignShift.name}` : ''}
+        footer={<>
+          <Button variant="outline" onClick={() => setAssignShift(null)}>Cancel</Button>
+          <Button loading={assignBusy} onClick={handleSaveAssignments}>Save Assignments ({assignIds.length})</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">Select the employees who work this shift. Unchecking removes them from the shift.</p>
+          <div className="flex items-center justify-between text-[11px]">
+            <button className="text-indigo-600 font-bold hover:underline" onClick={() => setAssignIds(companyEmployees.map((e: any) => String(e.id)))}>Select all</button>
+            <button className="text-slate-500 font-bold hover:underline" onClick={() => setAssignIds([])}>Clear all</button>
+          </div>
+          <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
+            {companyEmployees.length === 0 && <div className="p-3 text-xs text-slate-400 text-center">No employees in this workspace.</div>}
+            {companyEmployees.map((e: any) => {
+              const id = String(e.id);
+              const checked = assignIds.includes(id);
+              return (
+                <label key={id} className="flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer">
+                  <input type="checkbox" checked={checked}
+                    onChange={() => setAssignIds(prev => checked ? prev.filter(x => x !== id) : [...prev, id])} />
+                  <span className="font-semibold text-slate-700">{e.name}</span>
+                  <span className="font-mono text-[10px] text-slate-400">{e.employeeId}</span>
+                  <span className="ml-auto text-[10px] text-slate-400">{e.department}</span>
+                </label>
+              );
+            })}
           </div>
         </div>
       </Modal>

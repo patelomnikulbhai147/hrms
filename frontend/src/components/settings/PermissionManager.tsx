@@ -80,7 +80,37 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const toggle = (mod: AppModules, action: Action) => {
     setPerms(prev => ({ ...prev, [mod]: { ...prev[mod], [action]: !prev[mod]?.[action] } }));
   };
-  const toggleModuleAccess = (mod: AppModules) => setModuleAccess(prev => ({ ...prev, [mod]: !prev[mod] }));
+
+  // "ALL" is a UI helper only — it is NOT persisted. It maps to the granular
+  // actions rendered in the matrix (view, edit, create, delete, manage):
+  //   • checking ALL selects every action; unchecking clears them.
+  //   • ALL is reflected as checked only when every action is already on.
+  // The other granular flags (export/approve/print) are left untouched so a
+  // template that set them is preserved.
+  const allChecked = (mod: AppModules) => ACTIONS.every(a => !!perms[mod]?.[a]);
+  const toggleAll = (mod: AppModules) => {
+    if (!moduleAccess[mod]) return;            // Access is the parent gate
+    const next = !allChecked(mod);
+    setPerms(prev => {
+      const row = { ...prev[mod] };
+      ACTIONS.forEach(a => { row[a] = next; });
+      return { ...prev, [mod]: row };
+    });
+  };
+
+  // Access is the PARENT permission. Turning it OFF removes every child
+  // permission (view/edit/create/delete/manage + the ALL helper). Turning it
+  // back ON leaves the row enabled but unchecked — the admin re-grants
+  // explicitly. The database only ever stores the actual granular flags.
+  const toggleModuleAccess = (mod: AppModules) => {
+    setModuleAccess(prev => {
+      const turningOff = prev[mod] !== false ? true : false; // currently on → turning off
+      if (turningOff) {
+        setPerms(p => ({ ...p, [mod]: blankPerm() }));
+      }
+      return { ...prev, [mod]: !prev[mod] };
+    });
+  };
 
   const applyTemplate = (name: string) => {
     const fn = TEMPLATES[name]; if (!fn) return;
@@ -161,6 +191,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                     <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                       <th className="py-2 pr-2">Module</th>
                       <th className="py-2 px-2 text-center">Access</th>
+                      <th className="py-2 px-2 text-center text-indigo-500">All</th>
                       {ACTIONS.map(a => <th key={a} className="py-2 px-2 text-center">{a}</th>)}
                     </tr>
                   </thead>
@@ -169,7 +200,17 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                       <tr key={m.key} className={!moduleAccess[m.key] ? 'opacity-40' : ''}>
                         <td className="py-2 pr-2 text-xs font-semibold text-slate-700">{m.label}</td>
                         <td className="py-2 px-2 text-center">
-                          <input type="checkbox" checked={moduleAccess[m.key] !== false} onChange={() => toggleModuleAccess(m.key)} title="Module access" />
+                          <input type="checkbox" checked={moduleAccess[m.key] !== false} onChange={() => toggleModuleAccess(m.key)} title="Module access (parent permission)" />
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="accent-indigo-600"
+                            disabled={!moduleAccess[m.key]}
+                            checked={moduleAccess[m.key] !== false && allChecked(m.key)}
+                            onChange={() => toggleAll(m.key)}
+                            title="Select every permission for this module"
+                          />
                         </td>
                         {ACTIONS.map(a => (
                           <td key={a} className="py-2 px-2 text-center">

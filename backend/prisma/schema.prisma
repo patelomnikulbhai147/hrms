@@ -175,6 +175,7 @@ model Employee {
   legacyEmployeeId  String?
   companyId         Int
   branchId          Int?
+  shiftId           Int?
   name              String
   firstName         String?
   lastName          String?
@@ -226,6 +227,7 @@ model Employee {
   attendance        Attendance[]
   branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift             Shift?         @relation(fields: [shiftId], references: [id], onDelete: SetNull)
   leaveRequests     LeaveRequest[]
   payroll           Payroll[]
   overtimes         Overtime[]
@@ -387,6 +389,7 @@ model Shift {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees    Employee[]
 }
 
 model LeaveRequest {
