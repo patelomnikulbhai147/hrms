@@ -758,7 +758,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // company. Compare as strings (ids may be number or legacy string like
     // "c-gcri"), so ['5'].includes(5) can't wrongly reject a valid workspace.
     if (permissionRole !== 'Super Admin' && !isMasquerading) {
-      const accessibleIds = (authProfile.accessibleCompanyIds || []).map(String);
+      const accessibleIds = (authProfile?.accessibleCompanyIds || []).map(String);
       if (!accessibleIds.includes(String(companyId))) {
         console.error(`Access Denied: Workspace ${companyId} is not in accessible list:`, accessibleIds);
         throw new Error('You do not have permission to enter this workspace. Please contact your administrator.');

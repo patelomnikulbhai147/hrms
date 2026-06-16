@@ -1359,9 +1359,9 @@ export const Companies: React.FC<CompaniesProps> = ({
                             ) : (
                                <button
                                 onClick={() => openStatusModal(c)}
-                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${c.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
+                                className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]"
                               >
-                                {c.status === 'Active' ? 'Suspend' : (c.status === 'Archived' ? 'Restore' : 'Activate')}
+                                Restore
                               </button>
                             )}
                           </div>
@@ -1472,9 +1472,9 @@ export const Companies: React.FC<CompaniesProps> = ({
                                             ) : (
                                               <button
                                                 onClick={() => openStatusModal(b)}
-                                                className={`px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all ${b.status === 'Active' ? 'bg-[#FEE2E2] border-[#FECACA] text-[#DC2626] hover:bg-rose-100' : 'bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]'}`}
+                                                className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]"
                                               >
-                                                {b.status === 'Active' ? 'Suspend' : (b.status === 'Archived' ? 'Restore' : 'Activate')}
+                                                Restore
                                               </button>
                                             )}
                                           </div>

@@ -4,10 +4,13 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 
 // Helper to convert numbers to words
-const numberToWords = (num: number): string => {
+const numberToWords = (value: number): string => {
+  // The classic conversion hack reassigns `num` between string/number forms,
+  // so it is intentionally typed `any` here.
+  let num: any = value;
   const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
   const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
-  
+
   if ((num = num.toString().replace(/[\, ]/g, '')) != parseFloat(num).toString()) return '';
   let n: any = ('000000000' + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
   if (!n) return '';

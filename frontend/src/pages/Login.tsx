@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Company } from '../data/mockData';
 import { api } from '../api/apiClient';
 import { authStorage } from '../utils/authStorage';
+import { validateEmail } from '../utils/validation';
 
 export interface ModulePermissions {
   view: boolean;
@@ -24,6 +25,7 @@ export interface UserAccount {
   email: string;
   username: string;
   passwordStr: string;
+  password?: string;
   role: 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee';
   companyId: string;
   accessibleCompanyIds?: string[];
@@ -41,7 +43,7 @@ interface LoginProps {
 }
 
 export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, companies, onLogin }) => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
@@ -76,10 +78,19 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Email-only authentication: the login field accepts a valid email address.
+    const trimmedEmail = email.trim();
+    const emailCheck = validateEmail(trimmedEmail);
+    if (!emailCheck.isValid) {
+      setError(emailCheck.error || 'Please enter a valid email address.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
-      const response = await api.auth.login({ username: username.trim(), password, rememberMe });
+      const response = await api.auth.login({ email: trimmedEmail, password, rememberMe });
 
       if (!response || !response.token || !response.user) {
         setError('Login failed. Invalid response from server.');
@@ -317,11 +328,11 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                           <User size={18} strokeWidth={2} />
                         </span>
                         <input
-                          type="text"
+                          type="email"
                           required
                           placeholder="Email address"
-                          value={username}
-                          onChange={e => setUsername(e.target.value)}
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
                           className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#0F172A] focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all font-medium"
                         />
                       </div>
@@ -363,7 +374,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </label>
                     <button
                       type="button"
-                      onClick={() => { setError(''); setSuccessMsg(''); resetForgotFlow(); setForgotEmail(username.trim()); setIsForgotPassword(true); }}
+                      onClick={() => { setError(''); setSuccessMsg(''); resetForgotFlow(); setForgotEmail(email.trim()); setIsForgotPassword(true); }}
                       className="text-[13px] text-[#4F7CFF] font-medium hover:text-[#6AA8FF] transition-colors"
                     >
                       Forgot password?

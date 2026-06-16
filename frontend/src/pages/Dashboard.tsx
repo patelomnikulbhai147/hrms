@@ -1033,15 +1033,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </p>
           </div>
           {/* <div className="flex items-center gap-3">
-             <div className="bg-white border border-gray-200 shadow-sm rounded-lg px-3 py-2 text-[12px] font-medium text-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors">
-               <Calendar size={14} className="text-gray-400" />
-               May 01 - May 31, 2025
-               <ChevronRight size={14} className="text-gray-400 rotate-90 ml-2" />
-             </div>
-             <div className="bg-white border border-gray-200 shadow-sm rounded-lg p-2.5 text-gray-600 relative cursor-pointer hover:bg-gray-50 transition-colors">
-               <Bell size={16} />
-               <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
-             </div>
+            <div className="bg-white border border-gray-200 shadow-sm rounded-lg px-3 py-2 text-[12px] font-medium text-gray-700 flex items-center gap-2 cursor-pointer hover:bg-gray-50 transition-colors">
+              <Calendar size={14} className="text-gray-400" />
+              May 01 - May 31, 2025
+              <ChevronRight size={14} className="text-gray-400 rotate-90 ml-2" />
+            </div>
+            <div className="bg-white border border-gray-200 shadow-sm rounded-lg p-2.5 text-gray-600 relative cursor-pointer hover:bg-gray-50 transition-colors">
+              <Bell size={16} />
+              <span className="absolute top-2 right-2.5 w-1.5 h-1.5 bg-red-500 rounded-full border border-white"></span>
+            </div>
           </div> */}
         </div>
 

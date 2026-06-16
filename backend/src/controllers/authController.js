@@ -77,20 +77,15 @@ const statusMessage = (status) => {
 
 const isActive = (status) => (status || '').toLowerCase() === 'active';
 
-// Find a user by email or username.
+// Find a user by EMAIL only. Username-based authentication has been removed —
+// the login identifier must be a valid email address.
 // NOTE: MySQL string comparisons are case-insensitive by default (collation
 // utf8mb4_*_ci), so no `mode: 'insensitive'` is needed on the MySQL connector.
 // Email is also normalized to lowercase before lookup.
 const findUserByLogin = async (identifier) => {
   const email = normalizeEmail(identifier);
-  const username = normalizeIdentifier(identifier);
   return prisma.user.findFirst({
-    where: {
-      OR: [
-        { email: { equals: email } },
-        { username: { equals: username } },
-      ],
-    },
+    where: { email: { equals: email } },
   });
 };
 
@@ -99,14 +94,17 @@ const findUserByLogin = async (identifier) => {
 // ----------------------------------------------------------------------------
 
 exports.login = async (req, res) => {
-  const rawIdentifier = req.body.username || req.body.email;
+  // Email-only authentication. The legacy `username` key is still read so an
+  // older cached client cannot hard-break, but the value is always treated as
+  // an email address by findUserByLogin (username lookup has been removed).
+  const rawIdentifier = req.body.email || req.body.username;
   const { password, rememberMe } = req.body;
 
   try {
     if (!rawIdentifier || !password) {
       return res
         .status(400)
-        .json({ error: 'Please provide your email/username and password.' });
+        .json({ error: 'Please provide your email and password.' });
     }
 
     const user = await findUserByLogin(rawIdentifier);
