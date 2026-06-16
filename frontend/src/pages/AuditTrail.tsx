@@ -35,17 +35,19 @@ const fmt = (iso: string) => {
  * aggregates every audited create/update/delete across the platform (the audit
  * rows are written automatically by the Prisma audit middleware).
  */
-export const AuditTrail: React.FC = () => {
+export const AuditTrail: React.FC<{ role?: string }> = ({ role }) => {
+  const isDenied = !!role && role !== 'Super Admin';
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [moduleFilter, setModuleFilter] = useState('All');
 
   const load = useCallback(async () => {
+    if (isDenied) { setLoading(false); return; }
     setLoading(true);
     try { setLogs(await api.audit.getAll('?limit=300') || []); }
     catch { setLogs([]); }
     finally { setLoading(false); }
-  }, []);
+  }, [isDenied]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -57,6 +59,16 @@ export const AuditTrail: React.FC = () => {
     () => logs.filter(l => moduleFilter === 'All' || l.module === moduleFilter),
     [logs, moduleFilter]
   );
+
+  if (isDenied) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <ShieldCheck className="text-rose-500 w-10 h-10 mb-3" />
+        <h2 className="text-lg font-bold text-slate-800">Access Denied</h2>
+        <p className="text-sm text-slate-500 max-w-sm mt-1">Global audit logs are restricted to the Super Admin.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 font-sans">

@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History
+  ClipboardList, Briefcase, History, IdCard
 } from 'lucide-react';
 import type { Role, Company } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
@@ -11,7 +11,7 @@ import { usePermissions } from '../../context/PermissionContext';
 import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
-  | 'select-workspace' | 'dashboard' | 'companies' | 'employees' | 'leaves' | 'payroll' | 'attendance'
+  | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'attendance'
   | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
 
 interface NavItem {
@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'] },
   { id: 'billing', label: 'SaaS Subscriptions', icon: <CreditCard size={15} />, roles: ['Super Admin'] },
   { id: 'employees', label: 'Employees', icon: <Users size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
+  { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
@@ -69,8 +70,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const visibleItems = navItems.filter(item => {
     // Rely completely on our central permission context for view access
-    // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices
-    return canView(item.id as AppModules) && item.roles.includes(role);
+    // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices.
+    // Employee Cards is a sub-feature of the Employees module — gate it on the
+    // same permission so it never needs its own permission-matrix row.
+    const permKey = (item.id === 'employee-cards' ? 'employees' : item.id) as AppModules;
+    return canView(permKey) && item.roles.includes(role);
   });
 
   return (

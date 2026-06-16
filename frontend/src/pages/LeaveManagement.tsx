@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight, Trash2,
-  Coins, History as HistoryIcon, BarChart3, ShieldCheck, FileText, Banknote, RefreshCw, Settings2
+  Coins, History as HistoryIcon, BarChart3, ShieldCheck, FileText, Banknote, RefreshCw, Settings2, ChevronDown
 } from 'lucide-react';
 import {
   type Employee, type LeaveRequest, type Role, type Company,
@@ -126,25 +126,39 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   type ActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit' | 'encash';
   const [action, setAction] = useState<{ kind: ActionKind; row: any } | null>(null);
   const [form, setForm] = useState<any>({});
+  const [manageOpen, setManageOpen] = useState(false);
+  const today = () => new Date().toISOString().slice(0, 10);
   const openAction = (kind: ActionKind, row: any) => {
     setForm(kind === 'edit'
       ? { clBalance: row.cl, plBalance: row.pl, slBalance: row.sl }
-      : { category: 'CL', days: 1, reason: '', toEmployeeId: '', month: 'June' });
+      : { category: 'CL', days: 1, reason: '', toEmployeeId: '', month: 'June', employeeId: row.employeeId || '', effectiveDate: today() });
     setAction({ kind, row });
+  };
+  // Standalone "Manage Leave" actions launched from the toolbar dropdown — the
+  // employee is chosen inside the modal (row starts empty).
+  const openManage = (kind: 'grant' | 'deduct') => {
+    setManageOpen(false);
+    setForm({ category: 'CL', days: 1, reason: '', effectiveDate: today(), employeeId: '' });
+    setAction({ kind, row: { employeeId: '', employeeName: '' } });
   };
   const closeAction = () => { setAction(null); setForm({}); };
 
   const submitAction = async () => {
     if (!action) return;
-    const eid = action.row.employeeId;
+    const eid = action.row.employeeId || form.employeeId;
+    const empName = action.row.employeeName
+      || adminRows.find(r => String(r.employeeId) === String(eid))?.employeeName
+      || 'employee';
     setBusy(true);
     try {
       if (action.kind === 'grant') {
-        await api.leaveAdmin.grant({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason });
-        flash('ok', `Granted ${form.days} ${form.category} to ${action.row.employeeName}.`);
+        if (!eid) { flash('err', 'Select an employee.'); setBusy(false); return; }
+        await api.leaveAdmin.grant({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason, effectiveDate: form.effectiveDate });
+        flash('ok', `Added ${form.days} ${form.category} credit to ${empName}.`);
       } else if (action.kind === 'deduct') {
-        await api.leaveAdmin.deduct({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason });
-        flash('ok', `Deducted ${form.days} ${form.category} from ${action.row.employeeName}.`);
+        if (!eid) { flash('err', 'Select an employee.'); setBusy(false); return; }
+        await api.leaveAdmin.deduct({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason, effectiveDate: form.effectiveDate });
+        flash('ok', `Deducted ${form.days} ${form.category} credit from ${empName}.`);
       } else if (action.kind === 'reset') {
         await api.leaveAdmin.reset({ employeeId: eid, keepCarryForward: !!form.keepCarryForward });
         flash('ok', `Reset yearly balance for ${action.row.employeeName}.`);
@@ -330,7 +344,31 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-slate-800">Leave Administration</h3>
-            {canExport && <ExportMenu fileName="Leave_Administration" title="Leave Administration" sheetName="Balances" columns={ADMIN_COLS} rows={() => adminRows} />}
+            <div className="flex items-center gap-2">
+              {canEdit && (
+                <div className="relative">
+                  <Button size="sm" icon={<CalendarPlus size={13} />} onClick={() => setManageOpen(o => !o)}>
+                    Manage Leave <ChevronDown size={13} className="ml-1" />
+                  </Button>
+                  {manageOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setManageOpen(false)} />
+                      <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+                        <button onClick={() => openManage('grant')}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors">
+                          <CalendarPlus size={14} /> Add Leave Credit
+                        </button>
+                        <button onClick={() => openManage('deduct')}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-rose-50 hover:text-rose-700 transition-colors">
+                          <CalendarMinus size={14} /> Deduct Leave Credit
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {canExport && <ExportMenu fileName="Leave_Administration" title="Leave Administration" sheetName="Balances" columns={ADMIN_COLS} rows={() => adminRows} />}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <Table>
@@ -614,7 +652,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
 
       {/* ─── Action Modal ─── */}
       <Modal open={!!action} onClose={closeAction}
-        title={action ? `${action.kind === 'grant' ? 'Grant Leave' : action.kind === 'deduct' ? 'Deduct Leave' : action.kind === 'reset' ? 'Reset Yearly Balance' : action.kind === 'transfer' ? 'Transfer Leave' : action.kind === 'edit' ? 'Edit Balances' : 'Create Encashment'} — ${action.row.employeeName}` : ''}
+        title={action ? `${action.kind === 'grant' ? 'Add Leave Credit' : action.kind === 'deduct' ? 'Deduct Leave Credit' : action.kind === 'reset' ? 'Reset Yearly Balance' : action.kind === 'transfer' ? 'Transfer Leave' : action.kind === 'edit' ? 'Edit Balances' : 'Create Encashment'}${action.row.employeeName ? ` — ${action.row.employeeName}` : ''}` : ''}
         footer={action && (
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={closeAction}>Cancel</Button>
@@ -639,11 +677,19 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               </div>
             ) : (
               <>
-                <Select label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={CATS} />
+                {/* Standalone Add/Deduct from the toolbar — pick the employee here. */}
+                {(action.kind === 'grant' || action.kind === 'deduct') && !action.row.employeeId && (
+                  <Select label="Employee" value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })}
+                    options={[{ value: '', label: 'Select employee…' }, ...adminRows.map(r => ({ value: String(r.employeeId), label: `${r.employeeName} (${r.employeeCode})` }))]} />
+                )}
+                <Select label="Leave Type" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={CATS} />
                 <Input label="Days" type="number" step="0.5" min="0.5" value={form.days} onChange={e => setForm({ ...form, days: e.target.value })} />
                 {action.kind === 'transfer' && (
                   <Select label="Transfer to" value={form.toEmployeeId} onChange={e => setForm({ ...form, toEmployeeId: e.target.value })}
                     options={[{ value: '', label: 'Select employee…' }, ...scopedEmployees.filter(e => String(e.id) !== String(action.row.employeeId)).map(e => ({ value: String(e.id), label: `${e.name} (${e.employeeId})` }))]} />
+                )}
+                {(action.kind === 'grant' || action.kind === 'deduct') && (
+                  <Input label="Effective Date" type="date" value={form.effectiveDate || ''} onChange={e => setForm({ ...form, effectiveDate: e.target.value })} />
                 )}
                 {action.kind !== 'encash' && <Textarea label="Reason / Note" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows={2} />}
                 {action.kind === 'encash' && <p className="text-[11px] text-slate-500">Creates an approved encashment record and deducts the wallet. Push it to payroll from the Encashment list.</p>}

@@ -43,11 +43,16 @@ exports.grant = async (req, res) => {
     }
     const bal = await leaveService.getOrCreateBalance(employeeId, year);
     const f = leaveService.FIELDS[cat];
+    const previousBalance = round(bal[f.bal]);
     const updated = await prisma.leaveBalance.update({
       where: { id: bal.id },
       data: { [f.bal]: round(bal[f.bal] + days) },
     });
-    await audit(req, 'GRANT_LEAVE', employeeId, { category: cat, days, reason: req.body.reason || '', newBalance: updated[f.bal], year });
+    await audit(req, 'GRANT_LEAVE', employeeId, {
+      category: cat, days, reason: req.body.reason || '',
+      previousBalance, newBalance: updated[f.bal],
+      effectiveDate: req.body.effectiveDate || null, year,
+    });
     res.json(updated);
   } catch (e) {
     console.error('grant', e);
@@ -68,11 +73,16 @@ exports.deduct = async (req, res) => {
     }
     const bal = await leaveService.getOrCreateBalance(employeeId, year);
     const f = leaveService.FIELDS[cat];
+    const previousBalance = round(bal[f.bal]);
     const updated = await prisma.leaveBalance.update({
       where: { id: bal.id },
       data: { [f.bal]: round(Math.max(0, bal[f.bal] - days)), [f.used]: round(bal[f.used] + days) },
     });
-    await audit(req, 'DEDUCT_LEAVE', employeeId, { category: cat, days, reason: req.body.reason || '', newBalance: updated[f.bal], year });
+    await audit(req, 'DEDUCT_LEAVE', employeeId, {
+      category: cat, days, reason: req.body.reason || '',
+      previousBalance, newBalance: updated[f.bal],
+      effectiveDate: req.body.effectiveDate || null, year,
+    });
     res.json(updated);
   } catch (e) {
     console.error('deduct', e);
@@ -184,11 +194,26 @@ exports.carryForward = async (req, res) => {
 };
 
 // ── Audit trail (leave-related entries) ──────────────────────────────────────
+// Company-scoped: a Company Head / HR sees ONLY leave actions performed by users
+// in their own company scope — never another company's leave audit (Change #28).
+// AuditLog has no companyId column, so scope by the acting user's company.
 exports.getAuditLog = async (req, res) => {
   try {
     const take = Math.min(500, Number(req.query.limit) || 200);
+    const where = { module: 'Leaves' };
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      const allowed = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      // Users who belong to (or have access to) the caller's companies.
+      const scopedUsers = await prisma.user.findMany({
+        where: { OR: [{ companyId: { in: allowed } }, { id: req.user.id }] },
+        select: { id: true },
+      });
+      where.userId = { in: scopedUsers.map(u => u.id) };
+    }
+
     const logs = await prisma.auditLog.findMany({
-      where: { module: 'Leaves' },
+      where,
       orderBy: { createdAt: 'desc' },
       take,
       include: { user: { select: { name: true, email: true, role: true } } },

@@ -6,10 +6,22 @@ const AuditService = require('../services/auditService');
 const allowedIdsFor = (req) =>
   [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
 
+// Leave-credit policy lives on the top-level COMPANY (LeaveCreditConfig.companyId
+// is an FK to Company.id). A workspace id can be a company id OR a branch id (the
+// two id spaces overlap). Resolve any branch id to its parent company so a user
+// working inside a branch reads/writes the parent company's policy instead of
+// hitting a 500 (FK violation creating a config keyed on a non-existent company).
+async function resolveCompanyId(rawId) {
+  const id = idParam(rawId);
+  if (!id) return null;
+  const branch = await prisma.branch.findUnique({ where: { id }, select: { companyId: true } });
+  return branch ? branch.companyId : id;
+}
+
 // ── Leave Credit Master ──────────────────────────────────────────────────────
 exports.getConfig = async (req, res) => {
   try {
-    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']) || req.user?.companyId || 1;
+    const companyId = (await resolveCompanyId(req.query.companyId || req.headers['x-workspace-id'])) || req.user?.companyId || 1;
     const year = Number(req.query.year) || leaveService.DEFAULT_YEAR;
     const cfg = await leaveService.getOrCreateConfig(companyId, year);
     res.json(cfg);
@@ -21,7 +33,7 @@ exports.getConfig = async (req, res) => {
 
 exports.updateConfig = async (req, res) => {
   try {
-    const companyId = idParam(req.body.companyId || req.query.companyId || req.headers['x-workspace-id']) || req.user?.companyId || 1;
+    const companyId = (await resolveCompanyId(req.body.companyId || req.query.companyId || req.headers['x-workspace-id'])) || req.user?.companyId || 1;
     const year = Number(req.body.year) || leaveService.DEFAULT_YEAR;
     const cfg = await leaveService.getOrCreateConfig(companyId, year);
     const numericFields = ['startMonth', 'endMonth', 'clPerMonth', 'plPerMonth', 'slPerMonth', 'carryForward', 'maxCarryForward', 'maxEncashmentDays'];

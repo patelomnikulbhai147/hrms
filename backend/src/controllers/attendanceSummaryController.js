@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const summaryService = require('../services/attendanceSummaryService');
+const payrollController = require('./payrollController');
 
 const allowedIdsFor = (req) =>
   [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
@@ -107,11 +108,20 @@ exports.update = async (req, res) => {
 
     const updated = await prisma.attendanceSummary.update({ where: { id: idParam(id) }, data });
 
-    // Flag payroll for regeneration.
+    // Attendance is the source of truth: flag payroll, then AUTO-recompute it
+    // from the new summary immediately so payroll/dashboard/reports reflect the
+    // change with no manual "recalculate"/"push" step (Changes #24/#25). Locked
+    // payroll is skipped by the helper. Best-effort — never fail the edit on it.
     await prisma.payroll.updateMany({
       where: { employeeId: existing.employeeId, month: existing.month, year: existing.year },
       data: { isOutdated: true },
     });
+    let payrollSynced = 0;
+    try {
+      payrollSynced = await payrollController.recalcForEmployeeMonth(existing.employeeId, existing.month, existing.year);
+    } catch (syncErr) {
+      console.error('Auto payroll sync after attendance edit failed:', syncErr.message);
+    }
 
     // Audit old → new for the changed fields.
     if (req.user?.id) {
@@ -126,7 +136,7 @@ exports.update = async (req, res) => {
       });
     }
 
-    res.json(updated);
+    res.json({ ...updated, payrollSynced });
   } catch (e) {
     console.error('summary update', e);
     res.status(500).json({ error: e.message || 'Server error' });

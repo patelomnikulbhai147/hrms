@@ -201,7 +201,8 @@ export const Companies: React.FC<CompaniesProps> = ({
     phone: '',
     billingAddress: '',
     domain: '',
-    status: 'Active' as 'Active' | 'Inactive' | 'Archived'
+    status: 'Active' as 'Active' | 'Inactive' | 'Archived',
+    branchSlots: 1   // total branch slots = 1 base + purchasedAdditionalBranches
   });
 
   const handleOpenEditCompany = (company: Company) => {
@@ -214,7 +215,8 @@ export const Companies: React.FC<CompaniesProps> = ({
       phone: company.phone || '',
       billingAddress: company.billingAddress || company.address || '',
       domain: company.domain || '',
-      status: (company.status as any) || 'Active'
+      status: (company.status as any) || 'Active',
+      branchSlots: 1 + (Number((company as any).purchasedAdditionalBranches) || 0)
     });
     setEditCompanyModalOpen(true);
   };
@@ -231,6 +233,9 @@ export const Companies: React.FC<CompaniesProps> = ({
         billingAddress: editCompanyForm.billingAddress,
         domain: editCompanyForm.domain,
         status: editCompanyForm.status,
+        // Branch slots: store the purchased ADDITIONAL slots (total minus the
+        // base of 1). Drives the Company-Head branch-creation limit (Change #27).
+        purchasedAdditionalBranches: Math.max(0, (Number(editCompanyForm.branchSlots) || 1) - 1),
         isHeadOffice: true
       };
       const saved = await api.companies.update(editingCompanyId, payload);
@@ -442,7 +447,35 @@ export const Companies: React.FC<CompaniesProps> = ({
       avatar: newCompany.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     };
 
-    try { await api.companies.create(fresh); await api.users.create({...newHead, password: newHead.passwordStr}); onRefresh?.(); setAddOpen(false); } catch(err) { console.error(err); alert(getApiErrorMessage(err, 'Could not create the company.')); }
+    // Company creation is authoritative. The auto-generated Company Head account
+    // is a convenience — if it fails (e.g. the username already exists) we must
+    // NOT hide the fact that the company itself was created: still refresh, close
+    // and report. Previously a head-user error skipped onRefresh()/close, leaving
+    // a created company invisible until a manual refresh.
+    let headCreated = false;
+    let headWarning = '';
+    let createdCompany: any = null;
+    try {
+      createdCompany = await api.companies.create(fresh);
+    } catch (err) {
+      console.error('Company create failed:', err);
+      alert(getApiErrorMessage(err, 'Could not create the company.'));
+      return;   // company not created — keep the form open with the entered data
+    }
+    try {
+      // Link the Company Head to the REAL persisted company id (the backend
+      // assigns its own numeric id; the frontend temp `c<ts>` id must not be sent
+      // — it caused a 400 "companyId: Expected Int, provided String").
+      await api.users.create({ ...newHead, companyId: createdCompany?.id ?? newHead.companyId, password: newHead.passwordStr });
+      headCreated = true;
+    } catch (uErr: any) {
+      console.warn('Company created, but Company Head account was not created:', uErr);
+      headWarning = '\n\nNote: the default Company Head account could not be auto-created ' +
+        '(it may already exist). Create or assign a user for this company in User Management.';
+    }
+
+    onRefresh?.();
+    setAddOpen(false);
 
     // Reset state
     setNewCompany({
@@ -462,7 +495,9 @@ export const Companies: React.FC<CompaniesProps> = ({
     });
     setErrors({});
 
-    alert(`Company registered successfully.\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`);
+    alert(`Company registered successfully.${headCreated
+      ? `\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`
+      : headWarning}`);
   };
 
   const openStatusModal = (company: Company) => {
@@ -696,18 +731,34 @@ export const Companies: React.FC<CompaniesProps> = ({
         avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
       };
 
-      Promise.all([
-        api.branches.create(newBranchObj).catch(e => { console.error("Branch create error:", e); throw e; }),
-        api.users.create({ ...newAdminUser, password: newAdminUser.passwordStr }).catch(e => { console.error("User create error:", e); throw e; })
-      ]).then(() => {
-        onUpdateAccounts([...userAccounts, newAdminUser]);
+      // Create the branch FIRST (authoritative). If the branch slot limit blocks
+      // it (403 BRANCH_LIMIT_REACHED), we must NOT create the admin user — that
+      // would orphan a user with no branch. Only on branch success do we
+      // provision the admin account and close the modal.
+      (async () => {
+        let createdBranch: any;
+        try {
+          createdBranch = await api.branches.create(newBranchObj);
+        } catch (err: any) {
+          console.error('Branch create error:', err);
+          alert(getApiErrorMessage(err, 'Could not create the branch.'));
+          return;   // keep modal open so the user can adjust / upgrade
+        }
+        let adminMsg = '';
+        try {
+          await api.users.create({ ...newAdminUser, companyId: createdBranch?.id ?? newAdminUser.companyId, password: newAdminUser.passwordStr });
+          onUpdateAccounts([...userAccounts, newAdminUser]);
+          adminMsg = `\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`;
+        } catch (uErr) {
+          console.warn('Branch created, but admin account was not created:', uErr);
+          adminMsg = '\n\nNote: the branch admin account could not be auto-created (it may already exist).';
+        }
         onUpdateCompanies([...companies, newBranchObj]);
         onRefresh?.();
-        alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
-      }).catch(err => {
-        console.error(err);
-        alert(getApiErrorMessage(err, 'Could not create the branch.'));
-      });
+        setBranchModalOpen(false);
+        alert(`Branch created successfully.${adminMsg}`);
+      })();
+      return;
     }
 
     setBranchModalOpen(false);
@@ -1824,6 +1875,16 @@ export const Companies: React.FC<CompaniesProps> = ({
           <Input label="Admin Email" type="email" value={editCompanyForm.adminEmail} onChange={e => setEditCompanyForm({...editCompanyForm, adminEmail: e.target.value})} />
           <Input label="Phone Number" value={editCompanyForm.phone} onChange={e => setEditCompanyForm({...editCompanyForm, phone: e.target.value})} />
           <Input label="Website Domain" value={editCompanyForm.domain} onChange={e => setEditCompanyForm({...editCompanyForm, domain: e.target.value})} />
+          <Input
+            label="Branch Slots (subscription)"
+            type="number"
+            min={1}
+            value={editCompanyForm.branchSlots}
+            onChange={e => setEditCompanyForm({ ...editCompanyForm, branchSlots: Math.max(1, parseInt(e.target.value) || 1) })}
+          />
+          <div className="flex items-end text-[11px] text-slate-500 pb-2">
+            Total branches a Company Head may create. Default 1; increase to sell more branch slots.
+          </div>
           <Select 
             label="Status" 
             value={editCompanyForm.status} 
