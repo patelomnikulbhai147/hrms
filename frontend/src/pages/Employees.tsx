@@ -233,6 +233,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     ifsc: '',
     presentAddress: '',
     permanentAddress: '',
+    shiftId: '' as number | string,
   });
 
 

@@ -3,7 +3,7 @@ export type Role = 'Super Admin' | 'Company Head' | 'HR' | 'Finance' | 'Employee
 export type EmployeeStatus = 'Active' | 'Inactive' | 'On Leave' | 'Terminated' | 'Archived';
 export type LeaveStatus = 'Pending' | 'Approved' | 'Rejected' | 'Cancelled';
 export type LeaveType = 'Annual' | 'Sick' | 'Casual' | 'Maternity' | 'Paternity' | 'Unpaid';
-export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'paid' | 'payslip_generated' | 'failed';
+export type PayrollStatus = 'draft' | 'prepared' | 'verified' | 'payment_pending' | 'approved' | 'paid' | 'locked' | 'payslip_generated' | 'failed';
 export type AttendanceStatus = 'Present' | 'Absent' | 'Half Day' | 'Weekly Off' | 'Holiday' | 'Leave' | 'Work From Home' | 'On Duty';
 export type AttendanceFlag = 'Late Mark' | 'Early Exit' | 'Overtime' | 'Night Shift' | 'Missed Punch' | 'Double Shift' | 'Field Work';
 

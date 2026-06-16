@@ -46,7 +46,7 @@ export const generateAutomatedPayroll = (
     
     // 3. Leave Integration
     const empLeaves = leaves.filter(l => (l.employeeId === emp.id || l.employeeId === emp.employeeId) && l.status === 'Approved');
-    const unpaidLeaves = empLeaves.filter(l => l.leaveType === 'Unpaid' || l.leaveType === 'Loss of Pay').reduce((sum, l) => sum + l.days, 0);
+    const unpaidLeaves = empLeaves.filter(l => l.leaveType === 'Unpaid' || (l.leaveType as string) === 'Loss of Pay').reduce((sum, l) => sum + l.days, 0);
     
     // Total LOP (Loss of Pay)
     const totalLOPDays = totalAbsentDays + unpaidLeaves;
@@ -105,9 +105,11 @@ export const generateAutomatedPayroll = (
       overtimeAmount: overtimeEarnings,
       overtimeHours: otHours,
       netSalary,
+      salary: grossEarnings,
       status: 'draft',
       payrollStatus: 'draft',
       paymentStatus: 'pending',
+      payslipGenerated: false,
       notes: `Auto-generated. LOP Days: ${totalLOPDays}. OT Earnings: ₹${overtimeEarnings}`
     });
   });
