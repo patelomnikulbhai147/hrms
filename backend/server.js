@@ -116,6 +116,32 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error', code: 'INTERNAL' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+// If the port is already taken — usually an old instance still lingering after a
+// fast nodemon restart — fail with a clear, actionable message instead of an
+// unhandled 'error' event crash dump.
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n[server] Port ${PORT} is already in use — another backend instance is still running.`);
+    console.error(`[server] Close the other terminal, or free the port, then start again.\n`);
+    process.exit(1);
+  }
+  throw err;
+});
+
+// Close the HTTP server cleanly on shutdown / nodemon restart so the port is
+// released immediately and the next start cannot hit EADDRINUSE. A short safety
+// timeout force-exits if a lingering socket keeps the server from closing.
+const shutdown = (signal) => {
+  console.log(`[server] ${signal} received — releasing port ${PORT} and shutting down.`);
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(0), 2000).unref();
+};
+['SIGINT', 'SIGTERM'].forEach((sig) => process.on(sig, () => shutdown(sig)));
+// SIGUSR2 is nodemon's restart signal on Unix; it is unsupported on Windows.
+if (process.platform !== 'win32') {
+  process.once('SIGUSR2', () => shutdown('SIGUSR2'));
+}

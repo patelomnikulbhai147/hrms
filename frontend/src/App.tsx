@@ -269,7 +269,7 @@ export default function App() {
         } else {
           setStoredAuthProfile(updatedProfile);
           setRole(updatedProfile.role);
-          localStorage.setItem('hrms_profile', JSON.stringify(updatedProfile));
+          authStorage.set('hrms_profile', JSON.stringify(updatedProfile));
         }
       }
     }
