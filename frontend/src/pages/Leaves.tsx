@@ -19,6 +19,7 @@ import { Modal } from '../components/ui/Modal';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
 import { byEmployeeCode } from '../utils/employeeSort';
+import { isActiveEmployee } from '../utils/employeeStatus';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
@@ -744,6 +745,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                 {(() => {
                   const q = searchQuery.toLowerCase().trim();
                   const matches = uniqueEmployees.filter(emp => {
+                    if (!isActiveEmployee(emp)) return false; // offboarded employees cannot have leave logged
                     if (!((emp.id && scopedEmpIds.has(emp.id)) || isCompanyIdMatch(emp.companyId, activeCompanyId, companies, emp.branchLocation, emp.branchId))) return false;
                     if (!q) return true; // show all under current tenant when focused
                     return (

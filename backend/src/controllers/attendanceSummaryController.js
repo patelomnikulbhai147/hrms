@@ -3,6 +3,7 @@ const idParam = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const summaryService = require('../services/attendanceSummaryService');
 const payrollController = require('./payrollController');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 const allowedIdsFor = (req) =>
   [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
@@ -63,12 +64,13 @@ exports.recompute = async (req, res) => {
 
     if (!Array.isArray(employeeIds) || !employeeIds.length) {
       const companyId = idParam(req.body.companyId || req.headers['x-workspace-id']);
-      let empWhere = {};
+      // Offboarded employees are excluded from attendance-summary recompute.
+      let empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
       if (!isSuper(req)) {
         const ids = allowedIdsFor(req);
-        empWhere = { OR: [{ companyId: { in: ids } }, { branchId: { in: ids } }] };
+        empWhere.OR = [{ companyId: { in: ids } }, { branchId: { in: ids } }];
       } else if (companyId) {
-        empWhere = { OR: [{ companyId }, { branchId: companyId }] };
+        empWhere.OR = [{ companyId }, { branchId: companyId }];
       }
       const emps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
       employeeIds = emps.map(e => e.id);

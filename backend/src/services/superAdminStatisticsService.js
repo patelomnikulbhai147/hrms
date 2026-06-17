@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 /**
  * SuperAdminStatisticsService
@@ -87,7 +88,8 @@ async function getSuperAdminStatistics() {
 
     // ── Employee counts ───────────────────────────────────────────────────────
     prisma.employee.count(),
-    prisma.employee.count({ where: { status: { in: ['Active', 'ACTIVE'] } } }),
+    // Active Staff = currently-employed headcount (offboarded employees excluded).
+    prisma.employee.count({ where: { status: { notIn: OFFBOARDED_STATUSES } } }),
 
     // ── Deactivated Companies ─────────────────────────────────────────────────
     // Any company whose status OR accountStatus is non-active.

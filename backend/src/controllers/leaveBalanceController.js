@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const leaveService = require('../services/leaveService');
 const AuditService = require('../services/auditService');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 const allowedIdsFor = (req) =>
   [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
@@ -96,8 +97,8 @@ exports.accrue = async (req, res) => {
     const throughMonth = Number(req.body.throughMonth) || (new Date(req.body.asOf || '2026-06-15')).getMonth() + 1;
     const companyId = idParam(req.body.companyId || req.headers['x-workspace-id']);
 
-    // Archived (offboarded) employees are EXCLUDED from leave credits.
-    let empWhere = { status: 'Active' };
+    // Offboarded employees are EXCLUDED from leave credits/accrual.
+    let empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
     if (req.user && req.user.role !== 'Super Admin') {
       const ids = allowedIdsFor(req);
       empWhere.OR = [{ companyId: { in: ids } }, { branchId: { in: ids } }];

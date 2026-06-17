@@ -11,6 +11,7 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const leaveService = require('../services/leaveService');
 const AuditService = require('../services/auditService');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const DEFAULT_YEAR = leaveService.DEFAULT_YEAR;
@@ -163,12 +164,13 @@ exports.carryForward = async (req, res) => {
     if (req.body.employeeId) {
       targetEmployeeIds = [idParam(req.body.employeeId)];
     } else {
-      let empWhere = {};
+      // Offboarded employees are excluded from leave carry-forward.
+      let empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
       if (req.user && req.user.role !== 'Super Admin') {
         const ids = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-        empWhere = { OR: [{ companyId: { in: ids } }, { branchId: { in: ids } }] };
+        empWhere.OR = [{ companyId: { in: ids } }, { branchId: { in: ids } }];
       } else if (companyId) {
-        empWhere = { OR: [{ companyId }, { branchId: companyId }] };
+        empWhere.OR = [{ companyId }, { branchId: companyId }];
       }
       const emps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
       targetEmployeeIds = emps.map(e => e.id);

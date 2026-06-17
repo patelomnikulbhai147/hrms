@@ -41,6 +41,7 @@ import {
 import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '../utils/salarySlipGenerator';
 import { PayrollWorkbench } from '../components/payroll/PayrollWorkbench';
 import { byEmployeeCode } from '../utils/employeeSort';
+import { isActiveEmployee } from '../utils/employeeStatus';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
 import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
@@ -173,7 +174,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
     || companies.find(c => String(c.id) === String(activeCompanyId))
     || SAFE_COMPANY_FALLBACK;
-  const companyEmployees = useMemo(() => uniqueEmployees.filter(e => e.status === 'Active' && isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)), [uniqueEmployees, activeCompanyId, companies]);
+  const companyEmployees = useMemo(() => uniqueEmployees.filter(e => isActiveEmployee(e) && isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)), [uniqueEmployees, activeCompanyId, companies]);
   const companyPayrollStatus = deriveCompanyPayrollStatus(activeCompanyId, payroll);
   useEffect(() => {
     const stored = localStorage.getItem(`hrms_payroll_logs_${activeCompanyId}`);

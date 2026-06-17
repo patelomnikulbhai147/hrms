@@ -4,6 +4,7 @@ const idParam = require('../utils/idParam');
 const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 exports.getEmployees = async (req, res) => {
   try {
@@ -37,6 +38,17 @@ exports.getEmployees = async (req, res) => {
         { companyId: companyId },
         { branchId: companyId }
       ];
+    }
+
+    // Offboarded employees are excluded from the ACTIVE employee dataset by
+    // default — active modules (attendance, payroll, leave, shift, dropdowns,
+    // dashboards) must never receive them. The Offboarding module, Archive
+    // section, Historical Reports and Employee History opt back in with
+    // ?include=all (or ?includeOffboarded=true) to retrieve the full roster.
+    const includeAll = ['all', 'true', '1', 'yes']
+      .includes(String(req.query.include || req.query.includeOffboarded || '').toLowerCase());
+    if (!includeAll) {
+      whereClause.status = { notIn: OFFBOARDED_STATUSES };
     }
 
     const employees = await prisma.employee.findMany({ where: whereClause });

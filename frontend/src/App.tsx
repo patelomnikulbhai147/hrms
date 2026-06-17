@@ -45,6 +45,7 @@ import {
   PLAN_LIMITS
 } from './data/mockData';
 import { calculateBranchBilling } from './utils/subscriptionUtils';
+import { isActiveEmployee } from './utils/employeeStatus';
 
 const pageTitles: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -158,6 +159,12 @@ export default function App() {
   // Database models initialized strictly empty to enforce live DB queries (No stale localStorage caching)
   const [companies, setCompanies] = useState<Company[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  // ACTIVE employee dataset for operational modules (attendance, payroll, leave,
+  // shift, selection dropdowns, cards, documents). Offboarded employees
+  // (Archived/Resigned/Terminated/Inactive/Offboarded) are excluded so they can
+  // never appear in active workflows. The full `employees` list is still used by
+  // the Employees directory (archive tab), Reports, and Dashboard.
+  const activeEmployees = React.useMemo(() => employees.filter(isActiveEmployee), [employees]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
@@ -489,7 +496,7 @@ export default function App() {
       const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments, fetchedLeaves, fetchedAttendance] = await Promise.all([
         catchApi(api.companies.getAll(), 'companies'),
         catchApi(api.branches.getAll(), 'branches'),
-        catchApi(api.employees.getAll(), 'employees'),
+        catchApi(api.employees.getAll('?include=all'), 'employees'),
         catchApi(api.users.getAll(), 'users'),
         catchApi(api.payroll.getAll(), 'payroll'),
         catchApi(api.documents.getAll(), 'documents'),
@@ -891,7 +898,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             onStartMasquerade={handleStartMasquerade}
             companies={companies}
-            employees={employees}
+            employees={activeEmployees}
             attendance={attendance}
             leaves={leaves}
             payroll={payroll}
@@ -977,7 +984,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
-            employees={employees}
+            employees={activeEmployees}
           />
         );
       case 'leaves':
@@ -987,7 +994,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             leaves={leaves}
             onUpdateLeaves={handleUpdateLeaves}
-            employees={employees}
+            employees={activeEmployees}
             companies={companies}
             authProfile={authProfile}
           />
@@ -1016,7 +1023,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             attendance={attendance}
             onUpdateAttendance={handleUpdateAttendance}
-            employees={employees}
+            employees={activeEmployees}
             companies={companies}
             leaves={leaves}
             onRefresh={hydrateAll}
@@ -1030,7 +1037,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             payroll={payroll}
             onUpdatePayroll={handleUpdatePayroll}
-            employees={employees}
+            employees={activeEmployees}
             attendance={attendance}
             leaves={leaves}
             authProfile={authProfile}
@@ -1044,7 +1051,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             documents={documents}
             onUpdateDocuments={handleUpdateDocuments}
-            employees={employees}
+            employees={activeEmployees}
           />
         );
       case 'reports':
@@ -1053,7 +1060,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
-            employees={employees}
+            employees={activeEmployees}
             attendance={attendance}
             payroll={payroll}
             leaves={leaves}
@@ -1088,7 +1095,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             onStartMasquerade={handleStartMasquerade}
             companies={companies}
-            employees={employees}
+            employees={activeEmployees}
             attendance={attendance}
             leaves={leaves}
             payroll={payroll}

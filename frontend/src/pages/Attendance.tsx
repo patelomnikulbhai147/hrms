@@ -10,6 +10,7 @@ import { Input, Select } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { byEmployeeCode } from '../utils/employeeSort';
+import { isActiveEmployee } from '../utils/employeeStatus';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
@@ -215,7 +216,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const companyEmployees = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
   const uniqueEmployees = getUniqueEmployees(companyEmployees);
-  const activeUniqueEmployees = uniqueEmployees.filter(e => e.status === 'Active').sort(byEmployeeCode(e => e.employeeId));
+  const activeUniqueEmployees = uniqueEmployees.filter(isActiveEmployee).sort(byEmployeeCode(e => e.employeeId));
   const filteredEmployees = activeUniqueEmployees.filter(e => 
     e.name.toLowerCase().includes(empSearch.toLowerCase()) || 
     (e.employeeId && e.employeeId.toLowerCase().includes(empSearch.toLowerCase())) ||

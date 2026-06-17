@@ -3,10 +3,12 @@ const prisma = require('../config/prisma');
 // below; previously only require()'d inline in one spot, leaving `idParam` undefined
 // in the rest of the file (payroll edit/delete 500'd with "idParam is not defined").
 const idParam = require('../utils/idParam');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 // Helper to sync payroll for missing employees
 const syncPayrollForEmployees = async (companyWhere, month, year) => {
-  const employeeWhere = { status: 'Active' };
+  // Offboarded employees are excluded from payroll generation.
+  const employeeWhere = { status: { notIn: OFFBOARDED_STATUSES } };
   if (companyWhere) {
     if (typeof companyWhere === 'string') {
       employeeWhere.OR = [
@@ -292,7 +294,8 @@ exports.generate = async (req, res) => {
     // more later without a 409.
 
     // Fetch scoped employees
-    const employeeWhere = { status: 'Active' };
+    // Offboarded employees are excluded from payroll generation.
+    const employeeWhere = { status: { notIn: OFFBOARDED_STATUSES } };
     if (isBranch) {
       employeeWhere.branchId = branchId;
     } else {

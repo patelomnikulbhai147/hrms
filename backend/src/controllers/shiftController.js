@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 // Real scalar columns on the Shift model. Anything else in the request body
 // (e.g. the legacy `break` alias, an `id`, or a branch-level `companyId`) is
@@ -141,8 +142,9 @@ exports.assignEmployees = async (req, res) => {
     // (scoped to the shift's company so we never touch another company's staff).
     await prisma.employee.updateMany({ where: { shiftId: id }, data: { shiftId: null } });
     if (employeeIds.length) {
+      // Offboarded employees cannot be assigned to a shift.
       await prisma.employee.updateMany({
-        where: { id: { in: employeeIds }, companyId: shift.companyId },
+        where: { id: { in: employeeIds }, companyId: shift.companyId, status: { notIn: OFFBOARDED_STATUSES } },
         data: { shiftId: id },
       });
     }
