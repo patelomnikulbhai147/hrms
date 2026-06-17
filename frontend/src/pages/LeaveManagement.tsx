@@ -19,6 +19,7 @@ import { type UserAccount } from './Login';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
 import { getUniqueEmployees } from '../utils/deduplication';
+import { isActiveEmployee } from '../utils/employeeStatus';
 import { Leaves } from './Leaves';
 
 type TabId = 'requests' | 'administration' | 'balances' | 'credits' | 'encashment' | 'history' | 'reports' | 'policies';
@@ -78,7 +79,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     [uniqueEmployees, activeCompanyId, companies]
   );
   const scopedEmployees = useMemo(
-    () => uniqueEmployees.filter(e => (e.id && scopedEmpIds.has(e.id)) || (e.employeeId && scopedEmpIds.has(e.employeeId))),
+    () => uniqueEmployees.filter(e => isActiveEmployee(e) && ((e.id && scopedEmpIds.has(e.id)) || (e.employeeId && scopedEmpIds.has(e.employeeId)))),
     [uniqueEmployees, scopedEmpIds]
   );
   const empById = useMemo(() => {

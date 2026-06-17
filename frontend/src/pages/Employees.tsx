@@ -29,6 +29,7 @@ import { getUniqueEmployees } from '../utils/deduplication';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { type ExportColumn } from '../utils/exportUtils';
 import { byEmployeeCode } from '../utils/employeeSort';
+import { isActiveEmployee, isOffboarded } from '../utils/employeeStatus';
 import { usePermissions } from '../context/PermissionContext';
 
 const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
@@ -362,7 +363,9 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   const filtered = useMemo(() => {
     return companyEmployees.filter(emp => {
-      const isArchived = emp.status === 'Archived' || emp.status === 'Terminated';
+      // Offboarded = Archived/Resigned/Terminated/Inactive/Offboarded. The active
+      // roster tab hides them; the "previous" (archive) tab shows only them.
+      const isArchived = isOffboarded(emp.status);
       if (activeMainTab === 'active' && isArchived) return false;
       if (activeMainTab === 'previous' && !isArchived) return false;
 
@@ -380,14 +383,14 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
-    const activeRoster = companyEmployees.filter(e => e.status === 'Active');
+    const activeRoster = companyEmployees.filter(isActiveEmployee);
     // Total Staff Strength = every employee assigned to this workspace (COUNT),
-    // Active Roster = the active subset. They must not collapse to 0 just because
-    // a branch's staff are archived.
+    // Active Roster = the non-offboarded subset. They must not collapse to 0 just
+    // because a branch's staff are archived.
     const total = companyEmployees.length;
     const active = activeRoster.length;
     const verifiedPayroll = activeRoster.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
-    const pendingExits = companyEmployees.filter(e => e.status === 'Active' && e.exitDate && !e.exitReason).length;
+    const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
     return { total, active, verifiedPayroll, pendingExits };
   }, [companyEmployees]);
 

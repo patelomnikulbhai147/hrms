@@ -241,8 +241,10 @@ export const api = {
   },
 
   employees: {
-    getAll: async () => {
-      return await apiFetch(`${BASE_URL}/employees`, { headers: getHeaders() });
+    // Default returns ACTIVE employees only (offboarded excluded server-side).
+    // Pass '?include=all' for the Offboarding/Archive/Reports/History views.
+    getAll: async (query: string = '') => {
+      return await apiFetch(`${BASE_URL}/employees${query}`, { headers: getHeaders() });
     },
     create: async (data: any) => {
       return await apiFetch(`${BASE_URL}/employees`, {

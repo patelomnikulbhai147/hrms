@@ -4,6 +4,7 @@ const idParam = require('../utils/idParam');
 const { coerceEntityIds } = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const respondError = require('../utils/respondError');
+const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
 // ── Company Branding Management ───────────────────────────────────────────────
 // A dedicated, permission-gated endpoint so Company Admins / HR can manage their
@@ -145,7 +146,8 @@ exports.getCompanies = async (req, res) => {
           orderBy: [{ branchNo: 'asc' }, { id: 'asc' }],
         },
         _count: {
-          select: { employees: { where: { status: 'Active' } } }
+          // Headcount shown per company excludes offboarded employees.
+          select: { employees: { where: { status: { notIn: OFFBOARDED_STATUSES } } } }
         }
       }
     });

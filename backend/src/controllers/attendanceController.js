@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -90,9 +91,9 @@ exports.getAnalytics = async (req, res) => {
       }
     }
 
-    // Get Active Employees for the scope
+    // Get Active Employees for the scope (offboarded employees excluded)
     const employees = await prisma.employee.findMany({
-      where: { ...empWhere, status: 'Active' },
+      where: { ...empWhere, status: { notIn: OFFBOARDED_STATUSES } },
       select: { id: true, department: true, companyId: true, branchId: true }
     });
 
@@ -197,7 +198,7 @@ exports.syncPayroll = async (req, res) => {
       allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
     }
 
-    const empWhere = { status: 'Active' };
+    const empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
     if (Array.isArray(scopeIds) && scopeIds.length > 0) {
       empWhere.OR = [{ companyId: { in: scopeIds } }, { branchId: { in: scopeIds } }, { id: { in: scopeIds } }];
     } else if (companyId) {
@@ -359,13 +360,14 @@ exports.create = async (req, res) => {
     const body = { ...req.body };
     delete body.reason; // metadata, not a column
 
-    // Offboarding policy: no attendance may be marked for an Archived employee.
+    // Offboarding policy: no attendance may be marked for an offboarded employee
+    // (Archived/Resigned/Terminated/Inactive/Offboarded).
     if (body.employeeId) {
       const emp = await prisma.employee.findUnique({ where: { id: Number(body.employeeId) }, select: { status: true, name: true } });
-      if (emp && emp.status === 'Archived') {
+      if (emp && isOffboarded(emp.status)) {
         return res.status(403).json({
           code: 'EMPLOYEE_OFFBOARDED',
-          error: `${emp.name} is offboarded (archived) — attendance cannot be marked.`,
+          error: `${emp.name} is offboarded (${emp.status}) — attendance cannot be marked.`,
         });
       }
     }

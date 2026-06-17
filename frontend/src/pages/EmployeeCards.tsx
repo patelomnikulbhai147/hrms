@@ -9,6 +9,7 @@ import { usePermissions } from '../context/PermissionContext';
 import { isCompanyIdMatch } from '../types';
 import { EmployeeIdCard, EmployeeInfoCard } from '../components/cards/EmployeeCardTemplates';
 import { renderNodeToPdf, downloadCardsPdf } from '../utils/employeeCardGenerator';
+import { isActiveEmployee } from '../utils/employeeStatus';
 
 interface EmployeeCardsProps {
   role: Role;
@@ -44,6 +45,7 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
   // Employees scoped to the active workspace.
   const scoped = useMemo(
     () => (employees || []).filter(e =>
+      isActiveEmployee(e) && // offboarded employees are excluded from card generation
       isCompanyIdMatch(e.companyId, activeCompanyId, companies as any[], (e as any).branchLocation, (e as any).branchId)),
     [employees, activeCompanyId, companies]
   );
