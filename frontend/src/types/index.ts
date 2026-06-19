@@ -119,8 +119,8 @@ export interface Employee {
   employmentType?: string;
   exitDate?: string;
   exitReason?: string;
-  serviceBookNo?: string;
   branchLocation?: string;
+  biometricId?: string;
   branchId?: string;
   shiftId?: number | string | null;
 
@@ -236,8 +236,6 @@ export interface PayrollRecord {
 
   bonus?: number;
   tax?: number;
-  leaveEncashmentDays?: number;
-  leaveEncashmentAmount?: number;
   notes?: string;
 }
 

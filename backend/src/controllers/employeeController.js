@@ -93,6 +93,11 @@ exports.createEmployee = async (req, res) => {
       delete data.esic;
     }
 
+    // Biometric ID (Phase 2): optional, trimmed, capped at 50 chars; blank → null.
+    if (data.biometricId !== undefined) {
+      data.biometricId = data.biometricId ? String(data.biometricId).trim().slice(0, 50) : null;
+    }
+
     if (data.companyId) {
       const comp = await prisma.company.findUnique({ where: { id: data.companyId } });
       if (!comp) data.companyId = 1;
@@ -325,10 +330,12 @@ exports.updateEmployee = async (req, res) => {
     // history is preserved and cannot be edited. The only permitted change is
     // reactivation (status → Active).
     const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true } });
-    if (existingEmp && existingEmp.status === 'Archived' && data.status !== 'Active') {
+    // Archived / offboarded employees are HISTORICAL records: read-only for
+    // everyone except a Super Admin (who alone may edit or restore them).
+    if (existingEmp && OFFBOARDED_STATUSES.includes(existingEmp.status) && !(req.user && req.user.role === 'Super Admin')) {
       return res.status(403).json({
         code: 'EMPLOYEE_OFFBOARDED',
-        error: 'This employee is offboarded (archived) and is read-only. Reactivate the employee to make changes.',
+        error: 'This employee is archived/offboarded and is read-only. Only a Super Admin can restore or modify it.',
       });
     }
 
@@ -355,6 +362,11 @@ exports.updateEmployee = async (req, res) => {
     if (data.esic !== undefined) {
       data.esiNumber = data.esic;
       delete data.esic;
+    }
+
+    // Biometric ID (Phase 2): optional, trimmed, capped at 50 chars; blank → null.
+    if (data.biometricId !== undefined) {
+      data.biometricId = data.biometricId ? String(data.biometricId).trim().slice(0, 50) : null;
     }
 
     if (data.companyId) {

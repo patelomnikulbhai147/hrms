@@ -138,8 +138,8 @@ model Company {
   shifts                      Shift[]
   leaveCreditConfigs          LeaveCreditConfig[]
   leaveBalances               LeaveBalance[]
-  leaveEncashments            LeaveEncashment[]
   attendanceSummaries         AttendanceSummary[]
+  attendanceDevices           AttendanceDevice[]
 }
 
 model Branch {
@@ -167,6 +167,67 @@ model Branch {
   company          Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branchPayrolls   BranchPayroll[]
   employees        Employee[]
+  attendanceDevices AttendanceDevice[]
+}
+
+// ── Biometric attendance devices (Phase 1: registry only) ───────────────────
+// Registers physical attendance devices per company/branch. This table does NOT
+// store attendance punches — the existing `attendance` table remains the single
+// source of attendance truth. No device connectivity or sync logic lives here.
+model AttendanceDevice {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  branchId     Int?
+  deviceName   String
+  deviceIp     String?
+  port         Int?
+  serialNumber String?
+  deviceType   String?
+  status       String    @default("ACTIVE") // ACTIVE / INACTIVE
+  lastSync     DateTime?
+  lastTestAt         DateTime?  // Phase 5: last "Test Connection" run
+  lastTestStatus     String?    // CONNECTED / FAILED
+  lastTestResponseMs Int?       // round-trip connect time in ms
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  branch       Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([branchId])
+  @@map("attendance_devices")
+}
+
+// ── Raw device push log (Phase 6: ADMS-style receiver, DEBUG only) ───────────
+// Captures every inbound request from an attendance device exactly as received.
+// This is a debug/inspection table — it is NOT the attendance table and is never
+// used to mark anyone present. No FK to a device (the pusher may be unidentified).
+model DevicePushLog {
+  id               Int      @id @default(autoincrement())
+  receivedAt       DateTime @default(now())
+  deviceId         Int?
+  deviceIp         String?
+  method           String?
+  path             String?  @db.Text
+  contentType      String?
+  headers          String?  @db.LongText
+  query            String?  @db.Text
+  rawPayload       String?  @db.LongText
+  userId           String?
+  biometricId      String?
+  punchTime        String?
+  punchType        String?
+  // Phase 7A — eTimeOffice XML-over-TCP handshake fields + the exact ACK we sent
+  terminalType     String?
+  deviceUid        String?
+  deviceSerialNo   String?
+  terminalId       String?
+  responsePayload  String?  @db.LongText
+  processingResult String?  // e.g. "HANDSHAKE_ACK_v1 (no attendance created)"
+  createdAt        DateTime @default(now())
+
+  @@index([receivedAt])
+  @@map("device_push_logs")
 }
 
 model Employee {
@@ -176,6 +237,7 @@ model Employee {
   companyId         Int
   branchId          Int?
   shiftId           Int?
+  biometricId       String?        @db.VarChar(50)
   name              String
   firstName         String?
   lastName          String?
@@ -200,6 +262,13 @@ model Employee {
   bankName          String?
   accountNumber     String?
   ifsc              String?
+  // ── IFSC-resolved bank details (auto-fetched from the IFSC code) ──
+  accountHolderName String?
+  bankBranch        String?
+  bankAddress       String?        @db.Text
+  bankCity          String?
+  bankDistrict      String?
+  bankState         String?
   offboardingState  Json?
   employmentHistory Json?
   createdAt         DateTime       @default(now())
@@ -222,7 +291,6 @@ model Employee {
   photoUpload       String?        @db.LongText
   presentAddress    String?        @db.Text
   relationType      String?
-  serviceBookNo     String?
   signatureUpload   String?        @db.LongText
   attendance        Attendance[]
   branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -232,7 +300,6 @@ model Employee {
   payroll           Payroll[]
   overtimes         Overtime[]
   leaveBalances     LeaveBalance[]
-  leaveEncashments  LeaveEncashment[]
   attendanceSummaries AttendanceSummary[]
 }
 
@@ -269,9 +336,6 @@ model Payroll {
   paidBy           String?
   bonus            Float?
   tax              Float?
-  // ── Leave encashment (paid out as an earning in this payroll) ──
-  leaveEncashmentDays   Float?  @default(0)
-  leaveEncashmentAmount Float?  @default(0)
   notes            String?
   companyPayrollId String?
   branchPayrollId  String?
@@ -436,27 +500,6 @@ model LeaveCreditConfig {
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, year])
-}
-
-model LeaveEncashment {
-  id           Int      @id @default(autoincrement())
-  companyId    Int
-  employeeId   Int
-  employeeName String   @default("")
-  year         Int      @default(2026)
-  leaveType    String                       // CL / PL / SL
-  days         Float    @default(0)
-  dailyRate    Float    @default(0)
-  amount       Float    @default(0)
-  status       String   @default("Pending")  // Pending / Approved / Paid
-  processedBy  String?
-  processedOn  String?
-  payrollMonth String?                        // month the amount was pushed to payroll
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model LeaveBalance {

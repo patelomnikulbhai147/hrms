@@ -122,10 +122,7 @@ async function recalcOne(payroll, summary, emp, company) {
   const overtimeRate = company?.overtimeRate || 1.5;
   const hourlyRate = dim > 0 ? basicSalary / (dim * 8) : 0;
   const otAmount = Math.round(ot * hourlyRate * overtimeRate);
-  // Leave encashment already pushed onto this record is preserved and paid as an
-  // earning (see leaveEncashmentController.addToPayroll), so it flows into net.
-  const encashAmount = Math.round(payroll.leaveEncashmentAmount || 0);
-  const allowances = hra + special + otAmount + encashAmount;
+  const allowances = hra + special + otAmount;
 
   const pfRate = company?.pfRate || 12;
   const esicRate = company?.esicRate || 0.75;
@@ -142,8 +139,7 @@ async function recalcOne(payroll, summary, emp, company) {
       presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
       halfDays: half, otHours: ot, payableDays,
       isOutdated: false, summarySyncedAt: new Date(),
-      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s).`
-        + (encashAmount > 0 ? ` Incl. leave encashment Rs.${encashAmount}.` : ''),
+      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s).`,
     },
   });
 }
@@ -534,7 +530,7 @@ exports.update = async (req, res) => {
     // ── Revision history (replaces the old hard "lock") ──────────────────────
     // Authorized users may edit payroll at any stage; every amount change is
     // captured as a traceable revision: original → modified, by whom, when, why.
-    const REVISION_FIELDS = ['basicSalary', 'allowances', 'deductions', 'netSalary', 'bonus', 'tax', 'leaveEncashmentAmount'];
+    const REVISION_FIELDS = ['basicSalary', 'allowances', 'deductions', 'netSalary', 'bonus', 'tax'];
     const changes = [];
     for (const f of REVISION_FIELDS) {
       if (payload[f] !== undefined && Number(payload[f]) !== Number(existingRecord[f] ?? 0)) {

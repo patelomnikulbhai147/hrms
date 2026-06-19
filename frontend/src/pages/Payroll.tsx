@@ -791,7 +791,7 @@ export const Payroll: React.FC<PayrollProps> = ({
                   <div>
                     <h4 className="text-xs font-black uppercase tracking-wider text-slate-400">GUJARAT CANCER & RESEARCH INSTITUTE</h4>
                     <p className="text-sm font-bold text-slate-800">{viewPayslip.employeeName}</p>
-                    <p className="text-[10px] text-gray-500 font-medium">Branch: {emp?.branchLocation || 'Ahmedabad'} · Service Book: {emp?.serviceBookNo || '—'} · Code: {emp?.employeeId || '—'}</p>
+                    <p className="text-[10px] text-gray-500 font-medium">Branch: {emp?.branchLocation || 'Ahmedabad'} · Code: {emp?.employeeId || '—'}</p>
                   </div>
                   <div className="ml-auto text-right">
                     <p className="text-[10px] uppercase text-gray-400 font-bold">Active Cycle</p>

@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
+router.use(protect, require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 // Using protect middleware if we want only authenticated users (admins) to reset passwords
 // Assuming `req.user` gets populated by `protect`.

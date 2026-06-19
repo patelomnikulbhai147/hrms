@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const shiftController = require('../controllers/shiftController');
 const { protect } = require('../middleware/authMiddleware');
+router.use(protect, require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 router.get('/', protect, shiftController.getAll);
 router.post('/', protect, shiftController.create);

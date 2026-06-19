@@ -263,10 +263,10 @@ export const downloadCompanyExcel = (payload: CompanyExportPayload): void => {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, buildSheet(COMPANY_HEADERS, companies.map(mapCompanyRow)), 'Companies');
-  XLSX.utils.book_append_sheet(wb, buildSheet(BRANCH_HEADERS,  branches.map(mapBranchRow)),  'Branches');
-  if (empRows.length)      XLSX.utils.book_append_sheet(wb, buildSheet(EMP_SUMMARY_HEADERS, empRows),      'Employee Summary');
-  if (archivedRows.length) XLSX.utils.book_append_sheet(wb, buildSheet(ARCHIVED_HEADERS,    archivedRows), 'Archived Records');
-  XLSX.utils.book_append_sheet(wb, buildSheet(PLAN_HEADERS,    plans.map(mapPlanRow)),        'Subscription Summary');
+  XLSX.utils.book_append_sheet(wb, buildSheet(BRANCH_HEADERS, branches.map(mapBranchRow)), 'Branches');
+  if (empRows.length) XLSX.utils.book_append_sheet(wb, buildSheet(EMP_SUMMARY_HEADERS, empRows), 'Employee Summary');
+  if (archivedRows.length) XLSX.utils.book_append_sheet(wb, buildSheet(ARCHIVED_HEADERS, archivedRows), 'Archived Records');
+  XLSX.utils.book_append_sheet(wb, buildSheet(PLAN_HEADERS, plans.map(mapPlanRow)), 'Subscription Summary');
 
   const buffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true, compression: true });
   triggerExcelDownload(buffer, `Company_Directory_${todayStamp()}.xlsx`);
@@ -290,14 +290,14 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
 
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
 
-  const C_BLUE   = [37,  99,  235] as [number, number, number];
-  const C_INDIGO = [79,  70,  229] as [number, number, number];
-  const C_AMBER  = [217, 119, 6]   as [number, number, number];
-  const C_ROSE   = [220, 38,  38]  as [number, number, number];
-  const C_WHITE  = [255, 255, 255] as [number, number, number];
-  const C_LIGHT  = [248, 250, 252] as [number, number, number];
-  const C_SLATE  = [71,  85,  105] as [number, number, number];
-  const stamp    = todayStamp();
+  const C_BLUE = [37, 99, 235] as [number, number, number];
+  const C_INDIGO = [79, 70, 229] as [number, number, number];
+  const C_AMBER = [217, 119, 6] as [number, number, number];
+  const C_ROSE = [220, 38, 38] as [number, number, number];
+  const C_WHITE = [255, 255, 255] as [number, number, number];
+  const C_LIGHT = [248, 250, 252] as [number, number, number];
+  const C_SLATE = [71, 85, 105] as [number, number, number];
+  const stamp = todayStamp();
   const PAGE_W = 297, PAGE_H = 210, M = 14;
 
   // Slim header band drawn on every page (via autoTable's didDrawPage + manually).
@@ -328,7 +328,7 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
     autoTable(doc, {
       startY: y,
       head: [head],
-      body: body.length ? body : [[ 'No records', ...Array(head.length - 1).fill('') ]],
+      body: body.length ? body : [['No records', ...Array(head.length - 1).fill('')]],
       theme: 'striped',
       headStyles: { fillColor: headColor, textColor: C_WHITE, fontStyle: 'bold', fontSize: 6.8 },
       styles: { fontSize: 6.6, cellPadding: 1.6, overflow: 'linebreak' },
@@ -345,10 +345,10 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
   // ── Section 1: Dashboard Summary ────────────────────────────────────────────
   heading('1. Dashboard Summary');
   const cards = [
-    { label: 'Total Companies',       value: stats?.totalCompanies      ?? companies.length, color: C_BLUE },
-    { label: 'Total Branches',        value: stats?.totalBranches        ?? branches.length, color: C_INDIGO },
+    { label: 'Total Companies', value: stats?.totalCompanies ?? companies.length, color: C_BLUE },
+    { label: 'Total Branches', value: stats?.totalBranches ?? branches.length, color: C_INDIGO },
     { label: 'Deactivated Companies', value: stats?.deactivatedCompanies ?? companies.filter(c => isDeactivated(c.companyStatus, c.isArchived)).length, color: C_AMBER },
-    { label: 'Deactivated Branches',  value: stats?.deactivatedBranches  ?? branches.filter(b => isDeactivated(b.branchStatus, b.isArchived)).length, color: C_ROSE },
+    { label: 'Deactivated Branches', value: stats?.deactivatedBranches ?? branches.filter(b => isDeactivated(b.branchStatus, b.isArchived)).length, color: C_ROSE },
   ];
   const cardW = (PAGE_W - 2 * M - 3 * 7) / 4;
   cards.forEach((card, i) => {
@@ -371,7 +371,7 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
     `Active Branches: ${stats?.activeBranches ?? '-'}`,
     `Total Employees: ${employeeSummary?.totalEmployees ?? stats?.totalEmployees ?? '-'}`,
     `Active Employees: ${employeeSummary?.activeEmployees ?? stats?.activeStaff ?? '-'}`,
-    `Archived Employees: ${employeeSummary?.archivedEmployees ?? '-'}`,
+    `Previous Employees: ${employeeSummary?.archivedEmployees ?? '-'}`,
   ].join('     ');
   doc.setTextColor(...C_SLATE); doc.setFontSize(8); doc.setFont('helvetica', 'normal');
   doc.text(secondary, M, y);
@@ -448,9 +448,9 @@ export const downloadCompanyPDF = (payload: CompanyExportPayload, stats?: any): 
     plans.map(p => [
       fmt(p.name),
       p.priceMonthly ? `Rs. ${Number(p.priceMonthly).toLocaleString('en-IN')}` : '-',
-      p.priceYearly  ? `Rs. ${Number(p.priceYearly).toLocaleString('en-IN')}` : '-',
+      p.priceYearly ? `Rs. ${Number(p.priceYearly).toLocaleString('en-IN')}` : '-',
       fmt(p.employeeLimit), fmt(p.hrLimit), fmt(p.storageLimit),
-      p.payrollAccess  ? 'Yes' : 'No', p.documentAccess ? 'Yes' : 'No', fmt(p.includedBranchLimit),
+      p.payrollAccess ? 'Yes' : 'No', p.documentAccess ? 'Yes' : 'No', fmt(p.includedBranchLimit),
     ]),
     C_INDIGO,
   );

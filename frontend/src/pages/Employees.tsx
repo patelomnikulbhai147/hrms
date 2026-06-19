@@ -30,6 +30,8 @@ import { ExportMenu } from '../components/ui/ExportMenu';
 import { type ExportColumn } from '../utils/exportUtils';
 import { byEmployeeCode } from '../utils/employeeSort';
 import { isActiveEmployee, isOffboarded } from '../utils/employeeStatus';
+import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '../utils/idFormat';
+import { BankDetails } from '../components/BankDetails';
 import { usePermissions } from '../context/PermissionContext';
 
 const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
@@ -98,6 +100,8 @@ export const Employees: React.FC<EmployeesProps> = ({
   const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('employees');
   const canCreate = canCreateModule('employees');
+  // Optional Biometric ID column in the roster table (hidden by default).
+  const [showBiometric, setShowBiometric] = useState(false);
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
@@ -222,8 +226,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     employmentType: 'CONTRACTUAL',
     exitDate: '',
     exitReason: '',
-    serviceBookNo: '',
     branchLocation: 'AHMEDABAD',
+    biometricId: '',
     aadhaar: '',
     pan: '',
     pfNumber: '',
@@ -231,7 +235,14 @@ export const Employees: React.FC<EmployeesProps> = ({
     esic: '',
     bankName: '',
     accountNumber: '',
+    confirmAccountNumber: '',
     ifsc: '',
+    accountHolderName: '',
+    bankBranch: '',
+    bankAddress: '',
+    bankCity: '',
+    bankDistrict: '',
+    bankState: '',
     presentAddress: '',
     permanentAddress: '',
     shiftId: '' as number | string,
@@ -254,9 +265,9 @@ export const Employees: React.FC<EmployeesProps> = ({
       gender: 'Female', dob: '1998-08-10', maritalStatus: 'UNMARRIED',
       nationality: 'INDIAN', fatherSpouseName: '', relationType: 'FATHER',
       emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
-      exitDate: '', exitReason: '', serviceBookNo: '', branchLocation: initialBranch,
+      exitDate: '', exitReason: '', branchLocation: initialBranch, biometricId: '',
       aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
-      bankName: '', accountNumber: '', ifsc: '', presentAddress: '', permanentAddress: '',
+      bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
       shiftId: '',
     });
     setErrors({});
@@ -265,7 +276,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const handleStartEdit = (emp: Employee) => {
-    setEditEmp(emp);
+    // Pre-fill Confirm Account Number with the stored value so editing an
+    // existing record doesn't trip the "numbers must match" check.
+    setEditEmp({ ...emp, confirmAccountNumber: emp.accountNumber || '' } as any);
     const parts = (emp.phone || '').split(' ');
     if (parts.length > 1) {
       setEditMobileNumber(parts.slice(1).join(''));
@@ -432,20 +445,23 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!form.employmentType) {
       activeErrors.employmentType = 'Type of Employment is required';
     }
-    if (!form.pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(form.pan.trim().toUpperCase())) {
-      activeErrors.pan = 'Valid 10-character PAN is required (e.g. ABCDE1234F)';
+    if (!isValidPan(form.pan)) {
+      activeErrors.pan = PAN_ERROR;
     }
-    if (!form.aadhaar || !/^\d{12}$/.test(form.aadhaar.trim())) {
-      activeErrors.aadhaar = 'Valid 12-digit Aadhaar number is required';
+    if (!isValidAadhaar(form.aadhaar)) {
+      activeErrors.aadhaar = AADHAAR_ERROR;
+    }
+    if (!form.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc.trim().toUpperCase())) {
+      activeErrors.ifsc = 'Valid 11-character IFSC is required';
     }
     if (!form.bankName || form.bankName.trim().length < 3) {
-      activeErrors.bankName = 'Bank Name is required';
+      activeErrors.bankName = 'Verify the IFSC to fetch bank details (or enter them manually).';
     }
     if (!form.accountNumber || form.accountNumber.trim().length < 9) {
       activeErrors.accountNumber = 'Valid Bank Account Number is required';
     }
-    if (!form.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(form.ifsc.trim().toUpperCase())) {
-      activeErrors.ifsc = 'Valid 11-character IFSC is required';
+    if (form.confirmAccountNumber !== form.accountNumber) {
+      activeErrors.confirmAccountNumber = 'Account numbers do not match.';
     }
 
     if (form.pfNumber && form.pfNumber.trim().length < 5) {
@@ -538,8 +554,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       employmentType: form.employmentType,
       exitDate: form.exitDate,
       exitReason: form.exitReason,
-      serviceBookNo: form.serviceBookNo,
       branchLocation: form.branchLocation,
+      biometricId: form.biometricId,
       aadhaar: form.aadhaar,
       pan: form.pan,
       pfNumber: form.pfNumber,
@@ -548,6 +564,12 @@ export const Employees: React.FC<EmployeesProps> = ({
       bankName: form.bankName,
       accountNumber: form.accountNumber,
       ifsc: form.ifsc,
+      accountHolderName: form.accountHolderName,
+      bankBranch: form.bankBranch,
+      bankAddress: form.bankAddress,
+      bankCity: form.bankCity,
+      bankDistrict: form.bankDistrict,
+      bankState: form.bankState,
       presentAddress: form.presentAddress,
       permanentAddress: form.permanentAddress,
       shiftId: form.shiftId ? Number(form.shiftId) : null,
@@ -608,20 +630,23 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!editEmp.nationality) activeErrors.nationality = 'Nationality is required';
     if (!editEmp.fatherSpouseName) activeErrors.fatherSpouseName = 'Father/Spouse Name is required';
 
-    if (!editEmp.pan || !/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(editEmp.pan.trim().toUpperCase())) {
-      activeErrors.pan = 'Valid 10-character PAN is required (e.g. ABCDE1234F)';
+    if (!isValidPan(editEmp.pan)) {
+      activeErrors.pan = PAN_ERROR;
     }
-    if (!editEmp.aadhaar || !/^\d{12}$/.test(editEmp.aadhaar.trim())) {
-      activeErrors.aadhaar = 'Valid 12-digit Aadhaar number is required';
+    if (!isValidAadhaar(editEmp.aadhaar)) {
+      activeErrors.aadhaar = AADHAAR_ERROR;
+    }
+    if (!editEmp.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(editEmp.ifsc.trim().toUpperCase())) {
+      activeErrors.ifsc = 'Valid 11-character IFSC is required';
     }
     if (!editEmp.bankName || editEmp.bankName.trim().length < 3) {
-      activeErrors.bankName = 'Bank Name is required';
+      activeErrors.bankName = 'Verify the IFSC to fetch bank details (or enter them manually).';
     }
     if (!editEmp.accountNumber || editEmp.accountNumber.trim().length < 9) {
       activeErrors.accountNumber = 'Valid Bank Account Number is required';
     }
-    if (!editEmp.ifsc || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(editEmp.ifsc.trim().toUpperCase())) {
-      activeErrors.ifsc = 'Valid 11-character IFSC is required';
+    if ((editEmp as any).confirmAccountNumber !== editEmp.accountNumber) {
+      activeErrors.confirmAccountNumber = 'Account numbers do not match.';
     }
     if (editEmp.pfNumber && editEmp.pfNumber.trim().length < 5) {
       activeErrors.pfNumber = 'Valid PF Number is required if entered';
@@ -748,11 +773,11 @@ export const Employees: React.FC<EmployeesProps> = ({
     setUnmaskedField(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getMaskedValue = (val: string | undefined, fieldName: string, empId: string) => {
+  const getMaskedValue = (val: string | undefined, fieldName: string, empId: string, formatter?: (v: string) => string) => {
     if (!val) return '—';
     const key = `${empId}-${fieldName}`;
     const show = unmaskedField[key];
-    if (show) return val;
+    if (show) return formatter ? formatter(val) : val;
 
     // Standard security masking models
     if (fieldName === 'aadhaar') {
@@ -896,7 +921,6 @@ export const Employees: React.FC<EmployeesProps> = ({
               employmentType: cleanExcelValue(row[16]),
               exitDate: cleanExcelValue(row[29]),
               exitReason: cleanExcelValue(row[30]),
-              serviceBookNo: cleanExcelValue(row[28]),
               branchLocation: sheetName,
               aadhaar: cleanExcelValue(row[22]),
               pan: cleanExcelValue(row[20]),
@@ -968,13 +992,13 @@ export const Employees: React.FC<EmployeesProps> = ({
               onClick={() => setActiveMainTab('active')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Active Roster ({stats.active})
+              Active Personnel ({stats.active})
             </button>
             <button
               onClick={() => setActiveMainTab('previous')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Archived Employees ({companyEmployees.length - stats.active})
+              Previous Personnel ({companyEmployees.length - stats.active})
             </button>
           </div>
 
@@ -1002,8 +1026,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Staff Strength" value={stats.total} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" />
-        <StatCard label="Active Roster" value={stats.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
-        <StatCard label="Verified Payroll Compliance" value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-cyan-600" />} color="bg-cyan-50" />
+        <StatCard label="Active Personnel" value={stats.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
+        <StatCard label="Verified Payroll " value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-cyan-600" />} color="bg-cyan-50" />
         <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
 
@@ -1026,6 +1050,14 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Card>
 
+      {/* Optional column toggle */}
+      <div className="flex items-center justify-end">
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+          <input type="checkbox" checked={showBiometric} onChange={e => setShowBiometric(e.target.checked)} />
+          Show Biometric ID column
+        </label>
+      </div>
+
       {/* Main Table */}
       <Card padding={false}>
         <Table>
@@ -1039,12 +1071,13 @@ export const Employees: React.FC<EmployeesProps> = ({
               <Th className="px-2 py-1.5 text-[10px] w-[18%] tracking-wider font-bold">Designation</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Category</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>
+              {showBiometric && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Biometric ID</Th>}
               <Th className="px-2 py-1.5 text-[10px] w-[6%] tracking-wider font-bold text-center">ACTIONS</Th>
             </tr>
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
+              <tr><td colSpan={showBiometric ? 10 : 9} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
               filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
                 <Tr key={emp.id} className="hover:bg-slate-50/50">
@@ -1066,6 +1099,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[130px]">{emp.designation}</span></Td>
                   <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
                   <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{formatDate(emp.exitDate)}</span></Td>
+                  {showBiometric && <Td className="px-2 py-1"><span className="text-[11px] text-slate-600 font-medium">{emp.biometricId || '—'}</span></Td>}
                   <Td className="px-2 py-1 w-24">
                     <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                       <button
@@ -1076,7 +1110,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                         <Eye size={13} />
                       </button>
 
-                      {canEdit && (
+                      {/* Active employees: full management actions. */}
+                      {!isOffboarded(emp.status) && canEdit && (
                         <>
                           <button
                             onClick={() => handleStartEdit(emp)}
@@ -1085,25 +1120,25 @@ export const Employees: React.FC<EmployeesProps> = ({
                           >
                             <Edit2 size={13} />
                           </button>
-
-                          {(emp.status !== 'Archived' && emp.status !== 'Terminated') ? (
-                            <button
-                              onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
-                              className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
-                              title="Initiate Offboarding"
-                            >
-                              <LogOut size={13} />
-                            </button>
-                          ) : (
-                            <button
-                              onClick={() => { setDeleteEmp(emp); setIsConfirmingDelete(true); }}
-                              className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
-                              title="Archive Employee"
-                            >
-                              <Archive size={13} />
-                            </button>
-                          )}
+                          <button
+                            onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
+                            className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
+                            title="Initiate Offboarding"
+                          >
+                            <LogOut size={13} />
+                          </button>
                         </>
+                      )}
+                      {/* Archived / offboarded = historical record → View only.
+                          Restore/Edit is reserved for Super Admin. */}
+                      {isOffboarded(emp.status) && role === 'Super Admin' && (
+                        <button
+                          onClick={() => handleStartEdit(emp)}
+                          className="p-1 hover:bg-emerald-50 rounded text-slate-500 hover:text-emerald-600 transition"
+                          title="Edit / Restore (Super Admin)"
+                        >
+                          <Edit2 size={13} />
+                        </button>
                       )}
                     </div>
                   </Td>
@@ -1147,6 +1182,12 @@ export const Employees: React.FC<EmployeesProps> = ({
       <Modal open={!!viewEmp} onClose={() => setViewEmp(null)} title="Enterprise Master Employee Profile" size="md">
         {viewEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
+            {isOffboarded(viewEmp.status) && (
+              <div className="px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-800">
+                <p className="text-[12px] font-bold">Archived Employee Record</p>
+                <p className="text-[11px] font-medium mt-0.5">This employee is no longer active. Data is available in read-only mode.</p>
+              </div>
+            )}
             {/* Upper Badge */}
             <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
               <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-sm ring-2 ring-blue-200">
@@ -1204,7 +1245,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div><p className="text-[10px] text-gray-400">Employment Class</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.category || 'Skilled'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Type of Employment</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.employmentType || 'CONTRACTUAL'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{formatDate(viewEmp.joinDate)}</p></div>
-                <div><p className="text-[10px] text-gray-400">Service Book No</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.serviceBookNo || '—'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Biometric ID</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.biometricId || 'Not Assigned'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Monthly Basic Salary</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
                 {viewEmp.exitDate && (
                   <>
@@ -1235,7 +1276,27 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
                   <div>
                     <p className="text-[10px] text-gray-400">IFSC Code</p>
-                    <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.ifsc || '—'}</p>
+                    <p className="font-semibold text-slate-800 mt-0.5 font-mono">{viewEmp.ifsc || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Account Holder</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).accountHolderName || viewEmp.name || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">Branch</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).bankBranch || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">City</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).bankCity || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">District</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).bankDistrict || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-gray-400">State</p>
+                    <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).bankState || '—'}</p>
                   </div>
                 </div>
 
@@ -1259,7 +1320,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div>
                   <p className="text-[10px] text-gray-400">Aadhaar Number</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.aadhaar, 'aadhaar', viewEmp.id)}</span>
+                    <span className="font-semibold text-slate-800 font-mono tracking-wider">{getMaskedValue(viewEmp.aadhaar, 'aadhaar', viewEmp.id, formatAadhaar)}</span>
                     {viewEmp.aadhaar && (
                       <button onClick={() => toggleFieldMask(viewEmp.id, 'aadhaar')} className="text-slate-400 p-0.5">
                         {unmaskedField[`${viewEmp.id}-aadhaar`] ? <EyeOff size={10} /> : <Eye size={10} />}
@@ -1270,7 +1331,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div>
                   <p className="text-[10px] text-gray-400">Permanent Account No (PAN)</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="font-semibold text-slate-800">{getMaskedValue(viewEmp.pan, 'pan', viewEmp.id)}</span>
+                    <span className="font-semibold text-slate-800 font-mono">{getMaskedValue(viewEmp.pan, 'pan', viewEmp.id, formatPan)}</span>
                     {viewEmp.pan && (
                       <button onClick={() => toggleFieldMask(viewEmp.id, 'pan')} className="text-slate-400 p-0.5">
                         {unmaskedField[`${viewEmp.id}-pan`] ? <EyeOff size={10} /> : <Eye size={10} />}
@@ -1702,7 +1763,10 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="grid grid-cols-3 gap-3">
                 <Select id="field-employmentType" label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
                 <Input id="field-joinDate" label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={errors.joinDate} />
-                <Input id="field-serviceBookNo" label="Service Book No" value={form.serviceBookNo} onChange={e => setForm({ ...form, serviceBookNo: e.target.value })} />
+              </div>
+              <div>
+                <Input id="field-biometricId" label="Biometric ID (Optional)" maxLength={50} placeholder="e.g. 15" value={form.biometricId} onChange={e => setForm({ ...form, biometricId: e.target.value })} />
+                <p className="text-[10px] text-slate-400 mt-1">Enter the biometric user/enroll ID from the attendance machine. Leave blank if biometric attendance is not used.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
@@ -1717,19 +1781,20 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'banking' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input id="field-aadhaar" label="Aadhaar Number" placeholder="12-digit number" value={form.aadhaar} onChange={e => setForm({ ...form, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.aadhaar} />
-                <Input id="field-pan" label="PAN Card" placeholder="10-character alphanumeric" value={form.pan} onChange={e => setForm({ ...form, pan: e.target.value.toUpperCase().slice(0, 10) })} error={errors.pan} />
+                <Input id="field-aadhaar" label="Aadhaar Number" placeholder="1234 5678 9012" className="font-mono tracking-wider" value={formatAadhaar(form.aadhaar)} onChange={e => setForm({ ...form, aadhaar: rawAadhaar(e.target.value) })} error={errors.aadhaar} />
+                <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(form.pan)} onChange={e => setForm({ ...form, pan: rawPan(e.target.value) })} error={errors.pan} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <Input id="field-pfNumber" label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
                 <Input id="field-uan" label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
                 <Input id="field-esic" label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
               </div>
-              <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
-                <Input id="field-bankName" label="Bank Name" placeholder="e.g. State Bank of India" value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} error={errors.bankName} />
-                <Input id="field-accountNumber" label="Account Number" value={form.accountNumber} onChange={e => setForm({ ...form, accountNumber: e.target.value.replace(/\D/g, '') })} error={errors.accountNumber} />
-                <Input id="field-ifsc" label="IFSC Code" placeholder="e.g. SBIN0001234" value={form.ifsc} onChange={e => setForm({ ...form, ifsc: e.target.value.toUpperCase().slice(0, 11) })} error={errors.ifsc} />
-              </div>
+              <BankDetails
+                data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState }}
+                onChange={patch => setForm((f: any) => ({ ...f, ...patch }))}
+                errors={errors}
+                disabled={!canEdit}
+              />
             </div>
           )}
 
@@ -1812,7 +1877,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="grid grid-cols-3 gap-3">
                   <Select id="field-employmentType" label="Employment Type *" value={editEmp.employmentType || 'CONTRACTUAL'} onChange={e => setEditEmp({ ...editEmp, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
                   <Input id="field-joinDate" label="Joining Date *" type="date" value={(editEmp.joinDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} error={errors.joinDate} />
-                  <Input id="field-serviceBookNo" label="Service Book No" value={editEmp.serviceBookNo || ''} onChange={e => setEditEmp({ ...editEmp, serviceBookNo: e.target.value })} />
+                </div>
+                <div>
+                  <Input id="field-biometricId" label="Biometric ID (Optional)" maxLength={50} placeholder="e.g. 15" value={editEmp.biometricId || ''} onChange={e => setEditEmp({ ...editEmp, biometricId: e.target.value })} />
+                  <p className="text-[10px] text-slate-400 mt-1">Enter the biometric user/enroll ID from the attendance machine. Leave blank if biometric attendance is not used.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} error={errors.salary} />
@@ -1831,19 +1899,20 @@ export const Employees: React.FC<EmployeesProps> = ({
             {activeTab === 'banking' && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <Input id="field-aadhaar" label="Aadhaar Number" value={editEmp.aadhaar || ''} onChange={e => setEditEmp({ ...editEmp, aadhaar: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.aadhaar} />
-                  <Input id="field-pan" label="PAN Card" value={editEmp.pan || ''} onChange={e => setEditEmp({ ...editEmp, pan: e.target.value.toUpperCase().slice(0, 10) })} error={errors.pan} />
+                  <Input id="field-aadhaar" label="Aadhaar Number" placeholder="1234 5678 9012" className="font-mono tracking-wider" value={formatAadhaar(editEmp.aadhaar || '')} onChange={e => setEditEmp({ ...editEmp, aadhaar: rawAadhaar(e.target.value) })} error={errors.aadhaar} />
+                  <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(editEmp.pan || '')} onChange={e => setEditEmp({ ...editEmp, pan: rawPan(e.target.value) })} error={errors.pan} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <Input id="field-pfNumber" label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
                   <Input id="field-uan" label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
                   <Input id="field-esic" label="ESIC IP Number" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
                 </div>
-                <div className="border-t border-slate-700/50 pt-2 grid grid-cols-3 gap-3">
-                  <Input id="field-bankName" label="Bank Name" value={editEmp.bankName || ''} onChange={e => setEditEmp({ ...editEmp, bankName: e.target.value })} error={errors.bankName} />
-                  <Input id="field-accountNumber" label="Account Number" value={editEmp.accountNumber || ''} onChange={e => setEditEmp({ ...editEmp, accountNumber: e.target.value.replace(/\D/g, '') })} error={errors.accountNumber} />
-                  <Input id="field-ifsc" label="IFSC Code" value={editEmp.ifsc || ''} onChange={e => setEditEmp({ ...editEmp, ifsc: e.target.value.toUpperCase().slice(0, 11) })} error={errors.ifsc} />
-                </div>
+                <BankDetails
+                  data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState }}
+                  onChange={patch => setEditEmp((e: any) => ({ ...e, ...patch }))}
+                  errors={errors}
+                  disabled={!canEdit}
+                />
               </div>
             )}
 
@@ -1888,7 +1957,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       />
 
       {/* Enterprise Offboarding Wizard Modal */}
-      <Modal open={isWizardOpen} onClose={() => { }} title="Enterprise Offboarding Workflow" size="xl">
+      <Modal open={isWizardOpen} onClose={() => { setIsWizardOpen(false); setOffboardEmp(null); }} title="Enterprise Offboarding Workflow" size="xl">
         {offboardEmp && (
           <div className="flex flex-col md:flex-row gap-6">
             {/* Stepper Sidebar */}

@@ -1267,7 +1267,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
-                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <span onClick={() => onNavigate('leaves')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
               </div>
               <div className="space-y-4">
                 <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
@@ -1298,7 +1298,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
-                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <span onClick={() => onNavigate('reports')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
               </div>
               <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
                 {recentActivitiesLive.length === 0 ? (
@@ -1328,7 +1328,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
-                <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <span onClick={() => onNavigate('reports')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
               </div>
               <div className="space-y-3.5">
                 {(() => {

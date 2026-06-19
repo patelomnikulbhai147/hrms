@@ -26,6 +26,10 @@ const REMEMBER_FLAG = 'hrms_remember';
 // sessionStorage-only flag marking that an authenticated browser session is
 // active. Present across refresh/navigation; absent after the browser closes.
 const SESSION_FLAG = 'hrms_session_active';
+// Inactivity tracking + cross-tab logout signalling.
+const LAST_ACTIVITY = 'hrms_last_activity';
+const LOGOUT_EVENT = 'hrms_logout_event';
+export const INACTIVITY_LIMIT_MS = 60 * 60 * 1000; // 60 minutes
 
 // Keys that represent the authenticated session.
 export const AUTH_KEYS = [
@@ -68,9 +72,28 @@ export const authStorage = {
     sessionStorage.removeItem(key);
   },
 
+  /** Stamp "now" as the last user-activity time (shared across tabs). */
+  markActivity() {
+    try { localStorage.setItem(LAST_ACTIVITY, String(Date.now())); } catch (_) { /* ignore */ }
+  },
+  getLastActivity(): number {
+    const v = Number(localStorage.getItem(LAST_ACTIVITY) || 0);
+    return Number.isFinite(v) ? v : 0;
+  },
+  /** True once the user has been idle beyond the inactivity limit. */
+  isExpiredByInactivity(): boolean {
+    const last = this.getLastActivity();
+    return last > 0 && Date.now() - last > INACTIVITY_LIMIT_MS;
+  },
+  /** Signal every other open tab to end its session too (multi-tab logout). */
+  broadcastLogout(reason?: string) {
+    try { localStorage.setItem(LOGOUT_EVENT, JSON.stringify({ t: Date.now(), reason: reason || 'logout' })); } catch (_) { /* ignore */ }
+  },
+
   /** Wipe the entire authenticated session from both stores. */
   clearSession() {
     AUTH_KEYS.forEach((k) => this.remove(k));
+    try { localStorage.removeItem(LAST_ACTIVITY); } catch (_) { /* ignore */ }
   },
 
   /**
@@ -83,7 +106,11 @@ export const authStorage = {
    */
   initSession() {
     const hasActiveSession = sessionStorage.getItem(SESSION_FLAG) === '1';
-    if (!this.isRemember() && !hasActiveSession) {
+    // Session-only auth: a fresh browser session (the sessionStorage marker is
+    // gone because the browser was fully closed) ALWAYS requires re-login —
+    // remember-me no longer persists a login across browser restarts. An idle
+    // session past the inactivity limit is also pruned at startup.
+    if (!hasActiveSession || this.isExpiredByInactivity()) {
       this.clearSession();
     }
     // (Re)arm the marker for the current browser session.

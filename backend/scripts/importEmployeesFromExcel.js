@@ -243,7 +243,6 @@ function parseSheet(ws, sheetName, branch) {
       ifsc: cleanStr(rec.ifsc) ? rec.ifsc.toUpperCase().replace(/\s+/g, '') : null,
       presentAddress: cleanStr(rec.presentAddress),
       permanentAddress: cleanStr(rec.permanentAddress),
-      serviceBookNo: cleanStr(rec.serviceBookNo),
       branchId: branch.id,
       branchName: branch.name,
       issues: rowIssues,
@@ -383,7 +382,7 @@ async function main() {
           pan: rec.pan, aadhaar: rec.aadhaar, uan: rec.uan, pfNumber: rec.pfNumber, esiNumber: rec.esiNumber,
           bankName: rec.bankName, accountNumber: rec.accountNumber, ifsc: rec.ifsc,
           presentAddress: rec.presentAddress, permanentAddress: rec.permanentAddress,
-          serviceBookNo: rec.serviceBookNo, branchLocation: rec.branchName,
+          branchLocation: rec.branchName,
         } });
         created++;
       } catch (e) {

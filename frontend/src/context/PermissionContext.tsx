@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { type AppModules, type UserAccount } from '../pages/Login';
 import { type Company } from '../types';
+import { isCompanyArchived } from '../utils/companyStatus';
 
 // Role-based defaults for NEWLY ADDED modules that do not yet have per-user
 // granular permission rows in the database (Task Manager, Tender Information).
@@ -43,6 +44,8 @@ interface PermissionContextType {
   canManage: (module: AppModules) => boolean;
   hasBranchAccess: (companyId: string) => boolean;
   getInheritedBranches: (companyId: string) => string[];
+  /** True when the active company is archived and the user is not a Super Admin. */
+  companyReadOnly: boolean;
 }
 
 const PermissionContext = createContext<PermissionContextType>({
@@ -56,6 +59,7 @@ const PermissionContext = createContext<PermissionContextType>({
   canManage: () => false,
   hasBranchAccess: () => false,
   getInheritedBranches: () => [],
+  companyReadOnly: false,
 });
 
 export const usePermissions = () => useContext(PermissionContext);
@@ -65,6 +69,7 @@ interface PermissionProviderProps {
   authProfile: UserAccount | null;
   role: string;
   companies: Company[];
+  activeCompanyId?: string;
 }
 
 export const checkCanView = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
@@ -181,9 +186,17 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
   authProfile,
   role,
   companies,
+  activeCompanyId,
 }) => {
   const value = useMemo(() => {
     const isSuperAdmin = role === 'Super Admin';
+
+    // ── Archived-company global read-only lock ───────────────────────────────
+    // When the active company is archived, every WRITE permission is denied for
+    // company users (view / export / print stay allowed so historical data
+    // remains accessible). Super Admin is exempt — they manage/reactivate it.
+    const activeCompany = companies.find(c => String(c.id) === String(activeCompanyId));
+    const companyReadOnly = !isSuperAdmin && isCompanyArchived(activeCompany as any);
 
     // Ids may be number or string (branch ids are numeric, legacy company ids
     // like "c-gcri" are strings); compare as strings throughout to avoid
@@ -220,14 +233,16 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
       return false;
     };
 
+    // View / export / print remain available on an archived company (history is
+    // always readable). All write actions are blocked while companyReadOnly.
     const canView = (module: AppModules): boolean => checkCanView(module, authProfile, role);
-    const canEdit = (module: AppModules): boolean => checkCanEdit(module, authProfile, role);
-    const canCreate = (module: AppModules): boolean => checkCanCreate(module, authProfile, role);
-    const canDelete = (module: AppModules): boolean => checkCanDelete(module, authProfile, role);
+    const canEdit = (module: AppModules): boolean => !companyReadOnly && checkCanEdit(module, authProfile, role);
+    const canCreate = (module: AppModules): boolean => !companyReadOnly && checkCanCreate(module, authProfile, role);
+    const canDelete = (module: AppModules): boolean => !companyReadOnly && checkCanDelete(module, authProfile, role);
     const canExport = (module: AppModules): boolean => checkCanExport(module, authProfile, role);
-    const canApprove = (module: AppModules): boolean => checkCanApprove(module, authProfile, role);
+    const canApprove = (module: AppModules): boolean => !companyReadOnly && checkCanApprove(module, authProfile, role);
     const canPrint = (module: AppModules): boolean => checkCanPrint(module, authProfile, role);
-    const canManage = (module: AppModules): boolean => checkCanManage(module, authProfile, role);
+    const canManage = (module: AppModules): boolean => !companyReadOnly && checkCanManage(module, authProfile, role);
 
     return {
       canView,
@@ -240,8 +255,9 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
       canManage,
       hasBranchAccess,
       getInheritedBranches,
+      companyReadOnly,
     };
-  }, [authProfile, role, companies]);
+  }, [authProfile, role, companies, activeCompanyId]);
 
   return (
     <PermissionContext.Provider value={value}>

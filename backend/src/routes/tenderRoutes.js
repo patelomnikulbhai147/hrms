@@ -6,6 +6,7 @@ const ctrl = require('../controllers/tenderController');
 // Reads are workspace-scoped in the controller; mutations are restricted to
 // management roles (Super Admin / Company Head / HR) inside the controller.
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 router.get('/', ctrl.getAll);
 router.post('/', ctrl.create);
