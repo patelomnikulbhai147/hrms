@@ -5,6 +5,7 @@ const companyController = require('../controllers/companyController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass lets SA edit/reactivate)
 
 router.get('/export', requireSuperAdmin, companyController.exportCompanies);
 router.get('/', companyController.getCompanies);

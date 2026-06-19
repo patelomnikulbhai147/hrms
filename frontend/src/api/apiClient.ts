@@ -52,6 +52,9 @@ const REQUEST_TIMEOUT_MS = 60000;
 async function apiFetch(url: string, options?: RequestInit) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  // An authenticated request counts as user activity (keeps the session alive).
+  const _hadToken = !!authStorage.get('hrms_jwt_token');
+  if (_hadToken) authStorage.markActivity();
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
     if (!res.ok) {
@@ -75,6 +78,13 @@ async function apiFetch(url: string, options?: RequestInit) {
         else if (res.status === 503) msg = 'The database is currently unreachable. Please try again shortly.';
         else if (res.status >= 500) msg = 'The server encountered an error. Please try again.';
         else msg = `Request failed (HTTP ${res.status}).`;
+      }
+      // An expired/invalid token on an AUTHENTICATED request ends the session
+      // everywhere. (A 401 during login itself has no token, so it won't fire.)
+      if (res.status === 401 && _hadToken) {
+        authStorage.clearSession();
+        authStorage.broadcastLogout('expired');
+        try { window.dispatchEvent(new CustomEvent('hrms:unauthorized')); } catch (_) { /* ignore */ }
       }
       const err: any = new Error(msg);
       err.status = res.status;
@@ -357,6 +367,25 @@ export const api = {
     audit: async () => { return await apiFetch(`${BASE_URL}/leave-admin/audit`, { headers: getHeaders() }); },
   },
 
+  // Attendance device registry (Phase 1 — device management only, no biometric sync)
+  attendanceDevices: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/attendance-devices`, { headers: getHeaders() }); },
+    getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance-devices`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    // Phase 5 — read-only diagnostics
+    testConnection: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}/test-connection`, { method: 'POST', headers: getHeaders() }); },
+    discover: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}/discover`, { method: 'POST', headers: getHeaders() }); },
+    // Phase 6 — raw device push logs (Live Device Monitor)
+    pushLogs: async () => { return await apiFetch(`${BASE_URL}/attendance-devices/push-logs`, { headers: getHeaders() }); },
+  },
+
+  // IFSC → bank/branch lookup (auto-fills bank details from the IFSC code)
+  ifsc: {
+    lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },
+  },
+
   // Task Manager
   tasks: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/tasks`, { headers: getHeaders() }); },
@@ -373,17 +402,6 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/tenders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-  },
-
-  // Leave encashment (convert unused leave to money + push to payroll)
-  leaveEncashment: {
-    getAll: async () => { return await apiFetch(`${BASE_URL}/leave-encashment`, { headers: getHeaders() }); },
-    calculate: async () => { return await apiFetch(`${BASE_URL}/leave-encashment/calculate`, { headers: getHeaders() }); },
-    create: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-encashment`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
-    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/leave-encashment/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
-    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/leave-encashment/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    yearEnd: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-encashment/year-end`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
-    addToPayroll: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-encashment/add-to-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
   },
 
   documents: {

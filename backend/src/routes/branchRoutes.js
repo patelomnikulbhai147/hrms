@@ -5,6 +5,7 @@ const branchController = require('../controllers/branchController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 router.get('/', branchController.getBranches);
 router.post('/', requirePermission('companies', 'create'), branchController.createBranch);

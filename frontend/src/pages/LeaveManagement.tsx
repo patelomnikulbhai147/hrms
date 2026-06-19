@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight, Trash2,
-  Coins, History as HistoryIcon, BarChart3, ShieldCheck, FileText, Banknote, RefreshCw, Settings2, ChevronDown
+  Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight,
+  History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, Settings2, ChevronDown
 } from 'lucide-react';
 import {
   type Employee, type LeaveRequest, type Role, type Company,
@@ -22,7 +22,7 @@ import { getUniqueEmployees } from '../utils/deduplication';
 import { isActiveEmployee } from '../utils/employeeStatus';
 import { Leaves } from './Leaves';
 
-type TabId = 'requests' | 'administration' | 'balances' | 'credits' | 'encashment' | 'history' | 'reports' | 'policies';
+type TabId = 'requests' | 'administration' | 'balances' | 'history' | 'reports' | 'policies';
 
 interface LeaveManagementProps {
   role: Role;
@@ -39,15 +39,12 @@ const CATS = [
   { value: 'PL', label: 'PL — Privilege / Annual' },
   { value: 'SL', label: 'SL — Sick' },
 ];
-const inr = (n: number) => `₹${Math.round(Number(n) || 0).toLocaleString('en-IN')}`;
 const num = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'requests', label: 'Leave Requests', icon: <FileText size={14} /> },
   { id: 'administration', label: 'Administration', icon: <Users size={14} /> },
   { id: 'balances', label: 'Leave Balances', icon: <Wallet size={14} /> },
-  { id: 'credits', label: 'Leave Credits', icon: <CalendarPlus size={14} /> },
-  { id: 'encashment', label: 'Encashment', icon: <Coins size={14} /> },
   { id: 'history', label: 'History', icon: <HistoryIcon size={14} /> },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={14} /> },
   { id: 'policies', label: 'Policies & Audit', icon: <ShieldCheck size={14} /> },
@@ -56,15 +53,12 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   role, activeCompanyId, leaves, onUpdateLeaves, employees, companies = [], authProfile,
 }) => {
-  const { canEdit: canEditMod, canDelete: canDeleteMod, canExport: canExportMod } = usePermissions();
+  const { canEdit: canEditMod, canExport: canExportMod } = usePermissions();
   const canEdit = canEditMod('leaves');
-  const canDelete = canDeleteMod('leaves');
   const canExport = canExportMod('leaves');
 
   const [tab, setTab] = useState<TabId>('administration');
   const [balances, setBalances] = useState<any[]>([]);
-  const [encashments, setEncashments] = useState<any[]>([]);
-  const [preview, setPreview] = useState<{ allowEncashment: boolean; encashableTypes: string[]; maxEncashmentDays: number; preview: any[] } | null>(null);
   const [config, setConfig] = useState<any>(null);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
@@ -91,15 +85,11 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   const loadBalances = useCallback(async () => {
     try { setBalances(await api.leaveBalances.getAll() || []); } catch { /* ignore */ }
   }, []);
-  const loadEncashments = useCallback(async () => {
-    try { setEncashments(await api.leaveEncashment.getAll() || []); } catch { /* ignore */ }
-  }, []);
   const loadConfig = useCallback(async () => {
     try { setConfig(await api.leaveCredit.get()); } catch { /* ignore */ }
   }, []);
 
   useEffect(() => { loadBalances(); loadConfig(); }, [loadBalances, loadConfig, activeCompanyId]);
-  useEffect(() => { if (tab === 'encashment') { loadEncashments(); api.leaveEncashment.calculate().then(setPreview).catch(() => {}); } }, [tab, loadEncashments, activeCompanyId]);
   useEffect(() => { if (tab === 'policies') { api.leaveAdmin.audit().then(setAuditLog).catch(() => {}); loadConfig(); } }, [tab, loadConfig]);
 
   // Merge balance rows onto scoped employees so every employee appears.
@@ -124,7 +114,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   }, [scopedEmployees, balances]);
 
   /* ─── action modal state ─────────────────────────────────────────────── */
-  type ActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit' | 'encash';
+  type ActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit';
   const [action, setAction] = useState<{ kind: ActionKind; row: any } | null>(null);
   const [form, setForm] = useState<any>({});
   const [manageOpen, setManageOpen] = useState(false);
@@ -170,10 +160,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       } else if (action.kind === 'edit') {
         await api.leaveBalances.update(eid, { clBalance: Number(form.clBalance), plBalance: Number(form.plBalance), slBalance: Number(form.slBalance) });
         flash('ok', `Updated balances for ${action.row.employeeName}.`);
-      } else if (action.kind === 'encash') {
-        await api.leaveEncashment.create({ employeeId: eid, leaveType: form.category, days: Number(form.days), autoApprove: true });
-        flash('ok', `Encashment created for ${action.row.employeeName}.`);
-        loadEncashments();
       }
       await loadBalances();
       closeAction();
@@ -184,7 +170,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
 
   /* ─── credits / accrual ──────────────────────────────────────────────── */
   const [cfgForm, setCfgForm] = useState<any>(null);
-  useEffect(() => { if (config) setCfgForm({ ...config, encashableTypes: Array.isArray(config.encashableTypes) ? config.encashableTypes.join(',') : (config.encashableTypes || 'PL') }); }, [config]);
+  useEffect(() => { if (config) setCfgForm({ ...config }); }, [config]);
 
   const saveConfig = async (extra: any = {}) => {
     setBusy(true);
@@ -194,43 +180,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       await loadConfig();
       flash('ok', 'Leave policy saved.');
     } catch (e: any) { flash('err', e?.message || 'Save failed.'); }
-    finally { setBusy(false); }
-  };
-  const runAccrual = async (throughMonth: number) => {
-    setBusy(true);
-    try {
-      const r = await api.leaveBalances.accrue({ throughMonth, year: 2026 });
-      await loadBalances();
-      flash('ok', `Accrued ${r?.accrued ?? 0} employees through month ${throughMonth}.`);
-    } catch (e: any) { flash('err', e?.message || 'Accrual failed.'); }
-    finally { setBusy(false); }
-  };
-
-  /* ─── encashment actions ─────────────────────────────────────────────── */
-  const [payrollMonth, setPayrollMonth] = useState('June');
-  const pushToPayroll = async (id: any) => {
-    setBusy(true);
-    try {
-      await api.leaveEncashment.addToPayroll({ id, month: payrollMonth, year: 2026 });
-      await loadEncashments();
-      flash('ok', `Encashment added to ${payrollMonth} payroll.`);
-    } catch (e: any) { flash('err', e?.message || 'Failed to add to payroll.'); }
-    finally { setBusy(false); }
-  };
-  const deleteEncashment = async (id: any) => {
-    setBusy(true);
-    try { await api.leaveEncashment.remove(id); await loadEncashments(); await loadBalances(); flash('ok', 'Encashment deleted.'); }
-    catch (e: any) { flash('err', e?.message || 'Delete failed.'); }
-    finally { setBusy(false); }
-  };
-  const runYearEnd = async () => {
-    if (!window.confirm('Auto-generate year-end encashment for all eligible unused leave? This deducts balances.')) return;
-    setBusy(true);
-    try {
-      const r = await api.leaveEncashment.yearEnd({ year: 2026 });
-      await loadEncashments(); await loadBalances();
-      flash('ok', `Created ${r?.created ?? 0} year-end encashment record(s).`);
-    } catch (e: any) { flash('err', e?.message || 'Year-end run failed.'); }
     finally { setBusy(false); }
   };
 
@@ -266,9 +215,8 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     const totalDays = approved.reduce((s, l) => s + (Number(l.days) || 0), 0);
     const totalRemaining = adminRows.reduce((s, r) => s + r.remaining, 0);
     const totalTaken = adminRows.reduce((s, r) => s + r.taken, 0);
-    const encashTotal = encashments.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    return { pending: scopedLeaves.filter(l => l.status === 'Pending').length, approvedDays: num(totalDays), totalRemaining: num(totalRemaining), totalTaken: num(totalTaken), encashTotal: num(encashTotal) };
-  }, [scopedLeaves, adminRows, encashments]);
+    return { pending: scopedLeaves.filter(l => l.status === 'Pending').length, approvedDays: num(totalDays), totalRemaining: num(totalRemaining), totalTaken: num(totalTaken) };
+  }, [scopedLeaves, adminRows]);
 
   /* ─── export column sets ─────────────────────────────────────────────── */
   const ADMIN_COLS: ExportColumn[] = [
@@ -288,16 +236,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     { header: 'Approved By', key: 'approvedBy', width: 18 },
     { header: 'Status', key: 'status', width: 12 },
   ];
-  const ENCASH_COLS: ExportColumn[] = [
-    { header: 'Emp Code', key: 'employeeCode', width: 14 },
-    { header: 'Employee', key: 'employeeName', width: 24 },
-    { header: 'Type', key: 'leaveType', width: 8 },
-    { header: 'Days', key: 'days', width: 8 },
-    { header: 'Daily Rate', key: 'dailyRate', width: 12 },
-    { header: 'Amount', key: 'amount', width: 12 },
-    { header: 'Status', key: 'status', width: 12 },
-    { header: 'Payroll Month', key: 'payrollMonth', width: 16 },
-  ];
 
   /* ─── render helpers ─────────────────────────────────────────────────── */
   const ActionBtn = ({ onClick, title, children, danger }: any) => (
@@ -314,7 +252,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         <div className="px-5 py-4 flex items-center justify-between border-b border-[#DBEAFE]">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Leave Management</h2>
-            <p className="text-xs text-slate-500">Administration · Balances · Credits · Encashment · History · Reports · Policies</p>
+            <p className="text-xs text-slate-500">Administration · Balances · History · Reports · Policies</p>
           </div>
           <Badge variant="indigo">{scopedEmployees.length} employees in workspace</Badge>
         </div>
@@ -436,100 +374,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         </Card>
       )}
 
-      {/* ── Credits ── */}
-      {tab === 'credits' && cfgForm && (
-        <Card>
-          <h3 className="text-sm font-bold text-slate-800 mb-1">Leave Credit Management</h3>
-          <p className="text-xs text-slate-500 mb-4">Monthly accrual rates. Balances are credited as <span className="font-semibold">rate × months elapsed + carry-forward − used</span>.</p>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-            <Input label="CL / month" type="number" step="0.5" value={cfgForm.clPerMonth} onChange={e => setCfgForm({ ...cfgForm, clPerMonth: e.target.value })} disabled={!canEdit} />
-            <Input label="PL / month" type="number" step="0.5" value={cfgForm.plPerMonth} onChange={e => setCfgForm({ ...cfgForm, plPerMonth: e.target.value })} disabled={!canEdit} />
-            <Input label="SL / month" type="number" step="0.5" value={cfgForm.slPerMonth} onChange={e => setCfgForm({ ...cfgForm, slPerMonth: e.target.value })} disabled={!canEdit} />
-            <Input label="Carry forward seed" type="number" step="0.5" value={cfgForm.carryForward} onChange={e => setCfgForm({ ...cfgForm, carryForward: e.target.value })} disabled={!canEdit} />
-          </div>
-          {canEdit && (
-            <div className="flex flex-wrap items-center gap-2 mt-4">
-              <Button size="sm" loading={busy} onClick={() => saveConfig()}>Save Credit Rates</Button>
-              <span className="text-slate-300">|</span>
-              <span className="text-xs text-slate-500">Run accrual through:</span>
-              {[3, 6, 9, 12].map(m => <Button key={m} size="sm" variant="outline" disabled={busy} onClick={() => runAccrual(m)}>Month {m}</Button>)}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* ── Encashment ── */}
-      {tab === 'encashment' && (
-        <div className="space-y-4">
-          <Card>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">Leave Encashment</h3>
-                <p className="text-xs text-slate-500">
-                  {preview?.allowEncashment ? `Encashable: ${preview.encashableTypes.join(', ')} · max ${preview.maxEncashmentDays} days · rate = monthly salary ÷ 30` : 'Encashment is currently disabled in policy — enable it under Policies.'}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-28"><Select label="Payroll month" value={payrollMonth} onChange={e => setPayrollMonth(e.target.value)} options={['January','February','March','April','May','June','July','August','September','October','November','December'].map(m => ({ value: m, label: m }))} /></div>
-                {canEdit && <Button size="sm" variant="outline" icon={<Banknote size={13} />} disabled={busy || !preview?.allowEncashment} onClick={runYearEnd}>Auto Year-End</Button>}
-              </div>
-            </div>
-
-            {/* Eligibility preview */}
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Eligible Employees</h4>
-            <div className="overflow-x-auto">
-              <Table>
-                <Thead><Tr><Th>Employee</Th><Th>Eligible Days</Th><Th>Daily Rate</Th><Th>Amount</Th><Th>Action</Th></Tr></Thead>
-                <Tbody>
-                  {(preview?.preview || []).filter(p => p.eligibleDays > 0).length === 0 &&
-                    <Tr><Td colSpan={5}><span className="text-slate-400 text-xs">No eligible balances.</span></Td></Tr>}
-                  {(preview?.preview || []).filter(p => p.eligibleDays > 0).map(p => (
-                    <Tr key={p.employeeId}>
-                      <Td><span className="font-semibold text-slate-800">{p.employeeName}</span> <span className="text-[10px] font-mono text-slate-400">{p.employeeCode}</span></Td>
-                      <Td>{p.eligibleDays}</Td>
-                      <Td>{inr(p.dailyRate)}</Td>
-                      <Td><span className="font-bold text-emerald-600">{inr(p.amount)}</span></Td>
-                      <Td>{canEdit && preview?.allowEncashment && <Button size="sm" variant="outline" onClick={() => openAction('encash', { employeeId: p.employeeId, employeeName: p.employeeName, breakdown: p.breakdown })}>Encash</Button>}</Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Encashment Records</h4>
-              {canExport && <ExportMenu fileName="Leave_Encashment" title="Leave Encashment" sheetName="Encashment" columns={ENCASH_COLS} rows={() => encashments} />}
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <Thead><Tr><Th>Employee</Th><Th>Type</Th><Th>Days</Th><Th>Amount</Th><Th>Status</Th><Th>Payroll</Th><Th>Actions</Th></Tr></Thead>
-                <Tbody>
-                  {encashments.length === 0 && <Tr><Td colSpan={7}><span className="text-slate-400 text-xs">No encashment records yet.</span></Td></Tr>}
-                  {encashments.map(e => (
-                    <Tr key={e.id}>
-                      <Td><span className="font-semibold text-slate-800">{e.employeeName}</span> <span className="text-[10px] font-mono text-slate-400">{e.employeeCode}</span></Td>
-                      <Td><Badge variant="purple">{e.leaveType}</Badge></Td>
-                      <Td>{e.days}</Td>
-                      <Td><span className="font-bold text-emerald-600">{inr(e.amount)}</span></Td>
-                      <Td><Badge variant={e.status === 'Paid' ? 'green' : e.status === 'Approved' ? 'blue' : 'amber'}>{e.status}</Badge></Td>
-                      <Td><span className="text-[11px] text-slate-500">{e.payrollMonth || '—'}</span></Td>
-                      <Td>
-                        <div className="flex items-center gap-1.5">
-                          {canEdit && e.status !== 'Paid' && <Button size="sm" variant="outline" onClick={() => pushToPayroll(e.id)}>→ Payroll</Button>}
-                          {canDelete && e.status !== 'Paid' && <ActionBtn danger onClick={() => deleteEncashment(e.id)} title="Delete"><Trash2 size={13} /></ActionBtn>}
-                        </div>
-                      </Td>
-                    </Tr>
-                  ))}
-                </Tbody>
-              </Table>
-            </div>
-          </Card>
-        </div>
-      )}
-
       {/* ── History ── */}
       {tab === 'history' && (
         <Card>
@@ -568,12 +412,11 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       {/* ── Reports ── */}
       {tab === 'reports' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard label="Pending Requests" value={reportStats.pending} icon={<HistoryIcon size={16} />} color="bg-amber-500" />
             <StatCard label="Approved Days" value={reportStats.approvedDays} icon={<CalendarPlus size={16} />} color="bg-blue-500" />
             <StatCard label="Leaves Taken" value={reportStats.totalTaken} icon={<CalendarMinus size={16} />} color="bg-rose-500" />
             <StatCard label="Remaining Balance" value={reportStats.totalRemaining} icon={<Wallet size={16} />} color="bg-emerald-500" />
-            <StatCard label="Encashment Paid" value={inr(reportStats.encashTotal)} icon={<Coins size={16} />} color="bg-violet-500" />
           </div>
           <Card>
             <div className="flex items-center justify-between mb-3">
@@ -603,7 +446,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       {tab === 'policies' && cfgForm && (
         <div className="space-y-4">
           <Card>
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Carry-Forward & Encashment Policy</h3>
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Carry-Forward Policy</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
               <div className="space-y-3">
                 <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
@@ -611,14 +454,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                   Allow carry-forward of unused leave
                 </label>
                 <Input label="Max carry-forward (days)" type="number" value={cfgForm.maxCarryForward ?? 5} onChange={e => setCfgForm({ ...cfgForm, maxCarryForward: e.target.value })} disabled={!canEdit} />
-              </div>
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                  <input type="checkbox" checked={!!cfgForm.allowEncashment} disabled={!canEdit} onChange={e => setCfgForm({ ...cfgForm, allowEncashment: e.target.checked })} />
-                  Allow leave encashment
-                </label>
-                <Input label="Encashable types (comma list: CL,PL,SL)" value={cfgForm.encashableTypes} onChange={e => setCfgForm({ ...cfgForm, encashableTypes: e.target.value })} disabled={!canEdit} />
-                <Input label="Max encashment (days)" type="number" value={cfgForm.maxEncashmentDays ?? 30} onChange={e => setCfgForm({ ...cfgForm, maxEncashmentDays: e.target.value })} disabled={!canEdit} />
               </div>
             </div>
             {canEdit && (
@@ -653,7 +488,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
 
       {/* ─── Action Modal ─── */}
       <Modal open={!!action} onClose={closeAction}
-        title={action ? `${action.kind === 'grant' ? 'Add Leave Credit' : action.kind === 'deduct' ? 'Deduct Leave Credit' : action.kind === 'reset' ? 'Reset Yearly Balance' : action.kind === 'transfer' ? 'Transfer Leave' : action.kind === 'edit' ? 'Edit Balances' : 'Create Encashment'}${action.row.employeeName ? ` — ${action.row.employeeName}` : ''}` : ''}
+        title={action ? `${action.kind === 'grant' ? 'Add Leave Credit' : action.kind === 'deduct' ? 'Deduct Leave Credit' : action.kind === 'reset' ? 'Reset Yearly Balance' : action.kind === 'transfer' ? 'Transfer Leave' : 'Edit Balances'}${action.row.employeeName ? ` — ${action.row.employeeName}` : ''}` : ''}
         footer={action && (
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={closeAction}>Cancel</Button>
@@ -692,8 +527,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                 {(action.kind === 'grant' || action.kind === 'deduct') && (
                   <Input label="Effective Date" type="date" value={form.effectiveDate || ''} onChange={e => setForm({ ...form, effectiveDate: e.target.value })} />
                 )}
-                {action.kind !== 'encash' && <Textarea label="Reason / Note" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows={2} />}
-                {action.kind === 'encash' && <p className="text-[11px] text-slate-500">Creates an approved encashment record and deducts the wallet. Push it to payroll from the Encashment list.</p>}
+                <Textarea label="Reason / Note" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows={2} />
               </>
             )}
           </div>

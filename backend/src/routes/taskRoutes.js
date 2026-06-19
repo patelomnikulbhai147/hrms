@@ -10,6 +10,7 @@ const ctrl = require('../controllers/taskController');
 // their stored permissions JSON yet — that gate would wrongly 403 everyone but
 // Super Admin. The controller's role checks are the real security boundary.
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 router.get('/', ctrl.getAll);
 router.post('/', ctrl.create);

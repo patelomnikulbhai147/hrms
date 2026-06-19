@@ -40,12 +40,12 @@ interface LoginProps {
   userAccounts: UserAccount[];
   companies: Company[];
   onLogin: (user: UserAccount, selectedCompanyId?: string) => void;
+  sessionMessage?: string | null;
 }
 
-export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, companies, onLogin }) => {
+export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, companies, onLogin, sessionMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -90,7 +90,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
     setSubmitting(true);
 
     try {
-      const response = await api.auth.login({ email: trimmedEmail, password, rememberMe });
+      const response = await api.auth.login({ email: trimmedEmail, password });
 
       if (!response || !response.token || !response.user) {
         setError('Login failed. Invalid response from server.');
@@ -98,9 +98,9 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
       }
 
       const matched: UserAccount = response.user;
-      // Honour the Remember Me choice: persist the session in localStorage when
-      // checked, or sessionStorage (cleared on browser close) when unchecked.
-      authStorage.setRemember(rememberMe);
+      // Session-only auth: the login is valid for this browser session and ends
+      // on browser close or after the inactivity timeout (no permanent login).
+      authStorage.setRemember(false);
       authStorage.set('hrms_jwt_token', response.token);
 
       if (matched.status && matched.status.toLowerCase() !== 'active') {
@@ -310,6 +310,11 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-5">
+                  {sessionMessage && !error && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-semibold">
+                      {sessionMessage}
+                    </div>
+                  )}
                   {error && (
                     <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-600 font-semibold">
                       {error}
@@ -362,16 +367,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={e => setRememberMe(e.target.checked)}
-                        className="w-4 h-4 rounded border-[#CBD5E1] text-[#4F7CFF] focus:ring-[#4F7CFF]/20 cursor-pointer"
-                      />
-                      <span className="text-[13px] text-[#64748B] font-medium group-hover:text-[#475569] transition-colors">Remember me</span>
-                    </label>
+                  <div className="flex items-center justify-end pt-1">
                     <button
                       type="button"
                       onClick={() => { setError(''); setSuccessMsg(''); resetForgotFlow(); setForgotEmail(email.trim()); setIsForgotPassword(true); }}

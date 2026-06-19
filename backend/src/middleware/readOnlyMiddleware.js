@@ -17,6 +17,10 @@ module.exports = async function enforceWorkspaceWritable(req, res, next) {
   try {
     if (READ_METHODS.has(req.method)) return next(); // viewing/exporting is allowed
 
+    // Super Admin is the role exception: may view, edit company status, reactivate
+    // an archived company, and audit. Only a Super Admin can lift the lockdown.
+    if (req.user && req.user.role === 'Super Admin') return next();
+
     // Resolve the company in context: the active workspace header, then the
     // request body, then the user's own company.
     const raw = req.headers['x-workspace-id']
@@ -33,12 +37,13 @@ module.exports = async function enforceWorkspaceWritable(req, res, next) {
     }
 
     const readOnly = company && (company.isArchived === true
-      || String(company.accountStatus || '').toLowerCase() === 'offboarded');
+      || String(company.status || '').toLowerCase() === 'archived'
+      || ['offboarded', 'archived'].includes(String(company.accountStatus || '').toLowerCase()));
 
     if (readOnly) {
       return res.status(403).json({
         code: 'COMPANY_READ_ONLY',
-        error: `${company.name} has been offboarded and is read-only. You can view and export its historical data, but cannot make changes.`,
+        error: 'This company is archived. Modifications are not allowed. You can view and export its historical data only.',
       });
     }
     return next();

@@ -5,6 +5,7 @@ const { requirePermission } = require('../middleware/rbacMiddleware');
 const ctrl = require('../controllers/leaveAdminController');
 
 router.use(protect);
+router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
 router.post('/grant', requirePermission('leaves', 'edit'), ctrl.grant);
 router.post('/deduct', requirePermission('leaves', 'edit'), ctrl.deduct);

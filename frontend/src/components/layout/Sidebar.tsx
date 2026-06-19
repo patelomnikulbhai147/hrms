@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard
+  ClipboardList, Briefcase, History, IdCard, Fingerprint
 } from 'lucide-react';
 import type { Role, Company } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
@@ -12,7 +12,7 @@ import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'attendance'
-  | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
+  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
 
 interface NavItem {
   id: PageId;
@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
   { id: 'employees', label: 'Employees', icon: <Users size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
+  { id: 'attendance-devices', label: 'Attendance Devices', icon: <Fingerprint size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
@@ -73,7 +74,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices.
     // Employee Cards is a sub-feature of the Employees module — gate it on the
     // same permission so it never needs its own permission-matrix row.
-    const permKey = (item.id === 'employee-cards' ? 'employees' : item.id) as AppModules;
+    // Employee Cards and Attendance Devices are sub-features that ride on the
+    // Employees / Attendance permission rows (no dedicated permission matrix).
+    const permKey = (item.id === 'employee-cards' ? 'employees'
+      : item.id === 'attendance-devices' ? 'attendance'
+      : item.id) as AppModules;
     return canView(permKey) && item.roles.includes(role);
   });
 

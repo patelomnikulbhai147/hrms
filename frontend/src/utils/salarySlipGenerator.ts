@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { formatPan } from './idFormat';
 
 // Helper to convert numbers to words
 const numberToWords = (value: number): string => {
@@ -45,16 +46,6 @@ export const generateDynamicComponents = (record: any, employee: any, company: a
   
   if (record.overtimeAmount && record.overtimeAmount > 0) {
     earnings.push({ name: 'Overtime Amount', amount: record.overtimeAmount });
-  }
-
-  // Leave Encashment — paid out as an earning. Added before the Special
-  // Allowance fill so it is shown as its own line and not double-counted
-  // (record.allowances already includes this amount once pushed to payroll).
-  if (record.leaveEncashmentAmount && record.leaveEncashmentAmount > 0) {
-    earnings.push({
-      name: `Leave Encashment (${record.leaveEncashmentDays || 0} days)`,
-      amount: Math.round(record.leaveEncashmentAmount),
-    });
   }
 
   // Fill remaining allowances into Special Allowance
@@ -156,7 +147,7 @@ export const buildPayslipDoc = (record: any, employee: any, company: any, attend
   if (company?.tagline) { doc.setFont("helvetica", "italic"); doc.text(String(company.tagline), 105, 19.5, { align: 'center' }); doc.setFont("helvetica", "normal"); }
   doc.text(company?.address || company?.billingAddress || 'Corporate Headquarters', 105, company?.tagline ? 24 : 20, { align: 'center' });
   const infoY = company?.tagline ? 28.5 : 25;
-  doc.text(`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan || 'N/A'} | TAN: ${company?.tan || 'N/A'}`, 105, infoY, { align: 'center' });
+  doc.text(`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan ? formatPan(company.pan) : 'N/A'} | TAN: ${company?.tan || 'N/A'}`, 105, infoY, { align: 'center' });
   doc.text(`Website: ${company?.website || company?.domain || 'N/A'} | Contact: ${company?.contactNumber || company?.phone || 'N/A'}${(company?.contactEmail || company?.adminEmail) ? ` | ${company?.contactEmail || company?.adminEmail}` : ''}`, 105, infoY + 5, { align: 'center' });
 
   // Divider
@@ -365,7 +356,7 @@ export const generateEnterprisePayslipExcel = (record: any, employee: any, compa
   const wsData = [
     [company?.name?.toUpperCase() || 'ENTERPRISE INC'],
     [company?.address || 'Corporate Headquarters'],
-    [`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan || 'N/A'}`],
+    [`GST: ${company?.gstNumber || 'N/A'} | PAN: ${company?.pan ? formatPan(company.pan) : 'N/A'}`],
     [],
     [`PAYSLIP FOR THE MONTH OF ${record.month?.toUpperCase()} ${record.year}`],
     [],

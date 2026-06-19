@@ -47,7 +47,7 @@ async function repairMappings() {
         'bankName', 'accountNumber', 'ifsc', 
         'middleName', 'aadhaarName', 'gender', 'dob', 'maritalStatus', 
         'nationality', 'fatherSpouseName', 'relationType', 'emergencyContact', 
-        'category', 'employmentType', 'serviceBookNo', 'branchLocation', 
+        'category', 'employmentType', 'branchLocation',
         'presentAddress', 'permanentAddress', 'exitReason'
       ];
 

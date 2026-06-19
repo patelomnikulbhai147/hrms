@@ -117,7 +117,7 @@ workbook.SheetNames.forEach(sheetName => {
 
     // Schema mapping
     let firstName, surname, gender, fatherSpouseName, relationType, dob, maritalStatus, nationality, education, joinDate, designation, category, employmentType, phone;
-    let pfNumber, uan, pan, esic, aadhaar, accountNumber, bankName, ifsc, presentAddress, permanentAddress, serviceBookNo, exitDate, exitReason;
+    let pfNumber, uan, pan, esic, aadhaar, accountNumber, bankName, ifsc, presentAddress, permanentAddress, exitDate, exitReason;
 
     if (sheetName === 'AHMEDABAD') {
       firstName = cleanExcelValue(row[5]);
@@ -144,7 +144,6 @@ workbook.SheetNames.forEach(sheetName => {
       ifsc = cleanExcelValue(row[25]);
       presentAddress = cleanExcelValue(row[26]);
       permanentAddress = cleanExcelValue(row[27]);
-      serviceBookNo = cleanExcelValue(row[28]);
       exitDate = cleanExcelDate(row[29]);
       exitReason = cleanExcelValue(row[30]);
     } else if (sheetName === 'BHAVNAGAR' || sheetName === 'RAJKOT') {
@@ -172,7 +171,6 @@ workbook.SheetNames.forEach(sheetName => {
       bankName = cleanExcelValue(row[25]);
       presentAddress = cleanExcelValue(row[26]);
       permanentAddress = cleanExcelValue(row[27]);
-      serviceBookNo = cleanExcelValue(row[28]);
       exitDate = cleanExcelDate(row[29]);
       exitReason = cleanExcelValue(row[30]);
     } else if (sheetName === 'SIDDHPUR') {
@@ -200,7 +198,6 @@ workbook.SheetNames.forEach(sheetName => {
       bankName = cleanExcelValue(row[25]);
       presentAddress = cleanExcelValue(row[26]);
       permanentAddress = cleanExcelValue(row[27]);
-      serviceBookNo = cleanExcelValue(row[28]);
       exitDate = cleanExcelDate(row[29]);
       exitReason = cleanExcelValue(row[30]);
       fatherSpouseName = middleName !== '-' ? middleName : '-';
@@ -259,7 +256,6 @@ workbook.SheetNames.forEach(sheetName => {
       employmentType: employmentType !== '-' ? employmentType : 'CONTRACTUAL',
       exitDate: exitDate !== '-' ? exitDate : '',
       exitReason: exitReason !== '-' ? exitReason : '',
-      serviceBookNo,
       branchLocation: sheetName.toUpperCase(),
       aadhaar,
       pan,

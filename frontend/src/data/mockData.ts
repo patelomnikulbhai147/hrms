@@ -132,8 +132,8 @@ export interface Employee {
   employmentType?: string;
   exitDate?: string;
   exitReason?: string;
-  serviceBookNo?: string;
   branchLocation?: string;
+  biometricId?: string;
 
   aadhaar?: string;
   pan?: string;

@@ -9,11 +9,12 @@ const SelectWorkspace = React.lazy(() => import('./pages/SelectWorkspace').then(
 const Employees = React.lazy(() => import('./pages/Employees').then(m => ({ default: m.Employees })));
 const LeaveManagement = React.lazy(() => import('./pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
 const Attendance = React.lazy(() => import('./pages/Attendance').then(m => ({ default: m.Attendance })));
+const AttendanceDevices = React.lazy(() => import('./pages/AttendanceDevices').then(m => ({ default: m.AttendanceDevices })));
 const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
 const Companies = React.lazy(() => import('./pages/Companies').then(m => ({ default: m.Companies })));
 const EmployeeCards = React.lazy(() => import('./pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
-const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
+const ReportCenter = React.lazy(() => import('./pages/ReportCenter').then(m => ({ default: m.ReportCenter })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('./pages/Billing').then(m => ({ default: m.Billing })));
 const Users = React.lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
@@ -24,6 +25,7 @@ const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.L
 import type { UserAccount, AppModules } from './pages/Login';
 import { authStorage } from './utils/authStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from './context/PermissionContext';
+import { isCompanyArchived } from './utils/companyStatus';
 import { ShieldAlert } from 'lucide-react';
 import {
   Role,
@@ -56,6 +58,7 @@ const pageTitles: Record<PageId, string> = {
   leaves: 'Leave Management',
   payroll: 'Payroll',
   attendance: 'Attendance',
+  'attendance-devices': 'Attendance Devices',
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
@@ -70,7 +73,7 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'attendance',
-  'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'audit',
+  'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'audit',
   'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
@@ -480,6 +483,8 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return authStorage.get('hrms_auth') === 'true';
   });
+  // Message shown on the Login page after an auto-logout (inactivity / expiry).
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
 
     // Data hydration from backend MySQL
@@ -669,6 +674,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
   const handleLogin = (profile: UserAccount, selectedCompanyId?: string) => {
+    authStorage.markActivity();
+    setSessionMessage(null);
     setStoredAuthProfile(profile);
     setIsAuthenticated(true);
     // authStorage routes these to localStorage or sessionStorage depending on
@@ -694,15 +701,82 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.setItem('hrms_is_masquerading', 'false');
   };
 
-  const handleLogout = () => {
-    authStorage.clearSession(); // clears hrms_auth, hrms_profile, hrms_jwt_token from both stores
+  // Single exit path for ending a session — manual logout, inactivity timeout,
+  // an expired/invalid token, or a logout signalled from another tab. Pass
+  // broadcast=false only when reacting to another tab's signal (avoids an echo).
+  const endSession = (reason: 'logout' | 'inactivity' | 'expired' = 'logout', broadcast = true) => {
+    authStorage.clearSession(); // clears hrms_auth, hrms_profile, hrms_jwt_token + last-activity
+    if (broadcast) authStorage.broadcastLogout(reason);
     localStorage.removeItem('hrms_current_page');
     localStorage.removeItem('hrms_active_company_id');
     localStorage.removeItem('hrms_is_masquerading');
     setStoredAuthProfile(null);
-    setIsAuthenticated(false);
     setIsMasquerading(false);
+    setSessionMessage(
+      reason === 'inactivity' ? 'Your session has expired due to inactivity. Please login again.'
+        : reason === 'expired' ? 'Your session has expired. Please login again.'
+          : null
+    );
+    setIsAuthenticated(false);
   };
+  const handleLogout = () => endSession('logout');
+
+  // ── Auto-logout after 60 minutes of inactivity ─────────────────────────────
+  // Activity = mouse / keyboard / scroll / touch / navigation / API requests.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    authStorage.markActivity();
+    let lastMark = Date.now();
+    const onActivity = () => {
+      if (authStorage.isExpiredByInactivity()) { endSession('inactivity'); return; }
+      const now = Date.now();
+      if (now - lastMark > 5000) { lastMark = now; authStorage.markActivity(); } // throttle writes
+    };
+    const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'click', 'keydown', 'scroll', 'wheel', 'touchstart'];
+    ACTIVITY_EVENTS.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+    const check = () => {
+      if (authStorage.isExpiredByInactivity()) endSession('inactivity');
+      else if (!authStorage.get('hrms_jwt_token')) endSession('expired'); // token deleted/cleared
+    };
+    const interval = window.setInterval(check, 10000);
+    const onVisible = () => { if (document.visibilityState === 'visible') check(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', check);
+    return () => {
+      ACTIVITY_EVENTS.forEach((ev) => window.removeEventListener(ev, onActivity));
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', check);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // ── Global 401 (expired/invalid token) → end session immediately ───────────
+  useEffect(() => {
+    const onUnauthorized = () => { if (isAuthenticated) endSession('expired', false); };
+    window.addEventListener('hrms:unauthorized', onUnauthorized as EventListener);
+    return () => window.removeEventListener('hrms:unauthorized', onUnauthorized as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  // ── Multi-tab: a logout/expiry in any tab logs out every tab ───────────────
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (!isAuthenticated) return;
+      const loggedOutElsewhere =
+        e.key === 'hrms_logout_event' ||
+        (e.key === 'hrms_auth' && e.newValue !== 'true') ||
+        (e.key === 'hrms_jwt_token' && !e.newValue);
+      if (loggedOutElsewhere) {
+        let reason: 'logout' | 'inactivity' | 'expired' = 'logout';
+        try { const d = e.newValue ? JSON.parse(e.newValue) : null; if (d && d.reason) reason = d.reason; } catch (_) { /* ignore */ }
+        endSession(reason, false); // already broadcast by the originating tab
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
   const handleNavigate = (page: PageId) => {
     setCurrentPage(page);
@@ -827,6 +901,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   const permissionRole = authProfile?.role === 'Super Admin' ? 'Super Admin' : resolvedRole;
 
   const resolvedCompanyId = activeCompanyId;
+  // Archived-company read-only banner: shown to company users (not Super Admin)
+  // when the active workspace's company is archived.
+  const archivedCompanyReadOnly = permissionRole !== 'Super Admin'
+    && isCompanyArchived(companies.find(c => String(c.id) === String(resolvedCompanyId)) as any);
 
   // Synchronous auto-seeding deactivated for clean SaaS startup environment
 
@@ -859,7 +937,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   if (!isAuthenticated || !authProfile) {
     return (
       <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
-        <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} />
+        <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} sessionMessage={sessionMessage} />
       </React.Suspense>
     );
   }
@@ -1029,6 +1107,15 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onRefresh={hydrateAll}
           />
         );
+      case 'attendance-devices':
+        return (
+          <AttendanceDevices
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
       case 'payroll':
         return (
           <Payroll
@@ -1056,7 +1143,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         );
       case 'reports':
         return (
-          <Reports
+          <ReportCenter
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
@@ -1114,7 +1201,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   };
 
   return (
-    <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies}>
+    <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies} activeCompanyId={resolvedCompanyId}>
       {/* Global Wavy Background (Second Image Style) */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#F8FBFF]">
         {/* Soft floating circles */}
@@ -1161,6 +1248,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         />
 
         <main className="flex-1 overflow-y-auto bg-transparent p-4 md:p-6">
+          {archivedCompanyReadOnly && (
+            <div className="max-w-[1800px] mx-auto mb-4">
+              <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm font-semibold flex items-center gap-2 shadow-sm">
+                <span aria-hidden className="text-base leading-none">🔒</span>
+                <span>This company has been archived. Viewing historical records only — no modifications are permitted.</span>
+              </div>
+            </div>
+          )}
           {/* Full-width content: fill the viewport, capped at 1800px so it does
               not sprawl on ultrawide monitors. Previously max-w-7xl (1280px)
               wasted ~340px of width on a 1920 display. */}
