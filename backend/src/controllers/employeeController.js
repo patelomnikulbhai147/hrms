@@ -5,6 +5,14 @@ const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const locationMaster = require('./locationMasterController');
+
+// Remember any custom state/city on an employee payload for dropdown reuse
+// (best-effort, never blocks the save).
+const rememberLocations = (data) => {
+  if (data.state) locationMaster.remember('state', data.state);
+  if (data.city) locationMaster.remember('city', data.city);
+};
 
 exports.getEmployees = async (req, res) => {
   try {
@@ -93,7 +101,8 @@ exports.createEmployee = async (req, res) => {
       delete data.esic;
     }
 
-    // Biometric ID (Phase 2): optional, trimmed, capped at 50 chars; blank → null.
+    // Biometric Code (a.k.a. biometricId): optional, trimmed, capped at 50 chars;
+    // blank → null. This is the attendance-machine code — NOT the Employee ID.
     if (data.biometricId !== undefined) {
       data.biometricId = data.biometricId ? String(data.biometricId).trim().slice(0, 50) : null;
     }
@@ -107,6 +116,23 @@ exports.createEmployee = async (req, res) => {
       const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
       if (!branch) data.branchId = null;
     }
+
+    // Biometric Code must be UNIQUE WITHIN THE COMPANY (blank exempt; different
+    // companies may reuse the same code — validation is per-company, not global).
+    if (data.biometricId) {
+      const clash = await prisma.employee.findFirst({
+        where: { companyId: data.companyId, biometricId: data.biometricId },
+        select: { id: true, name: true, employeeId: true },
+      });
+      if (clash) {
+        return res.status(409).json({
+          code: 'BIOMETRIC_CODE_DUPLICATE',
+          error: `Biometric Code "${data.biometricId}" is already assigned to ${clash.name || clash.employeeId} (${clash.employeeId}) in this company. Biometric Codes must be unique per company.`,
+        });
+      }
+    }
+
+    rememberLocations(data);
 
     // ── Uniqueness guard: refuse to create a second record for someone who is
     // already on file (same Company+Branch+Name, or same Mobile / Email / Code).
@@ -364,7 +390,8 @@ exports.updateEmployee = async (req, res) => {
       delete data.esic;
     }
 
-    // Biometric ID (Phase 2): optional, trimmed, capped at 50 chars; blank → null.
+    // Biometric Code (a.k.a. biometricId): optional, trimmed, capped at 50 chars;
+    // blank → null. This is the attendance-machine code — NOT the Employee ID.
     if (data.biometricId !== undefined) {
       data.biometricId = data.biometricId ? String(data.biometricId).trim().slice(0, 50) : null;
     }
@@ -378,6 +405,27 @@ exports.updateEmployee = async (req, res) => {
       const branch = await prisma.branch.findUnique({ where: { id: data.branchId } });
       if (!branch) data.branchId = null;
     }
+
+    // Biometric Code uniqueness within the company (per-company, blank exempt,
+    // excluding this same employee). Different companies may reuse a code.
+    if (data.biometricId) {
+      const target = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true } });
+      const effCompanyId = data.companyId || target?.companyId;
+      if (effCompanyId) {
+        const clash = await prisma.employee.findFirst({
+          where: { companyId: effCompanyId, biometricId: data.biometricId, NOT: { id: idParam(id) } },
+          select: { id: true, name: true, employeeId: true },
+        });
+        if (clash) {
+          return res.status(409).json({
+            code: 'BIOMETRIC_CODE_DUPLICATE',
+            error: `Biometric Code "${data.biometricId}" is already assigned to ${clash.name || clash.employeeId} (${clash.employeeId}) in this company. Biometric Codes must be unique per company.`,
+          });
+        }
+      }
+    }
+
+    rememberLocations(data);
 
     // If the employee code is being changed, validate format + uniqueness.
     if (data.hasOwnProperty('employeeId')) {

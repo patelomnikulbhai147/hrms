@@ -17,7 +17,6 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     export: ['Company Head', 'HR', 'Finance'],
     approve: ['Company Head', 'HR'],
     print: ['Company Head', 'HR', 'Finance'],
-    manage: ['Company Head', 'HR'],
   },
   tenders: {
     view: ['Company Head', 'HR', 'Finance'],
@@ -27,7 +26,6 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     export: ['Company Head', 'HR'],
     approve: ['Company Head'],
     print: ['Company Head', 'HR'],
-    manage: ['Company Head', 'HR'],
   },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
@@ -41,7 +39,6 @@ interface PermissionContextType {
   canExport: (module: AppModules) => boolean;
   canApprove: (module: AppModules) => boolean;
   canPrint: (module: AppModules) => boolean;
-  canManage: (module: AppModules) => boolean;
   hasBranchAccess: (companyId: string) => boolean;
   getInheritedBranches: (companyId: string) => string[];
   /** True when the active company is archived and the user is not a Super Admin. */
@@ -56,7 +53,6 @@ const PermissionContext = createContext<PermissionContextType>({
   canExport: () => false,
   canApprove: () => false,
   canPrint: () => false,
-  canManage: () => false,
   hasBranchAccess: () => false,
   getInheritedBranches: () => [],
   companyReadOnly: false,
@@ -76,12 +72,8 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
 
-  // Module kill-switch (highest priority): an admin un-checking "Access" for a
-  // module (moduleAccess[module] === false) hides it regardless of any granular
-  // action flags. Applies to every module, dashboard included.
-  if (authProfile.moduleAccess && authProfile.moduleAccess[module] === false) {
-    return false;
-  }
+  // NOTE: the legacy "Access" (moduleAccess) kill-switch has been removed.
+  // Visibility is driven purely by the granular `view` permission below.
 
   // Dashboard is the landing page and only ever renders the user's OWN scoped
   // workspace summary (no cross-tenant data), so it is viewable by any
@@ -171,16 +163,6 @@ export const checkCanPrint = (module: AppModules, authProfile: UserAccount | nul
   return roleDefault(module, 'print', role);
 };
 
-export const checkCanManage = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
-  if (role === 'Super Admin') return true;
-  if (!authProfile) return false;
-  if (!checkCanView(module, authProfile, role)) return false;
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].manage === true;
-  }
-  return roleDefault(module, 'manage', role);
-};
-
 export const PermissionProvider: React.FC<PermissionProviderProps> = ({
   children,
   authProfile,
@@ -242,7 +224,6 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
     const canExport = (module: AppModules): boolean => checkCanExport(module, authProfile, role);
     const canApprove = (module: AppModules): boolean => !companyReadOnly && checkCanApprove(module, authProfile, role);
     const canPrint = (module: AppModules): boolean => checkCanPrint(module, authProfile, role);
-    const canManage = (module: AppModules): boolean => !companyReadOnly && checkCanManage(module, authProfile, role);
 
     return {
       canView,
@@ -252,7 +233,6 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
       canExport,
       canApprove,
       canPrint,
-      canManage,
       hasBranchAccess,
       getInheritedBranches,
       companyReadOnly,

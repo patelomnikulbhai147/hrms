@@ -39,12 +39,9 @@ exports.requirePermission = (moduleName, action) => {
       // protect middleware already fetches user. Let's use req.user.
       const rawPermissions = req.user.permissions || {};
       const parsedPerms = rawPermissions.permissions || {};
-      const moduleAccess = rawPermissions.moduleAccess || {};
-      
-      // If moduleAccess is explicitly false, deny
-      if (moduleAccess[moduleName] === false) {
-        return res.status(403).json({ error: `Access denied. You do not have permission to access ${moduleName}.` });
-      }
+      // Authorization is action-based only (view / edit / create / delete). The
+      // legacy "Access" (moduleAccess) gate and the "Manage" permission have been
+      // removed — they are no longer consulted for any authorization decision.
 
       // Check granular action permission
       if (parsedPerms[moduleName] !== undefined) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Fingerprint, Plus, Eye, Edit2, Trash2, Inbox, Search, Wifi, WifiOff, ChevronDown, Activity, Radio } from 'lucide-react';
+import { Fingerprint, Plus, Eye, Edit2, Trash2, Inbox, Search, ChevronDown } from 'lucide-react';
 import { type Role, type Company } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -18,12 +18,14 @@ interface AttendanceDevicesProps {
   authProfile?: UserAccount | null;
 }
 
-const DEVICE_TYPES = ['Biometric', 'Fingerprint', 'Face Recognition', 'RFID Card', 'Other'];
-const STATUSES = ['ACTIVE', 'INACTIVE'];
+// Vendors are loaded from the configurable registry API — NOT hardcoded — so new
+// vendors (eSSL, Matrix, ZKTeco, BioMax, …) appear here with no code change.
+const STATUS_OPTIONS = [{ value: 'ACTIVE', label: 'Active' }, { value: 'INACTIVE', label: 'Inactive' }];
 
 const emptyForm = {
-  deviceName: '', deviceIp: '', port: '', serialNumber: '',
-  deviceType: 'Biometric', companyId: '', branchId: '', status: 'ACTIVE',
+  deviceName: '', companyId: '', branchId: '', attendanceVendor: '', apiBaseUrl: '',
+  corporateId: '', apiUsername: '', apiPassword: '', serialNumber: '',
+  deviceLocation: '', status: 'ACTIVE', syncEnabled: false, syncIntervalMinutes: '',
 };
 
 // Lightweight searchable single-select (combobox) — used for the Super Admin's
@@ -77,6 +79,13 @@ const SearchableSelect: React.FC<{
   );
 };
 
+/**
+ * Attendance Devices — Phase 2 (device configuration storage).
+ *
+ * Stores vendor connection configuration (vendor, corporate id, API username /
+ * encrypted password, location, sync flag) per company & branch. Deliberately
+ * performs NO device communication, NO attendance sync/import, NO test/monitor.
+ */
 export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, activeCompanyId, companies = [], authProfile }) => {
   // Role gating (mirrors the backend): Super Admin = full incl. delete & company
   // assignment; Company Head = create/edit within own company; HR = view only.
@@ -86,19 +95,41 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
 
   const [devices, setDevices] = useState<any[]>([]);
   const [branches, setBranches] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<any[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<any>(null);
+  const [editPasswordSet, setEditPasswordSet] = useState(false);
   const [viewDevice, setViewDevice] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [form, setForm] = useState<any>(emptyForm);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const flash = (kind: 'ok' | 'err', msg: string) => { setToast({ kind, msg }); setTimeout(() => setToast(null), 4000); };
 
-  const load = useCallback(async () => { try { setDevices(await api.attendanceDevices.getAll() || []); } catch { /* ignore */ } }, []);
+  // Load the company-scoped registry. A raw Prisma/DB error is never surfaced to
+  // the user — on failure we show a friendly message and an empty list.
+  const load = useCallback(async () => {
+    try { setDevices(await api.attendanceDevices.getAll() || []); setLoadError(null); }
+    catch { setDevices([]); setLoadError('Device list is temporarily unavailable. Please try again later.'); }
+  }, []);
   const loadBranches = useCallback(async () => { try { setBranches(await api.branches.getAll() || []); } catch { setBranches([]); } }, []);
-  useEffect(() => { load(); loadBranches(); }, [load, loadBranches, activeCompanyId]);
+  const loadVendors = useCallback(async () => { try { setVendors(await api.attendanceVendors.getAll() || []); } catch { setVendors([]); } }, []);
+  useEffect(() => { load(); loadBranches(); loadVendors(); }, [load, loadBranches, loadVendors, activeCompanyId]);
+
+  // Vendor dropdown options + lookup (registry-driven, not hardcoded).
+  const vendorOptions = useMemo(() => vendors.map((v: any) => ({ value: v.name, label: v.displayName || v.name })), [vendors]);
+  const vendorByName = (name: string) => vendors.find((v: any) => v.name === name);
+  // Selecting a vendor prefills the API Base URL from its default — unless the
+  // user already typed a custom URL (then we keep their value).
+  const onVendorChange = (name: string) => {
+    setForm((f: any) => {
+      const prevDefault = vendorByName(f.attendanceVendor)?.defaultBaseUrl || '';
+      const keepCustom = f.apiBaseUrl && f.apiBaseUrl !== prevDefault;
+      return { ...f, attendanceVendor: name, apiBaseUrl: keepCustom ? f.apiBaseUrl : (vendorByName(name)?.defaultBaseUrl || '') };
+    });
+  };
 
   // Top-level companies (head offices) for the Super Admin's company picker.
   const companyOptions = useMemo(() => (companies || [])
@@ -117,7 +148,7 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return devices.filter(d => (!statusFilter || d.status === statusFilter)
-      && (!q || `${d.deviceName} ${d.serialNumber || ''} ${d.deviceIp || ''} ${d.deviceType || ''}`.toLowerCase().includes(q)));
+      && (!q || `${d.deviceName} ${d.attendanceVendor || ''} ${d.serialNumber || ''} ${d.deviceLocation || ''}`.toLowerCase().includes(q)));
   }, [devices, search, statusFilter]);
 
   const counts = useMemo(() => ({
@@ -128,30 +159,54 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
 
   const openCreate = () => {
     setEditingId(null);
+    setEditPasswordSet(false);
     setForm({ ...emptyForm, companyId: isSuperAdmin ? '' : String(authProfile?.companyId || activeCompanyId || '') });
     setCreateOpen(true);
   };
   const openEdit = (d: any) => {
     setEditingId(d.id);
+    setEditPasswordSet(!!d.apiPasswordSet);
     setForm({
-      deviceName: d.deviceName || '', deviceIp: d.deviceIp || '', port: d.port ?? '',
-      serialNumber: d.serialNumber || '', deviceType: d.deviceType || 'Biometric',
-      companyId: String(d.companyId || ''), branchId: d.branchId ? String(d.branchId) : '',
+      deviceName: d.deviceName || '',
+      companyId: String(d.companyId || ''),
+      branchId: d.branchId ? String(d.branchId) : '',
+      attendanceVendor: d.attendanceVendor || '',
+      apiBaseUrl: d.apiBaseUrl || '',
+      corporateId: d.corporateId || '',
+      apiUsername: d.apiUsername || '',
+      apiPassword: '', // never prefilled — blank keeps the stored (encrypted) password
+      serialNumber: d.serialNumber || '',
+      deviceLocation: d.deviceLocation || '',
       status: d.status || 'ACTIVE',
+      syncEnabled: !!d.syncEnabled,
+      syncIntervalMinutes: d.syncIntervalMinutes ?? '',
     });
     setCreateOpen(true);
   };
 
   const submit = async () => {
+    // Required: Device Name, Vendor, Company, Branch.
     if (!form.deviceName.trim()) { flash('err', 'Device name is required.'); return; }
+    if (!form.attendanceVendor) { flash('err', 'Attendance vendor is required.'); return; }
     if (isSuperAdmin && !form.companyId) { flash('err', 'Please select a company.'); return; }
+    if (!form.branchId) { flash('err', 'Branch is required.'); return; }
     setBusy(true);
     try {
       const payload: any = {
-        deviceName: form.deviceName, deviceIp: form.deviceIp, port: form.port,
-        serialNumber: form.serialNumber, deviceType: form.deviceType,
-        branchId: form.branchId || null, status: form.status,
+        deviceName: form.deviceName,
+        attendanceVendor: form.attendanceVendor,
+        apiBaseUrl: form.apiBaseUrl,
+        corporateId: form.corporateId,
+        apiUsername: form.apiUsername,
+        serialNumber: form.serialNumber,
+        deviceLocation: form.deviceLocation,
+        branchId: form.branchId,
+        status: form.status,
+        syncEnabled: form.syncEnabled,
+        syncIntervalMinutes: form.syncIntervalMinutes === '' ? null : Number(form.syncIntervalMinutes),
       };
+      // Only send the password when the user typed one (blank keeps the existing).
+      if (form.apiPassword && form.apiPassword.trim() !== '') payload.apiPassword = form.apiPassword;
       // Only a Super Admin assigns the company; otherwise the backend pins it to
       // the caller's own company.
       if (isSuperAdmin) payload.companyId = form.companyId;
@@ -163,68 +218,10 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
   };
 
   const remove = async (d: any) => {
-    if (!window.confirm(`Delete device "${d.deviceName}"? This removes it from the registry only and does not affect any attendance records.`)) return;
+    if (!window.confirm(`Delete device "${d.deviceName}"? This removes the configuration only and does not affect any attendance records.`)) return;
     try { await api.attendanceDevices.remove(d.id); flash('ok', 'Device deleted.'); await load(); }
     catch (e: any) { flash('err', e?.message || 'Delete failed.'); }
   };
-
-  // ── Phase 5: read-only diagnostics ──
-  const [diagDevice, setDiagDevice] = useState<any>(null);
-  const [testing, setTesting] = useState(false);
-  const [discovering, setDiscovering] = useState(false);
-  const [testResult, setTestResult] = useState<any>(null);
-  const [discoverResult, setDiscoverResult] = useState<any>(null);
-  const openDiag = (d: any) => { setDiagDevice(d); setTestResult(null); setDiscoverResult(null); };
-  const closeDiag = () => { setDiagDevice(null); setTestResult(null); setDiscoverResult(null); };
-
-  const runTest = async () => {
-    if (!diagDevice) return;
-    setTesting(true); setTestResult(null);
-    try {
-      const r = await api.attendanceDevices.testConnection(diagDevice.id);
-      setTestResult(r);
-      if (r?.device) { setDiagDevice(r.device); setDevices(list => list.map(x => x.id === r.device.id ? r.device : x)); }
-    } catch (e: any) { setTestResult({ ok: false, error: e?.message || 'Test failed' }); }
-    finally { setTesting(false); }
-  };
-  const runDiscover = async () => {
-    if (!diagDevice) return;
-    setDiscovering(true); setDiscoverResult(null);
-    try { setDiscoverResult(await api.attendanceDevices.discover(diagDevice.id)); }
-    catch (e: any) { setDiscoverResult({ error: e?.message || 'Discovery failed' }); }
-    finally { setDiscovering(false); }
-  };
-
-  // ── Phase 6: Live Device Monitor ──
-  const [monitorOpen, setMonitorOpen] = useState(false);
-  const [pushLogs, setPushLogs] = useState<any[]>([]);
-  const [selectedLog, setSelectedLog] = useState<any>(null);
-  const [monitorErr, setMonitorErr] = useState<string | null>(null);
-  useEffect(() => {
-    if (!monitorOpen) return;
-    let alive = true;
-    const tick = async () => {
-      try { const l = await api.attendanceDevices.pushLogs(); if (alive) { setPushLogs(l || []); setMonitorErr(null); } }
-      catch (e: any) { if (alive) setMonitorErr(e?.message || 'Failed to load push logs'); }
-    };
-    tick();
-    const t = setInterval(tick, 3000);
-    return () => { alive = false; clearInterval(t); };
-  }, [monitorOpen]);
-
-  const deviceLabel = (log: any) => {
-    const d = devices.find(x => x.id === log.deviceId);
-    return d ? `${d.deviceName}${d.deviceIp ? ' (' + d.deviceIp + ')' : ''}` : (log.deviceIp || 'Unknown');
-  };
-  const host = typeof window !== 'undefined' ? window.location.hostname : 'SERVER';
-  const pushUrl = `http://${host}:5000/api/attendance-device/push`;
-  const iclockUrl = `http://${host}:5000/iclock/cdata`;
-  const pushStatus = (() => {
-    const last = pushLogs[0];
-    if (last && (Date.now() - new Date(last.receivedAt).getTime() < 120000)) return { label: 'Receiving Data', tone: 'green' };
-    if (pushLogs.length) return { label: 'Connected (idle)', tone: 'blue' };
-    return { label: 'No Data Received', tone: 'gray' };
-  })();
 
   return (
     <div className="space-y-4">
@@ -232,16 +229,16 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
         <div className="px-5 py-4 flex items-center justify-between border-b border-[#DBEAFE]">
           <div>
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Fingerprint size={18} className="text-indigo-600" /> Attendance Devices</h2>
-            <p className="text-xs text-slate-500">Register and manage biometric attendance devices per company &amp; branch. Attendance punches continue to be stored in the existing Attendance module.</p>
+            <p className="text-xs text-slate-500">Store attendance-device vendor configuration per company &amp; branch. No device connection or attendance sync is performed yet.</p>
           </div>
           <div className="flex items-center gap-2">
-            {canManage && <Button variant="outline" icon={<Radio size={15} />} onClick={() => setMonitorOpen(true)}>Live Monitor</Button>}
             {canManage && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Device</Button>}
           </div>
         </div>
       </div>
 
       {toast && <div className={`px-4 py-2.5 rounded-lg text-xs font-semibold ${toast.kind === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{toast.msg}</div>}
+      {loadError && <div className="px-4 py-2.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">{loadError}</div>}
 
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl border border-[#DBEAFE] bg-white p-4">
@@ -263,37 +260,32 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
           <h3 className="text-sm font-bold text-slate-800">Registered Devices</h3>
           <div className="flex items-center gap-2">
             <Input icon={<Search size={14} />} placeholder="Search devices…" value={search} onChange={e => setSearch(e.target.value)} />
-            <div className="w-40"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...STATUSES.map(s => ({ value: s, label: s }))]} /></div>
+            <div className="w-40"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...STATUS_OPTIONS]} /></div>
           </div>
         </div>
         {rows.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3"><Inbox className="text-slate-300" size={28} /></div>
-            <p className="text-sm font-semibold text-slate-500">No attendance devices yet</p>
-            <p className="text-xs text-slate-400 mt-1">{canManage ? 'Click “Add Device” to register one.' : 'Adjust your search or filters.'}</p>
+            <p className="text-sm font-semibold text-slate-500">No Devices Found</p>
+            <p className="text-xs text-slate-400 mt-1">{canManage ? 'Click “Add Device” to register one.' : 'No attendance devices for your company yet.'}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <Table>
-              <Thead><Tr><Th>Device</Th><Th>Type</Th><Th>IP : Port</Th><Th>Serial No</Th><Th>Company</Th><Th>Branch</Th><Th>Status</Th><Th>Actions</Th></Tr></Thead>
+              <Thead><Tr><Th>Device Name</Th><Th>Vendor</Th><Th>Company</Th><Th>Branch</Th><Th>Status</Th><Th>Sync Enabled</Th><Th>Created Date</Th><Th>Actions</Th></Tr></Thead>
               <Tbody>
                 {rows.map(d => (
                   <Tr key={d.id}>
                     <Td><span className="font-semibold text-slate-800">{d.deviceName}</span></Td>
-                    <Td>{d.deviceType ? <Badge variant="indigo">{d.deviceType}</Badge> : '—'}</Td>
-                    <Td><span className="font-mono text-[11px] text-slate-600">{d.deviceIp || '—'}{d.port ? `:${d.port}` : ''}</span></Td>
-                    <Td><span className="font-mono text-[11px] text-slate-600">{d.serialNumber || '—'}</span></Td>
+                    <Td>{d.attendanceVendor ? <Badge variant="indigo">{d.attendanceVendor}</Badge> : '—'}</Td>
                     <Td>{d.company?.name || companyNameOf(d.companyId)}</Td>
                     <Td>{d.branch?.branchName || '—'}</Td>
-                    <Td>
-                      <Badge variant={d.status === 'ACTIVE' ? 'green' : 'gray'}>
-                        <span className="inline-flex items-center gap-1">{d.status === 'ACTIVE' ? <Wifi size={11} /> : <WifiOff size={11} />}{d.status}</span>
-                      </Badge>
-                    </Td>
+                    <Td><Badge variant={d.status === 'ACTIVE' ? 'green' : 'gray'}>{d.status === 'ACTIVE' ? 'Active' : 'Inactive'}</Badge></Td>
+                    <Td><Badge variant={d.syncEnabled ? 'green' : 'gray'}>{d.syncEnabled ? 'ON' : 'OFF'}</Badge></Td>
+                    <Td><span className="text-[11px] text-slate-500">{d.createdAt ? formatDate(d.createdAt) : '—'}</span></Td>
                     <Td>
                       <div className="flex items-center gap-1.5">
                         <button onClick={() => setViewDevice(d)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shadow-sm"><Eye size={13} /></button>
-                        {canManage && <button onClick={() => openDiag(d)} title="Diagnostics" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-emerald-600 shadow-sm"><Activity size={13} /></button>}
                         {canManage && <button onClick={() => openEdit(d)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Edit2 size={13} /></button>}
                         {canDelete && <button onClick={() => remove(d)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                       </div>
@@ -312,22 +304,39 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Input label="Device Name *" value={form.deviceName} onChange={e => setForm({ ...form, deviceName: e.target.value })} />
-            <Select label="Device Type" value={form.deviceType} onChange={e => setForm({ ...form, deviceType: e.target.value })} options={DEVICE_TYPES.map(t => ({ value: t, label: t }))} />
-            <Input label="Device IP Address" placeholder="192.168.1.50" value={form.deviceIp} onChange={e => setForm({ ...form, deviceIp: e.target.value })} />
-            <Input label="Port" type="number" placeholder="4370" value={form.port} onChange={e => setForm({ ...form, port: e.target.value })} />
-            <Input label="Serial Number" value={form.serialNumber} onChange={e => setForm({ ...form, serialNumber: e.target.value })} />
-            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={STATUSES.map(s => ({ value: s, label: s }))} />
             {isSuperAdmin ? (
               <SearchableSelect label="Company *" value={form.companyId} placeholder="Select company…"
                 options={companyOptions}
                 onChange={(v) => setForm({ ...form, companyId: v, branchId: '' })} />
             ) : (
-              <Input label="Company" value={companyNameOf(effectiveCompanyId)} disabled />
+              <Input label="Company *" value={companyNameOf(effectiveCompanyId)} disabled />
             )}
-            <Select label="Branch (optional)" value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })}
-              options={[{ value: '', label: 'No branch / company-wide' }, ...branchOptions]} />
+            <Select label="Branch *" value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })}
+              options={[{ value: '', label: 'Select branch…' }, ...branchOptions]} />
+            <Select label="Attendance Vendor *" value={form.attendanceVendor} onChange={e => onVendorChange(e.target.value)}
+              options={[{ value: '', label: vendorOptions.length ? 'Select vendor…' : 'No vendors configured' }, ...vendorOptions]} />
+            <Input label="API Base URL" placeholder="https://api.vendor.com/" value={form.apiBaseUrl} onChange={e => setForm({ ...form, apiBaseUrl: e.target.value })} />
+            <Input label="Corporate ID" value={form.corporateId} onChange={e => setForm({ ...form, corporateId: e.target.value })} />
+            <Input label="API Username" value={form.apiUsername} onChange={e => setForm({ ...form, apiUsername: e.target.value })} />
+            <Input label="API Password" type="password" autoComplete="new-password"
+              placeholder={editingId && editPasswordSet ? '•••••• (leave blank to keep)' : ''}
+              value={form.apiPassword} onChange={e => setForm({ ...form, apiPassword: e.target.value })} />
+            <Input label="Device Serial Number" value={form.serialNumber} onChange={e => setForm({ ...form, serialNumber: e.target.value })} />
+            <Input label="Device Location" value={form.deviceLocation} onChange={e => setForm({ ...form, deviceLocation: e.target.value })} />
+            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={STATUS_OPTIONS} />
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Sync Enabled</label>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setForm({ ...form, syncEnabled: !form.syncEnabled })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.syncEnabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.syncEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+                <span className="text-xs font-semibold text-slate-600">{form.syncEnabled ? 'ON' : 'OFF'}</span>
+              </div>
+            </div>
+            <Input label="Sync Interval (Minutes)" type="number" placeholder="e.g. 30 (optional)" value={form.syncIntervalMinutes} onChange={e => setForm({ ...form, syncIntervalMinutes: e.target.value })} />
           </div>
-          <p className="text-[11px] text-slate-500">Phase 1 registers the device only — no biometric connection or sync is performed yet.</p>
+          <p className="text-[11px] text-slate-500">This stores device configuration only — no connection, sync, or API calls are performed. The API password is encrypted before storage.</p>
         </div>
       </Modal>
 
@@ -337,148 +346,27 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
         {viewDevice && (
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2">
-              <Badge variant={viewDevice.status === 'ACTIVE' ? 'green' : 'gray'}>{viewDevice.status}</Badge>
-              {viewDevice.deviceType && <Badge variant="indigo">{viewDevice.deviceType}</Badge>}
+              <Badge variant={viewDevice.status === 'ACTIVE' ? 'green' : 'gray'}>{viewDevice.status === 'ACTIVE' ? 'Active' : 'Inactive'}</Badge>
+              {viewDevice.attendanceVendor && <Badge variant="indigo">{viewDevice.attendanceVendor}</Badge>}
+              <Badge variant={viewDevice.syncEnabled ? 'green' : 'gray'}>Sync {viewDevice.syncEnabled ? 'ON' : 'OFF'}</Badge>
             </div>
             {[
-              ['Device IP', viewDevice.deviceIp || '—'],
-              ['Port', viewDevice.port ?? '—'],
-              ['Serial Number', viewDevice.serialNumber || '—'],
+              ['Vendor', viewDevice.attendanceVendor || '—'],
               ['Company', viewDevice.company?.name || companyNameOf(viewDevice.companyId)],
               ['Branch', viewDevice.branch?.branchName || '—'],
-              ['Last Sync', viewDevice.lastSync ? formatDate(viewDevice.lastSync) : 'Never'],
-              ['Registered', formatDate(viewDevice.createdAt)],
+              ['API Base URL', viewDevice.apiBaseUrl || '—'],
+              ['Corporate ID', viewDevice.corporateId || '—'],
+              ['API Username', viewDevice.apiUsername || '—'],
+              ['API Password', viewDevice.apiPasswordSet ? '•••••• (stored, encrypted)' : 'Not set'],
+              ['Serial Number', viewDevice.serialNumber || '—'],
+              ['Location', viewDevice.deviceLocation || '—'],
+              ['Sync Interval', viewDevice.syncIntervalMinutes != null ? `${viewDevice.syncIntervalMinutes} min` : '—'],
+              ['Created', formatDate(viewDevice.createdAt)],
             ].map(([k, v]) => (
               <div key={k as string} className="flex justify-between border-b border-slate-100 py-1.5"><span className="text-xs text-slate-500 font-semibold">{k}</span><span className="text-xs text-slate-800 font-bold">{v}</span></div>
             ))}
           </div>
         )}
-      </Modal>
-
-      {/* Phase 5 — Device Diagnostics (read-only): Test Connection + Discover + raw response */}
-      <Modal open={!!diagDevice} onClose={closeDiag} title={`Device Diagnostics — ${diagDevice?.deviceName || ''}`}
-        footer={<div className="flex justify-end"><Button variant="outline" onClick={closeDiag}>Close</Button></div>}>
-        {diagDevice && (
-          <div className="space-y-4 text-sm">
-            <div className="text-[11px] text-slate-500">
-              Target: <span className="font-mono text-slate-700">{diagDevice.deviceIp || '—'}:{diagDevice.port || '—'}</span> · read-only — no attendance data is created or modified.
-            </div>
-
-            {/* Phase 1 — Test Connection */}
-            <div className="rounded-xl border border-slate-200 p-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-700">1 · Test Connection</h4>
-                <Button size="sm" loading={testing} onClick={runTest}>Test Connection</Button>
-              </div>
-              {(testResult || diagDevice.lastTestAt) && (
-                <div className="mt-2 text-xs space-y-1">
-                  {testResult && (
-                    <div className={`font-semibold ${testResult.ok ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {testResult.ok ? 'Connected ✅' : 'Failed ❌'}{testResult.responseMs != null ? ` · ${testResult.responseMs} ms` : ''}{testResult.error ? ` · ${testResult.error}` : ''}
-                    </div>
-                  )}
-                  <div className="text-slate-500">Last test: {diagDevice.lastTestAt ? new Date(diagDevice.lastTestAt).toLocaleString('en-IN') : '—'} · Status: {diagDevice.lastTestStatus || '—'} · Response: {diagDevice.lastTestResponseMs != null ? diagDevice.lastTestResponseMs + ' ms' : '—'}</div>
-                </div>
-              )}
-            </div>
-
-            {/* Phase 2 — Discover Device Data */}
-            <div className="rounded-xl border border-slate-200 p-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-700">2 · Discover Device Data</h4>
-                <Button size="sm" variant="outline" loading={discovering} onClick={runDiscover}>Discover</Button>
-              </div>
-              {discoverResult && !discoverResult.error && (
-                <div className="mt-2 text-xs grid grid-cols-1 gap-y-1">
-                  {[
-                    ['Reachable', discoverResult.reachable ? 'Yes' : 'No'],
-                    ['Connect time', discoverResult.connectMs != null ? discoverResult.connectMs + ' ms' : '—'],
-                    ['Protocol', discoverResult.protocol || 'unknown'],
-                    ['Device Name', discoverResult.deviceInfo?.deviceName || '—'],
-                    ['Model', discoverResult.deviceInfo?.model || '—'],
-                    ['Serial Number', discoverResult.deviceInfo?.serialNumber || '—'],
-                    ['Firmware Version', discoverResult.deviceInfo?.firmwareVersion || '—'],
-                    ['User Count', discoverResult.counts?.userCount != null ? discoverResult.counts.userCount : '—'],
-                    ['Attendance Log Count', discoverResult.counts?.attendanceLogCount != null ? discoverResult.counts.attendanceLogCount : '—'],
-                  ].map(([k, v]) => (
-                    <div key={k as string} className="flex justify-between border-b border-slate-100 py-1"><span className="text-slate-500">{k}</span><span className="font-semibold text-slate-800">{String(v)}</span></div>
-                  ))}
-                </div>
-              )}
-              {discoverResult?.error && <p className="mt-2 text-xs text-rose-600">{discoverResult.error}</p>}
-              {discoverResult?.notes?.length > 0 && (
-                <ul className="mt-2 list-disc list-inside text-[11px] text-amber-700">
-                  {discoverResult.notes.map((n: string, i: number) => <li key={i}>{n}</li>)}
-                </ul>
-              )}
-            </div>
-
-            {/* Phase 3 — Raw response */}
-            <div className="rounded-xl border border-slate-200 p-3">
-              <h4 className="text-xs font-bold text-slate-700 mb-2">3 · Raw Response (Diagnostics)</h4>
-              <pre className="text-[10px] bg-slate-950 text-emerald-300 rounded-lg p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">{discoverResult ? (discoverResult.rawHex ? discoverResult.rawHex : '(device returned no bytes)') : 'Run Discover to capture the raw device response.'}</pre>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Phase 6 — Live Device Monitor (auto-refreshing, capture-only) */}
-      <Modal open={monitorOpen} onClose={() => { setMonitorOpen(false); setSelectedLog(null); }} title="Live Device Monitor"
-        footer={<div className="flex justify-end"><Button variant="outline" onClick={() => { setMonitorOpen(false); setSelectedLog(null); }}>Close</Button></div>}>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between">
-            <Badge variant={pushStatus.tone as any}>{pushStatus.label}</Badge>
-            <span className="text-[11px] text-slate-400">Auto-refreshing every 3s · {pushLogs.length} captured</span>
-          </div>
-          <div className="rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-600">
-            Point the device's push server to <span className="font-mono text-indigo-700 break-all">{pushUrl}</span>. ADMS/iclock devices use <span className="font-mono text-indigo-700 break-all">{iclockUrl}</span>. Capture-only — no attendance is created.
-          </div>
-          {monitorErr && <p className="text-xs text-rose-600">{monitorErr}</p>}
-
-          <div className="overflow-x-auto max-h-[45vh]">
-            <Table>
-              <Thead><Tr><Th>Received</Th><Th>Device</Th><Th>User ID</Th><Th>Punch Time</Th><Th>Raw Payload</Th></Tr></Thead>
-              <Tbody>
-                {pushLogs.length === 0 && <Tr><Td colSpan={5}><span className="text-slate-400 text-xs">No device requests received yet.</span></Td></Tr>}
-                {pushLogs.map(log => (
-                  <Tr key={log.id} className="cursor-pointer hover:bg-slate-50" onClick={() => setSelectedLog(log)}>
-                    <Td><span className="text-[11px] text-slate-500">{new Date(log.receivedAt).toLocaleString('en-IN')}</span></Td>
-                    <Td><span className="text-[11px] text-slate-700">{deviceLabel(log)}</span></Td>
-                    <Td><span className="font-mono text-[11px]">{log.userId || '—'}</span></Td>
-                    <Td><span className="text-[11px]">{log.punchTime || '—'}</span></Td>
-                    <Td><span className="font-mono text-[10px] text-slate-500 truncate block max-w-[220px]">{(log.rawPayload || '').slice(0, 80) || '—'}</span></Td>
-                  </Tr>
-                ))}
-              </Tbody>
-            </Table>
-          </div>
-
-          {selectedLog && (
-            <div className="rounded-xl border border-slate-200 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-700">Request Detail #{selectedLog.id}</h4>
-                <button className="text-[11px] text-slate-400 hover:text-slate-600" onClick={() => setSelectedLog(null)}>clear</button>
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                {[
-                  ['Time', new Date(selectedLog.receivedAt).toLocaleString('en-IN')],
-                  ['Device IP', selectedLog.deviceIp || '—'],
-                  ['Method', selectedLog.method || '—'],
-                  ['Path', selectedLog.path || '—'],
-                  ['Content-Type', selectedLog.contentType || '—'],
-                  ['User ID', selectedLog.userId || '—'],
-                  ['Biometric ID', selectedLog.biometricId || '—'],
-                  ['Punch Type', selectedLog.punchType || '—'],
-                  ['Result', selectedLog.processingResult || '—'],
-                ].map(([k, v]) => (
-                  <div key={k as string} className="flex justify-between border-b border-slate-100 py-0.5"><span className="text-slate-500">{k}</span><span className="font-semibold text-slate-800 break-all text-right ml-2">{v as string}</span></div>
-                ))}
-              </div>
-              <div><p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Headers</p><pre className="text-[10px] bg-slate-950 text-sky-300 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-all">{selectedLog.headers || '—'}</pre></div>
-              <div><p className="text-[10px] text-slate-400 uppercase font-bold mb-1">Raw Payload</p><pre className="text-[10px] bg-slate-950 text-emerald-300 rounded p-2 max-h-32 overflow-auto whitespace-pre-wrap break-all">{selectedLog.rawPayload || '(empty)'}</pre></div>
-            </div>
-          )}
-        </div>
       </Modal>
     </div>
   );

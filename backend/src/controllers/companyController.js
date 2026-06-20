@@ -16,6 +16,12 @@ const BRANDING_FIELDS = [
   'name', 'shortName', 'tagline', 'website', 'contactEmail', 'contactNumber',
   'address', 'description', 'logo', 'logoImage', 'primaryColor', 'themeStyle',
   'headerText', 'footerText', 'signatureText', 'gstNumber',
+  // Merged "Company Profile & Branding" — profile identity + digital assets.
+  // Writable here so a Company Head can manage them (the full company PUT is
+  // Super-Admin-only).
+  'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
+  'city', 'state', 'pincode', 'emailSignature',
+  'faviconImage', 'stampImage', 'digitalSignatureImage',
 ];
 
 // Every writable scalar column on the Company model. Any other key in a
@@ -37,6 +43,9 @@ const COMPANY_FIELDS = [
   'monthlyBranchCost', 'monthlyUsage', 'payrollLoad', 'priceMonthly', 'priceYearly',
   'purchasedAdditionalBranches', 'signatureText', 'storageUsed', 'subscriptionPrice',
   'isArchived',
+  'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
+  'city', 'state', 'pincode', 'emailSignature',
+  'faviconImage', 'stampImage', 'digitalSignatureImage',
 ];
 
 // Build a Prisma-safe Company payload from an arbitrary request body:

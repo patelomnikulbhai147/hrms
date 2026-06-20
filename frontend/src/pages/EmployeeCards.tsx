@@ -6,7 +6,6 @@ import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { usePermissions } from '../context/PermissionContext';
-import { isCompanyIdMatch } from '../types';
 import { EmployeeIdCard, EmployeeInfoCard } from '../components/cards/EmployeeCardTemplates';
 import { renderNodeToPdf, downloadCardsPdf } from '../utils/employeeCardGenerator';
 import { isActiveEmployee } from '../utils/employeeStatus';
@@ -31,23 +30,66 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
 
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Resolve the active company/branch and its branding.
+  // Resolve the active workspace company. If you entered via a BRANCH, roll up
+  // to its parent so the card section covers the whole company (all branches).
   const company = useMemo(
     () => companies.find(c => String(c.id) === String(activeCompanyId)) || companies[0],
     [companies, activeCompanyId]
   );
-  const parentCompany = useMemo(
-    () => company?.parentCompanyId ? companies.find(c => String(c.id) === String(company.parentCompanyId)) : company,
+  const rootCompany = useMemo(
+    () => (company?.parentCompanyId
+      ? companies.find(c => String(c.id) === String(company.parentCompanyId)) : company) || company,
     [companies, company]
   );
-  const brand = parentCompany || company;
+  const brand = rootCompany || company; // fallback branding only (when an employee's company can't be resolved)
 
-  // Employees scoped to the active workspace.
+  // Every company id that belongs to the active company tree: the root company
+  // plus all of its branches. ID Cards must be available for every employee in
+  // EVERY branch, so scoping is by the whole tree — not the single workspace.
+  const treeIds = useMemo(() => {
+    const root = rootCompany || company;
+    const set = new Set<string>();
+    if (root) set.add(String(root.id));
+    companies.forEach(c => { if (root && String(c.parentCompanyId) === String(root.id)) set.add(String(c.id)); });
+    return set;
+  }, [companies, rootCompany, company]);
+
+  // Branch / company names in the tree — for employees that carry a
+  // branchLocation string instead of a branch companyId.
+  const treeBranchNames = useMemo(() => {
+    const s = new Set<string>();
+    companies.forEach(c => {
+      if (!treeIds.has(String(c.id))) return;
+      if (c.branchName) s.add(c.branchName.toUpperCase().trim());
+      if (c.name) s.add(c.name.toUpperCase().trim());
+    });
+    return s;
+  }, [companies, treeIds]);
+
+  const belongsToTree = (e: Employee) => {
+    if (e.companyId != null && treeIds.has(String(e.companyId))) return true;
+    if ((e as any).branchId != null && treeIds.has(String((e as any).branchId))) return true;
+    const bl = (e.branchLocation || '').toUpperCase().trim();
+    return !!bl && treeBranchNames.has(bl);
+  };
+
+  // Resolve branding (name / logo / colour) for an INDIVIDUAL employee from
+  // their OWN company record — never the logged-in workspace. This is what makes
+  // each card show the employee's real company instead of one hardcoded name.
+  const resolveBrand = (e: Employee): Company => {
+    const own = companies.find(c => String(c.id) === String(e.companyId))
+      || ((e as any).branchId ? companies.find(c => String(c.id) === String((e as any).branchId)) : undefined);
+    if (!own) return brand as Company;
+    return own.parentCompanyId
+      ? (companies.find(c => String(c.id) === String(own.parentCompanyId)) || own)
+      : own;
+  };
+
+  // Active employees across the whole company tree (all branches).
   const scoped = useMemo(
-    () => (employees || []).filter(e =>
-      isActiveEmployee(e) && // offboarded employees are excluded from card generation
-      isCompanyIdMatch(e.companyId, activeCompanyId, companies as any[], (e as any).branchLocation, (e as any).branchId)),
-    [employees, activeCompanyId, companies]
+    () => (employees || []).filter(e => isActiveEmployee(e) && belongsToTree(e)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [employees, treeIds, treeBranchNames]
   );
 
   const departments = useMemo(
@@ -107,7 +149,7 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
     if (targets.length === 0) { alert('No employees selected for bulk generation.'); return; }
     setBusy('bulk');
     try {
-      await downloadCardsPdf(targets, brand, cardType, `Employee_${cardType === 'id' ? 'ID' : 'Info'}_Cards.pdf`);
+      await downloadCardsPdf(targets, resolveBrand, cardType, `Employee_${cardType === 'id' ? 'ID' : 'Info'}_Cards.pdf`);
     } catch (e: any) {
       alert(`Bulk generation failed: ${e?.message || 'error'}`);
     } finally { setBusy(null); }
@@ -198,8 +240,8 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
             <div className="flex flex-wrap items-start justify-center gap-6 py-4 bg-slate-50 rounded-xl">
               <div ref={previewRef}>
                 {cardType === 'id'
-                  ? <EmployeeIdCard employee={selected} company={brand} />
-                  : <EmployeeInfoCard employee={selected} company={brand} />}
+                  ? <EmployeeIdCard employee={selected} company={resolveBrand(selected)} />
+                  : <EmployeeInfoCard employee={selected} company={resolveBrand(selected)} />}
               </div>
             </div>
           )}
