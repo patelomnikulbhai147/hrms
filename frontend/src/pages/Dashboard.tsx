@@ -27,6 +27,7 @@ import { getCompanyInitials } from '../utils/workspaceUtils';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { api, type SuperAdminStats } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { ui } from '../components/ui/feedback';
 import { Card, StatCard } from '../components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { TaskTenderWidgets } from '../components/dashboard/TaskTenderWidgets';
@@ -293,15 +294,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // frontend-only display field with no backing column, so it is never sent.
     if (target.parentCompanyId) {
       api.branches.update(companyId, { status: 'Active' })
-        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+        .catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
     } else {
       api.companies.update(companyId, { paymentStatus: 'Paid', accountStatus: 'Active', status: 'Active' })
-        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+        .catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
       // Invoice is recorded against the parent company (PaymentRecord.companyId
       // is a Company FK; the saved row carries its real DB id back into state).
       api.payments.create(payment)
         .then((saved: any) => onUpdatePayments?.((prev: any[]) => [saved, ...(prev || [])]))
-        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the payment record.')); });
+        .catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the payment record.')); });
     }
     showToast(`Subscription successfully renewed for ${target.name}! Invoice recorded.`, 'success');
   };
@@ -327,10 +328,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // companies accept the account/payment status columns too.
     if (target.parentCompanyId) {
       api.branches.update(companyId, { status: 'Inactive' })
-        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+        .catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
     } else {
       api.companies.update(companyId, { accountStatus: 'Suspended', status: 'Inactive', paymentStatus: 'Expired' })
-        .catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
+        .catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the suspension to the database.')); });
     }
     showToast(`Access suspended for ${target.name} due to license expiration.`, 'warning');
   };

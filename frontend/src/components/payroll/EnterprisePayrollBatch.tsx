@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CheckSquare, Square, Loader2, FileSpreadsheet, PlayCircle, BadgeCheck, Landmark, Wallet, Lock } from 'lucide-react';
 import type { PayrollRecord, Employee, AttendanceRecord, Company } from '../../types';
+import { ui } from '../ui/feedback';
 
 // ── New enterprise payroll workflow ──────────────────────────────────────────
 export type PayrollStage = 'draft' | 'generated' | 'approved' | 'bank_processing' | 'paid' | 'locked';
@@ -129,14 +130,14 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
       const byId = new Map(records.map(r => [r.id, r]));
       ids = ids.filter(id => { const r = byId.get(id); return r && filterStage.includes(normalizeStage(r)); });
     }
-    if (ids.length === 0) { alert(`No eligible selected rows for "${label}".`); return; }
+    if (ids.length === 0) { ui.toast.warning(`No eligible selected rows for "${label}".`); return; }
     setBusy(label);
     try {
       await onApply(ids, changes);
       setSelected(new Set());
     } catch (e: any) {
       console.error(e);
-      alert(`${label} failed: ${e?.message || 'server error'}`);
+      ui.toast.error(`${label} failed: ${e?.message || 'server error'}`);
     } finally {
       setBusy(null);
     }
@@ -150,32 +151,32 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
   const runTop = async (label: string, fn: () => Promise<void> | void) => {
     setTopBusy(label);
     try { await fn(); }
-    catch (e: any) { console.error(e); alert(`${label} failed: ${e?.message || 'server error'}`); }
+    catch (e: any) { console.error(e); ui.toast.error(`${label} failed: ${e?.message || 'server error'}`); }
     finally { setTopBusy(null); }
   };
 
   const approveAll = () => runTop('Approve All', async () => {
     const generated = records.filter(r => normalizeStage(r) === 'generated');
-    if (!generated.length) { alert('No payroll in GENERATED stage. Run "Generate All Payroll" first.'); return; }
+    if (!generated.length) { ui.toast.warning('No payroll in GENERATED stage. Run "Generate All Payroll" first.'); return; }
     // Validation (#): salary must be calculated before approval.
     const errors = generated.filter(r => !(Number(r.netSalary) > 0)).map(r => `• ${r.employeeName}: salary not calculated`);
-    if (errors.length) { alert(`Cannot approve — resolve these first:\n\n${errors.join('\n')}`); return; }
+    if (errors.length) { await ui.alert({ title: 'Error', message: `Cannot approve — resolve these first:\n\n${errors.join('\n')}`, variant: 'error' }); return; }
     // Warn (not block) when attendance is missing for the month.
     const noAtt = generated.filter(r => { const e = empById.get(r.employeeId); const a = attendanceFor(e?.id || r.employeeId); return a.present + a.absent + a.leave === 0; });
-    if (noAtt.length && !confirm(`${noAtt.length} employee(s) have no attendance records for ${month}.\nNet salary is calculated, but attendance is not synced. Approve anyway?`)) return;
+    if (noAtt.length && !(await ui.confirm({ message: `${noAtt.length} employee(s) have no attendance records for ${month}.\nNet salary is calculated, but attendance is not synced. Approve anyway?` }))) return;
     await onApply(generated.map(r => r.id), { payrollStatus: 'approved', status: 'approved' });
   });
 
   const markAllPaid = () => runTop('Mark All Paid', async () => {
     const ids = idsByStage(['approved', 'bank_processing']);
-    if (!ids.length) { alert('No approved payroll to pay. Approve payroll first.'); return; }
+    if (!ids.length) { ui.toast.warning('No approved payroll to pay. Approve payroll first.'); return; }
     await onApply(ids, { payrollStatus: 'paid', status: 'paid', paymentStatus: 'paid', paymentDate: today });
   });
 
   const lockMonth = () => runTop('Lock Month', async () => {
     const ids = idsByStage(['paid']);
-    if (!ids.length) { alert('Only PAID payroll can be locked. Mark payroll paid first.'); return; }
-    if (!confirm(`Lock ${ids.length} paid record(s) for ${month}? Locked rows cannot be re-staged.`)) return;
+    if (!ids.length) { ui.toast.warning('Only PAID payroll can be locked. Mark payroll paid first.'); return; }
+    if (!(await ui.confirm({ message: `Lock ${ids.length} paid record(s) for ${month}? Locked rows cannot be re-staged.`, variant: 'danger', confirmText: 'Lock' }))) return;
     await onApply(ids, { payrollStatus: 'locked', status: 'locked' });
   });
 
@@ -276,7 +277,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
         <BulkBtn id="Mark Paid" icon={<Wallet size={13} className="text-emerald-600" />} label="Mark Paid"
           onClick={() => runBulk('Mark Paid', { payrollStatus: 'paid', status: 'paid', paymentStatus: 'paid', paymentDate: today }, ['approved', 'bank_processing'])} />
         <BulkBtn id="Lock" icon={<Lock size={13} className="text-slate-700" />} label="Lock"
-          onClick={() => { if (confirm('Lock the selected payroll rows? Locked rows cannot be re-staged here.')) runBulk('Lock', { payrollStatus: 'locked', status: 'locked' }, ['paid']); }} />
+          onClick={async () => { if (await ui.confirm({ message: 'Lock the selected payroll rows? Locked rows cannot be re-staged here.', variant: 'danger', confirmText: 'Lock' })) runBulk('Lock', { payrollStatus: 'locked', status: 'locked' }, ['paid']); }} />
         <div className="ml-auto">
           <button onClick={onExportExcel} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50 transition-all">
             <FileSpreadsheet size={13} /> Export Excel

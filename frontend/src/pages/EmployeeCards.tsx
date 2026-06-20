@@ -9,6 +9,7 @@ import { usePermissions } from '../context/PermissionContext';
 import { EmployeeIdCard, EmployeeInfoCard } from '../components/cards/EmployeeCardTemplates';
 import { renderNodeToPdf, downloadCardsPdf } from '../utils/employeeCardGenerator';
 import { isActiveEmployee } from '../utils/employeeStatus';
+import { ui } from '../components/ui/feedback';
 
 interface EmployeeCardsProps {
   role: Role;
@@ -123,7 +124,7 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
     try {
       await renderNodeToPdf(previewRef.current, `${fileSafe(selected.employeeId)}_${cardType === 'id' ? 'ID' : 'Info'}_Card.pdf`);
     } catch (e: any) {
-      alert(`Failed to generate card: ${e?.message || 'error'}`);
+      ui.toast.error(`Failed to generate card: ${e?.message || 'error'}`);
     } finally { setBusy(null); }
   };
 
@@ -133,7 +134,7 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
     try {
       const html = previewRef.current.innerHTML;
       const w = window.open('', '_blank', 'width=900,height=650');
-      if (!w) { alert('Pop-up blocked. Allow pop-ups to print.'); return; }
+      if (!w) { ui.toast.warning('Pop-up blocked. Allow pop-ups to print.'); return; }
       w.document.write(`<html><head><title>Employee Card</title>
         <script src="https://cdn.tailwindcss.com"></script></head>
         <body style="display:flex;align-items:center;justify-content:center;padding:24px;">${html}</body></html>`);
@@ -146,12 +147,12 @@ export const EmployeeCards: React.FC<EmployeeCardsProps> = ({ activeCompanyId, c
     const targets = bulkIds.length
       ? scoped.filter(e => bulkIds.includes(String(e.id)))
       : filtered;
-    if (targets.length === 0) { alert('No employees selected for bulk generation.'); return; }
+    if (targets.length === 0) { ui.toast.warning('No employees selected for bulk generation.'); return; }
     setBusy('bulk');
     try {
       await downloadCardsPdf(targets, resolveBrand, cardType, `Employee_${cardType === 'id' ? 'ID' : 'Info'}_Cards.pdf`);
     } catch (e: any) {
-      alert(`Bulk generation failed: ${e?.message || 'error'}`);
+      ui.toast.error(`Bulk generation failed: ${e?.message || 'error'}`);
     } finally { setBusy(null); }
   };
 

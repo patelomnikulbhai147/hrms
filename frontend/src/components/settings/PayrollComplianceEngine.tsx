@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
 import { ShieldCheck, FileText, Database, Plus, Trash2, Save, Download, Upload, Activity, Layers, PenTool, BarChart3, GripVertical, CheckCircle2, History } from 'lucide-react';
 import { type Company } from '../../data/mockData';
+import { ui } from '../ui/feedback';
 
 interface PayrollComplianceEngineProps {
   currentCompany: Company;
@@ -62,8 +63,8 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
     setSaving(true);
     setTimeout(() => {
       localStorage.setItem(`hrms_compliance_${currentCompany.id}`, JSON.stringify(engineState));
-      alert(`✅ DATABASE SYNC SUCCESS\n\nSchema successfully updated for company: ${currentCompany.name}.\nAll custom components, formulas, and templates are now instantly active in the core Payroll Engine and Salary Slips.`);
-      
+      ui.alert({ title: 'Database Sync Success', message: `Schema successfully updated for company: ${currentCompany.name}.\nAll custom components, formulas, and templates are now instantly active in the core Payroll Engine and Salary Slips.`, variant: 'success' });
+
       onSave({
         pfRate: engineState.pf.employeePct,
         esicRate: engineState.esic.employerPct,
@@ -86,22 +87,22 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
     setEngineState((prev: any) => ({ ...prev, auditLogs: [log, ...prev.auditLogs] }));
   };
 
-  const addCustomComponent = () => {
-    const name = prompt("Enter Custom Component Name (e.g. Internet Allowance):");
+  const addCustomComponent = async () => {
+    const name = await ui.prompt({ message: "Enter Custom Component Name (e.g. Internet Allowance):" });
     if (!name) return;
-    const type = prompt("Type (Earnings, Deductions, Reimbursements, Benefits):", "Earnings") || "Earnings";
-    const calculation = prompt("Calculation Type (Fixed, Percentage, Formula):", "Fixed") || "Fixed";
-    const val = prompt(`Enter numeric value for ${calculation}:`, "0");
+    const type = (await ui.prompt({ message: "Type (Earnings, Deductions, Reimbursements, Benefits):", defaultValue: "Earnings" })) || "Earnings";
+    const calculation = (await ui.prompt({ message: "Calculation Type (Fixed, Percentage, Formula):", defaultValue: "Fixed" })) || "Fixed";
+    const val = await ui.prompt({ message: `Enter numeric value for ${calculation}:`, defaultValue: "0" });
     
     const nextList = [...engineState.customComponents, { id: `c${Date.now()}`, name, type, calculation, value: Number(val) || 0, enabled: true }];
     setEngineState({ ...engineState, customComponents: nextList });
     logAudit(`Created custom component: ${name}`, 'Component Builder');
   };
 
-  const addFormula = () => {
-    const target = prompt("Enter Target Field (e.g. Special Allowance):");
+  const addFormula = async () => {
+    const target = await ui.prompt({ message: "Enter Target Field (e.g. Special Allowance):" });
     if (!target) return;
-    const expression = prompt("Enter Formula Expression (e.g. CTC - Basic - HRA):");
+    const expression = await ui.prompt({ message: "Enter Formula Expression (e.g. CTC - Basic - HRA):" });
     if (!expression) return;
     
     const nextFormulas = [...engineState.formulas, { id: `f${Date.now()}`, target, expression }];
@@ -145,7 +146,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={exportSettings} className="flex items-center gap-1 border-slate-600 text-slate-200 hover:bg-slate-800"><Download size={14}/> Export Config</Button>
-          <Button variant="outline" size="sm" onClick={() => alert('Import functionality opens file dialogue.')} className="flex items-center gap-1 border-slate-600 text-slate-200 hover:bg-slate-800"><Upload size={14}/> Import Excel</Button>
+          <Button variant="outline" size="sm" onClick={() => ui.toast.info('Import functionality opens file dialogue.')} className="flex items-center gap-1 border-slate-600 text-slate-200 hover:bg-slate-800"><Upload size={14}/> Import Excel</Button>
           {isSuperOrHead && (
             <Button size="sm" onClick={saveToDb} disabled={saving} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 border-none">
               <Save size={14}/> {saving ? 'Syncing...' : 'Sync with Database'}
@@ -214,8 +215,8 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                         </td>
                         <td className="p-3 text-right">
                           {isSuperOrHead && (
-                            <button className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50" onClick={() => {
-                              if(confirm('Delete component? This updates DB schema.')) {
+                            <button className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50" onClick={async () => {
+                              if(await ui.confirm({ message: 'Delete component? This updates DB schema.', variant: 'danger', confirmText: 'Delete' })) {
                                 const next = [...engineState.customComponents];
                                 next.splice(idx, 1);
                                 setEngineState({...engineState, customComponents: next});
@@ -330,8 +331,8 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                     <h5 className="font-bold text-slate-800 text-sm">{r.name}</h5>
                     <p className="text-[10px] text-slate-500 mt-1 mb-4">{r.desc}</p>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" className="w-full text-[10px] h-7" onClick={() => alert('Generated PDF')}>PDF</Button>
-                      <Button size="sm" variant="outline" className="w-full text-[10px] h-7" onClick={() => alert('Generated CSV')}>CSV</Button>
+                      <Button size="sm" variant="outline" className="w-full text-[10px] h-7" onClick={() => ui.toast.success('Generated PDF')}>PDF</Button>
+                      <Button size="sm" variant="outline" className="w-full text-[10px] h-7" onClick={() => ui.toast.success('Generated CSV')}>CSV</Button>
                     </div>
                   </div>
                 ))}

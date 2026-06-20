@@ -21,6 +21,7 @@ import {
   summarizeEmployeePeriod, summarizeYear,
 } from '../utils/attendancePeriods';
 import { AnimatedCounter } from '../components/common/AnimatedCounter';
+import { ui } from '../components/ui/feedback';
 interface AttendanceCenterProps {
   role: Role;
   activeCompanyId: string;
@@ -178,9 +179,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const [summaryForm, setSummaryForm] = useState<any>({ presentDays: 0, absentDays: 0, cl: 0, pl: 0, sl: 0, lwp: 0, halfDays: 0, otHours: 0, shift: '' });
   const [savingSummary, setSavingSummary] = useState(false);
 
-  const openEditSummary = (employeeId: any, employeeName: string, employeeCode: string) => {
+  const openEditSummary = async (employeeId: any, employeeName: string, employeeCode: string) => {
     const s = dbSummaries[String(employeeId)];
-    if (!s) { alert('No attendance summary on file for this employee yet. Run "Sync to Payroll" first.'); return; }
+    if (!s) { await ui.alert({ message: 'No attendance summary on file for this employee yet. Run "Sync to Payroll" first.' }); return; }
     setEditSummary({ ...s, employeeName, employeeCode });
     setSummaryForm({
       presentDays: s.presentDays ?? 0, absentDays: s.absentDays ?? 0, cl: s.cl ?? 0, pl: s.pl ?? 0,
@@ -212,10 +213,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setEditSummary(null);
       setSummaryRefresh(x => x + 1);   // reloads dbSummaries → Monthly overlay reflects immediately
       onRefresh?.();                   // refresh app data so dashboard/reports/payroll reflect it with no manual step
-      alert('Attendance updated. Payroll, dashboard and reports have been recalculated automatically.');
+      ui.toast.success('Attendance updated. Payroll, dashboard and reports have been recalculated automatically.');
     } catch (e: any) {
       console.error('[Attendance] saveSummary FAILED', e);
-      alert(e?.message || 'Failed to save attendance summary.');
+      ui.toast.error(e?.message || 'Failed to save attendance summary.');
     } finally {
       setSavingSummary(false);
     }
@@ -439,7 +440,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const handleBulkMark = async (status: string) => {
     if (!isAdmin) return;
-    if (selectedIds.length === 0) return alert('Select employees first.');
+    if (selectedIds.length === 0) { ui.toast.warning('Select employees first.'); return; }
     
     const updatedAttendance = [...attendance];
     
@@ -472,10 +473,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       }).filter(Boolean)));
       if (empIds.length) recalcSummaryAfterEdit(selectedDate, empIds);
       setSelectedIds([]);
-      alert(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved to the database.`);
+      ui.toast.success(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved to the database.`);
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not save attendance to the database.'));
     }
   };
 
@@ -508,7 +509,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       if (empId) recalcSummaryAfterEdit(selectedDate, [empId]);
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not save attendance to the database.'));
     }
   };
 
@@ -598,7 +599,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       flashWeekly(`${emp.name} · ${new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} → ${status}. Saved & synced across Daily, Monthly, Payroll & Reports.`);
     } catch (e) {
       console.error('[Attendance] markCell FAILED', e);
-      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not save attendance to the database.'));
     } finally {
       setSavingCell(null);
     }
@@ -612,7 +613,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       onUpdateAttendance(attendance.map(a => a.id === id ? updated : a));
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not update attendance status.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update attendance status.'));
     }
   };
 
@@ -628,7 +629,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const saveModeConfiguration = () => {
     localStorage.setItem(`hrms_attendance_mode_${activeCompanyId}`, attendanceMode);
     localStorage.setItem(`hrms_attendance_custom_cols_${activeCompanyId}`, JSON.stringify(customColumns));
-    alert('Attendance Mode Configuration Saved Successfully!\n\nThis configuration will automatically affect Attendance Import, Entry, Reports, and Payroll Calculations for this specific branch/company.');
+    ui.toast.success('Attendance Mode Configuration Saved Successfully!\n\nThis configuration will automatically affect Attendance Import, Entry, Reports, and Payroll Calculations for this specific branch/company.');
   };
 
   const handleOpenShiftModal = (shift?: any) => {
@@ -644,7 +645,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const handleSaveShift = async () => {
     if (!shiftForm.name?.trim() || !shiftForm.start || !shiftForm.end) {
-      alert('Please enter a shift name, start time and end time.');
+      ui.toast.error('Please enter a shift name, start time and end time.');
       return;
     }
     try {
@@ -658,18 +659,18 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setShowShiftModal(false);
     } catch (e: any) {
       console.error(e);
-      alert(`Failed to save shift: ${e?.message || 'database error'}`);
+      ui.toast.error(`Failed to save shift: ${e?.message || 'database error'}`);
     }
   };
 
   const handleDeleteShift = async (id: string) => {
-    if (confirm("Permanently delete this shift? Employees assigned to it will be unassigned. Use Archive instead to keep history.")) {
+    if (await ui.confirm({ message: "Permanently delete this shift? Employees assigned to it will be unassigned. Use Archive instead to keep history.", variant: 'danger', confirmText: 'Delete Shift' })) {
       try {
         await api.shifts.delete(id);
         setShifts(shifts.filter(s => s.id !== id));
       } catch (e: any) {
         console.error(e);
-        alert(`Failed to delete shift: ${e?.message || 'database error'}`);
+        ui.toast.error(`Failed to delete shift: ${e?.message || 'database error'}`);
       }
     }
   };
@@ -680,7 +681,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setShifts(shifts.map(s => s.id === id ? res : s));
     } catch (e: any) {
       console.error(e);
-      alert(`Failed to archive shift: ${e?.message || 'database error'}`);
+      ui.toast.error(`Failed to archive shift: ${e?.message || 'database error'}`);
     }
   };
 
@@ -701,7 +702,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       onRefresh?.();
     } catch (e: any) {
       console.error(e);
-      alert(`Failed to assign employees: ${e?.message || 'database error'}`);
+      ui.toast.error(`Failed to assign employees: ${e?.message || 'database error'}`);
     } finally {
       setAssignBusy(false);
     }
@@ -731,18 +732,18 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setShowOTModal(false);
     } catch (e) {
       console.error(e);
-      alert('Database error: failed to save overtime');
+      ui.toast.error('Database error: failed to save overtime');
     }
   };
 
   const handleDeleteOT = async (id: string) => {
-    if (confirm("Delete this Overtime Record?")) {
+    if (await ui.confirm({ message: "Delete this Overtime Record?", variant: 'danger', confirmText: 'Delete' })) {
       try {
         await api.overtime.delete(id);
         setOvertimeData(overtimeData.filter(o => o.id !== id));
       } catch (e) {
         console.error(e);
-        alert('Database error: failed to delete overtime');
+        ui.toast.error('Database error: failed to delete overtime');
       }
     }
   };
@@ -760,7 +761,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       localStorage.setItem(`hrms_overtime_${activeCompanyId}`, JSON.stringify(updatedOT));
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not update the overtime status.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the overtime status.'));
     }
   };
 
@@ -784,7 +785,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       });
       setSyncPreview(res);
     } catch (e: any) {
-      alert(`Failed to compute payroll sync: ${e.message || e}`);
+      ui.toast.error(`Failed to compute payroll sync: ${e.message || e}`);
       setSyncOpen(false);
     } finally {
       setSyncLoading(false);
@@ -803,7 +804,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       });
       setSyncDone(res);
     } catch (e: any) {
-      alert(`Failed to write payroll: ${e.message || e}`);
+      ui.toast.error(`Failed to write payroll: ${e.message || e}`);
     } finally {
       setSyncLoading(false);
     }
@@ -877,7 +878,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const runExport = () => {
     const emps = resolveScopeEmployees();
-    if (emps.length === 0) { alert('No employees match the selected scope/filters.'); return; }
+    if (emps.length === 0) { ui.toast.warning('No employees match the selected scope/filters.'); return; }
     const { rows, cols } = buildExportDataset(exportMode, emps);
     const range = getPeriodRange(exportMode, selectedDate, customStart, customEnd);
     const scopeLabel = exportScope === 'all' ? 'All Companies'
@@ -1741,7 +1742,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <h4 className="font-bold text-sm text-slate-800 mb-2">Smart Excel Import</h4>
             <p className="text-xs text-slate-500 mb-4">Upload biometrics CSV/XLSX. The system will automatically map columns (Employee ID, Punch In, Punch Out) and save permanently to the database.</p>
             
-            <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" onClick={() => alert('File dialogue opened')}>
+            <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" onClick={() => ui.toast.info('File dialogue opened')}>
               <Upload size={32} className="text-blue-500 mb-3" />
               <p className="text-sm font-bold text-blue-800">Click to upload or drag and drop</p>
               <p className="text-xs text-blue-600/70 mt-1">XLSX, XLS, or CSV (Max. 15MB)</p>

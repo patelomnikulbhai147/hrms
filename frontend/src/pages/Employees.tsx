@@ -39,6 +39,7 @@ import { isActiveEmployee, isOffboarded } from '../utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '../utils/idFormat';
 import { BankDetails } from '../components/BankDetails';
 import { usePermissions } from '../context/PermissionContext';
+import { ui } from '../components/ui/feedback';
 
 const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Sr No', key: 'srNo', width: 8 },
@@ -186,7 +187,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       setViewEmp(savedEmp);
     } catch (err) {
       console.error('Failed to upload document:', err);
-      alert('Failed to upload document. Please try again.');
+      ui.toast.error('Failed to upload document. Please try again.');
     }
   };
 
@@ -692,7 +693,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     // end up with an employee saved but nominees rejected (no partial state).
     const nomTotal = wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0);
     if (wizardNominees.length && nomTotal > 100.01) {
-      alert(`Total nominee allocation is ${nomTotal}% — it cannot exceed 100%. Fix it in the Nominees step.`);
+      await ui.alert({ message: `Total nominee allocation is ${nomTotal}% — it cannot exceed 100%. Fix it in the Nominees step.`, variant: 'warning' });
       setActiveTab('nominees');
       return;
     }
@@ -713,7 +714,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
       }
       setAddOpen(false);
-      alert(`${form.name} registered successfully${nomineeNote}.`);
+      ui.toast.success(`${form.name} registered successfully${nomineeNote}.`);
       // Open the profile on the Nominees tab so the saved nominees are visible and
       // any remaining ones can be completed.
       setActiveTab('nominees');
@@ -721,7 +722,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       setWizardNominees([]);
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to save to database: ${err.message}`);
+      ui.toast.error(`Failed to save to database: ${err.message}`);
     }
   };
 
@@ -733,10 +734,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       onUpdateEmployees(employees.map(e => e.id === deleteEmp.id ? { ...e, status: 'Archived', exitDate: today, exitReason: 'Admin Archived' } : e));
       setDeleteEmp(null);
       setIsConfirmingDelete(false);
-      alert('Employee archived successfully.');
+      ui.toast.success('Employee archived successfully.');
     }).catch(err => {
       console.error(err);
-      alert('Failed to archive employee');
+      ui.toast.error('Failed to archive employee');
     });
   };
   const handleWizardStepComplete = (step: number) => setWizardStep(step + 1);
@@ -854,10 +855,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       api.employees.update(updatedEmp.id, updatedEmp).then(savedEmp => {
         onUpdateEmployees(employees.map(e => e.id === updatedEmp.id ? savedEmp : e));
         setEditEmp(null);
-        alert('Employee successfully updated.');
+        ui.toast.success('Employee successfully updated.');
       }).catch(err => {
         console.error(err);
-        alert(`Failed to save to the database: ${err.message}`);
+        ui.toast.error(`Failed to save to the database: ${err.message}`);
       });
     } catch (err: any) {
       console.error(err);
@@ -900,11 +901,11 @@ export const Employees: React.FC<EmployeesProps> = ({
       setOffboardEmp(null);
       setIsWizardOpen(false);
       setIsOffboardingExecuting(false);
-      alert('Employee successfully archived and removed from active workforce.');
+      ui.toast.success('Employee successfully archived and removed from active workforce.');
     }).catch(err => {
       console.error(err);
       setIsOffboardingExecuting(false);
-      alert(getApiErrorMessage(err, 'Could not archive the employee. No changes were saved.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not archive the employee. No changes were saved.'));
     });
   };
 
@@ -1084,7 +1085,7 @@ export const Employees: React.FC<EmployeesProps> = ({
         setImportedRows(allRows);
         setImportLogs(logs);
       } catch (err) {
-        alert('Error parsing Excel file. Please ensure it matches standard branch templates.');
+        ui.toast.error('Error parsing Excel file. Please ensure it matches standard branch templates.');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -1100,10 +1101,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       setImportedRows([]);
       setImportLogs([]);
       setImportOpen(false);
-      alert(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
+      ui.toast.success(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
     } catch (error) {
       console.error('Bulk commit failed:', error);
-      alert(getApiErrorMessage(error, 'Could not save the imported employees.'));
+      ui.toast.error(getApiErrorMessage(error, 'Could not save the imported employees.'));
     }
   };
 

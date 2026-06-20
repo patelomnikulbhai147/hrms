@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Users, FileCheck2, CheckCircle2, Wallet, Clock, IndianRupee,
   CalendarCheck, Calculator, ShieldCheck, FileText, Banknote, Lock,
-  Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send,
+  Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -40,6 +40,7 @@ interface Props {
   // selection-scoped bulk actions
   onApprove?: (ids: string[]) => void;
   onMarkPaid?: (ids: string[]) => void;
+  onGenerateSelected?: (records: any[]) => void;
   onGenerateSlips?: (records: any[]) => void;
   onLock?: (ids: string[]) => void;
   onRecalculate?: (ids?: string[]) => void;
@@ -52,6 +53,7 @@ interface Props {
   onLockMonth: () => void;
   // per-employee slip actions
   onView: (r: any) => void;
+  onOpenWorksheet?: (r: any) => void;
   onDownloadPdf: (r: any) => void;
   onPrint: (r: any) => void;
   onEmail: (r: any) => void;
@@ -64,8 +66,8 @@ interface Props {
 export const PayrollWorkbench: React.FC<Props> = ({
   records, company, getEmployee, monthLabel, role, canEdit = true,
   onGeneratePayroll, onApproveAll, onGenerateSlipsAll, onExportBank, onMarkPaidAll, onLockMonth,
-  onView, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
-  onApprove, onMarkPaid, onGenerateSlips, onLock, onRecalculate,
+  onView, onOpenWorksheet, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
+  onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onRecalculate,
 }) => {
   const [companyFilter, setCompanyFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
@@ -145,18 +147,26 @@ export const PayrollWorkbench: React.FC<Props> = ({
   const selectedIds = selectedRecords.map(r => r.id);
   const clearSel = () => setSelected(new Set());
 
-  // ── 6 dashboard cards ──────────────────────────────────────────────────
+  // ── Status pipeline: Draft → Generated → Approved → Paid ──────────────────
+  // Counts are CUMULATIVE (a later stage implies the earlier ones are done), so
+  // a freshly generated record (payrollStatus = 'pending_approval') counts as
+  // Generated immediately, and shows up as "awaiting approval" on the Approve card.
   const m = useMemo(() => {
-    let generated = 0, approved = 0, paid = 0, amount = 0;
+    let generated = 0, pendingApproval = 0, approved = 0, paid = 0, amount = 0;
     for (const r of records) {
       const pr = String(r.payrollStatus || r.status || '').toLowerCase();
       const pay = String(r.paymentStatus || '').toLowerCase();
-      if (r.payslipGenerated || r.generatedAt || ['payslip_generated', 'approved', 'paid'].includes(pr)) generated++;
-      if (pr === 'approved' || r.approvedAt) approved++;
-      if (pay === 'paid' || pr === 'paid') paid++;
+      const isPaid = pay === 'paid' || pr === 'paid';
+      const isApproved = isPaid || pr === 'approved' || pr === 'locked' || !!r.approvedAt;
+      // Generated = a payroll record exists past Draft (pending_approval and beyond).
+      const isGenerated = isApproved || (!!pr && pr !== 'draft') || r.payslipGenerated || !!r.generatedAt;
+      if (isGenerated) generated++;
+      if (isGenerated && !isApproved) pendingApproval++; // generated but not yet approved
+      if (isApproved) approved++;
+      if (isPaid) paid++;
       amount += r.netSalary || 0;
     }
-    return { employees: records.length, generated, approved, paid, pending: records.length - paid, amount };
+    return { employees: records.length, generated, pendingApproval, approved, paid, pending: records.length - paid, amount };
   }, [records]);
 
   const cards = [
@@ -171,21 +181,35 @@ export const PayrollWorkbench: React.FC<Props> = ({
   // ── workflow step state ────────────────────────────────────────────────
   const total = records.length;
   const allGenerated = total > 0 && m.generated >= total;
-  const allApproved = total > 0 && m.approved >= total;
+  // Approve step is "done" when every generated record has been approved (nothing
+  // left pending). It is NOT done just because 0 are approved before generation.
+  const approveDone = m.generated > 0 && m.pendingApproval === 0;
   const allPaid = total > 0 && m.paid >= total;
   const anyLocked = records.some(r => String(r.payrollStatus).toLowerCase() === 'locked' || r.lockedAt);
+
+  // ── Single workflow that respects the grid selection ──────────────────────
+  // With rows selected → the action targets ONLY those employees. With nothing
+  // selected → it falls back to the current filtered/whole-month set. The card
+  // label shows the live scope so the user always knows what will run.
+  const selCount = selectedIds.length;
+  const selSuffix = selCount > 0 ? ` (${selCount} Selected)` : '';
+  const genAction = () => (selCount > 0 && onGenerateSelected ? onGenerateSelected(selectedRecords) : onGeneratePayroll());
+  const approveAction = () => (selCount > 0 && onApprove ? onApprove(selectedIds) : onApproveAll());
+  const slipsAction = () => (selCount > 0 && onGenerateSlips ? onGenerateSlips(selectedRecords) : onGenerateSlipsAll());
+  const payAction = () => (selCount > 0 && onMarkPaid ? onMarkPaid(selectedIds) : onMarkPaidAll());
 
   const steps = [
     { key: 'attendance', title: 'Attendance Verification', icon: <CalendarCheck size={15} />, done: total > 0, status: total > 0 ? 'Attendance Ready' : 'No data',
       btn: null as any },
     { key: 'generate', title: 'Generate Payroll', icon: <Calculator size={15} />, done: allGenerated, status: allGenerated ? 'Generated' : (total > 0 ? `${m.generated}/${total}` : 'Pending'),
-      btn: perms.generate && { label: 'Generate Payroll', onClick: onGeneratePayroll } },
-    { key: 'approve', title: 'Approve Payroll', icon: <ShieldCheck size={15} />, done: allApproved, status: allApproved ? 'Approved' : (perms.approve ? `${m.approved}/${total || 0}` : 'No access'),
-      // Permission-based, not lock-based: authorized users may approve at any time
-      // (the hard lock is removed; revision history tracks any later change).
-      btn: perms.approve && { label: 'Approve Payroll', onClick: onApproveAll } },
+      btn: perms.generate && { label: `Generate Payroll${selSuffix}`, onClick: genAction } },
+    { key: 'approve', title: 'Approve Payroll', icon: <ShieldCheck size={15} />, done: approveDone,
+      // Show records AWAITING approval (generated, not yet approved) so the card
+      // immediately reflects freshly generated payroll. "Approved" when none pending.
+      status: !perms.approve ? 'No access' : approveDone ? 'Approved' : m.pendingApproval > 0 ? `${m.pendingApproval}/${total || 0} to approve` : 'Pending',
+      btn: perms.approve && { label: `Approve Payroll${selSuffix}`, onClick: approveAction } },
     { key: 'slips', title: 'Generate Salary Slips', icon: <FileText size={15} />, done: allGenerated, status: allGenerated ? 'Slips Ready' : 'Pending',
-      btn: perms.generateSlips && { label: 'Generate Salary Slips', onClick: onGenerateSlipsAll } },
+      btn: perms.generateSlips && { label: `Generate Slips${selSuffix}`, onClick: slipsAction } },
     { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
       btn: null },
     { key: 'lock', title: 'Lock Month', icon: <Lock size={15} />, done: anyLocked, status: anyLocked ? 'Locked' : 'Open',
@@ -215,7 +239,12 @@ export const PayrollWorkbench: React.FC<Props> = ({
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <div>
             <h3 className="text-sm font-bold text-slate-900">Payroll Workflow — {monthLabel}</h3>
-            <p className="text-[11px] text-slate-500">Run payroll in 6 clear steps. {anyLocked ? 'This month is locked.' : 'Complete each step in order.'}</p>
+            <p className="text-[11px] text-slate-500">
+              {selCount > 0
+                ? <>Actions apply to the <strong>{selCount} selected employee{selCount === 1 ? '' : 's'}</strong>. Clear the selection to act on the whole month.</>
+                : <>Select rows below to scope actions to specific employees — otherwise each step applies to <strong>all employees</strong> this month.</>}
+              {anyLocked ? ' This month is locked.' : ''}
+            </p>
           </div>
         </div>
         <div className="grid grid-cols-1 gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
@@ -237,7 +266,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
                   perms.markPaid && (
                     <div className="mt-auto flex flex-col gap-1.5">
                       <Button size="sm" variant="outline" onClick={onExportBank}><Banknote size={12} className="mr-1" />Bank Sheet</Button>
-                      <Button size="sm" variant="primary" onClick={onMarkPaidAll}>Mark Paid</Button>
+                      <Button size="sm" variant="primary" onClick={payAction}>{`Mark Paid${selSuffix}`}</Button>
                     </div>
                   )
                 ) : s.btn ? (
@@ -306,26 +335,12 @@ export const PayrollWorkbench: React.FC<Props> = ({
           </div>
         )}
 
-        {/* ── Selection bulk-action bar (role-gated) ── */}
+        {/* ── Selection status (feedback only — the Payroll Workflow cards above run
+            the actions, scoped to this selection). NOT a duplicate action bar. ── */}
         {someSelected && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-indigo-100 bg-indigo-50 px-4 py-2.5">
+          <div className="flex flex-wrap items-center gap-2 border-b border-indigo-100 bg-indigo-50 px-4 py-2">
             <span className="text-xs font-bold text-indigo-700">{selectedIds.length} Employee{selectedIds.length === 1 ? '' : 's'} Selected</span>
-            <span className="text-indigo-300">|</span>
-            {perms.generateSlips && onGenerateSlips && (
-              <Button size="sm" variant="outline" onClick={() => onGenerateSlips(selectedRecords)}><FileText size={12} className="mr-1" />Generate Slips</Button>
-            )}
-            {perms.approve && onApprove && (
-              <Button size="sm" variant="outline" onClick={() => onApprove(selectedIds)}><ShieldCheck size={12} className="mr-1" />Approve Payroll</Button>
-            )}
-            {perms.markPaid && onMarkPaid && (
-              <Button size="sm" variant="outline" onClick={() => onMarkPaid(selectedIds)}><Wallet size={12} className="mr-1" />Mark Paid</Button>
-            )}
-            {perms.download && (
-              <Button size="sm" variant="outline" onClick={() => onDownloadZip(selectedRecords, `Selected_Salary_Slips_${safe(monthLabel)}`)}><FileArchive size={12} className="mr-1" />Download Slips</Button>
-            )}
-            {perms.email && (
-              <Button size="sm" variant="outline" onClick={() => onEmailAll(selectedRecords)}><Send size={12} className="mr-1" />Email Slips</Button>
-            )}
+            <span className="text-[11px] text-indigo-500">↑ Use the <strong>Payroll Workflow</strong> cards above — they now act on these {selectedIds.length}.</span>
             <button onClick={clearSel} className="ml-auto text-[11px] font-semibold text-slate-500 underline hover:text-slate-700">Clear selection</button>
           </div>
         )}
@@ -359,7 +374,11 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     <td className="px-3 py-2 text-center"><input type="checkbox" checked={sel} onChange={() => toggleOne(x.r.id)} className="rounded border-slate-300" /></td>
                     <td className="px-3 py-2 text-center text-slate-400">{i + 1}</td>
                     <td className="px-2 py-2 font-bold text-slate-800">{x.code}</td>
-                    <td className="px-2 py-2 font-semibold text-slate-900">{x.name}</td>
+                    <td className="px-2 py-2 font-semibold text-slate-900">
+                      {onOpenWorksheet
+                        ? <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="text-left hover:text-indigo-600 hover:underline">{x.name}</button>
+                        : x.name}
+                    </td>
                     <td className="px-2 py-2 text-slate-600">{x.branch}</td>
                     <td className="px-2 py-2 text-slate-600">{x.dept}</td>
                     <td className="px-2 py-2 text-right text-slate-700">{inr(x.gross)}</td>
@@ -368,12 +387,14 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     <td className="px-2 py-2"><Badge variant={pb.variant}>{pb.label}</Badge></td>
                     <td className="px-2 py-2">
                       <div className="relative flex items-center justify-center gap-1">
+                        {onOpenWorksheet && <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-violet-50 hover:text-violet-600"><FileSpreadsheet size={14} /></button>}
                         <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"><Eye size={14} /></button>
                         <button title="Download PDF" onClick={() => onDownloadPdf(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"><Download size={14} /></button>
                         <button title="More" onClick={() => setOpenMenu(openMenu === x.r.id ? null : x.r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><MoreVertical size={14} /></button>
                         {openMenu === x.r.id && (
                           <div className="absolute right-0 top-8 z-30 w-44 rounded-xl border border-slate-150 bg-white py-1 shadow-lg">
                             {[
+                              ...(onOpenWorksheet ? [{ ic: <FileSpreadsheet size={13} />, label: 'Open Salary Worksheet', fn: () => onOpenWorksheet(x.r) }] : []),
                               { ic: <Eye size={13} />, label: 'View Salary Slip', fn: () => onView(x.r) },
                               { ic: <Download size={13} />, label: 'Download PDF', fn: () => onDownloadPdf(x.r) },
                               { ic: <Printer size={13} />, label: 'Print Slip', fn: () => onPrint(x.r) },

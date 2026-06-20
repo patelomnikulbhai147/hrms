@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { Badge } from './Badge';
 import { Download, FileSpreadsheet, FileText, Filter, Users, DollarSign, Calendar, CheckSquare, Settings2, DownloadCloud } from 'lucide-react';
 import { exportToExcel } from '../../utils/exportUtils';
+import { ui } from './feedback';
 import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../../data/mockData';
 import { resolveActiveWorkspace } from '../../types';
 
@@ -197,7 +198,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
       onClose();
     } catch (e) {
       console.error(e);
-      alert("Failed to export data.");
+      ui.toast.error("Failed to export data.");
     } finally {
       setIsExporting(false);
     }

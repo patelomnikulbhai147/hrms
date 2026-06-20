@@ -25,6 +25,7 @@ import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { ui } from '../components/ui/feedback';
 
 const LEAVE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Employee', key: 'employeeName', width: 24 },
@@ -345,7 +346,7 @@ export const Leaves: React.FC<LeavesProps> = ({
   const handleApply = async () => {
     if (!selectedEmp) {
       setNameError('Please select a valid employee from the autocomplete search.');
-      alert('Error: Please select a valid employee from the autocomplete search.');
+      ui.toast.error('Error: Please select a valid employee from the autocomplete search.');
       return;
     }
 
@@ -355,7 +356,7 @@ export const Leaves: React.FC<LeavesProps> = ({
     const available = balanceForType(selectedEmp.id, form.leaveType);
     if (cat && cat !== 'LWP' && reqDays > available) {
       const label = cat === 'CL' ? 'Casual' : cat === 'PL' ? 'Privilege' : 'Sick';
-      alert(`Insufficient ${label} Leave Balance (available ${available}, requested ${reqDays}).\n\nUse "Unpaid (LWP)" if this leave must be taken without balance.`);
+      await ui.alert({ message: `Insufficient ${label} Leave Balance (available ${available}, requested ${reqDays}).\n\nUse "Unpaid (LWP)" if this leave must be taken without balance.`, variant: 'warning' });
       return;
     }
 
@@ -382,10 +383,10 @@ export const Leaves: React.FC<LeavesProps> = ({
       setNameError('');
       setSelectedEmp(null);
       setSearchQuery('');
-      alert('Leave request submitted successfully.');
+      ui.toast.success('Leave request submitted successfully.');
     } catch (e: any) {
       // Surface the server's balance rejection (409) verbatim.
-      alert(e?.message || 'Failed to save leave request to server.');
+      ui.toast.error(e?.message || 'Failed to save leave request to server.');
     }
   };
 
@@ -405,9 +406,9 @@ export const Leaves: React.FC<LeavesProps> = ({
       const saved = await api.leaves.update(updated.id, updated);
       onUpdateLeaves(leaves.map(l => (l.id === editLeave.id ? saved : l)));
       setEditLeave(null);
-      alert('Leave request updated successfully.');
+      ui.toast.success('Leave request updated successfully.');
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not update the leave request.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the leave request.'));
     }
   };
 
@@ -418,9 +419,9 @@ export const Leaves: React.FC<LeavesProps> = ({
     try {
       const saved = await api.leaves.update(leaveId, updated);
       onUpdateLeaves(leaves.map(l => (l.id === leaveId ? saved : l)));
-      alert(`Leave status updated to ${nextStatus}.`);
+      ui.toast.success(`Leave status updated to ${nextStatus}.`);
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not update the leave status.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the leave status.'));
     }
   };
 

@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../../api/apiClient';
 import { buildWorkspaceHierarchy } from '../../utils/workspaceUtils';
 import { resolveActiveWorkspace } from '../../types';
+import { ui } from '../ui/feedback';
 
 
 interface TopbarProps {
@@ -450,7 +451,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       )}
                       {companyNotifs.length > 0 && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); if (!window.confirm('Clear all notifications?')) return; api.notifications.clearAll().then(() => onUpdateNotifications([])).catch(() => {}); }}
+                          onClick={async (e) => { e.stopPropagation(); if (!(await ui.confirm({ message: 'Clear all notifications?', variant: 'danger', confirmText: 'Clear all' }))) return; api.notifications.clearAll().then(() => onUpdateNotifications([])).catch(() => {}); }}
                           className="text-[10px] font-bold text-rose-400 hover:text-rose-300" title="Clear all notifications"
                         >Clear all</button>
                       )}
@@ -481,7 +482,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              api.notifications.delete(n.id).then(() => onUpdateNotifications(prev => prev.filter(item => item.id !== n.id))).catch((err: any) => alert(getApiErrorMessage(err, 'Could not delete the notification.')));
+                              api.notifications.delete(n.id).then(() => onUpdateNotifications(prev => prev.filter(item => item.id !== n.id))).catch((err: any) => ui.toast.error(getApiErrorMessage(err, 'Could not delete the notification.')));
                             }}
                             title="Delete notification"
                             className="text-slate-500 hover:text-rose-400 hover:bg-rose-955/40 p-1 rounded-md transition-all flex-shrink-0"
