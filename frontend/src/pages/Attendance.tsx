@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
 import { Badge } from '../components/ui/Badge';
@@ -34,8 +35,21 @@ interface AttendanceCenterProps {
 const today = new Date().toISOString().split('T')[0];
 
 const ATTENDANCE_STATUS_OPTIONS = [
-  'Present', 'Absent', 'Half Day', 'Weekly Off', 'Holiday', 
+  'Present', 'Absent', 'Half Day', 'Weekly Off', 'Holiday',
   'Leave', 'Work From Home', 'On Duty'
+];
+
+// The exact set of statuses offered when editing a Weekly Attendance cell. The
+// `value` is the stored status (must match resolveStatus/bucketOf); the label
+// shows the short code. Any current status can be changed to any of these.
+const WEEKLY_CELL_STATUSES: { value: string; label: string; dot: string }[] = [
+  { value: 'Present', label: 'Present (P)', dot: 'bg-emerald-500' },
+  { value: 'Absent', label: 'Absent (A)', dot: 'bg-rose-500' },
+  { value: 'Leave', label: 'Leave (L)', dot: 'bg-indigo-500' },
+  { value: 'Half Day', label: 'Half Day (HD)', dot: 'bg-orange-500' },
+  { value: 'Work From Home', label: 'Work From Home (WFH)', dot: 'bg-purple-500' },
+  { value: 'Holiday', label: 'Holiday (H)', dot: 'bg-gray-400' },
+  { value: 'Weekly Off', label: 'Weekly Off (WO)', dot: 'bg-slate-300' },
 ];
 
 const ATTENDANCE_FLAG_OPTIONS = [
@@ -128,11 +142,18 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const [attendanceAnalytics, setAttendanceAnalytics] = useState<any>(null);
 
-  // DB-backed editable monthly attendance summaries (source of truth for payroll).
+  // DB-backed monthly attendance summaries (the materialized roll-up payroll reads).
+  // The single source of truth is the raw `attendance` table; this summary is its
+  // per-month materialization, recomputed from raw attendance and overlaid on the
+  // Monthly grid so a saved correction shows immediately.
   const [dbSummaries, setDbSummaries] = useState<Record<string, any>>({});
   const [summaryRefresh, setSummaryRefresh] = useState(0);
-  const SUMMARY_MONTH = 'June';
-  const SUMMARY_YEAR = 2026;
+  const SUMMARY_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  // Summary month/year follow the VIEWED date. (Previously hardcoded to June 2026,
+  // so the monthly Edit always targeted June and other months never refreshed.)
+  const summaryDate = new Date(selectedDate);
+  const SUMMARY_MONTH = SUMMARY_MONTH_NAMES[isNaN(summaryDate.getTime()) ? new Date().getMonth() : summaryDate.getMonth()];
+  const SUMMARY_YEAR = isNaN(summaryDate.getTime()) ? new Date().getFullYear() : summaryDate.getFullYear();
   const loadSummaries = () => api.attendanceSummary.getAll(SUMMARY_MONTH, SUMMARY_YEAR)
     .then((rows: any[]) => {
       const map: Record<string, any> = {};
@@ -149,7 +170,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       api.attendance.getAnalytics(activeCompanyId, today).then(res => setAttendanceAnalytics(res)).catch(console.error);
       loadSummaries();
     }
-  }, [activeCompanyId, attendance, leaves, employees, summaryRefresh]);
+    // selectedDate is included so the summary reloads when the viewed month changes.
+  }, [activeCompanyId, attendance, leaves, employees, summaryRefresh, SUMMARY_MONTH, SUMMARY_YEAR]);
 
   // ── Edit Attendance (monthly summary) modal ──
   const [editSummary, setEditSummary] = useState<any | null>(null);
@@ -174,18 +196,25 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const saveSummary = async () => {
     if (!editSummary) return;
     setSavingSummary(true);
+    const payload = {
+      presentDays: Number(summaryForm.presentDays), absentDays: Number(summaryForm.absentDays),
+      cl: Number(summaryForm.cl), pl: Number(summaryForm.pl), sl: Number(summaryForm.sl),
+      lwp: Number(summaryForm.lwp), halfDays: Number(summaryForm.halfDays), otHours: Number(summaryForm.otHours),
+      shift: summaryForm.shift,
+    };
+    // ── Debug: log record BEFORE update + the payload being sent ──
+    console.debug('[Attendance] saveSummary BEFORE', { id: editSummary.id, employee: editSummary.employeeName, before: editSummary, payload });
     try {
-      await api.attendanceSummary.update(editSummary.id, {
-        presentDays: Number(summaryForm.presentDays), absentDays: Number(summaryForm.absentDays),
-        cl: Number(summaryForm.cl), pl: Number(summaryForm.pl), sl: Number(summaryForm.sl),
-        lwp: Number(summaryForm.lwp), halfDays: Number(summaryForm.halfDays), otHours: Number(summaryForm.otHours),
-        shift: summaryForm.shift,
-      });
+      const dbRes = await api.attendanceSummary.update(editSummary.id, payload);
+      // ── Debug: log DB response + value-match check ──
+      console.debug('[Attendance] saveSummary DB RESPONSE', dbRes);
+      console.debug('[Attendance] saveSummary AFTER (UI overlay will show)', { matches: dbRes && Number(dbRes.presentDays) === payload.presentDays });
       setEditSummary(null);
-      setSummaryRefresh(x => x + 1);
-      onRefresh?.();   // attendance is source of truth — payroll already auto-synced server-side; refresh app data so dashboard/reports/payroll reflect it with no manual step
+      setSummaryRefresh(x => x + 1);   // reloads dbSummaries → Monthly overlay reflects immediately
+      onRefresh?.();                   // refresh app data so dashboard/reports/payroll reflect it with no manual step
       alert('Attendance updated. Payroll, dashboard and reports have been recalculated automatically.');
     } catch (e: any) {
+      console.error('[Attendance] saveSummary FAILED', e);
       alert(e?.message || 'Failed to save attendance summary.');
     } finally {
       setSavingSummary(false);
@@ -249,10 +278,38 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const periodDates = useMemo(() => eachDateInRange(period.start, period.end), [period]);
 
   // Per-employee summary across the active period (Monthly / Custom / Weekly totals).
+  // Always computed LIVE from the raw `attendance` source of truth, so every field
+  // (Present/Absent/Leave/Half/WFH/Holiday/WeeklyOff/OT/WorkDays/LOP/Payable) recalcs
+  // the instant any day is edited in Daily or Weekly — no manual refresh needed.
   const periodSummaries = useMemo(
     () => periodEmployees.map(e => summarizeEmployeePeriod(e, periodDates, attendance, leaves, overtimeData)),
     [periodEmployees, periodDates, attendance, leaves, overtimeData]
   );
+
+  // Monthly display rows = live computed roll-up, with a saved payroll override
+  // (dbSummaries, edited via the Monthly "Edit" modal) overlaid when present. This
+  // makes a saved correction reflect immediately while leaving every non-overridden
+  // employee fully live from raw attendance. `adjusted` flags an overlaid row.
+  const monthlyDisplaySummaries = useMemo(() => {
+    if (periodMode !== 'monthly') return periodSummaries;
+    return periodSummaries.map(s => {
+      const stored = dbSummaries[String(s.employeeId)];
+      if (!stored) return s;
+      const present = Number(stored.presentDays ?? s.present);
+      const absent = Number(stored.absentDays ?? s.absent);
+      const leave = Number((stored.cl ?? 0) + (stored.pl ?? 0) + (stored.sl ?? 0)) || s.leave;
+      const half = Number(stored.halfDays ?? s.half);
+      const lwp = Number(stored.lwp ?? 0);
+      const otHours = Number(stored.otHours ?? s.otHours);
+      return {
+        ...s,
+        present, absent, leave, half, otHours,
+        lop: absent + lwp,
+        payableDays: Math.round((present + half * 0.5 + leave + s.weeklyOff + s.holiday + s.wfh) * 100) / 100,
+        adjusted: true,
+      } as typeof s & { adjusted?: boolean };
+    });
+  }, [periodMode, periodSummaries, dbSummaries]);
 
   // Yearly 12-month aggregate for the analytics view.
   const yearlyData = useMemo(
@@ -395,19 +452,25 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           // updated.id is numeric for persisted rows and a "new-…" string only for
           // unsaved ones — coerce so numeric ids don't throw on .startsWith.
           if (!String(updated.id).startsWith('new-')) {
-            await api.attendance.update(updated.id, updated);
+            await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance' });
           }
         } else {
           // Is new
           const rec = dailyRecords.find(r => r.id === id);
           if (rec) {
-             const newRec = { ...rec, id: undefined, status: status as any };
+             const newRec = { ...rec, id: undefined, status: status as any, source: 'Daily Attendance' };
              const dbRes = await api.attendance.create(newRec);
              updatedAttendance.push(dbRes);
           }
         }
       }));
       onUpdateAttendance(updatedAttendance);
+      // Keep the materialized monthly summary + payroll in sync with these raw edits.
+      const empIds = Array.from(new Set(selectedIds.map(id => {
+        const inAtt = updatedAttendance.find(a => String(a.id) === String(id));
+        return inAtt?.employeeId ?? dailyRecords.find(r => r.id === id)?.employeeId;
+      }).filter(Boolean)));
+      if (empIds.length) recalcSummaryAfterEdit(selectedDate, empIds);
       setSelectedIds([]);
       alert(`Bulk action successful! ${selectedIds.length} employees marked as ${status}. Saved to the database.`);
     } catch (e) {
@@ -427,22 +490,117 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         updatedAttendance[existingIdx] = updated;
         // Coerce: numeric ids (persisted rows) must not throw on .startsWith.
         if (!String(updated.id).startsWith('new-')) {
-           await api.attendance.update(updated.id, updated);
+           await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance' });
         } else {
-           const dbRes = await api.attendance.create({...updated, id: undefined});
+           const dbRes = await api.attendance.create({...updated, id: undefined, source: 'Daily Attendance'});
            updatedAttendance[existingIdx] = dbRes;
         }
       } else {
         const rec = dailyRecords.find(r => r.id === id);
         if (rec) {
-          const dbRes = await api.attendance.create({ ...rec, id: undefined, status: status as any });
+          const dbRes = await api.attendance.create({ ...rec, id: undefined, status: status as any, source: 'Daily Attendance' });
           updatedAttendance.push(dbRes);
         }
       }
       onUpdateAttendance(updatedAttendance);
+      // Keep the materialized monthly summary + payroll in sync with this raw edit.
+      const empId = (existingIdx >= 0 ? updatedAttendance[existingIdx]?.employeeId : dailyRecords.find(r => r.id === id)?.employeeId);
+      if (empId) recalcSummaryAfterEdit(selectedDate, [empId]);
     } catch (e) {
       console.error(e);
       alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
+    }
+  };
+
+  // ── Weekly grid editing ─────────────────────────────────────────────────────
+  // Weekly is now fully editable like Daily/Monthly. It writes to the SAME raw
+  // `attendance` records (single source of truth) via the same create/update API,
+  // so a change here reflects instantly in the Daily entry grid and the Monthly
+  // summary (both derive from `attendance` via resolveStatus/summarizeEmployeePeriod),
+  // and — through the server's payroll-outdated flagging — in Payroll, Overtime,
+  // Leave and Reports. Editing is gated on the SAME `isAdmin` rule as Daily so the
+  // permission model never differs between views.
+  // The open cell editor: which cell + the viewport anchor (rect) so the dropdown
+  // renders via a portal at a FIXED position below the clicked cell — never clipped
+  // by the table's overflow/scroll containers.
+  const [cellMenu, setCellMenu] = useState<{ key: string; emp: any; date: string; status: string; top: number; left: number } | null>(null);
+  const [savingCell, setSavingCell] = useState<string | null>(null);   // cell currently saving
+
+  // Keyboard support for the status dropdown (Up/Down to move, Esc to close;
+  // Enter/Space select via native button behaviour).
+  const handleCellMenuKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[role="option"]'));
+    const idx = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); (items[Math.min(idx + 1, items.length - 1)] || items[0])?.focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); (items[Math.max(idx - 1, 0)] || items[items.length - 1])?.focus(); }
+    else if (e.key === 'Escape') { e.preventDefault(); setCellMenu(null); }
+  };
+
+  // Close the status dropdown if the page/table scrolls or the window resizes, so
+  // the fixed-position menu never drifts away from its anchor cell.
+  useEffect(() => {
+    if (!cellMenu) return;
+    const close = () => setCellMenu(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
+  }, [cellMenu]);
+  const [weeklyMsg, setWeeklyMsg] = useState<string>('');
+  const flashWeekly = (m: string) => { setWeeklyMsg(m); window.setTimeout(() => setWeeklyMsg(''), 2800); };
+
+  // Skeleton for an employee/date that has no stored row yet — mirrors the Daily
+  // `dailyRecords` synthesis so a first-time mark creates a proper record.
+  const buildNewRecord = (emp: any, date: string, status: string) => ({
+    companyId: emp.companyId, employeeId: emp.id, employeeName: emp.name,
+    department: emp.department, branch: emp.branchLocation || 'Head Office',
+    date, clockIn: '', clockOut: '', hoursWorked: 0, status, flags: [] as any[],
+    source: 'Weekly Attendance',
+  });
+
+  // After a raw-attendance edit, re-materialize that month's summary FROM raw
+  // attendance (single source of truth) so the Monthly grid overlay and Payroll
+  // stay in lock-step. Best-effort: the live computed views already updated from
+  // local state, so this never blocks the UI.
+  const recalcSummaryAfterEdit = (dateStr: string, empIds: any[]) => {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return;
+    const month = SUMMARY_MONTH_NAMES[d.getMonth()];
+    const year = d.getFullYear();
+    api.attendanceSummary.recompute({ month, year, companyId: activeCompanyId, employeeIds: empIds })
+      .then((res: any) => { console.debug('[Attendance] summary recomputed from raw attendance', { month, year, empIds, res }); setSummaryRefresh(x => x + 1); })
+      .catch((err: any) => console.debug('[Attendance] summary recompute skipped:', err?.message));
+  };
+
+  const markCell = async (emp: any, date: string, status: string) => {
+    if (!isAdmin) return;
+    setCellMenu(null);
+    const existing = attendance.find(a => String(a.employeeId) === String(emp.id) && a.date === date);
+    const current = resolveStatus(emp.id, date, attendance, leaves).status;
+    // Prevent accidental/redundant overwrite — a no-op selection writes nothing.
+    if (existing && status === current) return;
+    const key = `${emp.id}|${date}`;
+    setSavingCell(key);
+    // ── Debug: record BEFORE state (req: log before update) ──
+    console.debug('[Attendance] markCell BEFORE', { employee: emp.name, employeeId: emp.id, date, from: current, to: status, existingId: existing?.id ?? '(none → will create)' });
+    try {
+      let dbRes: any;
+      if (existing && !String(existing.id).startsWith('new-')) {
+        dbRes = await api.attendance.update(existing.id, { ...existing, status, source: 'Weekly Attendance' });
+        onUpdateAttendance(attendance.map(a => a.id === existing.id ? dbRes : a));
+      } else {
+        dbRes = await api.attendance.create(buildNewRecord(emp, date, status));
+        onUpdateAttendance([...attendance.filter(a => !(String(a.employeeId) === String(emp.id) && a.date === date)), dbRes]);
+      }
+      // ── Debug: DB response + AFTER state, and value-match check ──
+      console.debug('[Attendance] markCell DB RESPONSE', dbRes);
+      console.debug('[Attendance] markCell AFTER (UI will show)', { date, persistedStatus: dbRes?.status, matches: dbRes?.status === status });
+      recalcSummaryAfterEdit(date, [emp.id]);
+      flashWeekly(`${emp.name} · ${new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} → ${status}. Saved & synced across Daily, Monthly, Payroll & Reports.`);
+    } catch (e) {
+      console.error('[Attendance] markCell FAILED', e);
+      alert(getApiErrorMessage(e, 'Could not save attendance to the database.'));
+    } finally {
+      setSavingCell(null);
     }
   };
 
@@ -1082,13 +1240,18 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <Card padding={false} className="overflow-hidden border-slate-200">
             <div className="p-3 border-b border-slate-100 bg-slate-50">
               <h4 className="font-bold text-sm text-slate-800">Weekly Attendance Grid</h4>
-              <p className="text-[10px] text-slate-500">{period.label} · P=Present A=Absent L=Leave HD=Half WFH=Work From Home H=Holiday WO=Weekly Off</p>
+              <p className="text-[10px] text-slate-500">{period.label} · P=Present A=Absent L=Leave HD=Half WFH=Work From Home H=Holiday WO=Weekly Off{isAdmin ? ' · Click any cell to edit — saves instantly and syncs everywhere.' : ''}</p>
             </div>
+            {weeklyMsg && (
+              <div className="px-3 py-2 bg-emerald-50 border-b border-emerald-200 text-[11px] font-semibold text-emerald-700 flex items-center gap-1.5">
+                <CheckCircle2 size={13} /> {weeklyMsg}
+              </div>
+            )}
             <div className="overflow-x-auto">
               <Table>
                 <Thead className="bg-slate-100">
                   <tr>
-                    <Th>Employee</Th>
+                    <Th className="sticky left-0 z-20 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]">Employee</Th>
                     {periodDates.map((d, i) => (
                       <Th key={d} className="text-center whitespace-nowrap">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}<div className="text-[9px] font-normal text-slate-400">{d.slice(5)}</div></Th>
                     ))}
@@ -1101,14 +1264,38 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   ) : periodEmployees.map(emp => {
                     let present = 0;
                     return (
-                      <Tr key={emp.id} className="hover:bg-slate-50">
-                        <Td><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
+                      <Tr key={emp.id} className="hover:bg-slate-50 group">
+                        <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]"><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
                         {periodDates.map(d => {
-                          const { status } = resolveStatus(emp.id, d, attendance, leaves);
+                          const { status, leaveType } = resolveStatus(emp.id, d, attendance, leaves);
                           const bucket = bucketOf(status);
                           if (bucket === 'present') present++;
-                          const color = bucket === 'present' ? 'bg-emerald-100 text-emerald-700' : bucket === 'absent' ? 'bg-rose-100 text-rose-700' : bucket === 'leave' ? 'bg-indigo-100 text-indigo-700' : bucket === 'half' ? 'bg-orange-100 text-orange-700' : bucket === 'wfh' ? 'bg-purple-100 text-purple-700' : bucket === 'holiday' ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-slate-100 text-slate-500';
-                          return <Td key={d} className="text-center"><span className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold ${color}`}>{statusCode(status)}</span></Td>;
+                          // Color coding: Present=green, Absent=red, Leave=blue,
+                          // Half Day=orange, WFH=purple, Holiday=gray, Weekly Off=light gray.
+                          const color = bucket === 'present' ? 'bg-emerald-100 text-emerald-700' : bucket === 'absent' ? 'bg-rose-100 text-rose-700' : bucket === 'leave' ? 'bg-indigo-100 text-indigo-700' : bucket === 'half' ? 'bg-orange-100 text-orange-700' : bucket === 'wfh' ? 'bg-purple-100 text-purple-700' : bucket === 'holiday' ? 'bg-gray-300 text-gray-700' : 'bg-slate-100 text-slate-500';
+                          const key = `${emp.id}|${d}`;
+                          const isSaving = savingCell === key;
+                          const isEditing = cellMenu?.key === key;
+                          const dateLabel = new Date(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+                          const fullLabel = `${status}${leaveType ? ` (${leaveType})` : ''} · ${dateLabel}`;
+                          return (
+                            <Td key={d} className="text-center">
+                              <button
+                                type="button"
+                                disabled={!isAdmin || isSaving}
+                                title={isAdmin ? `${fullLabel} — click to edit` : fullLabel}
+                                onClick={(e) => {
+                                  if (!isAdmin) return;
+                                  if (isEditing) { setCellMenu(null); return; }
+                                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                                  setCellMenu({ key, emp, date: d, status, top: r.bottom + 6, left: r.left + r.width / 2 });
+                                }}
+                                className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold transition-all ${color} ${isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : 'cursor-default'} ${isEditing ? 'ring-2 ring-blue-500' : ''} ${isSaving ? 'opacity-50' : ''}`}
+                              >
+                                {isSaving ? '…' : statusCode(status)}
+                              </button>
+                            </Td>
+                          );
                         })}
                         <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{present}</span></Td>
                       </Tr>
@@ -1118,6 +1305,44 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </Table>
             </div>
           </Card>
+        )}
+
+        {/* Attendance-status dropdown — rendered in a portal at a fixed position
+            anchored to the clicked cell, so it never gets clipped by the table's
+            scroll/overflow and always opens cleanly below the cell. */}
+        {cellMenu && createPortal(
+          <>
+            {/* click-away / scroll catcher */}
+            <div className="fixed inset-0 z-[1000]" onClick={() => setCellMenu(null)} />
+            <div
+              role="listbox"
+              aria-label="Attendance Status"
+              onKeyDown={handleCellMenuKey}
+              style={{ position: 'fixed', top: cellMenu.top, left: Math.min(Math.max(8, cellMenu.left - 104), (typeof window !== 'undefined' ? window.innerWidth : 1024) - 216) }}
+              className="z-[1001] w-52 rounded-xl border border-slate-200 bg-white shadow-2xl py-1 overflow-hidden"
+            >
+              <div className="px-3 py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100">Attendance Status</div>
+              {WEEKLY_CELL_STATUSES.map((opt, idx) => {
+                const selected = opt.value === cellMenu.status;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    autoFocus={selected || (idx === 0 && !WEEKLY_CELL_STATUSES.some(o => o.value === cellMenu.status))}
+                    onClick={() => markCell(cellMenu.emp, cellMenu.date, opt.value)}
+                    className={`w-full flex items-center gap-2.5 text-left px-3 py-2 text-xs transition-colors focus:outline-none hover:bg-blue-50 focus:bg-blue-50 ${selected ? 'font-bold text-blue-600 bg-blue-50/60' : 'text-slate-700'}`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${opt.dot}`} />
+                    <span className="flex-1">{opt.label}</span>
+                    {selected && <Check size={14} className="text-blue-600" />}
+                  </button>
+                );
+              })}
+            </div>
+          </>,
+          document.body
         )}
 
         {/* MONTHLY / CUSTOM summary view */}
@@ -1133,21 +1358,26 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               <Table>
                 <Thead className="bg-slate-100">
                   <tr>
-                    <Th className="text-center">Sr No</Th><Th>Employee</Th><Th>Dept</Th>
+                    <Th className="text-center">Sr No</Th>
+                    <Th className="sticky left-0 z-20 bg-slate-100 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]">Employee</Th>
+                    <Th>Dept</Th>
                     <Th className="text-center">P</Th><Th className="text-center">A</Th><Th className="text-center">L</Th>
                     <Th className="text-center">HD</Th><Th className="text-center">WFH</Th><Th className="text-center">H</Th><Th className="text-center">WO</Th>
                     <Th className="text-center">Late</Th><Th className="text-center">OT Hrs</Th>
                     <Th className="text-center">Work Days</Th><Th className="text-center">LOP</Th><Th className="text-center">Payable</Th>
-                    {isAdmin && <Th className="text-center">Edit</Th>}
+                    {isAdmin && <Th className="text-center sticky right-0 z-20 bg-slate-100 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.15)]">Edit</Th>}
                   </tr>
                 </Thead>
                 <Tbody>
-                  {periodSummaries.length === 0 ? (
+                  {monthlyDisplaySummaries.length === 0 ? (
                     <Tr><Td colSpan={isAdmin ? 16 : 15} className="text-center text-xs text-slate-500 py-8">No employees match the current filters.</Td></Tr>
-                  ) : periodSummaries.map((s, i) => (
-                    <Tr key={s.employeeId} className="hover:bg-slate-50">
+                  ) : monthlyDisplaySummaries.map((s: any, i: number) => (
+                    <Tr key={s.employeeId} className="hover:bg-slate-50 group">
                       <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
-                      <Td><div className="font-bold text-slate-800 text-xs">{s.employeeName}</div><div className="text-[10px] text-slate-500">{s.employeeCode}</div></Td>
+                      <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]">
+                        <div className="font-bold text-slate-800 text-xs flex items-center gap-1">{s.employeeName}{s.adjusted && <span title="Manually adjusted for payroll" className="text-[8px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1 rounded">ADJ</span>}</div>
+                        <div className="text-[10px] text-slate-500">{s.employeeCode}</div>
+                      </Td>
                       <Td><span className="text-[10px] text-slate-500">{s.department}</span></Td>
                       <Td className="text-center text-xs font-bold text-emerald-600">{s.present}</Td>
                       <Td className="text-center text-xs font-bold text-rose-600">{s.absent}</Td>
@@ -1162,7 +1392,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Td className="text-center text-xs font-bold text-rose-500">{s.lop}</Td>
                       <Td className="text-center text-xs font-bold text-blue-600">{s.payableDays}</Td>
                       {isAdmin && (
-                        <Td className="text-center">
+                        <Td className="text-center sticky right-0 z-10 bg-white group-hover:bg-slate-50 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.15)]">
                           {dbSummaries[String(s.employeeId)]?.locked ? (
                             <span className="text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Month Locked</span>
                           ) : (

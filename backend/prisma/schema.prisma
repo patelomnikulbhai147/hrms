@@ -88,7 +88,7 @@ model Company {
   primaryColor                String?
   profTaxRate                 Float?
   themeStyle                  String?
-  // ── Company branding (managed via Settings → Company Branding) ──
+  // ── Company branding (managed via Settings → Company Profile & Branding) ──
   shortName                   String?
   tagline                     String?
   website                     String?
@@ -96,6 +96,19 @@ model Company {
   contactNumber               String?
   address                     String?  @db.Text
   description                 String?  @db.Text
+  // ── Company profile identity (Settings → Company Profile & Branding) ──
+  companyCode                 String?
+  registrationNumber          String?
+  panNumber                   String?
+  cinNumber                   String?
+  city                        String?
+  state                       String?
+  pincode                     String?
+  emailSignature              String?  @db.Text
+  // Digital assets (base64 data URLs)
+  faviconImage                String?  @db.LongText
+  stampImage                  String?  @db.LongText
+  digitalSignatureImage       String?  @db.LongText
   activeHrUsers               Int?
   billingAddress              String?
   billingCycle                String?
@@ -188,6 +201,15 @@ model AttendanceDevice {
   lastTestAt         DateTime?  // Phase 5: last "Test Connection" run
   lastTestStatus     String?    // CONNECTED / FAILED
   lastTestResponseMs Int?       // round-trip connect time in ms
+  // ── Phase 2: device configuration storage (vendor-driven; no sync yet) ──
+  attendanceVendor String?   // vendor name; validated against the attendance_vendors registry (NOT a hardcoded list)
+  apiBaseUrl       String?   @db.Text // per-device API base URL (overrides the vendor default; fully configurable)
+  corporateId      String?   // vendor portal corporate / company id
+  apiUsername      String?   // vendor API username
+  apiPassword      String?   @db.Text // vendor API password — stored ENCRYPTED (AES-256-GCM), never returned in plaintext
+  deviceLocation   String?   // free-text physical location
+  syncEnabled      Boolean   @default(false) // future-sync opt-in flag (no effect yet)
+  syncIntervalMinutes Int?   // optional per-device sync cadence (config only; no scheduler yet)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -196,6 +218,273 @@ model AttendanceDevice {
   @@index([companyId])
   @@index([branchId])
   @@map("attendance_devices")
+}
+
+// ── Attendance vendor registry ──────────────────────────────────────────────
+// Configurable catalog of attendance API vendors. New vendors (eSSL, Matrix,
+// ZKTeco, BioMax, …) are added as ROWS here (via the Super-Admin vendor API or a
+// seed) — NOT by changing code. Per-vendor defaults (base URL, auth type, free
+// settings JSON) live here so nothing vendor-specific is hardcoded in the app.
+model AttendanceVendor {
+  id             Int      @id @default(autoincrement())
+  name           String   @unique          // canonical name, e.g. "E-TimeOffice"
+  displayName    String?                    // friendly label, e.g. "E-TimeOffice (Pulpit Mobility)"
+  defaultBaseUrl String?  @db.Text          // default API base URL (editable; used to prefill a device)
+  authType       String?                    // BASIC / TOKEN / NONE — informational
+  isActive       Boolean  @default(true)
+  notes          String?  @db.Text
+  settings       String?  @db.LongText      // arbitrary JSON for vendor-specific options (no code change needed)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("attendance_vendors")
+}
+
+// ── Pre-Phase 5 safety: attendance import log ───────────────────────────────
+// One row per evaluated punch recording the matching VERDICT. This is an audit
+// trail only — it is NOT the attendance table and never marks anyone present.
+model AttendanceImportLog {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  deviceId      Int?
+  biometricCode String?
+  employeeId    Int?      // resolved Employee.id (null when unmatched)
+  employeeCode  String?   // snapshot of the business Employee ID, for readability
+  employeeName  String?   // snapshot
+  punchTime     String?
+  status        String    // MATCHED / NO_BIOMETRIC_CODE / UNMATCHED / DUPLICATE_CODE
+  message       String?   @db.Text
+  importDate    DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([status])
+  @@map("attendance_import_logs")
+}
+
+// ── Pre-Phase 5 safety: unmatched attendance queue ──────────────────────────
+// Punches that could NOT be safely matched (blank code / no match / duplicate
+// code) are parked here for an admin to resolve. No attendance is created.
+model UnmatchedAttendance {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  deviceId      Int?
+  biometricCode String?
+  punchTime     String?
+  reason        String    // NO_BIOMETRIC_CODE / UNMATCHED / DUPLICATE_CODE
+  message       String?   @db.Text
+  rawPayload    String?   @db.Text
+  resolved      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([resolved])
+  @@map("unmatched_attendance_queue")
+}
+
+// ── Bonus Management — separate bonus transaction system ─────────────────────
+// Deliberately decoupled from the Employee table: bonus changes yearly, supports
+// multiple types, must keep full audit history, and integrates with payroll.
+
+// Per-company, per-financial-year bonus rules (template the cycles use).
+model BonusConfiguration {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int
+  bonusType            String   // Statutory / Festival / Performance / Ex-Gratia / Special
+  financialYear        String   // e.g. "2024-2025"
+  minBonusPercent      Float    @default(8.33)
+  maxBonusPercent      Float    @default(20)
+  salaryCeiling        Float?   // statutory wage ceiling (e.g. 21000)
+  minWorkingDays       Int      @default(30)
+  includeLeaveDays     Boolean  @default(true)
+  includeOvertime      Boolean  @default(false)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, financialYear])
+  @@map("bonus_configurations")
+}
+
+// A bonus run for a company / FY / type. Drives the approval workflow.
+model BonusCycle {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int
+  configId             Int?
+  name                 String
+  bonusType            String
+  financialYear        String
+  status               String   @default("Draft") // Draft / Calculated / Approved / Paid / Cancelled
+  totalAmount          Float    @default(0)
+  employeeCount        Int      @default(0)
+  generatedBy          Int?
+  approvedBy           Int?
+  releasedBy           Int?
+  generatedAt          DateTime?
+  approvedAt           DateTime?
+  paidAt               DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@map("bonus_cycles")
+}
+
+// Per-employee eligibility within a cycle.
+model BonusEligibility {
+  id                   Int      @id @default(autoincrement())
+  cycleId              Int
+  companyId            Int
+  employeeId           Int
+  workingDays          Int      @default(0)
+  eligibilityStatus    String   @default("Pending Verification") // Eligible / Not Eligible / Pending Verification
+  reason               String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([cycleId])
+  @@index([companyId])
+  @@map("bonus_eligibility")
+}
+
+// Per-employee calculated bonus within a cycle (supports manual override).
+model BonusCalculation {
+  id                   Int      @id @default(autoincrement())
+  cycleId              Int
+  companyId            Int
+  employeeId           Int
+  eligibleSalary       Float    @default(0)
+  bonusPercent         Float    @default(0)
+  bonusAmount          Float    @default(0)
+  isManualOverride     Boolean  @default(false)
+  overrideBy           Int?
+  notes                String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([cycleId])
+  @@index([companyId])
+  @@map("bonus_calculations")
+}
+
+// Payment records (release stage).
+model BonusPayment {
+  id                   Int      @id @default(autoincrement())
+  cycleId              Int
+  companyId            Int
+  employeeId           Int
+  amount               Float    @default(0)
+  paymentDate          DateTime?
+  paymentMode          String?  // Bank Transfer / Cash / Cheque
+  reference            String?
+  status               String   @default("Pending") // Pending / Paid / Failed
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([cycleId])
+  @@index([companyId])
+  @@map("bonus_payments")
+}
+
+// Immutable audit trail for every bonus action.
+model BonusAuditLog {
+  id                   Int      @id @default(autoincrement())
+  companyId            Int
+  cycleId              Int?
+  entityType           String   // CONFIGURATION / CYCLE / ELIGIBILITY / CALCULATION / PAYMENT
+  entityId             Int?
+  action               String   // CREATE / UPDATE / DELETE / GENERATE / APPROVE / RELEASE / CANCEL
+  performedBy          Int?
+  performedByName      String?
+  details              String?  @db.Text
+  createdAt            DateTime @default(now())
+
+  @@index([companyId])
+  @@index([cycleId])
+  @@map("bonus_audit_logs")
+}
+
+// ── Location master list (custom states/cities saved for reuse) ──────────────
+// Backs the creatable State/City comboboxes: custom entries are stored here so
+// they appear in the dropdown for everyone next time. State & City are
+// independent — there is intentionally no state→city relationship.
+model LocationMaster {
+  id        Int      @id @default(autoincrement())
+  type      String   // 'city' | 'state'
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([type, name])
+  @@index([type])
+  @@map("location_masters")
+}
+
+// ── Geography masters: Country → State → City ───────────────────────────────
+// Relational reference data for the Employee Personal-Info location fields and the
+// Nationality field. Seeded from the bundled dataset (India's states/UTs + cities,
+// and the international country list) and extended at runtime with custom entries:
+// custom cities are linked to their state, so a state's city dropdown only ever
+// shows that state's cities. `isCustom` marks user-added rows. Existing free-text
+// state/city/nationality values on employees are unaffected (no FK on Employee).
+model CountryMaster {
+  id        Int           @id @default(autoincrement())
+  name      String        @unique
+  isCustom  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  states    StateMaster[]
+
+  @@map("country_masters")
+}
+
+model StateMaster {
+  id        Int           @id @default(autoincrement())
+  name      String
+  countryId Int
+  country   CountryMaster @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  isCustom  Boolean       @default(false)
+  createdAt DateTime      @default(now())
+  cities    CityMaster[]
+
+  @@unique([countryId, name])
+  @@index([countryId])
+  @@map("state_masters")
+}
+
+model CityMaster {
+  id        Int         @id @default(autoincrement())
+  name      String
+  stateId   Int
+  state     StateMaster @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  isCustom  Boolean     @default(false)
+  createdAt DateTime    @default(now())
+
+  @@unique([stateId, name])
+  @@index([stateId])
+  @@map("city_masters")
+}
+
+// ── Government compliance report audit trail ─────────────────────────────────
+// Every generate/download of a statutory report is logged here (who, what,
+// filters used, when) for the compliance audit trail.
+model ComplianceReportLog {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  reportKey       String
+  reportName      String
+  action          String   // GENERATE / DOWNLOAD
+  format          String?  // PDF / EXCEL (for downloads)
+  filters         String?  @db.Text
+  rowCount        Int      @default(0)
+  performedBy     Int?
+  performedByName String?
+  createdAt       DateTime @default(now())
+
+  @@index([companyId])
+  @@index([reportKey])
+  @@map("compliance_report_logs")
 }
 
 // ── Raw device push log (Phase 6: ADMS-style receiver, DEBUG only) ───────────
@@ -286,6 +575,8 @@ model Employee {
   maritalStatus     String?
   middleName        String?
   nationality       String?
+  state             String?        // employee home state (Personal Info)
+  city              String?        // employee home city (dependent on state)
   panUpload         String?        @db.LongText
   permanentAddress  String?        @db.Text
   photoUpload       String?        @db.LongText
@@ -414,6 +705,10 @@ model Attendance {
   updatedAt    DateTime @updatedAt
   company      Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  // Single source of truth: exactly ONE attendance row per employee per date.
+  // Prevents the duplicate rows that caused edits to "revert" after refresh.
+  @@unique([employeeId, date])
 }
 
 model Overtime {

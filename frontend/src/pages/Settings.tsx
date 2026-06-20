@@ -93,6 +93,20 @@ export const Settings: React.FC<SettingsProps> = ({
     footerText: co.footerText || '',
     signatureText: co.signatureText || '',
     themeStyle: co.themeStyle || 'Modern',
+    // ── Merged profile-identity fields ──
+    companyCode: co.companyCode || '',
+    registrationNumber: co.registrationNumber || '',
+    gstNumber: co.gstNumber || '',
+    panNumber: co.panNumber || '',
+    cinNumber: co.cinNumber || '',
+    city: co.city || '',
+    state: co.state || '',
+    pincode: co.pincode || '',
+    emailSignature: co.emailSignature || '',
+    // ── Digital assets ──
+    faviconImage: co.faviconImage || '',
+    stampImage: co.stampImage || '',
+    digitalSignatureImage: co.digitalSignatureImage || '',
   });
   const [brandingForm, setBrandingForm] = useState(() => brandingFromCompany(currentCompany));
 
@@ -132,22 +146,24 @@ export const Settings: React.FC<SettingsProps> = ({
   }, [activeCompanyId, currentCompany, companies]);
 
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 1024 * 1024) {
-      alert("Image size must be less than 1MB to ensure fast loading.");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setBrandingForm(prev => ({ ...prev, logoImage: base64 }));
+  // Generic image uploader for any branding asset (logo / favicon / stamp /
+  // digital signature). Stores the file as a base64 data URL on brandingForm.
+  const handleImageUpload = (field: 'logoImage' | 'faviconImage' | 'stampImage' | 'digitalSignatureImage') =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (file.size > 1024 * 1024) {
+        alert('Image size must be less than 1MB to ensure fast loading.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setBrandingForm(prev => ({ ...prev, [field]: base64 }));
+      };
+      reader.readAsDataURL(file);
     };
-    reader.readAsDataURL(file);
-  };
+  const handleLogoUpload = handleImageUpload('logoImage');
 
   // ─── Department List Management Actions ───
   const handleAddDepartment = () => {
@@ -279,16 +295,16 @@ export const Settings: React.FC<SettingsProps> = ({
     setBrandingForm({ ...brandingForm, primaryColor: hex });
   };
 
-  const { canEdit: canEditModule, canManage: canManageModule } = usePermissions();
+  const { canEdit: canEditModule } = usePermissions();
   const canEdit = canEditModule('settings');
   const isSuperOrHead = (role === 'Super Admin' || role === 'Company Head') && canEdit;
 
   // Branding edit rights (independent of the Super-Admin-only company write):
   //   Super Admin & Company Head  → always
-  //   HR                          → only if granted the settings "manage" permission
+  //   HR                          → only if granted the settings "edit" permission
   //   Employee / others           → view only
   const canEditBranding =
-    role === 'Super Admin' || role === 'Company Head' || (role === 'HR' && canManageModule('settings'));
+    role === 'Super Admin' || role === 'Company Head' || (role === 'HR' && canEditModule('settings'));
 
   // Branding always lives on the TOP-LEVEL company. In a branch workspace,
   // currentCompany is the branch (kind-aware) — use its parent so we never send
@@ -316,6 +332,19 @@ export const Settings: React.FC<SettingsProps> = ({
         headerText: brandingForm.headerText,
         footerText: brandingForm.footerText,
         signatureText: brandingForm.signatureText,
+        // Merged profile-identity + digital assets
+        companyCode: brandingForm.companyCode,
+        registrationNumber: brandingForm.registrationNumber,
+        gstNumber: brandingForm.gstNumber,
+        panNumber: brandingForm.panNumber,
+        cinNumber: brandingForm.cinNumber,
+        city: brandingForm.city,
+        state: brandingForm.state,
+        pincode: brandingForm.pincode,
+        emailSignature: brandingForm.emailSignature,
+        faviconImage: brandingForm.faviconImage,
+        stampImage: brandingForm.stampImage,
+        digitalSignatureImage: brandingForm.digitalSignatureImage,
       };
       await api.companies.updateBranding(String(brandableCompanyId), payload);
       if (onRefresh) onRefresh();
@@ -392,7 +421,7 @@ export const Settings: React.FC<SettingsProps> = ({
           }`}
         >
           <Building2 size={13} />
-          Company Profile Settings
+          Company Profile &amp; Branding
         </button>
         <button
           onClick={() => setActiveSubTab('payroll')}
@@ -402,15 +431,6 @@ export const Settings: React.FC<SettingsProps> = ({
         >
           <BadgeCent size={13} />
           Statutory Payroll Rules
-        </button>
-        <button
-          onClick={() => setActiveSubTab('branding')}
-          className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'branding' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
-          }`}
-        >
-          <Palette size={13} />
-          Company Branding
         </button>
         <button
           onClick={() => setActiveSubTab('departments')}
@@ -446,8 +466,11 @@ export const Settings: React.FC<SettingsProps> = ({
         {/* Dynamic Editor Panel */}
         <div className="lg:col-span-2 space-y-4">
 
-          {/* TAB 1: Profile */}
-          {activeSubTab === 'profile' && (
+          {/* Legacy profile card — superseded by the merged "Company Profile &
+              Branding" card below. Disabled (never rendered) but retained so the
+              profileForm industry/department state stays intact for the
+              Departments tab and the statutory Apply save. */}
+          {false && (
             <Card>
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 pb-1.5 border-b border-gray-100">
                 Corporate Address & Details
@@ -588,34 +611,45 @@ export const Settings: React.FC<SettingsProps> = ({
             />
           )}
 
-          {/* TAB 3: Branding & Templates */}
-          {activeSubTab === 'branding' && (
+          {/* MERGED TAB: Company Profile & Branding */}
+          {activeSubTab === 'profile' && (
             <Card>
               <div className="flex items-center justify-between mb-3 pb-1.5 border-b border-gray-100">
                 <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Company Branding & Template Customization
+                  Company Profile &amp; Branding
                 </h3>
                 {!canEditBranding && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">View Only</span>}
               </div>
 
-              {/* ── Company Information ── */}
-              <div className="mb-4">
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">Company Information</label>
+              {/* ── SECTION 1 · Company Profile ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Building2 size={13} /> Company Profile</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <Input label="Company Name" disabled={!canEditBranding} value={brandingForm.name} onChange={e => setBrandingForm({ ...brandingForm, name: e.target.value })} placeholder="e.g. Vishv Enterprise Pvt Ltd" />
+                  <Input label="Company Code" disabled={!canEditBranding} value={brandingForm.companyCode} onChange={e => setBrandingForm({ ...brandingForm, companyCode: e.target.value })} placeholder="e.g. VE" />
+                  <Input label="Registration Number" disabled={!canEditBranding} value={brandingForm.registrationNumber} onChange={e => setBrandingForm({ ...brandingForm, registrationNumber: e.target.value })} placeholder="e.g. U12345GJ2020PTC000000" />
+                  <Input label="GST Number" disabled={!canEditBranding} value={brandingForm.gstNumber} onChange={e => setBrandingForm({ ...brandingForm, gstNumber: e.target.value.toUpperCase() })} placeholder="e.g. 24ABCDE1234F1Z5" />
+                  <Input label="PAN Number" disabled={!canEditBranding} value={brandingForm.panNumber} onChange={e => setBrandingForm({ ...brandingForm, panNumber: e.target.value.toUpperCase() })} placeholder="e.g. ABCDE1234F" />
+                  <Input label="CIN Number" disabled={!canEditBranding} value={brandingForm.cinNumber} onChange={e => setBrandingForm({ ...brandingForm, cinNumber: e.target.value.toUpperCase() })} placeholder="e.g. U72200GJ2020PTC000000" />
+                  <Input label="Email" disabled={!canEditBranding} value={brandingForm.contactEmail} onChange={e => setBrandingForm({ ...brandingForm, contactEmail: e.target.value })} placeholder="e.g. info@vishv.com" />
+                  <Input label="Phone Number" disabled={!canEditBranding} value={brandingForm.contactNumber} onChange={e => setBrandingForm({ ...brandingForm, contactNumber: e.target.value })} placeholder="e.g. +91 9876543210" />
+                  <Input label="Website" disabled={!canEditBranding} value={brandingForm.website} onChange={e => setBrandingForm({ ...brandingForm, website: e.target.value })} placeholder="e.g. www.vishv.com" />
                   <Input label="Company Short Name" disabled={!canEditBranding} value={brandingForm.shortName} onChange={e => setBrandingForm({ ...brandingForm, shortName: e.target.value })} placeholder="e.g. Vishv" />
+                  <Input label="State" disabled={!canEditBranding} value={brandingForm.state} onChange={e => setBrandingForm({ ...brandingForm, state: e.target.value })} placeholder="e.g. Gujarat" />
+                  <Input label="City" disabled={!canEditBranding} value={brandingForm.city} onChange={e => setBrandingForm({ ...brandingForm, city: e.target.value })} placeholder="e.g. Ahmedabad" />
+                  <Input label="Pincode" disabled={!canEditBranding} value={brandingForm.pincode} onChange={e => setBrandingForm({ ...brandingForm, pincode: e.target.value.replace(/\D/g, '').slice(0, 6) })} placeholder="e.g. 380001" />
                   <Input label="Company Tagline" disabled={!canEditBranding} value={brandingForm.tagline} onChange={e => setBrandingForm({ ...brandingForm, tagline: e.target.value })} placeholder="e.g. Excellence in Service" />
-                  <Input label="Company Website" disabled={!canEditBranding} value={brandingForm.website} onChange={e => setBrandingForm({ ...brandingForm, website: e.target.value })} placeholder="e.g. www.vishv.com" />
-                  <Input label="Company Email" disabled={!canEditBranding} value={brandingForm.contactEmail} onChange={e => setBrandingForm({ ...brandingForm, contactEmail: e.target.value })} placeholder="e.g. info@vishv.com" />
-                  <Input label="Company Contact Number" disabled={!canEditBranding} value={brandingForm.contactNumber} onChange={e => setBrandingForm({ ...brandingForm, contactNumber: e.target.value })} placeholder="e.g. +91 9876543210" />
                   <div className="md:col-span-2">
-                    <Input label="Company Address" disabled={!canEditBranding} value={brandingForm.address} onChange={e => setBrandingForm({ ...brandingForm, address: e.target.value })} placeholder="e.g. Ahmedabad, Gujarat, India" />
+                    <Input label="Address" disabled={!canEditBranding} value={brandingForm.address} onChange={e => setBrandingForm({ ...brandingForm, address: e.target.value })} placeholder="e.g. Ahmedabad, Gujarat, India" />
                   </div>
                   <div className="md:col-span-2">
                     <Textarea label="Company Description" disabled={!canEditBranding} value={brandingForm.description} onChange={e => setBrandingForm({ ...brandingForm, description: e.target.value })} placeholder="Short description of the company…" />
                   </div>
                 </div>
               </div>
+
+              {/* ── SECTION 2 · Branding & Identity ── */}
+              <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Palette size={13} /> Branding &amp; Identity</label>
 
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
@@ -656,6 +690,20 @@ export const Settings: React.FC<SettingsProps> = ({
                           Delete / Remove Logo
                         </button>
                       )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 pb-2 border-t border-slate-800/60 mt-2">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Company Icon / Favicon</label>
+                  <div className="flex items-center gap-3">
+                    <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden">
+                      {brandingForm.faviconImage ? <img src={brandingForm.faviconImage} alt="Favicon" className="w-full h-full object-contain p-1" /> : <UploadCloud size={16} className="text-slate-400" />}
+                    </div>
+                    <div className="flex-1">
+                      {canEditBranding && <label className="cursor-pointer text-[11px] font-semibold text-blue-600 hover:underline">Upload Favicon<input type="file" accept=".png,.jpg,.jpeg,.svg,.ico" className="hidden" onChange={handleImageUpload('faviconImage')} /></label>}
+                      <p className="text-[10px] text-slate-400 mt-1">Square PNG/ICO recommended · Max 1MB.</p>
+                      {canEditBranding && brandingForm.faviconImage && <button type="button" onClick={() => setBrandingForm(p => ({ ...p, faviconImage: '' }))} className="text-[10px] text-rose-600 font-bold hover:underline block mt-0.5">Remove</button>}
                     </div>
                   </div>
                 </div>
@@ -715,19 +763,61 @@ export const Settings: React.FC<SettingsProps> = ({
                   onChange={e => setBrandingForm({ ...brandingForm, footerText: e.target.value })}
                 />
 
-                <Input
-                  label="Legal Signature Line Text *"
+                <Textarea
+                  label="Email Signature"
                   disabled={!canEditBranding}
-                  placeholder="e.g. Vikram Singh, Operations Director"
-                  value={brandingForm.signatureText}
-                  onChange={e => setBrandingForm({ ...brandingForm, signatureText: e.target.value })}
+                  placeholder="Best regards,&#10;Vishv Enterprise · info@vishv.com · www.vishv.com"
+                  value={brandingForm.emailSignature}
+                  onChange={e => setBrandingForm({ ...brandingForm, emailSignature: e.target.value })}
                 />
+
+                {/* ── SECTION 3 · Digital Assets ── */}
+                <div className="pt-3 mt-2 border-t border-gray-100">
+                  <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2">Digital Assets</label>
+
+                  <Input
+                    label="Legal Signature Line Text *"
+                    disabled={!canEditBranding}
+                    placeholder="e.g. Vikram Singh, Operations Director"
+                    value={brandingForm.signatureText}
+                    onChange={e => setBrandingForm({ ...brandingForm, signatureText: e.target.value })}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Company Stamp</label>
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden">
+                          {brandingForm.stampImage ? <img src={brandingForm.stampImage} alt="Stamp" className="w-full h-full object-contain p-1" /> : <UploadCloud size={16} className="text-slate-400" />}
+                        </div>
+                        <div className="flex-1">
+                          {canEditBranding && <label className="cursor-pointer text-[11px] font-semibold text-blue-600 hover:underline">Upload Stamp<input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleImageUpload('stampImage')} /></label>}
+                          <p className="text-[10px] text-slate-400 mt-1">Transparent PNG · Max 1MB.</p>
+                          {canEditBranding && brandingForm.stampImage && <button type="button" onClick={() => setBrandingForm(p => ({ ...p, stampImage: '' }))} className="text-[10px] text-rose-600 font-bold hover:underline block mt-0.5">Remove</button>}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Digital Signature</label>
+                      <div className="flex items-center gap-3">
+                        <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden">
+                          {brandingForm.digitalSignatureImage ? <img src={brandingForm.digitalSignatureImage} alt="Digital Signature" className="w-full h-full object-contain p-1" /> : <UploadCloud size={16} className="text-slate-400" />}
+                        </div>
+                        <div className="flex-1">
+                          {canEditBranding && <label className="cursor-pointer text-[11px] font-semibold text-blue-600 hover:underline">Upload Signature<input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleImageUpload('digitalSignatureImage')} /></label>}
+                          <p className="text-[10px] text-slate-400 mt-1">Transparent PNG · Max 1MB.</p>
+                          {canEditBranding && brandingForm.digitalSignatureImage && <button type="button" onClick={() => setBrandingForm(p => ({ ...p, digitalSignatureImage: '' }))} className="text-[10px] text-rose-600 font-bold hover:underline block mt-0.5">Remove</button>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {canEditBranding && (
                 <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
-                  <span className="text-[10px] text-slate-400 mr-auto">Saves to database · updates logo & name across the app</span>
-                  <Button onClick={handleSaveBranding} loading={savingBranding}>Save Company Branding</Button>
+                  <span className="text-[10px] text-slate-400 mr-auto">Saves to database · updates company profile, logo, name &amp; theme across the app</span>
+                  <Button onClick={handleSaveBranding} loading={savingBranding}>Save Company Profile &amp; Branding</Button>
                 </div>
               )}
             </Card>
@@ -743,6 +833,63 @@ export const Settings: React.FC<SettingsProps> = ({
               <p className="text-xs text-gray-550 mb-4 leading-relaxed">
                 Add, rename, delete, and change the ordering of your statutory department list. Be sure to click "Apply Company Statutory & Branding Settings" at the bottom to save your edits to the system.
               </p>
+
+              {/* Industry & department template preset (moved here from the old
+                  Company Profile tab — these drive the department structure). */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                <Select
+                  label="Industry Sector"
+                  disabled={!isSuperOrHead}
+                  value={profileForm.industry}
+                  onChange={e => {
+                    const val = e.target.value;
+                    let templateVal = 'Generic';
+                    if (val === 'Healthcare') templateVal = 'Healthcare';
+                    else if (val === 'IT Company') templateVal = 'IT Company';
+                    else if (val === 'Manufacturing') templateVal = 'Manufacturing';
+                    else if (val === 'Education') templateVal = 'Education';
+                    else if (val === 'Retail') templateVal = 'Retail';
+                    setProfileForm({ ...profileForm, industry: val, companyIndustry: val, departmentTemplateType: templateVal });
+                  }}
+                  options={[
+                    { value: 'Healthcare', label: 'Healthcare / Hospitals' },
+                    { value: 'IT Company', label: 'IT Company / Software' },
+                    { value: 'Manufacturing', label: 'Manufacturing & Plant' },
+                    { value: 'Education', label: 'Education & Academic' },
+                    { value: 'Retail', label: 'Retail & Store Operations' },
+                    { value: 'Generic', label: 'Generic Corporate' }
+                  ]}
+                />
+                <Select
+                  label="Statutory Department Template Preset"
+                  disabled={!isSuperOrHead}
+                  value={profileForm.departmentTemplateType}
+                  onChange={e => setProfileForm({ ...profileForm, departmentTemplateType: e.target.value })}
+                  options={[
+                    { value: 'Healthcare', label: 'Healthcare / Hospital Template' },
+                    { value: 'IT Company', label: 'IT Company / Tech Template' },
+                    { value: 'Manufacturing', label: 'Manufacturing / Factory Template' },
+                    { value: 'Education', label: 'Education / Academic Template' },
+                    { value: 'Retail', label: 'Retail / Store Operations Template' },
+                    { value: 'Generic', label: 'Generic / Default Corporate Template' }
+                  ]}
+                />
+                {currentCompany.parentCompanyId && (
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <input
+                      type="checkbox"
+                      id="inheritParentDepartments"
+                      checked={profileForm.inheritParentDepartments}
+                      disabled={!isSuperOrHead}
+                      onChange={e => setProfileForm({ ...profileForm, inheritParentDepartments: e.target.checked })}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    />
+                    <label htmlFor="inheritParentDepartments" className="text-xs font-semibold text-gray-700 cursor-pointer">
+                      Inherit parent company department structure
+                    </label>
+                  </div>
+                )}
+              </div>
 
               {profileForm.inheritParentDepartments && currentCompany.parentCompanyId && (
                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-xs text-amber-800">
@@ -857,11 +1004,12 @@ export const Settings: React.FC<SettingsProps> = ({
             </Card>
           )}
 
-          {/* Action Trigger */}
-          {isSuperOrHead && (
+          {/* Action Trigger — statutory/department save (Departments tab only;
+              Company Profile & Branding has its own Save button). */}
+          {isSuperOrHead && activeSubTab === 'departments' && (
             <div className="pt-2">
               <Button onClick={handleSaveAll} className="w-full">
-                Apply Company Statutory & Branding Settings
+                Apply Department & Statutory Settings
               </Button>
             </div>
           )}
@@ -881,10 +1029,10 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="border-b pb-2 flex items-center justify-between" style={{ borderBottomColor: brandingForm.primaryColor, borderBottomWidth: '2px' }}>
               <div>
                 <p className="font-extrabold text-[10px] leading-tight" style={{ color: brandingForm.primaryColor }}>
-                  {brandingForm.headerText || profileForm.name}
+                  {brandingForm.headerText || brandingForm.name || profileForm.name}
                 </p>
-                <p className="text-[8px] text-gray-400 mt-0.5">{profileForm.address || 'Company Address'}</p>
-                <p className="text-[8px] text-gray-400 mt-0.5">Phone: {phoneCode} {phoneNum} · Email: {profileForm.email}</p>
+                <p className="text-[8px] text-gray-400 mt-0.5">{brandingForm.address || profileForm.address || 'Company Address'}</p>
+                <p className="text-[8px] text-gray-400 mt-0.5">Phone: {brandingForm.contactNumber || `${phoneCode} ${phoneNum}`} · Email: {brandingForm.contactEmail || profileForm.email}</p>
               </div>
               <div className="flex items-center justify-center">
                 {brandingForm.logoImage ? (

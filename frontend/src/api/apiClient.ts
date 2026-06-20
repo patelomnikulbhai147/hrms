@@ -381,6 +381,83 @@ export const api = {
     pushLogs: async () => { return await apiFetch(`${BASE_URL}/attendance-devices/push-logs`, { headers: getHeaders() }); },
   },
 
+  // Attendance vendor registry — configurable catalog (E-TimeOffice, eSSL, …).
+  // New vendors are added as data (Super Admin), so no code change is required.
+  attendanceVendors: {
+    getAll: async (all?: boolean) => { return await apiFetch(`${BASE_URL}/attendance-vendors${all ? '?all=1' : ''}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
+  // Bonus Management (Phase 1 — Bonus Configuration). Separate bonus
+  // transaction system; never stored on the employee record.
+  bonus: {
+    configs: {
+      getAll: async () => { return await apiFetch(`${BASE_URL}/bonus/configurations`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/bonus/configurations`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/bonus/configurations/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      remove: async (id: any) => { return await apiFetch(`${BASE_URL}/bonus/configurations/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+    cycles: {
+      getAll: async () => { return await apiFetch(`${BASE_URL}/bonus/cycles`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      lines: async (id: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/lines`, { headers: getHeaders() }); },
+      generate: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      override: async (id: any, employeeId: any, data: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/line/${employeeId}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      approve: async (id: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/approve`, { method: 'POST', headers: getHeaders() }); },
+      release: async (id: any, data: any = {}) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/release`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      cancel: async (id: any) => { return await apiFetch(`${BASE_URL}/bonus/cycles/${id}/cancel`, { method: 'POST', headers: getHeaders() }); },
+    },
+    payments: async () => { return await apiFetch(`${BASE_URL}/bonus/payments`, { headers: getHeaders() }); },
+    mine: async () => { return await apiFetch(`${BASE_URL}/bonus/my`, { headers: getHeaders() }); },
+    dashboard: async () => { return await apiFetch(`${BASE_URL}/bonus/dashboard`, { headers: getHeaders() }); },
+  },
+
+  // Biometric Code mappings (Phase 4 — mapping only, no attendance sync).
+  // Maps the attendance-machine code to an employee without touching Employee IDs.
+  biometricMappings: {
+    list: async () => { return await apiFetch(`${BASE_URL}/biometric-mappings`, { headers: getHeaders() }); },
+    setOne: async (id: any, biometricCode: string) => { return await apiFetch(`${BASE_URL}/biometric-mappings/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ biometricCode }) }); },
+    bulk: async (rows: any[], companyId?: any) => { return await apiFetch(`${BASE_URL}/biometric-mappings/bulk`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ rows, companyId }) }); },
+  },
+
+  // Government Compliance Reports — live statutory reports from DB.
+  complianceReports: {
+    catalog: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/catalog`, { headers: getHeaders() }); },
+    generate: async (data: any) => { return await apiFetch(`${BASE_URL}/compliance-reports/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Sample preview using the VISHV ENTERPRISE demo company (never touches real data).
+    preview: async (reportKey: string) => { return await apiFetch(`${BASE_URL}/compliance-reports/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reportKey }) }); },
+    logDownload: async (data: any) => { return await apiFetch(`${BASE_URL}/compliance-reports/log-download`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    audit: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/audit`, { headers: getHeaders() }); },
+  },
+
+  // Country / State / City masters for the creatable location dropdowns.
+  // getAll returns { states, countries, citiesByState, cities? } — canonical lists
+  // live statically on the client; this supplies custom (DB-saved) additions.
+  locationMasters: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/location-masters`, { headers: getHeaders() }); },
+    add: async (type: 'city' | 'state', name: string) => { return await apiFetch(`${BASE_URL}/location-masters`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ type, name }) }); },
+    // Custom city is stored linked to its state so it only resurfaces for that state.
+    addCity: async (state: string, name: string) => { return await apiFetch(`${BASE_URL}/location-masters/city`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ state, name }) }); },
+    // Custom country (nationality) — Super Admin only (enforced server-side).
+    addCountry: async (name: string) => { return await apiFetch(`${BASE_URL}/location-masters/country`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ name }) }); },
+  },
+
+  // Employee Nominees (dedicated tables — never stored on the employee row)
+  nominees: {
+    list: async (employeeId: string | number) => { return await apiFetch(`${BASE_URL}/nominees?employeeId=${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/nominees`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    bulkCreate: async (employeeId: string | number, nominees: any[]) => { return await apiFetch(`${BASE_URL}/nominees/bulk`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ employeeId, nominees }) }); },
+    update: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/nominees/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: string | number) => { return await apiFetch(`${BASE_URL}/nominees/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    archive: async (id: string | number) => { return await apiFetch(`${BASE_URL}/nominees/${id}/archive`, { method: 'POST', headers: getHeaders() }); },
+    addDocument: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/nominees/${id}/documents`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    getDocument: async (docId: string | number) => { return await apiFetch(`${BASE_URL}/nominees/documents/${docId}`, { headers: getHeaders() }); },
+    removeDocument: async (docId: string | number) => { return await apiFetch(`${BASE_URL}/nominees/documents/${docId}`, { method: 'DELETE', headers: getHeaders() }); },
+    audit: async (employeeId: string | number) => { return await apiFetch(`${BASE_URL}/nominees/audit?employeeId=${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() }); },
+  },
+
   // IFSC → bank/branch lookup (auto-fills bank details from the IFSC code)
   ifsc: {
     lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },

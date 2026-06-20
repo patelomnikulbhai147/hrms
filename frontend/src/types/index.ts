@@ -136,6 +136,8 @@ export interface Employee {
 
   presentAddress?: string;
   permanentAddress?: string;
+  state?: string;
+  city?: string;
 
   aadhaarUpload?: string;
   panUpload?: string;

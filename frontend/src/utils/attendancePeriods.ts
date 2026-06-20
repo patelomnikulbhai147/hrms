@@ -120,10 +120,13 @@ export function resolveStatus(
   attendance: AttendanceRecord[],
   leaves: LeaveRequest[]
 ): { status: string; record?: AttendanceRecord; leaveType?: string } {
-  const existing = attendance.find(a => a.employeeId === empId && a.date === date);
+  // Match by STRING id — the API may deliver employeeId as a number while the grid
+  // passes it as a string (or vice-versa); a strict === would then silently miss the
+  // saved row and fall through to the computed default (looking like a "revert").
+  const existing = attendance.find(a => String(a.employeeId) === String(empId) && a.date === date);
   if (existing) return { status: existing.status, record: existing };
 
-  const onLeave = leaves.find(l => l.employeeId === empId && l.status === 'Approved' && date >= l.fromDate && date <= l.toDate);
+  const onLeave = leaves.find(l => String(l.employeeId) === String(empId) && l.status === 'Approved' && date >= l.fromDate && date <= l.toDate);
   if (onLeave) return { status: 'Leave', leaveType: (onLeave as any).leaveType };
 
   const isSunday = parseISO(date).getDay() === 0;

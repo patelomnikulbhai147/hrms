@@ -22,28 +22,77 @@ async function flagPayrollOutdated(employeeId, dateStr) {
   } catch (_) { /* never block the attendance op */ }
 }
 
+// Traceable audit entry for an attendance mark/correction: who, when, employee,
+// old → new status, the view it was made from (Source, e.g. "Weekly Attendance")
+// and an optional reason. Visible in the Audit Trail. Never blocks the operation.
+async function writeAttendanceAudit(req, action, data, fromStatus, source, reason) {
+  try {
+    if (!req.user || !req.user.id) return;
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.id,
+        action, // MARK_ATTENDANCE (new) | CORRECT_ATTENDANCE (change)
+        module: 'Attendance',
+        targetId: String(data.id),
+        details: JSON.stringify({
+          employeeId: data.employeeId,
+          employeeName: data.employeeName,
+          date: data.date,
+          by: req.user.name || req.user.email,
+          source: source || 'Attendance',
+          reason: reason || undefined,
+          from: fromStatus,
+          to: data.status,
+        }).slice(0, 1000),
+      },
+    });
+  } catch (_) { /* audit is best-effort */ }
+}
+
 exports.getAll = async (req, res) => {
   try {
     const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-    let whereClause = {};
 
+    // ── ROOT-CAUSE FIX (attendance vanishing after refresh) ──────────────────
+    // Previously attendance was filtered by `attendance.companyId === workspaceId`
+    // (exact). But the grid lists EMPLOYEES with the kind-aware isCompanyIdMatch
+    // (which also matches by branchId / parent company). So in a branch or sub
+    // workspace — or when a Super Admin views a specific company — an employee was
+    // shown, their attendance was SAVED with the employee's own companyId, but the
+    // reload filtered it out → the change appeared to revert.
+    //
+    // Now we scope attendance by the SAME employee set the Employees grid uses, then
+    // return attendance for those employees. A saved row for any visible employee is
+    // therefore always returned on refresh, regardless of its companyId.
+    let empWhere = null; // null = no restriction (Super Admin, no workspace selected)
     if (req.user && req.user.role !== 'Super Admin') {
-      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      whereClause.companyId = { in: allowedIds };
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      const allowedIds = [...companyScope, ...branchScope];
       if (companyId) {
-        if (!allowedIds.includes(companyId)) {
-          return res.status(403).json({ error: 'Unauthorized' });
-        }
-        whereClause.companyId = companyId;
+        if (!allowedIds.includes(companyId)) return res.status(403).json({ error: 'Unauthorized' });
+        empWhere = { OR: [{ companyId }, { branchId: companyId }] };
+      } else {
+        empWhere = { OR: [{ companyId: { in: companyScope } }, { branchId: { in: branchScope.length ? branchScope : companyScope } }] };
       }
     } else if (companyId) {
-      whereClause.companyId = companyId;
+      // Super Admin viewing a specific company/branch workspace.
+      empWhere = { OR: [{ companyId }, { branchId: companyId }] };
     }
 
-    const data = await prisma.attendance.findMany({ where: whereClause });
+    let data;
+    if (empWhere) {
+      const scopedEmps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
+      const empIds = scopedEmps.map(e => e.id);
+      data = await prisma.attendance.findMany({ where: { employeeId: { in: empIds.length ? empIds : [-1] } } });
+      console.log('[attendance.getAll] workspace=', companyId, 'role=', req.user?.role, 'scopedEmployees=', empIds.length, 'attendanceRows=', data.length);
+    } else {
+      data = await prisma.attendance.findMany({});
+      console.log('[attendance.getAll] role=', req.user?.role, 'no workspace filter, attendanceRows=', data.length);
+    }
     res.json(data);
   } catch (error) {
-    console.error('Error fetching', error);
+    console.error('[attendance.getAll] FAILED', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
@@ -186,27 +235,39 @@ exports.getAnalytics = async (req, res) => {
 const pad2 = (n) => String(n).padStart(2, '0');
 
 exports.syncPayroll = async (req, res) => {
+  // ROOT-CAUSE FIX: Employee.companyId / branchId are Int columns, but the client
+  // sends companyId/scopeIds as STRINGS (e.g. the active workspace id "5"). Passing
+  // a String into an Int filter is exactly what made `prisma.employee.findMany()`
+  // throw "Invalid invocation". Coerce every id to Int up-front. These are declared
+  // in the OUTER scope so the catch block can print the exact inputs that built the
+  // failing query.
+  const toIntId = (v) => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
+  const body = req.body || {};
+  const { month, year, dryRun = true } = body;
+  const companyId = toIntId(body.companyId);
+  const scopeIds = Array.isArray(body.scopeIds) ? body.scopeIds.map(toIntId).filter(v => v !== undefined) : [];
+  let allowedIds = null;
+  let empWhere = null;
   try {
-    const { companyId, month, year, scopeIds, dryRun = true } = req.body || {};
     if (!month || !year) {
       return res.status(400).json({ error: 'month and year are required.' });
     }
 
-    // Resolve the scope to a set of companyIds the requester may touch.
-    let allowedIds = null;
+    // Resolve the scope to a set of companyIds the requester may touch (coerced to Int).
     if (req.user && req.user.role !== 'Super Admin') {
-      allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined);
     }
 
-    const empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
-    if (Array.isArray(scopeIds) && scopeIds.length > 0) {
+    empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
+    if (scopeIds.length > 0) {
       empWhere.OR = [{ companyId: { in: scopeIds } }, { branchId: { in: scopeIds } }, { id: { in: scopeIds } }];
-    } else if (companyId) {
+    } else if (companyId !== undefined) {
       empWhere.OR = [{ companyId }, { branchId: companyId }];
-    } else if (allowedIds) {
+    } else if (allowedIds && allowedIds.length) {
       empWhere.OR = [{ companyId: { in: allowedIds } }, { branchId: { in: allowedIds } }];
     }
 
+    console.log('[syncPayroll] employee.findMany query', { role: req.user?.role, companyId, scopeIds, allowedIds, status: 'notIn OFFBOARDED_STATUSES', empWhere: JSON.stringify(empWhere) });
     const employees = await prisma.employee.findMany({ where: empWhere });
     if (employees.length === 0) {
       return res.json({ month, year, dryRun, count: 0, totals: {}, rows: [] });
@@ -350,8 +411,22 @@ exports.syncPayroll = async (req, res) => {
 
     return res.json({ month, year, dryRun: false, count: rows.length, updated, created, totals, rows });
   } catch (error) {
-    console.error('Error in syncPayroll:', error);
-    res.status(500).json({ error: error.message || 'Server error during payroll sync' });
+    // Print the FULL Prisma exception + the exact inputs that built the query, so
+    // the real cause is visible in the server log (not just a generic popup).
+    console.error('[syncPayroll] FAILED — full error:\n', error);
+    console.error('[syncPayroll] DEBUG OUTPUT', {
+      prismaCode: error.code,
+      prismaMeta: error.meta,
+      status: 'notIn OFFBOARDED_STATUSES',
+      OFFBOARDED_STATUSES,
+      companyId,
+      branchId: companyId,
+      scopeIds,
+      allowedIds,
+      empWhere: empWhere ? JSON.stringify(empWhere) : null,
+      role: req.user?.role,
+    });
+    res.status(500).json({ error: error.message || 'Server error during payroll sync', code: error.code });
   }
 };
 
@@ -359,6 +434,11 @@ exports.create = async (req, res) => {
   try {
     const body = { ...req.body };
     delete body.reason; // metadata, not a column
+    const source = (body.source || '').toString(); delete body.source; // audit metadata, not a column
+    // Coerce id columns to Int (companyId/employeeId are Int) so a string id from
+    // the client can never break the attendance write.
+    if (body.companyId !== undefined) { const n = Number(body.companyId); if (Number.isFinite(n)) body.companyId = n; }
+    if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
 
     // Offboarding policy: no attendance may be marked for an offboarded employee
     // (Archived/Resigned/Terminated/Inactive/Offboarded).
@@ -372,13 +452,41 @@ exports.create = async (req, res) => {
       }
     }
 
-    const data = await prisma.attendance.create({ data: body });
+    // Single source of truth: never create a SECOND row for the same employee+date.
+    // If one already exists, treat this as a correction (update) instead of a dup.
+    if (body.employeeId && body.date) {
+      const dup = await prisma.attendance.findFirst({ where: { employeeId: Number(body.employeeId), date: body.date } });
+      if (dup) {
+        const updated = await prisma.attendance.update({ where: { id: dup.id }, data: body });
+        await flagPayrollOutdated(updated.employeeId, updated.date);
+        await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', updated, dup.status, source);
+        return res.status(200).json(updated);
+      }
+    }
+
+    console.log('[attendance.create] BEFORE', { employeeId: body.employeeId, date: body.date, status: body.status, source: source || 'Attendance' });
+    let data;
+    let action = 'MARK_ATTENDANCE';
+    try {
+      data = await prisma.attendance.create({ data: body });
+    } catch (err) {
+      // Race-safe against the UNIQUE(employeeId, date) constraint: if a row for this
+      // employee+date was created concurrently, update it instead of failing.
+      if (err.code === 'P2002') {
+        const dup = await prisma.attendance.findFirst({ where: { employeeId: Number(body.employeeId), date: body.date } });
+        if (!dup) throw err;
+        data = await prisma.attendance.update({ where: { id: dup.id }, data: body });
+        action = 'CORRECT_ATTENDANCE';
+      } else throw err;
+    }
+    console.log('[attendance.create] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status, action });
     // A new attendance record changes the month's totals → payroll is now stale.
     await flagPayrollOutdated(data.employeeId, data.date);
-    res.status(201).json(data);
+    await writeAttendanceAudit(req, action, data, undefined, source);
+    res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json(data);
   } catch (error) {
-    console.error('Error creating', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    console.error('[attendance.create] FAILED', error);
+    res.status(500).json({ error: error.message || 'Server error', code: error.code });
   }
 };
 
@@ -388,32 +496,21 @@ exports.update = async (req, res) => {
     const body = { ...req.body };
     const reason = (body.reason || '').toString();
     delete body.reason; // metadata, not a column
+    const source = (body.source || '').toString(); delete body.source; // audit metadata, not a column
+    // Coerce id columns to Int so a string companyId/employeeId can never break the save.
+    if (body.companyId !== undefined) { const n = Number(body.companyId); if (Number.isFinite(n)) body.companyId = n; }
+    if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
 
     const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    console.log('[attendance.update] BEFORE', { id, employeeId: existing?.employeeId, date: existing?.date, status: existing?.status, source: source || 'Attendance' });
     const data = await prisma.attendance.update({ where: { id: idParam(id) }, data: body });
+    console.log('[attendance.update] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status });
 
     // ── System-wide sync: flag the affected month's payroll as outdated ──────
     await flagPayrollOutdated(data.employeeId, data.date);
 
-    // Traceable correction: who / when / why / what (visible in the Audit Trail).
-    if (req.user && req.user.id) {
-      await prisma.auditLog.create({
-        data: {
-          userId: req.user.id,
-          action: 'CORRECT_ATTENDANCE',
-          module: 'Attendance',
-          targetId: String(data.id),
-          details: JSON.stringify({
-            employeeId: data.employeeId,
-            date: data.date,
-            by: req.user.name || req.user.email,
-            reason: reason || '(no reason given)',
-            from: existing ? existing.status : undefined,
-            to: data.status,
-          }).slice(0, 1000),
-        },
-      }).catch(() => {});
-    }
+    // Traceable correction: who / when / source / old → new (visible in Audit Trail).
+    await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', data, existing ? existing.status : undefined, source, reason || '(no reason given)');
 
     res.json(data);
   } catch (error) {

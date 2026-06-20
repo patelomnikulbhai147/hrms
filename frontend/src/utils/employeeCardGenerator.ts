@@ -51,12 +51,20 @@ async function mountOffscreen(employee: any, company: any, cardType: 'id' | 'inf
   };
 }
 
-// Bulk: one card per page in a single PDF.
-export async function downloadCardsPdf(employees: any[], company: any, cardType: 'id' | 'info', fileName: string) {
+// Bulk: one card per page in a single PDF. `companyOrResolver` may be a single
+// company object (legacy) OR a function (emp) => company, so each employee's
+// card can carry its OWN company branding instead of one shared company.
+export async function downloadCardsPdf(
+  employees: any[],
+  companyOrResolver: any | ((emp: any) => any),
+  cardType: 'id' | 'info',
+  fileName: string,
+) {
+  const resolve = typeof companyOrResolver === 'function' ? companyOrResolver : () => companyOrResolver;
   const { default: jsPDF } = await import('jspdf');
   let pdf: any = null;
   for (let i = 0; i < employees.length; i++) {
-    const { node, cleanup } = await mountOffscreen(employees[i], company, cardType);
+    const { node, cleanup } = await mountOffscreen(employees[i], resolve(employees[i]), cardType);
     try {
       const canvas = await capture(node);
       const wMm = 150;

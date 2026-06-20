@@ -114,6 +114,9 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
           <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', marginTop: 10, textAlign: 'center' }}>{employee?.name}</div>
           <div style={{ fontSize: 11, color: b.color, fontWeight: 700 }}>{employee?.designation}</div>
           <div style={{ marginTop: 4, fontSize: 10, color: '#64748b' }}>{employee?.department}</div>
+          {(employee?.branchLocation || employee?.location) && (
+            <div style={{ marginTop: 2, fontSize: 9, color: '#94a3b8' }}>{employee?.branchLocation || employee?.location}</div>
+          )}
           <div style={{ marginTop: 10, background: '#f1f5f9', borderRadius: 8, padding: '4px 10px', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
             {employee?.employeeId}
           </div>
@@ -126,6 +129,8 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
         <div style={{ background: b.color, height: 28 }} />
         <div style={{ padding: '16px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ ...label, color: b.color, marginBottom: 10 }}>Card Holder Details</div>
+          <div style={label}>Contact</div>
+          <div style={value}>{employee?.phone || '—'}</div>
           <div style={label}>Emergency Contact</div>
           <div style={value}>{employee?.emergencyContact || '—'}</div>
           <div style={label}>Blood Group</div>

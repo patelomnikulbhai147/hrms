@@ -28,6 +28,12 @@ import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { ExportMenu } from '../components/ui/ExportMenu';
 import { type ExportColumn } from '../utils/exportUtils';
+import { BiometricImportModal } from '../components/BiometricImportModal';
+import { CreatableSelect } from '../components/ui/CreatableSelect';
+import { NomineesTab } from '../components/NomineesTab';
+import { NomineeWizardStep } from '../components/NomineeWizardStep';
+import { INDIAN_STATES, citiesForState } from '../data/indianStatesCities';
+import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '../data/countries';
 import { byEmployeeCode } from '../utils/employeeSort';
 import { isActiveEmployee, isOffboarded } from '../utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '../utils/idFormat';
@@ -100,13 +106,23 @@ export const Employees: React.FC<EmployeesProps> = ({
   const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('employees');
   const canCreate = canCreateModule('employees');
-  // Optional Biometric ID column in the roster table (hidden by default).
+  // Optional Biometric Code column in the roster table (hidden by default).
   const [showBiometric, setShowBiometric] = useState(false);
+  // Biometric Code bulk-import modal.
+  const [bioImportOpen, setBioImportOpen] = useState(false);
+  const refreshAfterBiometric = async () => {
+    try {
+      const all: any = await api.employees.getAll();
+      const list = Array.isArray(all) ? all : (all?.employees || null);
+      if (list) onUpdateEmployees(list);
+    } catch { /* ignore — list stays as-is */ }
+  };
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const [wizardNominees, setWizardNominees] = useState<any[]>([]); // staged nominees during registration
   const [deleteEmp, setDeleteEmp] = useState<Employee | null>(null);
 
   // Excel Importer states
@@ -117,7 +133,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tabs in drawer
-  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address' | 'nominees'>('personal');
 
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
@@ -187,6 +203,48 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Add-wizard "Save & Continue" success message (per-step).
+  const [stepMsg, setStepMsg] = useState('');
+
+  // Location masters: canonical lists are static (instant load); custom additions
+  // (saved in DB) are merged on top. CITY is DEPENDENT on STATE — the city dropdown
+  // only ever shows the cities of the selected state (static + custom-for-that-state).
+  // Nationality uses a searchable country master; custom countries are Super-Admin only.
+  const isSuperAdmin = role === 'Super Admin';
+  const [customCitiesByState, setCustomCitiesByState] = useState<Record<string, string[]>>({});
+  const [customStates, setCustomStates] = useState<string[]>([]);
+  const [customCountries, setCustomCountries] = useState<string[]>([]);
+  useEffect(() => {
+    api.locationMasters.getAll().then((r: any) => {
+      setCustomStates(Array.isArray(r?.states) ? r.states : []);
+      setCustomCountries(Array.isArray(r?.countries) ? r.countries : []);
+      // citiesByState: { [stateName]: string[] }. Tolerates older API shapes.
+      setCustomCitiesByState(r?.citiesByState && typeof r.citiesByState === 'object' ? r.citiesByState : {});
+    }).catch(() => { /* dropdowns still work with the static lists */ });
+  }, []);
+  const uniqSort = (arr: string[]) => Array.from(new Set(arr.filter(Boolean))).sort();
+  const stateOptions = useMemo(() => uniqSort([...INDIAN_STATES, ...customStates]), [customStates]);
+  const countryOptions = useMemo(() => {
+    // Keep India pinned first (default), the rest sorted; merge any custom countries.
+    const rest = uniqSort([...NATIONALITY_COUNTRIES.filter(c => c !== DEFAULT_COUNTRY), ...customCountries]);
+    return [DEFAULT_COUNTRY, ...rest];
+  }, [customCountries]);
+  // Cities for a given state = static cities of that state + custom ones saved for it.
+  const cityOptionsFor = (state?: string): string[] => {
+    const st = (state || '').trim();
+    if (!st) return [];
+    return uniqSort([...citiesForState(st), ...(customCitiesByState[st] || [])]);
+  };
+  const rememberState = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomStates(p => uniqSort([...p, n])); api.locationMasters.add('state', n).catch(() => {}); };
+  // A custom city is always stored linked to its state, so it only resurfaces for
+  // that state in future (req: "store custom cities for future use", per state).
+  const rememberCity = (state: string, name: string) => {
+    const st = (state || '').trim(); const n = (name || '').trim();
+    if (!st || !n) return;
+    setCustomCitiesByState(p => ({ ...p, [st]: uniqSort([...(p[st] || []), n]) }));
+    api.locationMasters.addCity(st, n).catch(() => {});
+  };
+  const rememberCountry = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomCountries(p => uniqSort([...p, n])); api.locationMasters.addCountry(n).catch(() => {}); };
 
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -218,7 +276,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     gender: 'Female',
     dob: '1998-08-10',
     maritalStatus: 'UNMARRIED',
-    nationality: 'INDIAN',
+    nationality: DEFAULT_COUNTRY,
     fatherSpouseName: '',
     relationType: 'FATHER',
     emergencyContact: '',
@@ -245,6 +303,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     bankState: '',
     presentAddress: '',
     permanentAddress: '',
+    state: '',
+    city: '',
     shiftId: '' as number | string,
   });
 
@@ -263,16 +323,65 @@ export const Employees: React.FC<EmployeesProps> = ({
       employeeId: '[ Auto Generated ]', codeMode: 'auto',
       firstName: '', middleName: '', lastName: '', aadhaarName: '',
       gender: 'Female', dob: '1998-08-10', maritalStatus: 'UNMARRIED',
-      nationality: 'INDIAN', fatherSpouseName: '', relationType: 'FATHER',
+      nationality: DEFAULT_COUNTRY, fatherSpouseName: '', relationType: 'FATHER',
       emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
       exitDate: '', exitReason: '', branchLocation: initialBranch, biometricId: '',
       aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
       bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
+      state: '', city: '',
       shiftId: '',
     });
     setErrors({});
+    setWizardNominees([]);
     setActiveTab('personal');
     setAddOpen(true);
+  };
+
+  // ── Add-wizard multi-step "Save & Continue" flow ──────────────────────────
+  const ADD_STEPS = ['personal', 'job', 'banking', 'address', 'nominees', 'review'] as const;
+  const ADD_STEP_LABELS: Record<string, string> = { personal: 'Personal Info', job: 'Employment Details', banking: 'Compliance & Bank', address: 'Addresses', nominees: 'Nominees', review: 'Review & Submit' };
+
+  // Validate ONLY the fields owned by the given step, so the user can advance.
+  const validateAddSection = (tab: string): Record<string, string> => {
+    const e: Record<string, string> = {};
+    if (tab === 'personal') {
+      const nm = (form.aadhaarName || form.name || '').trim();
+      if (nm.length < 3) e.aadhaarName = 'Name as per Aadhaar is required';
+      if (!form.gender) e.gender = 'Gender is required';
+      if (!form.dob) e.dob = 'Date of Birth is required';
+      if (!form.maritalStatus) e.maritalStatus = 'Marital Status is required';
+      if (!form.nationality) e.nationality = 'Nationality is required';
+      if (!form.state) e.state = 'State is required';
+      if (!form.city) e.city = 'City is required';
+      if (!form.mobileNumber || form.mobileNumber.trim().length < 10) e.phone = 'A valid 10-digit mobile number is required';
+      if (form.codeMode === 'custom' && !form.employeeId.trim()) e.employeeId = 'Employee code is required';
+    } else if (tab === 'job') {
+      if (!isBranchWorkspace && !form.branchLocation) e.branchLocation = 'Branch location is required';
+      if (!form.department) e.department = 'Department is required';
+      if (!form.designation) e.designation = 'Designation is required';
+      if (!form.category) e.category = 'Category is required';
+      if (!form.employmentType) e.employmentType = 'Employment type is required';
+      if (!form.joinDate) e.joinDate = 'Joining date is required';
+      if (!form.salary || Number(form.salary) <= 0) e.salary = 'A valid salary is required';
+    }
+    // 'banking' fields are fully validated at the final "Complete Registration".
+    return e;
+  };
+
+  const handleSaveContinue = () => {
+    const idx = ADD_STEPS.indexOf(activeTab as any);
+    if (idx === -1) return;
+    const sectionErrors = validateAddSection(activeTab);
+    if (Object.keys(sectionErrors).length) {
+      setErrors(prev => ({ ...prev, ...sectionErrors }));
+      const firstKey = Object.keys(sectionErrors)[0];
+      setTimeout(() => { document.getElementById(`field-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);
+      return;
+    }
+    setErrors({});
+    setStepMsg(`${ADD_STEP_LABELS[activeTab]} saved — continuing to ${ADD_STEP_LABELS[ADD_STEPS[idx + 1]]}.`);
+    setTimeout(() => setStepMsg(''), 2500);
+    setActiveTab(ADD_STEPS[idx + 1]);
   };
 
   const handleStartEdit = (emp: Employee) => {
@@ -431,6 +540,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!form.gender) activeErrors.gender = 'Gender is required';
     if (!form.maritalStatus) activeErrors.maritalStatus = 'Marital Status is required';
     if (!form.nationality) activeErrors.nationality = 'Nationality is required';
+    if (!form.state) activeErrors.state = 'State is required';
+    if (!form.city) activeErrors.city = 'City is required';
     if (!form.fatherSpouseName) activeErrors.fatherSpouseName = 'Father/Spouse Name is required';
 
     if (!form.designation || form.designation.trim().length === 0) {
@@ -487,7 +598,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
 
       // Map error key to tab
-      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
+      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'state', 'city', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
       else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
       else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
@@ -547,6 +658,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       dob: form.dob,
       maritalStatus: form.maritalStatus,
       nationality: form.nationality,
+      state: form.state,
+      city: form.city,
       fatherSpouseName: form.fatherSpouseName,
       relationType: form.relationType,
       emergencyContact: form.emergencyContact,
@@ -575,11 +688,37 @@ export const Employees: React.FC<EmployeesProps> = ({
       shiftId: form.shiftId ? Number(form.shiftId) : null,
     };
 
+    // Validate staged nominee allocation BEFORE creating the employee, so we never
+    // end up with an employee saved but nominees rejected (no partial state).
+    const nomTotal = wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0);
+    if (wizardNominees.length && nomTotal > 100.01) {
+      alert(`Total nominee allocation is ${nomTotal}% — it cannot exceed 100%. Fix it in the Nominees step.`);
+      setActiveTab('nominees');
+      return;
+    }
+
     try {
+      // Step 1 — create the employee (nominee records are created ONLY after this succeeds).
       const savedEmp = await api.employees.create(newEmp);
       onUpdateEmployees([savedEmp, ...employees]);
+
+      // Step 2 — save the staged nominees together, in a single transaction (all-or-none).
+      let nomineeNote = '';
+      if (wizardNominees.length) {
+        try {
+          await api.nominees.bulkCreate(savedEmp.id, wizardNominees);
+          nomineeNote = ` with ${wizardNominees.length} nominee(s)`;
+        } catch (ne: any) {
+          nomineeNote = ` — but nominees could not be saved (${ne?.message || 'error'}). Add them from the profile.`;
+        }
+      }
       setAddOpen(false);
-      alert(`Absence/Employee profile for ${form.name} logged successfully.`);
+      alert(`${form.name} registered successfully${nomineeNote}.`);
+      // Open the profile on the Nominees tab so the saved nominees are visible and
+      // any remaining ones can be completed.
+      setActiveTab('nominees');
+      setViewEmp(savedEmp);
+      setWizardNominees([]);
     } catch (err: any) {
       console.error(err);
       alert(`Failed to save to database: ${err.message}`);
@@ -628,6 +767,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!editEmp.gender) activeErrors.gender = 'Gender is required';
     if (!editEmp.maritalStatus) activeErrors.maritalStatus = 'Marital Status is required';
     if (!editEmp.nationality) activeErrors.nationality = 'Nationality is required';
+    if (!(editEmp as any).state) activeErrors.state = 'State is required';
+    if (!(editEmp as any).city) activeErrors.city = 'City is required';
     if (!editEmp.fatherSpouseName) activeErrors.fatherSpouseName = 'Father/Spouse Name is required';
 
     if (!isValidPan(editEmp.pan)) {
@@ -671,7 +812,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       const firstErrorKey = Object.keys(activeErrors).find(k => activeErrors[k] !== '') || '';
 
       // Map error key to tab
-      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
+      if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'state', 'city', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
       else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
       else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
@@ -1015,6 +1156,9 @@ export const Employees: React.FC<EmployeesProps> = ({
               <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
                 Bulk Importer
               </Button>
+              <Button variant="outline" icon={<Upload size={14} />} onClick={() => setBioImportOpen(true)}>
+                Import Biometric Codes
+              </Button>
               <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
                 Add Employee
               </Button>
@@ -1054,7 +1198,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       <div className="flex items-center justify-end">
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
           <input type="checkbox" checked={showBiometric} onChange={e => setShowBiometric(e.target.checked)} />
-          Show Biometric ID column
+          Show Biometric Code column
         </label>
       </div>
 
@@ -1064,20 +1208,20 @@ export const Employees: React.FC<EmployeesProps> = ({
           <Thead>
             <tr>
               <Th className="px-2 py-1.5 text-[10px] w-[4%] tracking-wider font-bold text-center">Sr No</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[8%] tracking-wider font-bold">Emp Code</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[24%] tracking-wider font-bold">Employee Full Name</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Nationality</Th>
+              <Th className="px-2 py-1.5 text-[10px] w-[9%] tracking-wider font-bold">Emp Code</Th>
+              <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[27%]' : 'w-[32%]'}`}>Employee Full Name</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[12%] tracking-wider font-bold">Date of Joining</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[18%] tracking-wider font-bold">Designation</Th>
+              <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[22%]' : 'w-[27%]'}`}>Designation</Th>
               <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Category</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>
-              {showBiometric && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Biometric ID</Th>}
+              {/* Date of Exit is meaningless for active staff — hidden on the Active tab, kept on All/Previous. */}
+              {activeMainTab !== 'active' && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>}
+              {showBiometric && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Biometric Code</Th>}
               <Th className="px-2 py-1.5 text-[10px] w-[6%] tracking-wider font-bold text-center">ACTIONS</Th>
             </tr>
           </Thead>
           <Tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={showBiometric ? 10 : 9} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
+              <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
             ) : (
               filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
                 <Tr key={emp.id} className="hover:bg-slate-50/50">
@@ -1094,11 +1238,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                       </div>
                     </div>
                   </Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] font-semibold text-slate-700">{emp.nationality || 'INDIAN'}</span></Td>
                   <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{formatDate(emp.joinDate)}</span></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[130px]">{emp.designation}</span></Td>
+                  <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[160px]">{emp.designation}</span></Td>
                   <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{formatDate(emp.exitDate)}</span></Td>
+                  {activeMainTab !== 'active' && <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{emp.exitDate ? formatDate(emp.exitDate) : '—'}</span></Td>}
                   {showBiometric && <Td className="px-2 py-1"><span className="text-[11px] text-slate-600 font-medium">{emp.biometricId || '—'}</span></Td>}
                   <Td className="px-2 py-1 w-24">
                     <div className="flex items-center justify-center gap-1 whitespace-nowrap">
@@ -1209,8 +1352,14 @@ export const Employees: React.FC<EmployeesProps> = ({
               <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Payroll & Banking</button>
               <button onClick={() => setActiveTab('compliance')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'compliance' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance IDs</button>
               <button onClick={() => setActiveTab('documents')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'documents' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
+              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Nominees</button>
               <button onClick={() => setActiveTab('leaves')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'leaves' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Leave History</button>
             </div>
+
+            {/* Nominees tab — dedicated nominee management (separate tables) */}
+            {activeTab === 'nominees' && (
+              <NomineesTab employeeId={viewEmp.id} employeeName={viewEmp.name} role={role} />
+            )}
 
             {/* Sub-Tabs View Content */}
             {activeTab === 'personal' && (
@@ -1222,7 +1371,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <div><p className="text-[10px] text-gray-400">Gender</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.gender || 'Female'}</p></div>
                   <div><p className="text-[10px] text-gray-400">Date of Birth</p><p className="font-semibold text-slate-800 mt-0.5">{formatDate(viewEmp.dob)}</p></div>
                   <div><p className="text-[10px] text-gray-400">Marital Status</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.maritalStatus || 'UNMARRIED'}</p></div>
-                  <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || 'INDIAN'}</p></div>
+                  <div><p className="text-[10px] text-gray-400">Nationality</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.nationality || DEFAULT_COUNTRY}</p></div>
                   <div><p className="text-[10px] text-gray-400">Emergency Parent/Spouse</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.fatherSpouseName || '—'} ({viewEmp.relationType || 'FATHER'})</p></div>
                 </div>
 
@@ -1245,7 +1394,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div><p className="text-[10px] text-gray-400">Employment Class</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.category || 'Skilled'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Type of Employment</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.employmentType || 'CONTRACTUAL'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Date of Joining</p><p className="font-semibold text-slate-800 mt-0.5">{formatDate(viewEmp.joinDate)}</p></div>
-                <div><p className="text-[10px] text-gray-400">Biometric ID</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.biometricId || 'Not Assigned'}</p></div>
+                <div><p className="text-[10px] text-gray-400">Biometric Code</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.biometricId || 'Not Assigned'}</p></div>
                 <div><p className="text-[10px] text-gray-400">Monthly Basic Salary</p><p className="font-bold text-slate-800 mt-0.5">₹{(viewEmp.salary || 0).toLocaleString()}</p></div>
                 {viewEmp.exitDate && (
                   <>
@@ -1597,6 +1746,15 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
+      {/* Biometric Code bulk import (maps machine codes to employees; no sync) */}
+      <BiometricImportModal
+        open={bioImportOpen}
+        onClose={() => setBioImportOpen(false)}
+        role={role}
+        companyId={parentCompanyId || activeCompanyId}
+        onDone={refreshAfterBiometric}
+      />
+
       {/* Bulk Excel Import Dialog */}
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Enterprise Excel Importer" size="md">
         <div className="space-y-4 text-left text-xs font-sans">
@@ -1686,20 +1844,70 @@ export const Employees: React.FC<EmployeesProps> = ({
         title="Register Master Employee File"
         size="md"
         footer={
-          <>
-            <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-            {canEdit && <Button onClick={handleAddSubmit}>Save Master File</Button>}
-          </>
+          <div className="flex items-center justify-between w-full gap-2">
+            <div>
+              {activeTab !== 'personal' && (
+                <Button variant="outline" onClick={() => { const i = ADD_STEPS.indexOf(activeTab as any); if (i > 0) setActiveTab(ADD_STEPS[i - 1]); }}>← Back</Button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
+              {canEdit && (activeTab === 'review'
+                ? <Button onClick={handleAddSubmit}>Complete Registration</Button>
+                : <Button onClick={handleSaveContinue}>Save &amp; Continue →</Button>)}
+            </div>
+          </div>
         }
       >
         <div className="space-y-4 text-left text-xs font-sans">
+          {stepMsg && (
+            <div className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ {stepMsg}</div>
+          )}
           {/* Tabs header in dialog */}
           <div className="flex border-b border-gray-200 gap-3 text-xs">
             <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
             <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
             <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
             <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
+            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Nominees</button>
+            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Review</button>
           </div>
+
+          {/* Step 5 — Nominees (staged locally; saved transactionally after the employee is created) */}
+          {activeTab === 'nominees' && (
+            <NomineeWizardStep value={wizardNominees} onChange={setWizardNominees} />
+          )}
+
+          {/* Step 6 — Review & Submit */}
+          {activeTab === 'review' && (
+            <div className="space-y-3 text-xs">
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Employee</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div><span className="text-slate-400">Name:</span> <strong className="text-slate-800">{form.name || '—'}</strong></div>
+                  <div><span className="text-slate-400">Code:</span> <strong className="text-slate-800">{form.employeeId}</strong></div>
+                  <div><span className="text-slate-400">Department:</span> <strong className="text-slate-800">{form.department}</strong></div>
+                  <div><span className="text-slate-400">Designation:</span> <strong className="text-slate-800">{form.designation}</strong></div>
+                  <div><span className="text-slate-400">Branch:</span> <strong className="text-slate-800">{form.branchLocation || '—'}</strong></div>
+                  <div><span className="text-slate-400">Join Date:</span> <strong className="text-slate-800">{form.joinDate}</strong></div>
+                </div>
+              </div>
+              <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">Nominees ({wizardNominees.length})</p>
+                {wizardNominees.length === 0 ? (
+                  <p className="text-[11px] text-slate-500">No nominees added. You can add them after registration from the employee profile.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {wizardNominees.map((n, i) => (
+                      <div key={i} className="flex items-center justify-between"><span className="text-slate-700">{n.fullName} <span className="text-slate-400">· {n.relationship}</span></span><strong className="text-indigo-600">{Number(n.percentage)}%</strong></div>
+                    ))}
+                    <div className="flex items-center justify-between pt-1 mt-1 border-t border-slate-200"><span className="font-bold text-slate-600">Total allocation</span><strong className={wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0) === 100 ? 'text-emerald-600' : 'text-amber-600'}>{wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0)}%</strong></div>
+                  </div>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500">Click <strong>Complete Registration</strong> to create the employee{wizardNominees.length ? ' and save the nominees together' : ''}.</p>
+            </div>
+          )}
 
           {activeTab === 'personal' && (
             <div className="space-y-3">
@@ -1736,7 +1944,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input id="field-nationality" label="Nationality" value={form.nationality} onChange={e => setForm({ ...form, nationality: e.target.value })} error={errors.nationality} />
+                <CreatableSelect label="State *" value={form.state} options={stateOptions}
+                  placeholder="Select or type a state" error={errors.state}
+                  onChange={v => setForm({ ...form, state: v, city: (form.state && v !== form.state) ? '' : form.city })} onCreate={rememberState} />
+                <CreatableSelect label="City *" value={form.city} options={cityOptionsFor(form.state)}
+                  placeholder={form.state ? 'Select or type a city' : 'Select a state first'} error={errors.city}
+                  disabled={!form.state}
+                  onChange={v => setForm({ ...form, city: v })} onCreate={v => rememberCity(form.state, v)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <CreatableSelect label="Nationality *" value={form.nationality} options={countryOptions}
+                  placeholder="Select a country" error={errors.nationality} allowCustom={isSuperAdmin}
+                  onChange={v => setForm({ ...form, nationality: v })} onCreate={rememberCountry} />
                 <Input id="field-phone" label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
               </div>
               <div className="grid grid-cols-1 gap-3">
@@ -1765,8 +1984,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-joinDate" label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={errors.joinDate} />
               </div>
               <div>
-                <Input id="field-biometricId" label="Biometric ID (Optional)" maxLength={50} placeholder="e.g. 15" value={form.biometricId} onChange={e => setForm({ ...form, biometricId: e.target.value })} />
-                <p className="text-[10px] text-slate-400 mt-1">Enter the biometric user/enroll ID from the attendance machine. Leave blank if biometric attendance is not used.</p>
+                <Input id="field-biometricId" label="Biometric Code (Optional)" maxLength={50} placeholder="e.g. 0001" value={form.biometricId} onChange={e => setForm({ ...form, biometricId: e.target.value })} />
+                <p className="text-[10px] text-slate-400 mt-1">Attendance-machine code (a.k.a. Machine Employee Code). Must be unique within the company. This is NOT the Employee ID. Leave blank if biometric attendance is not used.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
@@ -1831,7 +2050,12 @@ export const Employees: React.FC<EmployeesProps> = ({
               <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
               <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
               <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
+              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Nominees</button>
             </div>
+
+            {activeTab === 'nominees' && (
+              <NomineesTab employeeId={editEmp.id} employeeName={editEmp.name} role={role} />
+            )}
 
             {activeTab === 'personal' && (
               <div className="space-y-3">
@@ -1850,7 +2074,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Select id="field-maritalStatus" label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Input id="field-nationality" label="Nationality" value={editEmp.nationality || 'INDIAN'} onChange={e => setEditEmp({ ...editEmp, nationality: e.target.value })} error={errors.nationality} />
+                  <CreatableSelect label="State *" value={editEmp.state || ''} options={stateOptions}
+                    placeholder="Select or type a state" error={errors.state}
+                    onChange={v => setEditEmp({ ...editEmp, state: v, city: (editEmp.state && v !== editEmp.state) ? '' : editEmp.city })} onCreate={rememberState} />
+                  <CreatableSelect label="City *" value={editEmp.city || ''} options={cityOptionsFor(editEmp.state || '')}
+                    placeholder={editEmp.state ? 'Select or type a city' : 'Select a state first'} error={errors.city}
+                    disabled={!editEmp.state}
+                    onChange={v => setEditEmp({ ...editEmp, city: v })} onCreate={v => rememberCity(editEmp.state || '', v)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <CreatableSelect label="Nationality *" value={editEmp.nationality || DEFAULT_COUNTRY} options={countryOptions}
+                    placeholder="Select a country" error={errors.nationality} allowCustom={isSuperAdmin}
+                    onChange={v => setEditEmp({ ...editEmp, nationality: v })} onCreate={rememberCountry} />
                   <Input id="field-phone" label="Mobile Number *" value={editMobileNumber} onChange={e => setEditMobileNumber(e.target.value)} error={errors.phone} />
                 </div>
                 <div className="grid grid-cols-1 gap-3">
@@ -1879,8 +2114,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-joinDate" label="Joining Date *" type="date" value={(editEmp.joinDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, joinDate: e.target.value })} error={errors.joinDate} />
                 </div>
                 <div>
-                  <Input id="field-biometricId" label="Biometric ID (Optional)" maxLength={50} placeholder="e.g. 15" value={editEmp.biometricId || ''} onChange={e => setEditEmp({ ...editEmp, biometricId: e.target.value })} />
-                  <p className="text-[10px] text-slate-400 mt-1">Enter the biometric user/enroll ID from the attendance machine. Leave blank if biometric attendance is not used.</p>
+                  <Input id="field-biometricId" label="Biometric Code (Optional)" maxLength={50} placeholder="e.g. 0001" value={editEmp.biometricId || ''} onChange={e => setEditEmp({ ...editEmp, biometricId: e.target.value })} />
+                  <p className="text-[10px] text-slate-400 mt-1">Attendance-machine code (a.k.a. Machine Employee Code). Must be unique within the company. This is NOT the Employee ID. Leave blank if biometric attendance is not used.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={editEmp.salary} onChange={e => setEditEmp({ ...editEmp, salary: parseInt(e.target.value) || 0 })} error={errors.salary} />

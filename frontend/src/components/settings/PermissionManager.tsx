@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ShieldCheck, Search, Copy, RotateCcw, Save, Check } from 'lucide-react';
+import { ShieldCheck, Search, RotateCcw, Save } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input, Select } from '../ui/Input';
@@ -22,10 +22,13 @@ const MODULES: { key: AppModules; label: string }[] = [
   { key: 'tenders', label: 'Tender Information' },
   { key: 'users', label: 'User Management' },
 ];
-const ACTIONS = ['view', 'edit', 'create', 'delete', 'manage'] as const;
+
+// The matrix controls ONLY these four permissions. "Access" and "Manage" have
+// been removed from the system — authorization is driven by these alone.
+const ACTIONS = ['view', 'edit', 'create', 'delete'] as const;
 type Action = typeof ACTIONS[number];
 
-const blankPerm = () => ({ view: false, edit: false, create: false, delete: false, export: false, approve: false, print: false, manage: false });
+const blankPerm = () => ({ view: false, edit: false, create: false, delete: false, export: false, approve: false, print: false });
 
 // Role templates — quick presets applied across all modules.
 const TEMPLATES: Record<string, (m: AppModules) => any> = {
@@ -36,7 +39,7 @@ const TEMPLATES: Record<string, (m: AppModules) => any> = {
   'Finance': (m) => ['payroll', 'reports', 'dashboard'].includes(m)
     ? { ...blankPerm(), view: true, edit: true, export: true, print: true }
     : blankPerm(),
-  'Full (Company)': () => ({ view: true, edit: true, create: true, delete: true, export: true, approve: true, print: true, manage: true }),
+  'Full (Company)': () => ({ view: true, edit: true, create: true, delete: true, export: true, approve: true, print: true }),
 };
 
 interface Props { role: string; }
@@ -48,7 +51,6 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<any>(null);
   const [perms, setPerms] = useState<Record<string, any>>({});
-  const [moduleAccess, setModuleAccess] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const flash = (kind: 'ok' | 'err', msg: string) => { setToast({ kind, msg }); setTimeout(() => setToast(null), 4000); };
@@ -72,24 +74,19 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
     const p: Record<string, any> = {};
     MODULES.forEach(m => { p[m.key] = { ...blankPerm(), ...(u.permissions?.[m.key] || {}) }; });
     setPerms(p);
-    const ma: Record<string, boolean> = {};
-    MODULES.forEach(m => { ma[m.key] = u.moduleAccess?.[m.key] !== false; });
-    setModuleAccess(ma);
   };
 
   const toggle = (mod: AppModules, action: Action) => {
     setPerms(prev => ({ ...prev, [mod]: { ...prev[mod], [action]: !prev[mod]?.[action] } }));
   };
 
-  // "ALL" is a UI helper only — it is NOT persisted. It maps to the granular
-  // actions rendered in the matrix (view, edit, create, delete, manage):
-  //   • checking ALL selects every action; unchecking clears them.
-  //   • ALL is reflected as checked only when every action is already on.
-  // The other granular flags (export/approve/print) are left untouched so a
-  // template that set them is preserved.
+  // "ALL" is a UI helper (not persisted). It maps to the four granular actions:
+  //   • checking ALL selects view/edit/create/delete; unchecking clears them.
+  //   • ALL reflects as checked only when all four are already on (so manually
+  //     checking every action auto-enables ALL).
+  // export/approve/print (set by templates) are left untouched.
   const allChecked = (mod: AppModules) => ACTIONS.every(a => !!perms[mod]?.[a]);
   const toggleAll = (mod: AppModules) => {
-    if (!moduleAccess[mod]) return;            // Access is the parent gate
     const next = !allChecked(mod);
     setPerms(prev => {
       const row = { ...prev[mod] };
@@ -98,33 +95,19 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
     });
   };
 
-  // Access is the PARENT permission. Turning it OFF removes every child
-  // permission (view/edit/create/delete/manage + the ALL helper). Turning it
-  // back ON leaves the row enabled but unchecked — the admin re-grants
-  // explicitly. The database only ever stores the actual granular flags.
-  const toggleModuleAccess = (mod: AppModules) => {
-    setModuleAccess(prev => {
-      const turningOff = prev[mod] !== false ? true : false; // currently on → turning off
-      if (turningOff) {
-        setPerms(p => ({ ...p, [mod]: blankPerm() }));
-      }
-      return { ...prev, [mod]: !prev[mod] };
-    });
-  };
-
   const applyTemplate = (name: string) => {
     const fn = TEMPLATES[name]; if (!fn) return;
-    const p: Record<string, any> = {}; const ma: Record<string, boolean> = {};
-    MODULES.forEach(m => { p[m.key] = fn(m.key); ma[m.key] = !!p[m.key].view || name === 'Full (Company)'; });
-    setPerms(p); setModuleAccess(ma);
+    const p: Record<string, any> = {};
+    MODULES.forEach(m => { p[m.key] = fn(m.key); });
+    setPerms(p);
     flash('ok', `Applied "${name}" template — review and Save.`);
   };
 
   const cloneFrom = (sourceId: any) => {
     const src = users.find(u => String(u.id) === String(sourceId)); if (!src) return;
-    const p: Record<string, any> = {}; const ma: Record<string, boolean> = {};
-    MODULES.forEach(m => { p[m.key] = { ...blankPerm(), ...(src.permissions?.[m.key] || {}) }; ma[m.key] = src.moduleAccess?.[m.key] !== false; });
-    setPerms(p); setModuleAccess(ma);
+    const p: Record<string, any> = {};
+    MODULES.forEach(m => { p[m.key] = { ...blankPerm(), ...(src.permissions?.[m.key] || {}) }; });
+    setPerms(p);
     flash('ok', `Cloned permissions from ${src.name} — review and Save.`);
   };
 
@@ -132,6 +115,10 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
     if (!selected) return;
     setBusy(true);
     try {
+      // "Access" (moduleAccess) is removed — send every module as accessible so
+      // any legacy stored kill-switch is neutralised. Authorization now relies
+      // solely on the granular view/edit/create/delete flags.
+      const moduleAccess = Object.fromEntries(MODULES.map(m => [m.key, true]));
       await api.users.updatePermissions(selected.id, { permissions: perms, moduleAccess });
       flash('ok', `Permissions updated for ${selected.name}.`);
       await load();
@@ -186,35 +173,30 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse table-fixed">
                   <thead>
                     <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                      <th className="py-2 pr-2">Module</th>
-                      <th className="py-2 px-2 text-center">Access</th>
-                      <th className="py-2 px-2 text-center text-indigo-500">All</th>
-                      {ACTIONS.map(a => <th key={a} className="py-2 px-2 text-center">{a}</th>)}
+                      <th className="py-2 pr-2 w-[28%]">Module</th>
+                      <th className="py-2 px-2 text-center w-[14%] text-indigo-500">All</th>
+                      {ACTIONS.map(a => <th key={a} className="py-2 px-2 text-center w-[14.5%]">{a}</th>)}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {MODULES.map(m => (
-                      <tr key={m.key} className={!moduleAccess[m.key] ? 'opacity-40' : ''}>
+                      <tr key={m.key} className="hover:bg-slate-50/60">
                         <td className="py-2 pr-2 text-xs font-semibold text-slate-700">{m.label}</td>
-                        <td className="py-2 px-2 text-center">
-                          <input type="checkbox" checked={moduleAccess[m.key] !== false} onChange={() => toggleModuleAccess(m.key)} title="Module access (parent permission)" />
-                        </td>
                         <td className="py-2 px-2 text-center">
                           <input
                             type="checkbox"
-                            className="accent-indigo-600"
-                            disabled={!moduleAccess[m.key]}
-                            checked={moduleAccess[m.key] !== false && allChecked(m.key)}
+                            className="accent-indigo-600 h-4 w-4 align-middle"
+                            checked={allChecked(m.key)}
                             onChange={() => toggleAll(m.key)}
                             title="Select every permission for this module"
                           />
                         </td>
                         {ACTIONS.map(a => (
                           <td key={a} className="py-2 px-2 text-center">
-                            <input type="checkbox" disabled={!moduleAccess[m.key]} checked={!!perms[m.key]?.[a]} onChange={() => toggle(m.key, a)} />
+                            <input type="checkbox" className="h-4 w-4 align-middle" checked={!!perms[m.key]?.[a]} onChange={() => toggle(m.key, a)} />
                           </td>
                         ))}
                       </tr>

@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, Fingerprint
+  ClipboardList, Briefcase, History, IdCard, Fingerprint, Gift
 } from 'lucide-react';
 import type { Role, Company } from '../../data/mockData';
 import type { UserAccount, AppModules } from '../../pages/Login';
@@ -11,7 +11,7 @@ import { usePermissions } from '../../context/PermissionContext';
 import { getCompanyInitials } from '../../utils/workspaceUtils';
 
 export type PageId =
-  | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'attendance'
+  | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
 
 interface NavItem {
@@ -31,8 +31,9 @@ const navItems: NavItem[] = [
   { id: 'attendance-devices', label: 'Attendance Devices', icon: <Fingerprint size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
+  { id: 'bonus', label: 'Bonus Management', icon: <Gift size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
-  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
+  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'tenders', label: 'Tender Information', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
@@ -78,6 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // Employees / Attendance permission rows (no dedicated permission matrix).
     const permKey = (item.id === 'employee-cards' ? 'employees'
       : item.id === 'attendance-devices' ? 'attendance'
+      : item.id === 'bonus' ? 'payroll'
       : item.id) as AppModules;
     return canView(permKey) && item.roles.includes(role);
   });

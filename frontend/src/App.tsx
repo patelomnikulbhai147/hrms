@@ -11,10 +11,11 @@ const LeaveManagement = React.lazy(() => import('./pages/LeaveManagement').then(
 const Attendance = React.lazy(() => import('./pages/Attendance').then(m => ({ default: m.Attendance })));
 const AttendanceDevices = React.lazy(() => import('./pages/AttendanceDevices').then(m => ({ default: m.AttendanceDevices })));
 const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
+const BonusManagement = React.lazy(() => import('./pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
 const Companies = React.lazy(() => import('./pages/Companies').then(m => ({ default: m.Companies })));
 const EmployeeCards = React.lazy(() => import('./pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
-const ReportCenter = React.lazy(() => import('./pages/ReportCenter').then(m => ({ default: m.ReportCenter })));
+const ComplianceReports = React.lazy(() => import('./pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('./pages/Billing').then(m => ({ default: m.Billing })));
 const Users = React.lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
@@ -57,6 +58,7 @@ const pageTitles: Record<PageId, string> = {
   employees: 'Employees',
   leaves: 'Leave Management',
   payroll: 'Payroll',
+  bonus: 'Bonus Management',
   attendance: 'Attendance',
   'attendance-devices': 'Attendance Devices',
   documents: 'Documents',
@@ -72,7 +74,7 @@ const pageTitles: Record<PageId, string> = {
 // Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
-  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'attendance',
+  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'bonus', 'attendance',
   'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'audit',
   'select-workspace',
 ] as const;
@@ -914,7 +916,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // Explicit RBAC Enforcement for Modules. Employee Cards is gated on the
     // Employees module permission (no dedicated matrix row).
     if (permissionRole !== 'Super Admin') {
-      const permCurrent = (currentPage === 'employee-cards' ? 'employees' : currentPage) as AppModules;
+      const permCurrent = (currentPage === 'employee-cards' ? 'employees'
+        : currentPage === 'attendance-devices' ? 'attendance'
+        : currentPage === 'bonus' ? 'payroll'
+        : currentPage) as AppModules;
       const isAllowed = checkCanView(permCurrent, authProfile, permissionRole);
       
       if (!isAllowed) {
@@ -953,7 +958,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   const renderPage = () => {
     // Employee Cards is gated on the Employees module permission (it has no
     // dedicated permission-matrix row).
-    const permPage = (currentPage === 'employee-cards' ? 'employees' : currentPage) as AppModules;
+    const permPage = (currentPage === 'employee-cards' ? 'employees'
+      : currentPage === 'attendance-devices' ? 'attendance'
+      : currentPage === 'bonus' ? 'payroll'
+      : currentPage) as AppModules;
     // Secondary render-level check to completely block unauthorized rendering
     if (permissionRole !== 'Super Admin' && !checkCanView(permPage, authProfile, permissionRole)) {
       return (
@@ -1116,6 +1124,15 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             authProfile={authProfile}
           />
         );
+      case 'bonus':
+        return (
+          <BonusManagement
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
       case 'payroll':
         return (
           <Payroll
@@ -1143,14 +1160,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         );
       case 'reports':
         return (
-          <ReportCenter
+          <ComplianceReports
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
-            employees={activeEmployees}
-            attendance={attendance}
-            payroll={payroll}
-            leaves={leaves}
+            authProfile={authProfile}
           />
         );
       case 'settings':
