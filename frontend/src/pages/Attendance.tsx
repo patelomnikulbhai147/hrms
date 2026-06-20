@@ -2,26 +2,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
-import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '../types';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { getUniqueEmployees } from '../utils/deduplication';
-import { byEmployeeCode } from '../utils/employeeSort';
-import { isActiveEmployee } from '../utils/employeeStatus';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { downloadAttendanceTemplateExcel, downloadImportGuidePDF, downloadAttendanceReport, exportAttendanceDataset, type ExportFormat } from '../utils/attendanceExportUtils';
+import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '@/types';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { byEmployeeCode } from '@/utils/employeeSort';
+import { isActiveEmployee } from '@/utils/employeeStatus';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { downloadAttendanceTemplateExcel, downloadImportGuidePDF, downloadAttendanceReport, exportAttendanceDataset, type ExportFormat } from '@/utils/attendanceExportUtils';
 import {
   type PeriodMode, getPeriodRange, eachDateInRange, resolveStatus, statusCode, bucketOf,
   summarizeEmployeePeriod, summarizeYear,
-} from '../utils/attendancePeriods';
-import { AnimatedCounter } from '../components/common/AnimatedCounter';
-import { ui } from '../components/ui/feedback';
+} from '@/utils/attendancePeriods';
+import { AnimatedCounter } from '@/components/common/AnimatedCounter';
+import { ui } from '@/components/ui/feedback';
 interface AttendanceCenterProps {
   role: Role;
   activeCompanyId: string;
@@ -524,7 +524,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   // The open cell editor: which cell + the viewport anchor (rect) so the dropdown
   // renders via a portal at a FIXED position below the clicked cell — never clipped
   // by the table's overflow/scroll containers.
-  const [cellMenu, setCellMenu] = useState<{ key: string; emp: any; date: string; status: string; top: number; left: number } | null>(null);
+  const [cellMenu, setCellMenu] = useState<{ key: string; emp: any; date: string; status: string; top: number; left: number; anchor: HTMLElement } | null>(null);
   const [savingCell, setSavingCell] = useState<string | null>(null);   // cell currently saving
 
   // Keyboard support for the status dropdown (Up/Down to move, Esc to close;
@@ -537,15 +537,39 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     else if (e.key === 'Escape') { e.preventDefault(); setCellMenu(null); }
   };
 
-  // Close the status dropdown if the page/table scrolls or the window resizes, so
-  // the fixed-position menu never drifts away from its anchor cell.
+  // Smart popup placement: open below the cell, but FLIP ABOVE when there isn't
+  // enough room below, and clamp to the viewport so the menu is never cut off —
+  // last-row friendly, like Google Sheets / Excel / Airtable.
+  const computeCellMenuPos = (rect: DOMRect) => {
+    const MENU_W = 208, MENU_H = 296, MARGIN = 8; // w-52; header + 7 options + padding
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const spaceBelow = vh - rect.bottom, spaceAbove = rect.top;
+    let top = (spaceBelow >= MENU_H + MARGIN || spaceBelow >= spaceAbove)
+      ? Math.min(rect.bottom + 6, vh - MENU_H - MARGIN)   // below, clamped to viewport
+      : rect.top - MENU_H - 6;                            // flip above
+    top = Math.max(MARGIN, top);
+    let left = rect.left + rect.width / 2 - MENU_W / 2;   // centred on the cell
+    left = Math.min(Math.max(MARGIN, left), vw - MENU_W - MARGIN);
+    return { top, left };
+  };
+
+  // Keep the fixed-position menu anchored to its cell on scroll/resize: recompute
+  // its smart position (re-flipping if needed). Close only if the cell scrolls
+  // out of view entirely.
   useEffect(() => {
     if (!cellMenu) return;
-    const close = () => setCellMenu(null);
-    window.addEventListener('scroll', close, true);
-    window.addEventListener('resize', close);
-    return () => { window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close); };
-  }, [cellMenu]);
+    const reposition = () => {
+      const a = cellMenu.anchor;
+      if (!a || !a.isConnected) { setCellMenu(null); return; }
+      const rect = a.getBoundingClientRect();
+      if (rect.bottom < 0 || rect.top > window.innerHeight || rect.right < 0 || rect.left > window.innerWidth) { setCellMenu(null); return; }
+      const pos = computeCellMenuPos(rect);
+      setCellMenu(cm => (cm ? { ...cm, top: pos.top, left: pos.left } : cm));
+    };
+    window.addEventListener('scroll', reposition, true);
+    window.addEventListener('resize', reposition);
+    return () => { window.removeEventListener('scroll', reposition, true); window.removeEventListener('resize', reposition); };
+  }, [cellMenu?.key]);
   const [weeklyMsg, setWeeklyMsg] = useState<string>('');
   const flashWeekly = (m: string) => { setWeeklyMsg(m); window.setTimeout(() => setWeeklyMsg(''), 2800); };
 
@@ -1288,8 +1312,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                                 onClick={(e) => {
                                   if (!isAdmin) return;
                                   if (isEditing) { setCellMenu(null); return; }
-                                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                                  setCellMenu({ key, emp, date: d, status, top: r.bottom + 6, left: r.left + r.width / 2 });
+                                  const anchor = e.currentTarget as HTMLElement;
+                                  const pos = computeCellMenuPos(anchor.getBoundingClientRect());
+                                  setCellMenu({ key, emp, date: d, status, top: pos.top, left: pos.left, anchor });
                                 }}
                                 className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold transition-all ${color} ${isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : 'cursor-default'} ${isEditing ? 'ring-2 ring-blue-500' : ''} ${isSaving ? 'opacity-50' : ''}`}
                               >
@@ -1319,8 +1344,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               role="listbox"
               aria-label="Attendance Status"
               onKeyDown={handleCellMenuKey}
-              style={{ position: 'fixed', top: cellMenu.top, left: Math.min(Math.max(8, cellMenu.left - 104), (typeof window !== 'undefined' ? window.innerWidth : 1024) - 216) }}
-              className="z-[1001] w-52 rounded-xl border border-slate-200 bg-white shadow-2xl py-1 overflow-hidden"
+              style={{ position: 'fixed', top: cellMenu.top, left: cellMenu.left, maxHeight: 'calc(100vh - 16px)' }}
+              className="z-[1001] w-52 rounded-xl border border-slate-200 bg-white shadow-2xl py-1 overflow-y-auto"
             >
               <div className="px-3 py-2 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider border-b border-slate-100">Attendance Status</div>
               {WEEKLY_CELL_STATUSES.map((opt, idx) => {

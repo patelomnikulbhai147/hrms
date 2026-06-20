@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CheckSquare, Square, Loader2, FileSpreadsheet, PlayCircle, BadgeCheck, Landmark, Wallet, Lock } from 'lucide-react';
-import type { PayrollRecord, Employee, AttendanceRecord, Company } from '../../types';
-import { ui } from '../ui/feedback';
+import type { PayrollRecord, Employee, AttendanceRecord, Company } from '@/types';
+import { ui } from '@/components/ui/feedback';
 
 // ── New enterprise payroll workflow ──────────────────────────────────────────
 export type PayrollStage = 'draft' | 'generated' | 'approved' | 'bank_processing' | 'paid' | 'locked';

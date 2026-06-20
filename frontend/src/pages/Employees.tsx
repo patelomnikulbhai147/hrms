@@ -1,6 +1,6 @@
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { formatDate } from '../utils/formatDate';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { formatDate } from '@/utils/formatDate';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Plus, Search, Eye, Edit2,
@@ -12,34 +12,34 @@ import {
   type Employee, type EmployeeStatus, type Role, type Company,
   isCompanyIdMatch,
   resolveActiveWorkspace
-} from '../types';
-import { Badge, statusBadge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Modal } from '../components/ui/Modal';
-import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
-import { Input, Select } from '../components/ui/Input';
+} from '@/types';
+import { Badge, statusBadge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { ActionConfirmationModal } from '@/components/ui/ActionConfirmationModal';
+import { Input, Select } from '@/components/ui/Input';
 import {
   validatePhone, validateName, validateEmail,
   validateSalary
-} from '../utils/validation';
-import { type UserAccount } from './Login';
-import { getUniqueEmployees } from '../utils/deduplication';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
-import { BiometricImportModal } from '../components/BiometricImportModal';
-import { CreatableSelect } from '../components/ui/CreatableSelect';
-import { NomineesTab } from '../components/NomineesTab';
-import { NomineeWizardStep } from '../components/NomineeWizardStep';
-import { INDIAN_STATES, citiesForState } from '../data/indianStatesCities';
-import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '../data/countries';
-import { byEmployeeCode } from '../utils/employeeSort';
-import { isActiveEmployee, isOffboarded } from '../utils/employeeStatus';
-import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '../utils/idFormat';
-import { BankDetails } from '../components/BankDetails';
-import { usePermissions } from '../context/PermissionContext';
-import { ui } from '../components/ui/feedback';
+} from '@/utils/validation';
+import { type UserAccount } from '@/pages/Login';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { BiometricImportModal } from '@/components/attendance/BiometricImportModal';
+import { CreatableSelect } from '@/components/ui/CreatableSelect';
+import { NomineesTab } from '@/components/employee/NomineesTab';
+import { NomineeWizardStep } from '@/components/employee/NomineeWizardStep';
+import { INDIAN_STATES, citiesForState } from '@/data/indianStatesCities';
+import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '@/data/countries';
+import { byEmployeeCode } from '@/utils/employeeSort';
+import { isActiveEmployee, isOffboarded } from '@/utils/employeeStatus';
+import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '@/utils/idFormat';
+import { BankDetails } from '@/components/employee/BankDetails';
+import { usePermissions } from '@/context/PermissionContext';
+import { ui } from '@/components/ui/feedback';
 
 const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Sr No', key: 'srNo', width: 8 },

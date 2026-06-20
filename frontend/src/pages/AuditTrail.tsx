@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { api } from '../api/apiClient';
-import { Badge } from '../components/ui/Badge';
-import { Select } from '../components/ui/Input';
-import { Button } from '../components/ui/Button';
+import { api } from '@/api/apiClient';
+import { Badge } from '@/components/ui/Badge';
+import { Select } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 import { History as HistoryIcon, RefreshCw, ShieldCheck } from 'lucide-react';
 
 interface AuditEntry {

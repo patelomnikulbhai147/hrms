@@ -4,30 +4,30 @@ import {
   CheckCircle2, Mail, Phone, ChevronRight, Shield, Cloud, Link, Users, Archive, ShieldAlert,
   FileSpreadsheet, Loader2, FileText
 } from 'lucide-react';
-import { type Company, type Role, type SubscriptionPlan, type Employee } from '../data/mockData';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { PhoneInput } from '../components/ui/PhoneInput';
+import { type Company, type Role, type SubscriptionPlan, type Employee } from '@/data/mockData';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import {
   validatePhone,
   validateName,
   validateEmail,
   validateCompanyName,
   validatePercentage
-} from '../utils/validation';
-import { Modal } from '../components/ui/Modal';
-import { ActionConfirmationModal } from '../components/ui/ActionConfirmationModal';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { type UserAccount } from './Login';
-import { getUniqueEmployees } from '../utils/deduplication';
-import { usePermissions } from '../context/PermissionContext';
-import { getCompanyInitials } from '../utils/workspaceUtils';
-import { api, type SuperAdminStats } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { downloadCompanyExcel, downloadCompanyPDF } from '../utils/companyExportUtils';
-import { ui } from '../components/ui/feedback';
+} from '@/utils/validation';
+import { Modal } from '@/components/ui/Modal';
+import { ActionConfirmationModal } from '@/components/ui/ActionConfirmationModal';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { type UserAccount } from '@/pages/Login';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { usePermissions } from '@/context/PermissionContext';
+import { getCompanyInitials } from '@/utils/workspaceUtils';
+import { api, type SuperAdminStats } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { downloadCompanyExcel, downloadCompanyPDF } from '@/utils/companyExportUtils';
+import { ui } from '@/components/ui/feedback';
 
 interface CompaniesProps {
   _role: Role;

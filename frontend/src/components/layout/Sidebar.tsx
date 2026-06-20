@@ -1,14 +1,14 @@
 import React from 'react';
-import { cn } from '../../utils/cn';
+import { cn } from '@/utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
   ClipboardList, Briefcase, History, IdCard, Fingerprint, Gift
 } from 'lucide-react';
-import type { Role, Company } from '../../data/mockData';
-import type { UserAccount, AppModules } from '../../pages/Login';
-import { usePermissions } from '../../context/PermissionContext';
-import { getCompanyInitials } from '../../utils/workspaceUtils';
+import type { Role, Company } from '@/data/mockData';
+import type { UserAccount, AppModules } from '@/pages/Login';
+import { usePermissions } from '@/context/PermissionContext';
+import { getCompanyInitials } from '@/utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'

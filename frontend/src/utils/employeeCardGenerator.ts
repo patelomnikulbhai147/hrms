@@ -4,7 +4,7 @@
 // Documents.tsx but is tuned for small ID/Info cards.
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { EmployeeIdCard, EmployeeInfoCard } from '../components/cards/EmployeeCardTemplates';
+import { EmployeeIdCard, EmployeeInfoCard } from '@/components/cards/EmployeeCardTemplates';
 
 async function capture(node: HTMLElement) {
   const { default: html2canvas } = await import('html2canvas-pro');

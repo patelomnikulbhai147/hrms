@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { BarChart3, FileText, Download, Eye, AlertTriangle, History, ChevronRight, Printer, LayoutGrid, Zap, Sparkles, Star, CheckCircle2, ShieldCheck } from 'lucide-react';
-import { Modal } from '../components/ui/Modal';
-import { type Role, type Company } from '../types';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { type UserAccount } from './Login';
-import { api } from '../api/apiClient';
-import { formatDate } from '../utils/formatDate';
+import { Modal } from '@/components/ui/Modal';
+import { type Role, type Company } from '@/types';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { type UserAccount } from '@/pages/Login';
+import { api } from '@/api/apiClient';
+import { formatDate } from '@/utils/formatDate';
 
 interface Props { role: Role; activeCompanyId: string; companies?: Company[]; authProfile?: UserAccount | null; }
 

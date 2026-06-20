@@ -5,16 +5,16 @@ import {
   ChevronDown, ChevronRight, Minus, GitBranch, Settings, MoreVertical, Edit2, Shield, Trash2, UserCheck, RotateCw, ClipboardList, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { type UserAccount, type AppModules, type ModulePermissions } from './Login';
-import { type Company } from '../data/mockData';
-import { buildCompanyBranchGroups, type CompanyBranchGroup } from '../utils/workspaceUtils';
-import { Badge } from '../components/ui/Badge';
-import { cn } from '../utils/cn';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { ui } from '../components/ui/feedback';
-import { exportToExcel } from '../utils/exportUtils';
+import { type UserAccount, type AppModules, type ModulePermissions } from '@/pages/Login';
+import { type Company } from '@/data/mockData';
+import { buildCompanyBranchGroups, type CompanyBranchGroup } from '@/utils/workspaceUtils';
+import { Badge } from '@/components/ui/Badge';
+import { cn } from '@/utils/cn';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { ui } from '@/components/ui/feedback';
+import { exportToExcel } from '@/utils/exportUtils';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';

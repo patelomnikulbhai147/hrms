@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal } from '../ui/Modal';
-import { Button } from '../ui/Button';
-import { api } from '../../api/apiClient';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { api } from '@/api/apiClient';
 import { Wallet, TrendingUp, TrendingDown, Building2, AlertTriangle, RefreshCw } from 'lucide-react';
 
 // Field definitions — label order matches the enterprise salary-worksheet spec.

@@ -4,11 +4,11 @@ import {
   DollarSign, ShieldCheck, Activity, CreditCard, Wallet, Briefcase, Building2,
   BarChart3, ClipboardList, ArrowLeft
 } from 'lucide-react';
-import { type Employee, type AttendanceRecord, type LeaveRequest, type PayrollRecord, type Role, type Company } from '../data/mockData';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Reports } from './Reports';
+import { type Employee, type AttendanceRecord, type LeaveRequest, type PayrollRecord, type Role, type Company } from '@/data/mockData';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Reports } from '@/pages/Reports';
 
 interface ReportCenterProps {
   role: Role;

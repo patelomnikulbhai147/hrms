@@ -3,19 +3,19 @@ import {
   Plus, ClipboardList, Search, Trash2, MessageSquare, Paperclip, Clock,
   AlertTriangle, CheckCircle2, Circle, X, Send, AtSign
 } from 'lucide-react';
-import { type Role, type Company, resolveActiveWorkspace } from '../types';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select, Textarea } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
-import { type UserAccount } from './Login';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { ui } from '../components/ui/feedback';
+import { type Role, type Company, resolveActiveWorkspace } from '@/types';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { type UserAccount } from '@/pages/Login';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { ui } from '@/components/ui/feedback';
 
 interface TaskManagerProps {
   role: Role;

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input, Select } from '../ui/Input';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
 import { ShieldCheck, FileText, Database, Plus, Trash2, Save, Download, Upload, Activity, Layers, PenTool, BarChart3, GripVertical, CheckCircle2, History } from 'lucide-react';
-import { type Company } from '../../data/mockData';
-import { ui } from '../ui/feedback';
+import { type Company } from '@/data/mockData';
+import { ui } from '@/components/ui/feedback';
 
 interface PayrollComplianceEngineProps {
   currentCompany: Company;

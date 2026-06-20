@@ -1,4 +1,4 @@
-import { Employee } from '../types';
+import { Employee } from '@/types';
 
 /**
  * Ensures that an array of employees only contains unique records based on employeeId globally.

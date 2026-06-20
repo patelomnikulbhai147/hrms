@@ -7,7 +7,7 @@ export interface ValidationResult {
   error: string;
 }
 
-import { countries } from '../data/countries';
+import { countries } from '@/data/countries';
 
 /**
  * Validates a mobile number.

@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select, Textarea } from '../components/ui/Input';
-import { PhoneInput } from '../components/ui/PhoneInput';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { PhoneInput } from '@/components/ui/PhoneInput';
 import { Building2, Palette, BadgeCent, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud, ShieldCheck } from 'lucide-react';
-import { PermissionManager } from '../components/settings/PermissionManager';
-import { type Company, type Role } from '../data/mockData';
-import { getCompanyDepartments } from '../data/mockData';
-import { resolveActiveWorkspace } from '../types';
-import { SAFE_COMPANY_FALLBACK } from '../App';
-import { usePermissions } from '../context/PermissionContext';
+import { PermissionManager } from '@/components/settings/PermissionManager';
+import { type Company, type Role } from '@/data/mockData';
+import { getCompanyDepartments } from '@/data/mockData';
+import { resolveActiveWorkspace } from '@/types';
+import { SAFE_COMPANY_FALLBACK } from '@/App';
+import { usePermissions } from '@/context/PermissionContext';
 import {
   validatePhone,
   validateEmail,
   validateCompanyName,
   validatePercentage
-} from '../utils/validation';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { PayrollComplianceEngine } from '../components/settings/PayrollComplianceEngine';
-import { ui } from '../components/ui/feedback';
+} from '@/utils/validation';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { PayrollComplianceEngine } from '@/components/settings/PayrollComplianceEngine';
+import { ui } from '@/components/ui/feedback';
 
 interface SettingsProps {
   role: Role;

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Upload, X, FileText } from 'lucide-react';
-import { Button } from './ui/Button';
-import { Input, Select } from './ui/Input';
-import { Modal } from './ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 
 export const RELATIONSHIPS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Grandfather', 'Grandmother', 'Guardian', 'Friend', 'Other'];
 

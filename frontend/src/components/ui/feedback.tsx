@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react';
-import { Button } from './Button';
+import { Button } from '@/components/ui/Button';
 
 /**
  * Global HRMS dialog + toast system.

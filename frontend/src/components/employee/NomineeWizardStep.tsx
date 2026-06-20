@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { UserPlus, Pencil, Trash2, ShieldAlert, FileText } from 'lucide-react';
-import { Button } from './ui/Button';
-import { NomineeForm, NomineeDoc } from './NomineeForm';
+import { Button } from '@/components/ui/Button';
+import { NomineeForm, NomineeDoc } from '@/components/employee/NomineeForm';
 
 interface Props { value: any[]; onChange: (list: any[]) => void; }
 

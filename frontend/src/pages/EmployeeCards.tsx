@@ -1,15 +1,15 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { IdCard, Search, Download, Printer, Layers, Sparkles, QrCode } from 'lucide-react';
-import type { Role, Company, Employee } from '../types';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Badge } from '../components/ui/Badge';
-import { usePermissions } from '../context/PermissionContext';
-import { EmployeeIdCard, EmployeeInfoCard } from '../components/cards/EmployeeCardTemplates';
-import { renderNodeToPdf, downloadCardsPdf } from '../utils/employeeCardGenerator';
-import { isActiveEmployee } from '../utils/employeeStatus';
-import { ui } from '../components/ui/feedback';
+import type { Role, Company, Employee } from '@/types';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
+import { usePermissions } from '@/context/PermissionContext';
+import { EmployeeIdCard, EmployeeInfoCard } from '@/components/cards/EmployeeCardTemplates';
+import { renderNodeToPdf, downloadCardsPdf } from '@/utils/employeeCardGenerator';
+import { isActiveEmployee } from '@/utils/employeeStatus';
+import { ui } from '@/components/ui/feedback';
 
 interface EmployeeCardsProps {
   role: Role;

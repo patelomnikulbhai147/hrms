@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '../../utils/cn';
-import { ui } from './feedback';
+import { cn } from '@/utils/cn';
+import { ui } from '@/components/ui/feedback';
 import {
   exportRowsToExcel,
   exportRowsToPDF,
   type ExportColumn,
-} from '../../utils/exportUtils';
+} from '@/utils/exportUtils';
 
 interface ExportMenuProps {
   /** Columns to include in the exported file (header + key into each row). */

@@ -1,4 +1,4 @@
-import { Employee, AttendanceRecord, LeaveRequest, Company, PayrollRecord } from '../data/mockData';
+import { Employee, AttendanceRecord, LeaveRequest, Company, PayrollRecord } from '@/data/mockData';
 
 /**
  * Enterprise Payroll Automation Engine

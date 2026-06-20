@@ -1,7 +1,7 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { ui } from '../components/ui/feedback';
+import { ui } from '@/components/ui/feedback';
 
 export const downloadAttendanceTemplateExcel = (columns: string[]) => {
   const ws = XLSX.utils.aoa_to_sheet([columns]);

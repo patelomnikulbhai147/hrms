@@ -1,4 +1,4 @@
-import { type PayrollRecord } from '../types';
+import { type PayrollRecord } from '@/types';
 
 const payrollOrder = ['payslip_generated', 'paid', 'verified', 'prepared', 'draft', 'failed'] as const;
 export type PayrollWorkflowStatus = (typeof payrollOrder)[number];

@@ -1,4 +1,4 @@
-import { type PayrollRecord } from '../types';
+import { type PayrollRecord } from '@/types';
 
 export const payrollStatusConfig = {
   draft: {

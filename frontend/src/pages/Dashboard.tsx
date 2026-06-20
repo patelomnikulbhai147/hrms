@@ -16,22 +16,22 @@ import {
   type Notification,
   isCompanyIdMatch,
   resolveActiveWorkspace
-} from '../types';
-import { deriveCompanyPayrollStatus } from '../utils/payroll';
+} from '@/types';
+import { deriveCompanyPayrollStatus } from '@/utils/payroll';
 import {
   calculateSubscriptionAnalytics,
   getSubscriptionAlertsList,
   getDaysRemaining
-} from '../utils/subscriptionUtils';
-import { getCompanyInitials } from '../utils/workspaceUtils';
-import { getUniqueEmployees } from '../utils/deduplication';
-import { api, type SuperAdminStats } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { ui } from '../components/ui/feedback';
-import { Card, StatCard } from '../components/ui/Card';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { TaskTenderWidgets } from '../components/dashboard/TaskTenderWidgets';
-import { Badge } from '../components/ui/Badge';
+} from '@/utils/subscriptionUtils';
+import { getCompanyInitials } from '@/utils/workspaceUtils';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { api, type SuperAdminStats } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { ui } from '@/components/ui/feedback';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
+import { Badge } from '@/components/ui/Badge';
 import {
   ResponsiveContainer,
   BarChart,

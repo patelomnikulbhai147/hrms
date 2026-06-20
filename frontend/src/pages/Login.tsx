@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { User, Lock, Mail, Eye, EyeOff, ShieldCheck, Users, Building2, BarChart3, Shield, KeyRound } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Company } from '../data/mockData';
-import { api } from '../api/apiClient';
-import { authStorage } from '../utils/authStorage';
-import { validateEmail } from '../utils/validation';
+import { Company } from '@/data/mockData';
+import { api } from '@/api/apiClient';
+import { authStorage } from '@/utils/authStorage';
+import { validateEmail } from '@/utils/validation';
 
 export interface ModulePermissions {
   view: boolean;
