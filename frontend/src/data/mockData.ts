@@ -588,7 +588,7 @@ export const companies: Company[] = [
 // company/branch id space — Company N and Branch N share the same numeric id,
 // so an id-only match cannot tell them apart. Re-export the canonical one so
 // every caller scopes data identically and the bug cannot reappear.
-export { isCompanyIdMatch } from '../types';
+export { isCompanyIdMatch } from '@/types';
 
 // ─── Employees ─────────────────────────────────────────────────────────────────
 

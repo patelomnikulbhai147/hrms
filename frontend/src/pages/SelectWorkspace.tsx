@@ -1,9 +1,9 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { Company } from '../types';
+import { Company } from '@/types';
 import { Building2, ArrowRight, CheckCircle2, ShieldCheck, MapPin, Star, LayoutGrid, Search } from 'lucide-react';
-import type { UserAccount } from './Login';
-import { cn } from '../utils/cn';
-import { buildWorkspaceHierarchy, logWorkspaceAudit } from '../utils/workspaceUtils';
+import type { UserAccount } from '@/pages/Login';
+import { cn } from '@/utils/cn';
+import { buildWorkspaceHierarchy, logWorkspaceAudit } from '@/utils/workspaceUtils';
 
 interface SelectWorkspaceProps {
   companies: Company[];

@@ -1,5 +1,5 @@
-import { Company } from '../data/mockData';
-import { authStorage } from '../utils/authStorage';
+import { Company } from '@/data/mockData';
+import { authStorage } from '@/utils/authStorage';
 
 // API base URL.
 //  - Local dev: falls back to the local backend.

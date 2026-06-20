@@ -1,9 +1,9 @@
 import React from 'react';
 import { Eye, Check, FileText, Download, Send, CheckCircle } from 'lucide-react';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../ui/Table';
-import { Badge } from '../ui/Badge';
-import { type PayrollRecord, type Role } from '../../data/mockData';
-import { payrollStatusConfig, getStatusBadgeVariant } from '../../utils/PayrollWorkflowEngine';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { Badge } from '@/components/ui/Badge';
+import { type PayrollRecord, type Role } from '@/data/mockData';
+import { payrollStatusConfig, getStatusBadgeVariant } from '@/utils/PayrollWorkflowEngine';
 
 interface PayrollWorkflowTableProps {
   records: PayrollRecord[];

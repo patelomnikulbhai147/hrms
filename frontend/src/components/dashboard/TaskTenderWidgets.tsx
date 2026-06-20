@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardList, Briefcase, ChevronRight, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
-import { api } from '../../api/apiClient';
+import { api } from '@/api/apiClient';
 
 interface Props {
   activeCompanyId: string;

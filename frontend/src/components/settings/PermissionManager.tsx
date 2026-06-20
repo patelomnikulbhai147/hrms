@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ShieldCheck, Search, RotateCcw, Save } from 'lucide-react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input, Select } from '../ui/Input';
-import { Badge } from '../ui/Badge';
-import { api } from '../../api/apiClient';
-import { type AppModules } from '../../pages/Login';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
+import { api } from '@/api/apiClient';
+import { type AppModules } from '@/pages/Login';
 
 // Modules shown in the matrix (label → AppModules key). Mirrors the spec list,
 // limited to modules that exist in the permission system.

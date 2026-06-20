@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { cn } from '../../utils/cn';
-import { countries, favoriteCountryCodes } from '../../data/countries';
+import { cn } from '@/utils/cn';
+import { countries, favoriteCountryCodes } from '@/data/countries';
 import { Search, ChevronDown } from 'lucide-react';
 
 interface PhoneInputProps {

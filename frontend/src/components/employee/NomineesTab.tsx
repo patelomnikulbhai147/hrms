@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { UserPlus, Pencil, Trash2, Archive, ArchiveRestore, ShieldAlert, FileText, Eye, Download } from 'lucide-react';
-import { api } from '../api/apiClient';
-import { Button } from './ui/Button';
-import { Badge } from './ui/Badge';
-import { NomineeForm, NomineeDoc } from './NomineeForm';
-import { ui } from './ui/feedback';
+import { api } from '@/api/apiClient';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { NomineeForm, NomineeDoc } from '@/components/employee/NomineeForm';
+import { ui } from '@/components/ui/feedback';
 
 interface Props { employeeId: string | number; employeeName?: string; role: string; }
 

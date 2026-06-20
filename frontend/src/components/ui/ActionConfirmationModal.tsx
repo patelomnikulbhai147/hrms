@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Check, Loader2, Info } from 'lucide-react';
-import { Button } from './Button';
-import { Modal } from './Modal';
-import { Input } from './Input';
+import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
+import { Input } from '@/components/ui/Input';
 
 export interface ActionConfirmationModalProps {
   isOpen: boolean;

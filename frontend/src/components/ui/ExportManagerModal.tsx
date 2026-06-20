@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
-import { Modal } from './Modal';
-import { Button } from './Button';
-import { Badge } from './Badge';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Download, FileSpreadsheet, FileText, Filter, Users, DollarSign, Calendar, CheckSquare, Settings2, DownloadCloud } from 'lucide-react';
-import { exportToExcel } from '../../utils/exportUtils';
-import { ui } from './feedback';
-import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '../../data/mockData';
-import { resolveActiveWorkspace } from '../../types';
+import { exportToExcel } from '@/utils/exportUtils';
+import { ui } from '@/components/ui/feedback';
+import { Employee, PayrollRecord, AttendanceRecord, LeaveRequest, Company } from '@/data/mockData';
+import { resolveActiveWorkspace } from '@/types';
 
 interface ExportManagerModalProps {
   open: boolean;

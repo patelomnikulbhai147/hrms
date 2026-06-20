@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { type AppModules, type UserAccount } from '../pages/Login';
-import { type Company } from '../types';
-import { isCompanyArchived } from '../utils/companyStatus';
+import { type AppModules, type UserAccount } from '@/pages/Login';
+import { type Company } from '@/types';
+import { isCompanyArchived } from '@/utils/companyStatus';
 
 // Role-based defaults for NEWLY ADDED modules that do not yet have per-user
 // granular permission rows in the database (Task Manager, Tender Information).

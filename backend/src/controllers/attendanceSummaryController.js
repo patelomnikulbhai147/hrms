@@ -13,6 +13,24 @@ const isSuper = (req) => req.user?.role === 'Super Admin';
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const payableOf = (s) => round(s.presentDays + s.halfDays * 0.5 + s.cl + s.pl + s.sl);
 
+// Month-aware payroll rule: a period is "active" (eligible for AUTOMATIC payroll
+// recalculation after an attendance edit) only while it is still being worked —
+// i.e. at least one payroll row for that employee/month is NOT finalized
+// (approved / locked / paid). Editing a historical, finalized month must only
+// FLAG payroll as outdated ("recalculation recommended"), never silently modify
+// it. This protects already-approved/paid months from back-dated changes.
+async function periodIsActive(employeeId, month, year) {
+  const rows = await prisma.payroll.findMany({
+    where: { employeeId: Number(employeeId), month, year },
+    select: { payrollStatus: true, paymentStatus: true },
+  });
+  if (!rows.length) return false;
+  const finalized = (r) =>
+    ['approved', 'locked', 'paid'].includes(String(r.payrollStatus || '').toLowerCase()) ||
+    String(r.paymentStatus || '').toLowerCase() === 'paid';
+  return rows.some((r) => !finalized(r));
+}
+
 // Is the summary's employee inside the caller's workspace scope?
 function inScope(req, summaryEmployee) {
   if (isSuper(req)) return true;
@@ -110,19 +128,24 @@ exports.update = async (req, res) => {
 
     const updated = await prisma.attendanceSummary.update({ where: { id: idParam(id) }, data });
 
-    // Attendance is the source of truth: flag payroll, then AUTO-recompute it
-    // from the new summary immediately so payroll/dashboard/reports reflect the
-    // change with no manual "recalculate"/"push" step (Changes #24/#25). Locked
-    // payroll is skipped by the helper. Best-effort — never fail the edit on it.
+    // Attendance is the source of truth. ALWAYS flag this month's payroll as
+    // outdated so the UI shows "Payroll Recalculation Required". Then, ONLY when
+    // the period is still active (non-finalized), AUTO-recompute payroll from the
+    // new summary so the active month's dashboard/reports reflect the change with
+    // no manual step. A historical/finalized month is left untouched — flagged
+    // only ("recalculation recommended"), never silently modified.
     await prisma.payroll.updateMany({
       where: { employeeId: existing.employeeId, month: existing.month, year: existing.year },
       data: { isOutdated: true },
     });
     let payrollSynced = 0;
-    try {
-      payrollSynced = await payrollController.recalcForEmployeeMonth(existing.employeeId, existing.month, existing.year);
-    } catch (syncErr) {
-      console.error('Auto payroll sync after attendance edit failed:', syncErr.message);
+    const monthActive = await periodIsActive(existing.employeeId, existing.month, existing.year);
+    if (monthActive) {
+      try {
+        payrollSynced = await payrollController.recalcForEmployeeMonth(existing.employeeId, existing.month, existing.year);
+      } catch (syncErr) {
+        console.error('Auto payroll sync after attendance edit failed:', syncErr.message);
+      }
     }
 
     // Audit old → new for the changed fields.
@@ -138,7 +161,7 @@ exports.update = async (req, res) => {
       });
     }
 
-    res.json({ ...updated, payrollSynced });
+    res.json({ ...updated, payrollSynced, payrollMonthActive: monthActive });
   } catch (e) {
     console.error('summary update', e);
     res.status(500).json({ error: e.message || 'Server error' });

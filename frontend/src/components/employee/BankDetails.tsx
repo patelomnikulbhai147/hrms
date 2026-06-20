@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Input } from './ui/Input';
-import { api } from '../api/apiClient';
+import { Input } from '@/components/ui/Input';
+import { api } from '@/api/apiClient';
 
 export interface BankData {
   accountHolderName?: string;

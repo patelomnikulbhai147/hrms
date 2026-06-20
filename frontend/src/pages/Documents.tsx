@@ -14,20 +14,20 @@ import {
   type Company,
   isCompanyIdMatch,
   resolveActiveWorkspace
-} from '../types';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select, Textarea } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { ui } from '../components/ui/feedback';
+} from '@/types';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { getUniqueEmployees, getUniqueRecords } from '@/utils/deduplication';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { ui } from '@/components/ui/feedback';
 
 const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Document Name', key: 'name', width: 30 },

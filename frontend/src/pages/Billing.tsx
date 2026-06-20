@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { getApiErrorMessage } from '../utils/apiError';
-import { cn } from '../utils/cn';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { cn } from '@/utils/cn';
 import {
   CreditCard, Search, Filter, ShieldAlert, CheckCircle2, AlertTriangle,
   XCircle, Edit3, ArrowUpRight, DollarSign, Users,
@@ -8,12 +8,12 @@ import {
   Building2, Plus, Trash2,
   Globe, ShieldCheck, Ban, PauseCircle, Rocket, MinusCircle, Building
 } from 'lucide-react';
-import { Company, SubscriptionPlan, PaymentRecord, Employee } from '../data/mockData';
-import { type UserAccount } from './Login';
-import { Button } from '../components/ui/Button';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
-import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '../utils/subscriptionUtils';
+import { Company, SubscriptionPlan, PaymentRecord, Employee } from '@/data/mockData';
+import { type UserAccount } from '@/pages/Login';
+import { Button } from '@/components/ui/Button';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '@/utils/subscriptionUtils';
 
 const PAYMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Invoice Number', key: 'invoiceNumber', width: 20 },
@@ -25,10 +25,10 @@ const PAYMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Mode', key: 'paymentMode', width: 14 },
   { header: 'Status', key: 'transactionStatus', width: 14 },
 ];
-import { getUniqueEmployees } from '../utils/deduplication';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { ui } from '../components/ui/feedback';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { ui } from '@/components/ui/feedback';
 
 interface BillingProps {
   companies: Company[];

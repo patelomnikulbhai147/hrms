@@ -10,22 +10,26 @@ const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
 // shows it needs a recalculation. This keeps payroll, summaries and reports from
 // going stale after an attendance correction. Guarded so it can never block the
 // attendance operation.
+// Keyed by the EDITED record's own month/year — so editing (say) May attendance
+// only ever flags May payroll and never touches the active month. Returns the
+// number of payroll rows flagged so the audit trail can record payroll impact.
 async function flagPayrollOutdated(employeeId, dateStr) {
   try {
-    if (!employeeId || !dateStr) return;
+    if (!employeeId || !dateStr) return 0;
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return;
-    await prisma.payroll.updateMany({
+    if (isNaN(d.getTime())) return 0;
+    const res = await prisma.payroll.updateMany({
       where: { employeeId: Number(employeeId), month: MONTH_NAMES[d.getMonth()], year: d.getFullYear() },
       data: { isOutdated: true },
     });
-  } catch (_) { /* never block the attendance op */ }
+    return res.count || 0;
+  } catch (_) { return 0; /* never block the attendance op */ }
 }
 
 // Traceable audit entry for an attendance mark/correction: who, when, employee,
 // old → new status, the view it was made from (Source, e.g. "Weekly Attendance")
 // and an optional reason. Visible in the Audit Trail. Never blocks the operation.
-async function writeAttendanceAudit(req, action, data, fromStatus, source, reason) {
+async function writeAttendanceAudit(req, action, data, fromStatus, source, reason, payrollImpact) {
   try {
     if (!req.user || !req.user.id) return;
     await prisma.auditLog.create({
@@ -43,6 +47,7 @@ async function writeAttendanceAudit(req, action, data, fromStatus, source, reaso
           reason: reason || undefined,
           from: fromStatus,
           to: data.status,
+          payrollRecalcRequired: payrollImpact ? 'Yes' : 'No',
         }).slice(0, 1000),
       },
     });
@@ -458,8 +463,8 @@ exports.create = async (req, res) => {
       const dup = await prisma.attendance.findFirst({ where: { employeeId: Number(body.employeeId), date: body.date } });
       if (dup) {
         const updated = await prisma.attendance.update({ where: { id: dup.id }, data: body });
-        await flagPayrollOutdated(updated.employeeId, updated.date);
-        await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', updated, dup.status, source);
+        const flagged = await flagPayrollOutdated(updated.employeeId, updated.date);
+        await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', updated, dup.status, source, undefined, flagged > 0);
         return res.status(200).json(updated);
       }
     }
@@ -481,8 +486,8 @@ exports.create = async (req, res) => {
     }
     console.log('[attendance.create] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status, action });
     // A new attendance record changes the month's totals → payroll is now stale.
-    await flagPayrollOutdated(data.employeeId, data.date);
-    await writeAttendanceAudit(req, action, data, undefined, source);
+    const flagged = await flagPayrollOutdated(data.employeeId, data.date);
+    await writeAttendanceAudit(req, action, data, undefined, source, undefined, flagged > 0);
     res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json(data);
   } catch (error) {
     console.error('[attendance.create] FAILED', error);
@@ -507,10 +512,10 @@ exports.update = async (req, res) => {
     console.log('[attendance.update] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status });
 
     // ── System-wide sync: flag the affected month's payroll as outdated ──────
-    await flagPayrollOutdated(data.employeeId, data.date);
+    const flagged = await flagPayrollOutdated(data.employeeId, data.date);
 
     // Traceable correction: who / when / source / old → new (visible in Audit Trail).
-    await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', data, existing ? existing.status : undefined, source, reason || '(no reason given)');
+    await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', data, existing ? existing.status : undefined, source, reason || '(no reason given)', flagged > 0);
 
     res.json(data);
   } catch (error) {

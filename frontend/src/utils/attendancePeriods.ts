@@ -1,4 +1,4 @@
-import { AttendanceRecord, Employee, LeaveRequest } from '../types';
+import { AttendanceRecord, Employee, LeaveRequest } from '@/types';
 
 // ===========================================================================
 // Shared attendance period + summary logic.

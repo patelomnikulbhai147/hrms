@@ -1,8 +1,8 @@
 import React, { useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
-import { Modal } from './ui/Modal';
-import { Button } from './ui/Button';
-import { api } from '../api/apiClient';
+import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { api } from '@/api/apiClient';
 
 interface Props {
   open: boolean;

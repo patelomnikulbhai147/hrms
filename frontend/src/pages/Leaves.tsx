@@ -9,23 +9,23 @@ import {
   type Company,
   isCompanyIdMatch,
   buildScopedEmployeeIdSet
-} from '../types';
-import { Badge, statusBadge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select, Textarea } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { type UserAccount } from './Login';
-import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
-import { byEmployeeCode } from '../utils/employeeSort';
-import { isActiveEmployee } from '../utils/employeeStatus';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
-import { usePermissions } from '../context/PermissionContext';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
-import { ui } from '../components/ui/feedback';
+} from '@/types';
+import { Badge, statusBadge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select, Textarea } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { type UserAccount } from '@/pages/Login';
+import { getUniqueEmployees, getUniqueRecords } from '@/utils/deduplication';
+import { byEmployeeCode } from '@/utils/employeeSort';
+import { isActiveEmployee } from '@/utils/employeeStatus';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { usePermissions } from '@/context/PermissionContext';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { ui } from '@/components/ui/feedback';
 
 const LEAVE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Employee', key: 'employeeName', width: 24 },

@@ -2,7 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import { formatPan } from './idFormat';
+import { formatPan } from '@/utils/idFormat';
 
 // Helper to convert numbers to words
 const numberToWords = (value: number): string => {

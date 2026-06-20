@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
-import { getApiErrorMessage } from '../../utils/apiError';
+import { getApiErrorMessage } from '@/utils/apiError';
 import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History, KeyRound, CheckCircle2 } from 'lucide-react';
-import { type Role, type Company, type Notification } from '../../data/mockData';
-import { type UserAccount } from '../../pages/Login';
-import { Badge } from '../ui/Badge';
-import { cn } from '../../utils/cn';
+import { type Role, type Company, type Notification } from '@/data/mockData';
+import { type UserAccount } from '@/pages/Login';
+import { Badge } from '@/components/ui/Badge';
+import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
-import { api } from '../../api/apiClient';
-import { buildWorkspaceHierarchy } from '../../utils/workspaceUtils';
-import { resolveActiveWorkspace } from '../../types';
-import { ui } from '../ui/feedback';
+import { api } from '@/api/apiClient';
+import { buildWorkspaceHierarchy } from '@/utils/workspaceUtils';
+import { resolveActiveWorkspace } from '@/types';
+import { ui } from '@/components/ui/feedback';
 
 
 interface TopbarProps {

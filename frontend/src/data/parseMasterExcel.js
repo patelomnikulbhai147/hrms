@@ -283,7 +283,7 @@ console.log(`Parsed total of ${allEmployees.length} employees.`);
 // Write the parsed objects inside excelSeededData.ts
 const outputPath = path.resolve('src/data/excelSeededData.ts');
 
-const fileContent = `import { type Employee } from './mockData';
+const fileContent = `import { type Employee } from '@/data/mockData';
 
 export const excelSeededEmployees: Employee[] = ${JSON.stringify(allEmployees, null, 2)};
 

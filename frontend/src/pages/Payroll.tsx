@@ -11,8 +11,8 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { api } from '../api/apiClient';
-import { getApiErrorMessage } from '../utils/apiError';
+import { api } from '@/api/apiClient';
+import { getApiErrorMessage } from '@/utils/apiError';
 import {
   type Employee,
   type PayrollRecord,
@@ -21,34 +21,34 @@ import {
   type PayrollStatus,
   type AttendanceRecord,
   type LeaveRequest
-} from '../data/mockData';
-import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '../types';
-import { SAFE_COMPANY_FALLBACK } from '../App';
-import { Badge } from '../components/ui/Badge';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { ExportMenu } from '../components/ui/ExportMenu';
-import { type ExportColumn } from '../utils/exportUtils';
+} from '@/data/mockData';
+import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '@/types';
+import { SAFE_COMPANY_FALLBACK } from '@/App';
+import { Badge } from '@/components/ui/Badge';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { ExportMenu } from '@/components/ui/ExportMenu';
+import { type ExportColumn } from '@/utils/exportUtils';
 
-import { PayrollWorkflowTable } from '../components/payroll/PayrollWorkflowTable';
-import { EnterprisePayrollBatch } from '../components/payroll/EnterprisePayrollBatch';
-import { exportRowsToExcel } from '../utils/exportUtils';
+import { PayrollWorkflowTable } from '@/components/payroll/PayrollWorkflowTable';
+import { EnterprisePayrollBatch } from '@/components/payroll/EnterprisePayrollBatch';
+import { exportRowsToExcel } from '@/utils/exportUtils';
 import {
   calculatePayrollStats
-} from '../utils/PayrollWorkflowEngine';
-import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '../utils/salarySlipGenerator';
-import { PayrollWorkbench } from '../components/payroll/PayrollWorkbench';
-import { PayrollWorksheet } from '../components/payroll/PayrollWorksheet';
-import { byEmployeeCode } from '../utils/employeeSort';
-import { isActiveEmployee } from '../utils/employeeStatus';
-import { deriveCompanyPayrollStatus } from '../utils/payroll';
-import { type UserAccount } from './Login';
-import { getUniqueEmployees } from '../utils/deduplication';
-import { usePermissions } from '../context/PermissionContext';
-import { generateAutomatedPayroll } from '../utils/payrollAutomation';
-import { ui } from '../components/ui/feedback';
+} from '@/utils/PayrollWorkflowEngine';
+import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '@/utils/salarySlipGenerator';
+import { PayrollWorkbench } from '@/components/payroll/PayrollWorkbench';
+import { PayrollWorksheet } from '@/components/payroll/PayrollWorksheet';
+import { byEmployeeCode } from '@/utils/employeeSort';
+import { isActiveEmployee } from '@/utils/employeeStatus';
+import { deriveCompanyPayrollStatus } from '@/utils/payroll';
+import { type UserAccount } from '@/pages/Login';
+import { getUniqueEmployees } from '@/utils/deduplication';
+import { usePermissions } from '@/context/PermissionContext';
+import { generateAutomatedPayroll } from '@/utils/payrollAutomation';
+import { ui } from '@/components/ui/feedback';
 
 interface PayrollProps {
   role: Role;

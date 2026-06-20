@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Gift, Plus, Edit2, Trash2, Inbox, Settings2, Users, Calculator, PlayCircle, FileBarChart, History, Download, CheckCircle2, Send, XCircle, RefreshCw } from 'lucide-react';
-import { type Role, type Company } from '../types';
-import { Card } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Input, Select } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { Badge } from '../components/ui/Badge';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { type UserAccount } from './Login';
-import { api } from '../api/apiClient';
-import { formatDate } from '../utils/formatDate';
-import { ui } from '../components/ui/feedback';
+import { type Role, type Company } from '@/types';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input, Select } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { Badge } from '@/components/ui/Badge';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { type UserAccount } from '@/pages/Login';
+import { api } from '@/api/apiClient';
+import { formatDate } from '@/utils/formatDate';
+import { ui } from '@/components/ui/feedback';
 
 interface Props { role: Role; activeCompanyId: string; companies?: Company[]; authProfile?: UserAccount | null; }
 

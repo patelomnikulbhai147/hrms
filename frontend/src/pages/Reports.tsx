@@ -7,20 +7,20 @@ import {
   type PayrollRecord,
   type Role,
   type Company
-} from '../data/mockData';
-// isCompanyIdMatch MUST come from '../types' (the kind-aware implementation).
+} from '@/data/mockData';
+// isCompanyIdMatch MUST come from '@/types' (the kind-aware implementation).
 // The legacy copy in mockData ignores the active workspace KIND and therefore
 // leaks data across the colliding company/branch id space — see types/index.ts.
-import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '../types';
-import { Card, StatCard } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { Select } from '../components/ui/Input';
-import { Badge, statusBadge } from '../components/ui/Badge';
-import { downloadAttendancePDF, downloadAttendanceExcel } from '../utils/exportUtils';
-import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
-import { getUniqueEmployees, getUniqueRecords } from '../utils/deduplication';
-import { byEmployeeCode } from '../utils/employeeSort';
-import { ExportManagerModal } from '../components/ui/ExportManagerModal';
+import { isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace, resolveActiveWorkspace } from '@/types';
+import { Card, StatCard } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Input';
+import { Badge, statusBadge } from '@/components/ui/Badge';
+import { downloadAttendancePDF, downloadAttendanceExcel } from '@/utils/exportUtils';
+import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { getUniqueEmployees, getUniqueRecords } from '@/utils/deduplication';
+import { byEmployeeCode } from '@/utils/employeeSort';
+import { ExportManagerModal } from '@/components/ui/ExportManagerModal';
 
 interface ReportsProps {
   role: Role;

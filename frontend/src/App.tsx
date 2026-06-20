@@ -1,32 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { api, type SuperAdminStats } from './api/apiClient';
-import { getAccessibleWorkspaceIds } from './utils/workspaceUtils';
+import { api, type SuperAdminStats } from '@/api/apiClient';
+import { getAccessibleWorkspaceIds } from '@/utils/workspaceUtils';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sidebar, type PageId } from './components/layout/Sidebar';
-import { Topbar } from './components/layout/Topbar';
-const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
-const SelectWorkspace = React.lazy(() => import('./pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
-const Employees = React.lazy(() => import('./pages/Employees').then(m => ({ default: m.Employees })));
-const LeaveManagement = React.lazy(() => import('./pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
-const Attendance = React.lazy(() => import('./pages/Attendance').then(m => ({ default: m.Attendance })));
-const AttendanceDevices = React.lazy(() => import('./pages/AttendanceDevices').then(m => ({ default: m.AttendanceDevices })));
-const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
-const BonusManagement = React.lazy(() => import('./pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
-const Companies = React.lazy(() => import('./pages/Companies').then(m => ({ default: m.Companies })));
-const EmployeeCards = React.lazy(() => import('./pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
-const Documents = React.lazy(() => import('./pages/Documents').then(m => ({ default: m.Documents })));
-const ComplianceReports = React.lazy(() => import('./pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
-const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
-const Billing = React.lazy(() => import('./pages/Billing').then(m => ({ default: m.Billing })));
-const Users = React.lazy(() => import('./pages/Users').then(m => ({ default: m.Users })));
-const AuditTrail = React.lazy(() => import('./pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
-const TaskManager = React.lazy(() => import('./pages/TaskManager').then(m => ({ default: m.TaskManager })));
-const Tenders = React.lazy(() => import('./pages/Tenders').then(m => ({ default: m.Tenders })));
-const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
-import type { UserAccount, AppModules } from './pages/Login';
-import { authStorage } from './utils/authStorage';
-import { PermissionProvider, checkCanView, checkCanEdit } from './context/PermissionContext';
-import { isCompanyArchived } from './utils/companyStatus';
+import { Sidebar, type PageId } from '@/components/layout/Sidebar';
+import { Topbar } from '@/components/layout/Topbar';
+const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const SelectWorkspace = React.lazy(() => import('@/pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
+const Employees = React.lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })));
+const LeaveManagement = React.lazy(() => import('@/pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
+const Attendance = React.lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })));
+const AttendanceDevices = React.lazy(() => import('@/pages/AttendanceDevices').then(m => ({ default: m.AttendanceDevices })));
+const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default: m.Payroll })));
+const BonusManagement = React.lazy(() => import('@/pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
+const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ default: m.Companies })));
+const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
+const Documents = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
+const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
+const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
+const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
+const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
+const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
+const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ default: m.TaskManager })));
+const Tenders = React.lazy(() => import('@/pages/Tenders').then(m => ({ default: m.Tenders })));
+const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
+import type { UserAccount, AppModules } from '@/pages/Login';
+import { authStorage } from '@/utils/authStorage';
+import { PermissionProvider, checkCanView, checkCanEdit } from '@/context/PermissionContext';
+import { isCompanyArchived } from '@/utils/companyStatus';
 import { ShieldAlert } from 'lucide-react';
 import {
   Role,
@@ -46,9 +46,9 @@ import {
   PaymentRecord,
   Notification,
   PLAN_LIMITS
-} from './data/mockData';
-import { calculateBranchBilling } from './utils/subscriptionUtils';
-import { isActiveEmployee } from './utils/employeeStatus';
+} from '@/data/mockData';
+import { calculateBranchBilling } from '@/utils/subscriptionUtils';
+import { isActiveEmployee } from '@/utils/employeeStatus';
 
 const pageTitles: Record<PageId, string> = {
   dashboard: 'Dashboard',

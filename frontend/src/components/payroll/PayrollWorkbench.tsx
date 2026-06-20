@@ -4,10 +4,10 @@ import {
   CalendarCheck, Calculator, ShieldCheck, FileText, Banknote, Lock,
   Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet,
 } from 'lucide-react';
-import { Card } from '../ui/Card';
-import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { byEmployeeCode } from '../../utils/employeeSort';
+import { Card } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { byEmployeeCode } from '@/utils/employeeSort';
 
 // ── Payment status (only Pending / Approved / Paid) ───────────────────────
 // Enterprise payroll workflow: Draft → Pending Approval → Approved → Paid.
