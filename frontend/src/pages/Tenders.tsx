@@ -10,6 +10,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { api } from '../api/apiClient';
 import { formatDate } from '../utils/formatDate';
+import { ui } from '../components/ui/feedback';
 
 interface TendersProps {
   role: Role;
@@ -86,12 +87,12 @@ export const Tenders: React.FC<TendersProps> = ({ role, activeCompanyId }) => {
   };
 
   const archive = async (t: any) => {
-    if (!window.confirm(`Archive tender "${t.tenderName}"? It will move to Tender History.`)) return;
+    if (!(await ui.confirm({ message: `Archive tender "${t.tenderName}"? It will move to Tender History.`, confirmText: 'Archive', variant: 'warning' }))) return;
     try { await api.tenders.update(t.id, { status: 'Archived' }); flash('ok', 'Tender archived.'); await load(); }
     catch (e: any) { flash('err', e?.message || 'Archive failed.'); }
   };
   const remove = async (id: any) => {
-    if (!window.confirm('Permanently delete this tender? Use Archive to keep history instead.')) return;
+    if (!(await ui.confirm({ message: 'Permanently delete this tender? Use Archive to keep history instead.', confirmText: 'Delete', variant: 'danger' }))) return;
     try { await api.tenders.remove(id); flash('ok', 'Tender deleted.'); await load(); }
     catch (e: any) { flash('err', e?.message || 'Delete failed.'); }
   };

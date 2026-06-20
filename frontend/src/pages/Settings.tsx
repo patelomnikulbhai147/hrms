@@ -19,6 +19,7 @@ import {
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
 import { PayrollComplianceEngine } from '../components/settings/PayrollComplianceEngine';
+import { ui } from '../components/ui/feedback';
 
 interface SettingsProps {
   role: Role;
@@ -153,7 +154,7 @@ export const Settings: React.FC<SettingsProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
       if (file.size > 1024 * 1024) {
-        alert('Image size must be less than 1MB to ensure fast loading.');
+        ui.toast.warning('Image size must be less than 1MB to ensure fast loading.');
         return;
       }
       const reader = new FileReader();
@@ -169,7 +170,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleAddDepartment = () => {
     if (!newDeptInput.trim()) return;
     if (customDepartments.includes(newDeptInput.trim())) {
-      alert('This department already exists.');
+      ui.toast.warning('This department already exists.');
       return;
     }
     setCustomDepartments([...customDepartments, newDeptInput.trim()]);
@@ -184,7 +185,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const handleSaveEditDepartment = (index: number) => {
     if (!editingValue.trim()) return;
     if (customDepartments.includes(editingValue.trim()) && customDepartments[index] !== editingValue.trim()) {
-      alert('This department name already exists.');
+      ui.toast.warning('This department name already exists.');
       return;
     }
     const newList = [...customDepartments];
@@ -193,8 +194,8 @@ export const Settings: React.FC<SettingsProps> = ({
     setEditingIndex(null);
   };
 
-  const handleRemoveDepartment = (index: number) => {
-    if (confirm('Are you sure you want to remove this department? Employees currently assigned to it will need to be re-allocated.')) {
+  const handleRemoveDepartment = async (index: number) => {
+    if (await ui.confirm({ message: 'Are you sure you want to remove this department? Employees currently assigned to it will need to be re-allocated.', variant: 'danger', confirmText: 'Remove' })) {
       setCustomDepartments(customDepartments.filter((_, idx) => idx !== index));
     }
   };
@@ -214,7 +215,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleSaveAll = async () => {
     if (role !== 'Super Admin' && role !== 'Company Head') {
-      alert('Error: HR operators are not authorized to edit settings.');
+      ui.toast.error('HR operators are not authorized to edit settings.');
       return;
     }
 
@@ -232,7 +233,7 @@ export const Settings: React.FC<SettingsProps> = ({
       if (emailErr) missing.push('Official Support Email');
       if (phoneErr) missing.push('Office Mobile Number');
       
-      alert(`Error: Please resolve validation errors before saving.\nMissing/Invalid: ${missing.join(', ')}`);
+      await ui.alert({ title: 'Error', message: `Please resolve validation errors before saving.\nMissing/Invalid: ${missing.join(', ')}`, variant: 'error' });
       return;
     }
 
@@ -282,12 +283,12 @@ export const Settings: React.FC<SettingsProps> = ({
         onUpdateCompanies(updatedCompanies);
       }
       
-      alert('Company statutory profiles, templates, and branding configurations updated successfully! Changes immediately active.');
+      ui.toast.success('Company statutory profiles, templates, and branding configurations updated successfully! Changes immediately active.');
       // Force reload to apply theme changes everywhere globally
       window.location.reload();
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not save settings.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save settings.'));
     }
   };
 
@@ -349,11 +350,11 @@ export const Settings: React.FC<SettingsProps> = ({
       await api.companies.updateBranding(String(brandableCompanyId), payload);
       if (onRefresh) onRefresh();
       else onUpdateCompanies(companies.map(c => (String(c.id) === String(brandableCompanyId) ? { ...c, ...payload } as any : c)));
-      alert('Company branding saved. Logo and name will update across the app.');
+      ui.toast.success('Company branding saved. Logo and name will update across the app.');
       // Reload so the new logo/name/theme propagate to sidebar, header, slips & PDFs.
       window.location.reload();
     } catch (err: any) {
-      alert(err?.message || 'Failed to save branding.');
+      ui.toast.error(err?.message || 'Failed to save branding.');
     } finally {
       setSavingBranding(false);
     }

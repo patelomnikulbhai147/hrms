@@ -15,6 +15,7 @@ import { type ExportColumn } from '../utils/exportUtils';
 import { type UserAccount } from './Login';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+import { ui } from '../components/ui/feedback';
 
 interface TaskManagerProps {
   role: Role;
@@ -213,7 +214,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
     catch (e: any) { flash('err', e?.message || 'Update failed.'); }
   };
   const removeTask = async (t: any) => {
-    if (!window.confirm(`Delete task "${t.title}"?`)) return;
+    if (!(await ui.confirm({ message: `Delete task "${t.title}"?`, confirmText: 'Delete', variant: 'danger' }))) return;
     try { await api.tasks.remove(t.id); await loadTasks(); flash('ok', 'Task deleted.'); }
     catch (e: any) { flash('err', e?.message || 'Delete failed.'); }
   };

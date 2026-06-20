@@ -10,6 +10,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { api } from '../api/apiClient';
 import { formatDate } from '../utils/formatDate';
+import { ui } from '../components/ui/feedback';
 
 interface AttendanceDevicesProps {
   role: Role;
@@ -218,7 +219,7 @@ export const AttendanceDevices: React.FC<AttendanceDevicesProps> = ({ role, acti
   };
 
   const remove = async (d: any) => {
-    if (!window.confirm(`Delete device "${d.deviceName}"? This removes the configuration only and does not affect any attendance records.`)) return;
+    if (!(await ui.confirm({ message: `Delete device "${d.deviceName}"? This removes the configuration only and does not affect any attendance records.`, confirmText: 'Delete', variant: 'danger' }))) return;
     try { await api.attendanceDevices.remove(d.id); flash('ok', 'Device deleted.'); await load(); }
     catch (e: any) { flash('err', e?.message || 'Delete failed.'); }
   };

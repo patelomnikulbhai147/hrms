@@ -27,6 +27,7 @@ import { type ExportColumn } from '../utils/exportUtils';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { ui } from '../components/ui/feedback';
 
 const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Document Name', key: 'name', width: 30 },
@@ -353,7 +354,7 @@ export const Documents: React.FC<DocumentsProps> = ({
       return d;
     });
     const updated = await Promise.all(updatedPromises); onUpdateDocuments(updated);
-    alert(`All pending documents for this employee have been audited as Verified.`);
+    ui.toast.success(`All pending documents for this employee have been audited as Verified.`);
   };
 
   // Compute dossier records reactively
@@ -608,7 +609,7 @@ export const Documents: React.FC<DocumentsProps> = ({
       setUploadUrl(''); // an attached file takes precedence over a link
       setUploadForm(prev => ({ ...prev, name: prev.name || f.fileName }));
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not read the selected file.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not read the selected file.'));
     }
   };
   const onDropFile = (e: React.DragEvent) => {
@@ -619,8 +620,8 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   const handleUploadDocument = async () => {
     const emp = companyEmployees.find(e => e.id === selectedEmpId);
-    if (!selectedEmpId) { alert('Please select an employee to associate this document with.'); return; }
-    if (!uploadFile && !uploadUrl.trim()) { alert('Attach a file (or paste a document link) before uploading.'); return; }
+    if (!selectedEmpId) { ui.toast.warning('Please select an employee to associate this document with.'); return; }
+    if (!uploadFile && !uploadUrl.trim()) { ui.toast.warning('Attach a file (or paste a document link) before uploading.'); return; }
 
     const defaultName = uploadFile?.fileName || `${emp?.name || 'Employee'}_${uploadForm.type}`;
     const newDoc: any = {
@@ -648,9 +649,9 @@ export const Documents: React.FC<DocumentsProps> = ({
       onUpdateDocuments([saved, ...documents]);
       setUploadOpen(false);
       resetUploadForm();
-      alert('Document uploaded and saved to the database.');
+      ui.toast.success('Document uploaded and saved to the database.');
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Failed to upload the document.'));
+      ui.toast.error(getApiErrorMessage(e, 'Failed to upload the document.'));
     } finally {
       setUploadBusy(false);
     }
@@ -660,7 +661,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     const t = documents.find(d => d.id === id); if (!t) return;
     let remarks = t.remarks;
     if (nextStatus === 'Rejected') {
-      const r = prompt('Reason for rejection (optional):', t.remarks || '');
+      const r = await ui.prompt({ message: 'Reason for rejection (optional):', defaultValue: t.remarks || '' });
       if (r === null) return; // cancelled
       remarks = r || t.remarks;
     }
@@ -668,9 +669,9 @@ export const Documents: React.FC<DocumentsProps> = ({
       // Minimal payload — backend stamps verifiedBy/verifiedOn from the session.
       const saved = await api.documents.update(id, { status: nextStatus, remarks });
       onUpdateDocuments(documents.map(d => d.id === id ? saved : d));
-      alert(`Document ${nextStatus === 'Verified' ? 'verified' : 'rejected'}.`);
+      ui.toast.success(`Document ${nextStatus === 'Verified' ? 'verified' : 'rejected'}.`);
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not update the document.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the document.'));
     }
   };
 
@@ -685,7 +686,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     } else if (doc.url) {
       window.open(doc.url, '_blank', 'noopener');
     } else {
-      alert('No file or link is attached to this document.');
+      ui.toast.warning('No file or link is attached to this document.');
     }
   };
 
@@ -703,7 +704,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   };
   const saveEditDoc = async () => {
     if (!editDoc) return;
-    if (!editForm.name.trim()) { alert('Document name is required.'); return; }
+    if (!editForm.name.trim()) { ui.toast.error('Document name is required.'); return; }
     try {
       const saved = await api.documents.update(editDoc.id, {
         name: editForm.name,
@@ -715,9 +716,9 @@ export const Documents: React.FC<DocumentsProps> = ({
       });
       onUpdateDocuments(documents.map(d => d.id === editDoc.id ? saved : d));
       setEditDoc(null);
-      alert('Document details updated.');
+      ui.toast.success('Document details updated.');
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not save the changes.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not save the changes.'));
     }
   };
 
@@ -729,9 +730,9 @@ export const Documents: React.FC<DocumentsProps> = ({
       const f = await readFileAsBase64(file);
       const saved = await api.documents.update(replaceTargetId, { fileData: f.dataUrl, mimeType: f.mimeType, size: f.size });
       onUpdateDocuments(documents.map(d => d.id === replaceTargetId ? saved : d));
-      alert('Document file replaced.');
+      ui.toast.success('Document file replaced.');
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not replace the file.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not replace the file.'));
     } finally {
       setReplaceTargetId(null);
       if (replaceInputRef.current) replaceInputRef.current.value = '';
@@ -740,13 +741,13 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // ── Delete ──
   const handleDeleteDoc = async (doc: Document) => {
-    if (!confirm(`Delete "${doc.name}"? This permanently removes it from the database and cannot be undone.`)) return;
+    if (!(await ui.confirm({ message: `Delete "${doc.name}"? This permanently removes it from the database and cannot be undone.`, variant: 'danger', confirmText: 'Delete' }))) return;
     try {
       await api.documents.delete(doc.id);
       onUpdateDocuments(documents.filter(d => d.id !== doc.id));
-      alert('Document deleted.');
+      ui.toast.success('Document deleted.');
     } catch (e) {
-      alert(getApiErrorMessage(e, 'Could not delete the document.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not delete the document.'));
     }
   };
 
@@ -810,7 +811,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     } catch (err: any) {
       console.error('[Payslip PDF] Generation failed:', err);
       const reason = err?.message || String(err);
-      alert(`PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`);
+      await ui.alert({ title: 'Error', message: `PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`, variant: 'error' });
     } finally {
       element.style.transform = prevTransform;
       setIsPrinting(false);
@@ -873,7 +874,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   // Save template edits
   const handleSaveTemplate = (saveAsNew: boolean) => {
     if (!modalForm.templateName) {
-      alert('Template Name is required.');
+      ui.toast.error('Template Name is required.');
       return;
     }
 
@@ -921,7 +922,7 @@ export const Documents: React.FC<DocumentsProps> = ({
 
     saveTemplatesToStorage(updatedList);
     setIsEditModalOpen(false);
-    alert(saveAsNew ? 'New template version duplicated successfully.' : 'Template details updated.');
+    ui.toast.success(saveAsNew ? 'New template version duplicated successfully.' : 'Template details updated.');
   };
 
   // Duplicate current template quick action
@@ -936,16 +937,16 @@ export const Documents: React.FC<DocumentsProps> = ({
     const updated = [...templates, duplicated];
     saveTemplatesToStorage(updated);
     setSelectedTemplateId(duplicated.id);
-    alert(`Duplicated "${activeTemplate.templateName}" successfully.`);
+    ui.toast.success(`Duplicated "${activeTemplate.templateName}" successfully.`);
   };
 
   // Delete Template
-  const handleDeleteTemplate = () => {
+  const handleDeleteTemplate = async () => {
     if (!activeTemplate) return;
-    if (confirm(`Are you sure you want to permanently delete "${activeTemplate.templateName}"?`)) {
+    if (await ui.confirm({ message: `Are you sure you want to permanently delete "${activeTemplate.templateName}"?`, variant: 'danger', confirmText: 'Delete' })) {
       const updated = templates.filter(t => t.id !== activeTemplate.id);
       saveTemplatesToStorage(updated);
-      alert('Template removed.');
+      ui.toast.success('Template removed.');
     }
   };
 

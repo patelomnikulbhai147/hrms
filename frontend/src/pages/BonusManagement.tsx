@@ -10,6 +10,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '../components/ui/Table';
 import { type UserAccount } from './Login';
 import { api } from '../api/apiClient';
 import { formatDate } from '../utils/formatDate';
+import { ui } from '../components/ui/feedback';
 
 interface Props { role: Role; activeCompanyId: string; companies?: Company[]; authProfile?: UserAccount | null; }
 
@@ -99,7 +100,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
       flash('ok', 'Configuration saved.'); setCfgOpen(false); setCfgEditId(null); await loadConfigs();
     } catch (e: any) { flash('err', e?.message || 'Save failed.'); } finally { setBusy(false); }
   };
-  const removeCfg = async (c: any) => { if (!window.confirm(`Delete ${c.bonusType} config for ${c.financialYear}?`)) return; try { await api.bonus.configs.remove(c.id); flash('ok', 'Deleted.'); await loadConfigs(); } catch (e: any) { flash('err', e?.message || 'Delete failed.'); } };
+  const removeCfg = async (c: any) => { if (!(await ui.confirm({ message: `Delete ${c.bonusType} config for ${c.financialYear}?`, variant: 'danger', confirmText: 'Delete' }))) return; try { await api.bonus.configs.remove(c.id); flash('ok', 'Deleted.'); await loadConfigs(); } catch (e: any) { flash('err', e?.message || 'Delete failed.'); } };
 
   // ── Cycle workflow ──
   const createCycle = async () => {
@@ -127,7 +128,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
   const doAction = async (fn: () => Promise<any>, okMsg: string) => { setBusy(true); try { await fn(); flash('ok', okMsg); await loadCycles(); await loadLines(selectedCycleId); await loadPayments(); await loadDash(); } catch (e: any) { flash('err', e?.message || 'Action failed.'); } finally { setBusy(false); } };
 
   const overrideLine = async (row: any) => {
-    const v = window.prompt(`Override bonus amount for ${row.name} (${row.code}):`, String(row.bonusAmount));
+    const v = await ui.prompt({ message: `Override bonus amount for ${row.name} (${row.code}):`, defaultValue: String(row.bonusAmount) });
     if (v == null) return;
     try { await api.bonus.cycles.override(selectedCycle.id, row.employeeId, { bonusAmount: Number(v) }); flash('ok', 'Amount overridden.'); await loadLines(selectedCycle.id); await loadCycles(); }
     catch (e: any) { flash('err', e?.message || 'Override failed.'); }
@@ -251,7 +252,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
               <div className="flex flex-wrap items-center gap-2">
                 {selectedCycle.status === 'Calculated' && canApprove && <Button variant="outline" icon={<CheckCircle2 size={14} />} loading={busy} onClick={() => doAction(() => api.bonus.cycles.approve(selectedCycle.id), 'Cycle approved.')}>Approve</Button>}
                 {selectedCycle.status === 'Approved' && canRelease && <Button icon={<Send size={14} />} loading={busy} onClick={() => doAction(() => api.bonus.cycles.release(selectedCycle.id, {}), 'Bonus released & marked Paid.')}>Release Payment</Button>}
-                {['Draft', 'Calculated', 'Approved'].includes(selectedCycle.status) && canApprove && <Button variant="outline" icon={<XCircle size={14} />} loading={busy} onClick={() => { if (window.confirm('Cancel this bonus cycle?')) doAction(() => api.bonus.cycles.cancel(selectedCycle.id), 'Cycle cancelled.'); }}>Cancel</Button>}
+                {['Draft', 'Calculated', 'Approved'].includes(selectedCycle.status) && canApprove && <Button variant="outline" icon={<XCircle size={14} />} loading={busy} onClick={async () => { if (await ui.confirm({ message: 'Cancel this bonus cycle?', variant: 'danger', confirmText: 'Cancel Cycle' })) doAction(() => api.bonus.cycles.cancel(selectedCycle.id), 'Cycle cancelled.'); }}>Cancel</Button>}
                 <span className="text-[11px] text-slate-400 ml-auto">Workflow: Draft → Calculated → Approved → Paid</span>
               </div>
             </div>

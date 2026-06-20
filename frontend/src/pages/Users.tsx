@@ -13,6 +13,7 @@ import { cn } from '../utils/cn';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import { ui } from '../components/ui/feedback';
 import { exportToExcel } from '../utils/exportUtils';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
@@ -223,7 +224,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
       }));
     } catch (err) {
       console.error('Failed to toggle status:', err);
-      alert(getApiErrorMessage(err, 'Could not update the user status.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not update the user status.'));
     }
   };
 
@@ -383,7 +384,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
       await onRefresh?.();
     } catch (err) {
       console.error('Failed to save permissions to backend:', err);
-      alert(getApiErrorMessage(err, 'Could not save permissions.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save permissions.'));
     }
   };
 
@@ -501,7 +502,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
   const handleAddUserSubmit = async () => {
     if (!newUser.name || !newUser.email || !newUser.username || !newUser.password) {
-      alert('Please fill all required fields');
+      ui.toast.warning('Please fill all required fields');
       return;
     }
     try {
@@ -523,7 +524,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
       setIsAddUserOpen(false);
       setNewUser({ name: '', email: '', username: '', password: '', role: 'HR', status: 'Active', companyId: '' });
     } catch (err) {
-      alert(getApiErrorMessage(err, 'Could not add the user.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not add the user.'));
     }
   };
 
@@ -565,11 +566,11 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
           });
           imported++;
         }
-        alert(`Successfully imported ${imported} users! ${errors} skipped due to duplicates.`);
+        ui.toast.success(`Successfully imported ${imported} users! ${errors} skipped due to duplicates.`);
         setIsImportOpen(false);
         window.location.reload();
       } catch (err) {
-        alert('Failed to parse file. Please ensure it is a valid Excel/CSV format.');
+        ui.toast.error('Failed to parse file. Please ensure it is a valid Excel/CSV format.');
       }
     };
     reader.readAsBinaryString(file);

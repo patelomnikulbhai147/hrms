@@ -538,7 +538,13 @@ export const api = {
     markPaid: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/mark-paid`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     lock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     unlock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
-    recalculate: async (data: { ids?: any[]; month?: string; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/payroll/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
+    recalculate: async (data: { ids?: any[]; month?: string; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/payroll/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Salary Worksheet (granular earnings/deductions enhancement layer)
+    worksheet: {
+      get: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { headers: getHeaders() }); },
+      save: async (payrollId: string | number, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      audit: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet/audit`, { headers: getHeaders() }); },
+    }
   },
 
   attendanceSummary: {

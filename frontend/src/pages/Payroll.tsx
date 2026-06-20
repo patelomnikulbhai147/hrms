@@ -40,6 +40,7 @@ import {
 } from '../utils/PayrollWorkflowEngine';
 import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '../utils/salarySlipGenerator';
 import { PayrollWorkbench } from '../components/payroll/PayrollWorkbench';
+import { PayrollWorksheet } from '../components/payroll/PayrollWorksheet';
 import { byEmployeeCode } from '../utils/employeeSort';
 import { isActiveEmployee } from '../utils/employeeStatus';
 import { deriveCompanyPayrollStatus } from '../utils/payroll';
@@ -47,6 +48,7 @@ import { type UserAccount } from './Login';
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
 import { generateAutomatedPayroll } from '../utils/payrollAutomation';
+import { ui } from '../components/ui/feedback';
 
 interface PayrollProps {
   role: Role;
@@ -116,6 +118,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('June');
   const [viewPayslip, setViewPayslip] = useState<PayrollRecord | null>(null);
+  const [worksheetRecord, setWorksheetRecord] = useState<PayrollRecord | null>(null);
   const [auditRecord, setAuditRecord] = useState<PayrollRecord | null>(null);
   const [remarksInput, setRemarksInput] = useState('');
 
@@ -292,7 +295,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Payroll prepared for review.');
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not save the payroll change.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save the payroll change.'));
     }
   };
 
@@ -307,7 +310,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       setRemarksInput('');
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not save the payroll change.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save the payroll change.'));
     }
   };
 
@@ -332,14 +335,14 @@ export const Payroll: React.FC<PayrollProps> = ({
       onUpdatePayroll(payroll.map(r => r.id === record.id ? saved : r));
       saveAuditLog(record.id, `Salary payment confirmed (Bank Transfer).`, 'Payment ledger updated via Quick Confirm.');
       setConfirmPaymentRecord(null);
-      
-      alert(`✓ Payment Marked Successfully\n\nEmployee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${new Date().toLocaleString()}`);
-      
+
+      await ui.alert({ title: 'Payment Marked Successfully', message: `Employee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${new Date().toLocaleString()}`, variant: 'success' });
+
       // Auto-refresh to hydrate all counts and dashboard widgets directly from DB
       window.location.reload();
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to save payment status: ${err.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to save payment status: ${err.message || 'Unknown error'}`);
     } finally {
       setIsConfirmingPayment(false);
     }
@@ -376,9 +379,9 @@ export const Payroll: React.FC<PayrollProps> = ({
     const ids = scopedRecords
       .filter(r => ['paid', 'approved', 'bank_processing', 'payslip_generated'].includes(String((r as any).payrollStatus || r.status).toLowerCase()))
       .map(r => r.id);
-    if (ids.length === 0) { alert('Approve or pay payroll before generating payslips.'); return; }
+    if (ids.length === 0) { ui.toast.warning('Approve or pay payroll before generating payslips.'); return; }
     await applyBulkStatus(ids, { payslipGenerated: true });
-    alert(`✅ ${ids.length} payslip(s) marked generated and saved to the database. Use the PDF/XLSX buttons (or the payslip view) to download an individual slip.`);
+    ui.toast.success(`${ids.length} payslip(s) marked generated and saved to the database. Use the PDF/XLSX buttons (or the payslip view) to download an individual slip.`);
   };
 
   // Bank Transfer Sheet — NEFT/RTGS style export of net payable per employee.
@@ -435,7 +438,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       setViewPayslip(null);
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not update the payroll.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the payroll.'));
     }
   };
 
@@ -451,7 +454,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Payslip generated for employee.');
     } catch (e) {
       console.error(e);
-      alert(getApiErrorMessage(e, 'Could not update the payslip status.'));
+      ui.toast.error(getApiErrorMessage(e, 'Could not update the payslip status.'));
     }
   };
 
@@ -464,10 +467,10 @@ export const Payroll: React.FC<PayrollProps> = ({
       // reflect emailSentAt locally
       onUpdatePayroll(payroll.map(r => r.id === record.id ? { ...r, emailSentAt: new Date().toISOString() } as any : r));
       saveAuditLog(record.id, res?.smtpConfigured ? 'Payslip emailed to employee.' : 'Payslip email queued (SMTP not configured).', res?.to ? `Recipient: ${res.to}` : undefined);
-      alert(res?.message || `Salary slip email processed for ${record.employeeName}.`);
+      ui.toast.success(res?.message || `Salary slip email processed for ${record.employeeName}.`);
     } catch (e: any) {
       console.error('Email payslip failed:', e);
-      alert(`Failed to email salary slip: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to email salary slip: ${e?.message || 'Unknown error'}`);
     }
   };
 
@@ -480,7 +483,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Salary slip sent to printer.');
     } catch (e: any) {
       console.error('Print payslip failed:', e);
-      alert(`Failed to print salary slip: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to print salary slip: ${e?.message || 'Unknown error'}`);
     }
   };
 
@@ -495,7 +498,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, 'Salary slip regenerated.');
     } catch (e: any) {
       console.error('Regenerate failed:', e);
-      alert(`Failed to regenerate salary slip: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to regenerate salary slip: ${e?.message || 'Unknown error'}`);
     }
   };
 
@@ -504,13 +507,13 @@ export const Payroll: React.FC<PayrollProps> = ({
     records.map(r => { const emp = getFullEmployee(r.employeeId); return { record: r, employee: emp, attendance: buildAttendanceSummary(emp) }; });
 
   const handleDownloadZip = async (records: PayrollRecord[], zipName: string) => {
-    if (!records.length) { alert('No payroll records in this selection to export.'); return; }
+    if (!records.length) { ui.toast.warning('No payroll records in this selection to export.'); return; }
     try {
       const n = await downloadPayslipsZip(buildBundle(records), currentCompany, zipName);
       saveAuditLog('bulk', `Downloaded ${n} salary slips as ZIP (${zipName}).`);
     } catch (e: any) {
       console.error('ZIP export failed:', e);
-      alert(`Failed to build salary slip ZIP: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to build salary slip ZIP: ${e?.message || 'Unknown error'}`);
     }
   };
 
@@ -519,79 +522,89 @@ export const Payroll: React.FC<PayrollProps> = ({
       await api.payroll.approve(ids);
       onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'approved', approvedAt: new Date().toISOString() } as any : r));
       saveAuditLog('bulk', `Approved ${ids.length} payroll record(s).`);
-      alert(`✓ Approved ${ids.length} payroll record(s).`);
+      ui.toast.success(`Approved ${ids.length} payroll record(s).`);
     } catch (e: any) {
       console.error('Approve failed:', e);
-      alert(`Failed to approve payroll: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to approve payroll: ${e?.message || 'Unknown error'}`);
     }
   };
 
   const handleLockPayroll = async (ids: string[]) => {
-    if (!confirm(`Lock ${ids.length} payroll record(s)? Locked records can no longer be edited.`)) return;
+    if (!(await ui.confirm({ message: `Lock ${ids.length} payroll record(s)? Locked records can no longer be edited.`, variant: 'warning', confirmText: 'Lock' }))) return;
     try {
       await api.payroll.lock(ids);
       onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r));
       saveAuditLog('bulk', `Locked ${ids.length} payroll record(s).`);
-      alert(`🔒 Locked ${ids.length} payroll record(s).`);
+      ui.toast.success(`Locked ${ids.length} payroll record(s).`);
     } catch (e: any) {
       console.error('Lock failed:', e);
-      alert(`Failed to lock payroll: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to lock payroll: ${e?.message || 'Unknown error'}`);
     }
   };
 
   // Recalculate outdated payroll from the latest attendance summaries.
   const handleRecalculate = async (ids?: string[]) => {
     const targetIds = ids && ids.length ? ids : scopedRecords.filter(r => (r as any).isOutdated).map(r => r.id);
-    if (!targetIds.length) { alert('No payroll records require regeneration.'); return; }
-    if (!confirm(`Recalculate ${targetIds.length} payroll record(s) from the latest attendance? Locked records are skipped.`)) return;
+    if (!targetIds.length) { ui.toast.warning('No payroll records require regeneration.'); return; }
+    if (!(await ui.confirm({ message: `Recalculate ${targetIds.length} payroll record(s) from the latest attendance? Locked records are skipped.` }))) return;
     try {
       const res = await api.payroll.recalculate({ ids: targetIds });
       saveAuditLog('bulk', `${roleAudit} recalculated ${res?.recalculated ?? targetIds.length} payroll record(s) from attendance.`);
       // Re-fetch payroll so the recomputed figures + cleared outdated flags show.
       try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ }
-      alert(`✓ Recalculated ${res?.recalculated ?? targetIds.length} payroll record(s)${res?.skippedLocked ? ` (${res.skippedLocked} locked skipped)` : ''}.`);
+      ui.toast.success(`Recalculated ${res?.recalculated ?? targetIds.length} payroll record(s)${res?.skippedLocked ? ` (${res.skippedLocked} locked skipped)` : ''}.`);
     } catch (e: any) {
       console.error('Recalculate failed:', e);
-      alert(`Failed to recalculate payroll: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to recalculate payroll: ${e?.message || 'Unknown error'}`);
     }
   };
 
   // ── Workflow-level bulk actions (operate on the whole scoped month) ──
-  const handleApproveAll = () => {
+  const handleApproveAll = async () => {
     const ids = scopedRecords.map(r => r.id);
-    if (!ids.length) { alert('No payroll to approve. Generate payroll first.'); return; }
-    if (!confirm(`Approve all ${ids.length} payroll record(s)? Approved payroll becomes read-only.`)) return;
+    if (!ids.length) { ui.toast.warning('No payroll to approve. Generate payroll first.'); return; }
+    if (!(await ui.confirm({ message: `Approve all ${ids.length} payroll record(s)? Approved payroll becomes read-only.` }))) return;
     handleApprovePayroll(ids);
   };
 
   const handleLockMonth = () => {
     const ids = scopedRecords.map(r => r.id);
-    if (!ids.length) { alert('No payroll to lock.'); return; }
+    if (!ids.length) { ui.toast.warning('No payroll to lock.'); return; }
     handleLockPayroll(ids);
+  };
+
+  // Generate payroll for the employees the user SELECTED in the grid — keeps the
+  // selection (no second "pick employees" modal) and reuses the exact same engine
+  // and scope for both Generate and the subsequent Approve/Pay actions.
+  const handleGenerateSelected = async (recs: PayrollRecord[]) => {
+    const empIds = Array.from(new Set(recs.map(r => String((r as any).employeeId))));
+    if (!empIds.length) { ui.toast.warning('Select employees first.'); return; }
+    if (!(await ui.confirm({ message: `Generate / regenerate payroll for ${empIds.length} selected employee(s) — ${monthFilter} 2026?\n\nExisting records are updated (no duplicates).` }))) return;
+    handleGeneratePayroll(empIds);
   };
 
   // Role label for audit messages (e.g. "Super Admin generated payroll for 775…").
   const roleAudit = role === 'Super Admin' ? 'Super Admin' : role === 'Company Head' ? 'Company Admin' : 'Branch HR';
 
   const handleMarkPaid = async (ids: string[]) => {
-    if (!ids.length) { alert('No employees selected.'); return; }
-    if (!confirm(`Mark ${ids.length} employee salar${ids.length === 1 ? 'y' : 'ies'} as Paid?`)) return;
+    if (!ids.length) { ui.toast.warning('No employees selected.'); return; }
+    if (!(await ui.confirm({ message: `Mark ${ids.length} employee salar${ids.length === 1 ? 'y' : 'ies'} as Paid?` }))) return;
     try {
       await api.payroll.markPaid(ids);
       const now = new Date().toISOString();
       onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: now } as any : r));
       saveAuditLog('bulk', `${roleAudit} marked ${ids.length} salary payment(s) as Paid.`);
-      alert(`✓ Marked ${ids.length} salaries as Paid.`);
+      ui.toast.success(`Marked ${ids.length} salaries as Paid.`);
     } catch (e: any) {
       console.error('Mark paid failed:', e);
-      alert(`Failed to mark salaries paid: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to mark salaries paid: ${e?.message || 'Unknown error'}`);
     }
   };
   const handleMarkPaidAll = () => handleMarkPaid(scopedRecords.map(r => r.id));
 
   // Generate slips for the given records: stamp generatedAt + filename, bundle PDFs.
   const handleGenerateSlips = async (recs: PayrollRecord[]) => {
-    if (!recs.length) { alert('No employees selected. Generate payroll first.'); return; }
+    if (!recs.length) { ui.toast.warning('No employees selected. Generate payroll first.'); return; }
     try {
       await Promise.all(recs.map(r => {
         const emp = getFullEmployee(r.employeeId);
@@ -602,17 +615,17 @@ export const Payroll: React.FC<PayrollProps> = ({
       onUpdatePayroll(payroll.map(r => recs.find(x => x.id === r.id) ? { ...r, payslipGenerated: true, generatedAt: now } as any : r));
       saveAuditLog('bulk', `${roleAudit} generated ${recs.length} salary slip(s).`);
       await handleDownloadZip(recs, `Salary_Slips_${monthFilter}_2026`);
-      alert(`✓ Generated ${recs.length} salary slips (PDF paths stored). ZIP downloaded.`);
+      ui.toast.success(`Generated ${recs.length} salary slips (PDF paths stored). ZIP downloaded.`);
     } catch (e: any) {
       console.error('Generate slips failed:', e);
-      alert(`Failed to generate salary slips: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Failed to generate salary slips: ${e?.message || 'Unknown error'}`);
     }
   };
   const handleGenerateSlipsAll = () => handleGenerateSlips(scopedRecords);
 
   const handleEmailAll = async (records: PayrollRecord[]) => {
-    if (!records.length) { alert('No salary slips to email.'); return; }
-    if (!confirm(`Email salary slips to ${records.length} employee(s)?`)) return;
+    if (!records.length) { ui.toast.warning('No salary slips to email.'); return; }
+    if (!(await ui.confirm({ message: `Email salary slips to ${records.length} employee(s)?` }))) return;
     let sent = 0, failed = 0;
     for (const r of records) {
       try {
@@ -625,7 +638,7 @@ export const Payroll: React.FC<PayrollProps> = ({
     }
     onUpdatePayroll(payroll.map(r => records.find(x => x.id === r.id) ? { ...r, emailSentAt: new Date().toISOString() } as any : r));
     saveAuditLog('bulk', `Emailed ${sent} salary slips${failed ? ` (${failed} failed)` : ''}.`);
-    alert(`Email All complete: ${sent} processed${failed ? `, ${failed} failed` : ''}.\n(SMTP not configured → logged in dev mode until SMTP_* set in backend/.env.)`);
+    await ui.alert({ title: 'Email All complete', message: `${sent} processed${failed ? `, ${failed} failed` : ''}.\n(SMTP not configured → logged in dev mode until SMTP_* set in backend/.env.)` });
   };
 
   // Real attendance summary for a payslip — actual Present/Absent/Leave/OT for
@@ -677,11 +690,11 @@ export const Payroll: React.FC<PayrollProps> = ({
       }
     } catch (e: any) {
       console.error('Payslip generation failed:', e);
-      alert(`Error generating ${format.toUpperCase()} payslip: ${e?.message || 'Unknown error'}`);
+      ui.toast.error(`Error generating ${format.toUpperCase()} payslip: ${e?.message || 'Unknown error'}`);
     }
   };
 
-  const handleGeneratePayroll = async () => {
+  const handleGeneratePayroll = async (empIdsOverride?: string[]) => {
     setIsPayrollGenerating(true);
     try {
       const now = new Date();
@@ -692,12 +705,14 @@ export const Payroll: React.FC<PayrollProps> = ({
 
       // Selective generation: run ONLY for the chosen employees. If none are
       // explicitly selected, fall back to every employee in the workspace.
-      const targetEmployees = genSelectedIds.size > 0
-        ? companyEmployees.filter(e => genSelectedIds.has(String(e.id)))
-        : companyEmployees;
+      const targetEmployees = (empIdsOverride && empIdsOverride.length)
+        ? companyEmployees.filter(e => empIdsOverride.includes(String(e.id)))
+        : genSelectedIds.size > 0
+          ? companyEmployees.filter(e => genSelectedIds.has(String(e.id)))
+          : companyEmployees;
 
       if (targetEmployees.length === 0) {
-        alert('No employees selected to generate payroll for.');
+        ui.toast.warning('No employees selected to generate payroll for.');
         setIsPayrollGenerating(false);
         return;
       }
@@ -722,20 +737,27 @@ export const Payroll: React.FC<PayrollProps> = ({
          })
       );
 
-      // Merge generated records, replacing ONLY the employees we just generated
-      // for (so a selective run never wipes other employees' records this month).
-      const genEmpIds = new Set(dbSavedRecords.map((r: any) => String(r.employeeId)));
-      const filteredPayroll = payroll.filter(p => !(p.month === currentMonth && p.year === currentYear && p.companyId === currentCompany.id && genEmpIds.has(String(p.employeeId))));
-      const newPayrollList = [...filteredPayroll, ...dbSavedRecords];
-      
-      onUpdatePayroll(newPayrollList);
+      // Re-fetch the authoritative payroll list from the DATABASE (the single source
+      // of truth) so the dashboard count always equals the UNIQUE employees for the
+      // month and never inflates on re-generation. Fall back to a per-employee merge
+      // (deduped by employeeId, ignoring companyId) only if the refetch fails.
+      try {
+        const fresh = await api.payroll.getAll();
+        onUpdatePayroll(fresh);
+      } catch {
+        const genEmpIds = new Set(dbSavedRecords.map((r: any) => String(r.employeeId)));
+        const filteredPayroll = payroll.filter(p => !(p.month === currentMonth && p.year === currentYear && genEmpIds.has(String(p.employeeId))));
+        onUpdatePayroll([...filteredPayroll, ...dbSavedRecords]);
+      }
 
-      alert('✅ ENTERPRISE PAYROLL GENERATED\n\nAttendance, Unpaid Leaves, and Overtime have been successfully processed. Salary Slips are now saved to the database and ready for verification.');
+      saveAuditLog('bulk', `${roleAudit} generated payroll for ${dbSavedRecords.length} employee(s) — ${currentMonth} ${currentYear}.`);
+      await ui.alert({ title: 'Enterprise Payroll Generated', message: `${dbSavedRecords.length} employee(s) processed for ${currentMonth} ${currentYear}. Attendance, Unpaid Leaves, and Overtime were applied. Records are saved to the database (existing records updated — no duplicates).`, variant: 'success' });
       setShowPayrollModal(false);
-      
+      setGenSelectedIds(new Set());
+
     } catch (err: any) {
       console.error(err);
-      alert(err.message || 'Error generating payroll');
+      ui.toast.error(err.message || 'Error generating payroll');
     } finally {
       setIsPayrollGenerating(false);
     }
@@ -763,7 +785,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               onVerifyClick={() => {}}
               onPayClick={() => {}}
               onPayslipClick={() => {}}
-              onDownload={(r, fmt) => alert(`Download ${fmt?.toUpperCase() || 'PDF'} feature completed. Enterprise payslip generated.`)}
+              onDownload={(_r, fmt) => ui.toast.success(`Download ${fmt?.toUpperCase() || 'PDF'} feature completed. Enterprise payslip generated.`)}
               onSendClick={handleSendEmail}
               role={role}
               canEdit={canEdit}
@@ -942,6 +964,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         onMarkPaidAll={handleMarkPaidAll}
         onLockMonth={handleLockMonth}
         onView={setViewPayslip}
+        onOpenWorksheet={setWorksheetRecord}
         onDownloadPdf={(r) => handleDownloadPayslip(r, 'pdf')}
         onPrint={handlePrintPayslip}
         onEmail={handleSendEmail}
@@ -950,9 +973,19 @@ export const Payroll: React.FC<PayrollProps> = ({
         onEmailAll={handleEmailAll}
         onApprove={handleApprovePayroll}
         onMarkPaid={handleMarkPaid}
+        onGenerateSelected={canCreate ? handleGenerateSelected : undefined}
         onGenerateSlips={handleGenerateSlips}
         onLock={handleLockPayroll}
         onRecalculate={handleRecalculate}
+      />
+
+      {/* ── Salary Worksheet (spreadsheet-style earnings/deductions editor) ── */}
+      <PayrollWorksheet
+        open={!!worksheetRecord}
+        payrollId={worksheetRecord?.id ?? null}
+        canEdit={canEdit}
+        onClose={() => setWorksheetRecord(null)}
+        onSaved={async () => { try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ } }}
       />
 
       <Modal
@@ -1217,7 +1250,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             </Button>
             <Button
               disabled={isPayrollGenerating}
-              onClick={handleGeneratePayroll}
+              onClick={() => handleGeneratePayroll()}
             >
               {isPayrollGenerating ? (
                 <>
@@ -1254,6 +1287,13 @@ export const Payroll: React.FC<PayrollProps> = ({
                 <p className="text-[13px] text-slate-600 mb-3">
                   Period: <strong className="text-slate-900">{monthFilter} 2026</strong>. Select the employees to run payroll for — <strong>only the selected employees are generated</strong>. Salary uses attendance, leave &amp; overtime.
                 </p>
+                {scopedRecords.length > 0 && (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+                    <span><strong>Payroll already exists for {monthFilter} 2026</strong> ({scopedRecords.length} record{scopedRecords.length === 1 ? '' : 's'}). Regenerating <strong>updates</strong> existing records — no duplicates are created.</span>
+                    <Button size="xs" variant="outline" disabled={isPayrollGenerating}
+                      onClick={() => { setShowPayrollModal(false); handleRecalculate(); }}>Recalculate instead</Button>
+                  </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                   <Input placeholder="Search name…" value={genSearch} onChange={(e: any) => setGenSearch(e.target.value)} />
                   <Select

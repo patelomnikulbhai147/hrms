@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { ui } from '../components/ui/feedback';
 
 export const downloadAttendanceTemplateExcel = (columns: string[]) => {
   const ws = XLSX.utils.aoa_to_sheet([columns]);
@@ -74,7 +75,7 @@ export const downloadAttendanceReport = (
   subtitle?: string
 ) => {
   if (!data || data.length === 0) {
-    alert("No attendance data available for selected period.");
+    ui.toast.warning("No attendance data available for selected period.");
     return;
   }
 
@@ -114,7 +115,7 @@ export const downloadAttendanceReport = (
   }
   else if (format === 'print') {
     const win = window.open('', '_blank', 'width=1100,height=700');
-    if (!win) { alert('Please allow pop-ups to print.'); return; }
+    if (!win) { ui.toast.warning('Please allow pop-ups to print.'); return; }
     const head = columns.map(c => `<th>${c.header}</th>`).join('');
     const body = data.map(row =>
       `<tr>${columns.map(c => `<td>${cell(row, c.key)}</td>`).join('')}</tr>`

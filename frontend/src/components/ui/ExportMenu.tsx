@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Download, FileSpreadsheet, FileText, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../utils/cn';
+import { ui } from './feedback';
 import {
   exportRowsToExcel,
   exportRowsToPDF,
@@ -76,7 +77,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
     try {
       const data = getRows();
       if (!data.length) {
-        alert('There is no data to export for the current view.');
+        ui.toast.info('There is no data to export for the current view.');
         return;
       }
       const stampedName = `${fileName}_${todayStamp()}`;
@@ -88,7 +89,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
       onExported?.(format, data.length);
     } catch (err: any) {
       console.error('Export failed:', err);
-      alert('Export failed: ' + (err?.message || 'Unknown error'));
+      ui.toast.error('Export failed: ' + (err?.message || 'Unknown error'));
     }
   };
 

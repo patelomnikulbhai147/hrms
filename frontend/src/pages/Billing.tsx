@@ -28,6 +28,7 @@ const PAYMENT_EXPORT_COLUMNS: ExportColumn[] = [
 import { getUniqueEmployees } from '../utils/deduplication';
 import { usePermissions } from '../context/PermissionContext';
 import { api } from '../api/apiClient';
+import { ui } from '../components/ui/feedback';
 
 interface BillingProps {
   companies: Company[];
@@ -155,20 +156,20 @@ export const Billing: React.FC<BillingProps> = ({
     return calculateBranchBilling(currentCompanies, parentId, plans).updatedCompanies;
   };
 
-  const handleRemoveBranch = (branchId: string) => {
+  const handleRemoveBranch = async (branchId: string) => {
     const branch = companies.find(c => c.id === branchId);
     if (!branch) return;
 
     const parentId = branch.parentCompanyId;
     if (!parentId) {
-      alert('Cannot remove this branch: its parent company could not be determined.');
+      ui.toast.error('Cannot remove this branch: its parent company could not be determined.');
       return;
     }
 
-    const confirmDelete = confirm(`Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`);
+    const confirmDelete = await ui.confirm({ message: `Are you sure you want to remove the branch "${branch.branchName || branch.name}"?\n\nThis will NOT delete employees, payroll history, or documents permanently.`, confirmText: 'Remove Branch', variant: 'danger' });
     if (!confirmDelete) return;
 
-    const reassign = confirm(`Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office.\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`);
+    const reassign = await ui.confirm({ message: `Employee Reassignment Confirmation:\n\nClick OK to reassign all "${branch.name}" employees to the Parent Head Office.\n\nClick Cancel to mark them as Inactive (Archived) but preserve their records.`, confirmText: 'Reassign to Parent', cancelText: 'Mark Inactive' });
 
     // Employees belonging to this branch (the list is DB-hydrated, so matching by
     // companyId === branchId targets the real rows). Each change is persisted via
@@ -197,11 +198,11 @@ export const Billing: React.FC<BillingProps> = ({
         const nextCompanies = companies.filter(c => c.id !== branchId);
         const finalized = syncAndRecalculateBilling(nextCompanies, parentId);
         onUpdateCompanies(finalized);
-        alert('Branch removed successfully. Employees, payroll records, and documents were preserved.');
+        ui.toast.success('Branch removed successfully. Employees, payroll records, and documents were preserved.');
       })
       .catch(err => {
         console.error(err);
-        alert(getApiErrorMessage(err, 'Could not remove the branch. No changes were saved.'));
+        ui.toast.error(getApiErrorMessage(err, 'Could not remove the branch. No changes were saved.'));
       });
   };
 
@@ -225,11 +226,11 @@ export const Billing: React.FC<BillingProps> = ({
       onUpdateCompanies(finalized);
     }).catch(err => {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not update the branch status.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not update the branch status.'));
     });
   };
 
-  const handleAdjustBranchSlots = (parentId: string, action: 'add' | 'remove') => {
+  const handleAdjustBranchSlots = async (parentId: string, action: 'add' | 'remove') => {
     const parent = companies.find(c => c.id === parentId);
     if (!parent) return;
 
@@ -240,12 +241,12 @@ export const Billing: React.FC<BillingProps> = ({
 
     const parentBranches = companies.filter(c => c.parentCompanyId === parentId);
     if (parentBranches.length <= 1) {
-      alert("No additional paid slots are currently active to remove. The base plan includes 1 free branch slot automatically.");
+      await ui.alert({ message: "No additional paid slots are currently active to remove. The base plan includes 1 free branch slot automatically.", variant: 'warning' });
       return;
     }
 
     const lastBranch = parentBranches[parentBranches.length - 1];
-    const confirmRemove = confirm(`To remove a branch license slot, the corresponding deployed branch must be deleted.\n\nAre you sure you want to remove the last deployed branch "${lastBranch.branchName || lastBranch.name}" to release the slot?`);
+    const confirmRemove = await ui.confirm({ message: `To remove a branch license slot, the corresponding deployed branch must be deleted.\n\nAre you sure you want to remove the last deployed branch "${lastBranch.branchName || lastBranch.name}" to release the slot?`, confirmText: 'Remove Branch', variant: 'danger' });
     if (!confirmRemove) return;
 
     handleRemoveBranch(lastBranch.id);
@@ -275,7 +276,7 @@ export const Billing: React.FC<BillingProps> = ({
       setTimeout(() => setSuccessMessage(''), 3000);
     }).catch(err => {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not update the branch capacity.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not update the branch capacity.'));
     });
   };
 
@@ -311,7 +312,7 @@ export const Billing: React.FC<BillingProps> = ({
 
   const handleSaveBranch = () => {
     if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
-      alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
+      ui.toast.warning('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
       return;
     }
 
@@ -359,10 +360,10 @@ export const Billing: React.FC<BillingProps> = ({
       }).then(() => {
         const finalized = syncAndRecalculateBilling(updatedCompanies, editingBranch.parentCompanyId || 'c-gcri');
         onUpdateCompanies(finalized);
-        alert('Branch updated successfully.');
+        ui.toast.success('Branch updated successfully.');
       }).catch(err => {
         console.error(err);
-        alert(getApiErrorMessage(err, 'Could not update the branch.'));
+        ui.toast.error(getApiErrorMessage(err, 'Could not update the branch.'));
       });
     } else {
       // Create mode
@@ -435,10 +436,10 @@ export const Billing: React.FC<BillingProps> = ({
         onUpdateAccounts([...userAccounts, newAdminUser]);
         const finalized = syncAndRecalculateBilling([...companies, newBranchObj], parentCompanyIdForBranch || 'c-gcri');
         onUpdateCompanies(finalized);
-        alert(`Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`);
+        ui.alert({ title: 'Branch Created', message: `Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`, variant: 'success' });
       }).catch(err => {
         console.error(err);
-        alert(getApiErrorMessage(err, 'Could not create the branch.'));
+        ui.toast.error(getApiErrorMessage(err, 'Could not create the branch.'));
       });
     }
 
@@ -550,7 +551,7 @@ export const Billing: React.FC<BillingProps> = ({
     const persist = target.parentCompanyId
       ? api.branches.update(companyId, { status: nextEntityStatus })
       : api.companies.update(companyId, { accountStatus: nextStatus, status: nextEntityStatus });
-    persist.catch(err => { console.error(err); alert(getApiErrorMessage(err, 'Could not update the company status.')); });
+    persist.catch(err => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not update the company status.')); });
   };
 
   const performRenewal = (
@@ -606,10 +607,10 @@ export const Billing: React.FC<BillingProps> = ({
         paymentStatus: 'Paid',
         accountStatus: 'Active',
         status: 'Active'
-      }).catch((err: any) => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
+      }).catch((err: any) => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the renewal to the database.')); });
     }
 
-    api.payments.create(newRecord).then(saved => onUpdatePayments(prevTx => [saved, ...prevTx])).catch((err: any) => alert(getApiErrorMessage(err, 'Could not save the payment record.')));
+    api.payments.create(newRecord).then(saved => onUpdatePayments(prevTx => [saved, ...prevTx])).catch((err: any) => ui.toast.error(getApiErrorMessage(err, 'Could not save the payment record.')));
     setSuccessMessage(`Subscription renewed successfully — Next renewal: ${formatDisplayDate(calculatedDate)}`);
     setRenewalConfirmCompany(null);
     setRenewalStep(1);
@@ -681,7 +682,7 @@ export const Billing: React.FC<BillingProps> = ({
     }
 
     api.plans.update(finalizedPlan.id, finalizedPlan).then(() => {
-      api.plans.update(finalizedPlan.id, finalizedPlan).then(saved => onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? saved : p))).catch((err: any) => alert(getApiErrorMessage(err, 'Could not update the plan.')));
+      api.plans.update(finalizedPlan.id, finalizedPlan).then(saved => onUpdatePlans(prev => prev.map(p => p.id === finalizedPlan.id ? saved : p))).catch((err: any) => ui.toast.error(getApiErrorMessage(err, 'Could not update the plan.')));
       setEditingPlan(null);
     }).catch(console.error);
   };
@@ -720,7 +721,7 @@ export const Billing: React.FC<BillingProps> = ({
         priceYearly: selectedPlan.priceYearly,
         subscriptionPrice: selectedPlan.priceMonthly,
         paymentStatus: 'Paid'
-      }).catch((err: any) => { console.error(err); alert(getApiErrorMessage(err, 'Could not save the plan change to the database.')); });
+      }).catch((err: any) => { console.error(err); ui.toast.error(getApiErrorMessage(err, 'Could not save the plan change to the database.')); });
     }
 
     const newRecord = {
@@ -1718,7 +1719,7 @@ export const Billing: React.FC<BillingProps> = ({
                   <div className="flex flex-wrap items-center gap-2 lg:self-center">
                     <button
                       onClick={() => {
-                        alert(`Successfully dispatched billing notification & billing invoice copy to ${comp.adminEmail}!`);
+                        ui.toast.success(`Successfully dispatched billing notification & billing invoice copy to ${comp.adminEmail}!`);
                       }}
                       className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >

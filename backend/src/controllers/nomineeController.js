@@ -59,7 +59,7 @@ async function logAudit(action, nomineeId, employeeId, req, previous, next) {
   } catch (_) { /* audit must never block the operation */ }
 }
 
-const COLS = ['employeeId', 'companyId', 'fullName', 'relationship', 'dob', 'gender', 'mobile', 'email', 'nationality', 'maritalStatus', 'aadhaar', 'pan', 'passport', 'drivingLicense', 'country', 'state', 'city', 'addressLine1', 'addressLine2', 'postalCode', 'percentage', 'isEmergencyContact', 'isDependent', 'isLegalHeir', 'status', 'createdBy', 'updatedBy'];
+const COLS = ['employeeId', 'companyId', 'fullName', 'relationship', 'dob', 'gender', 'mobile', 'email', 'nationality', 'maritalStatus', 'aadhaar', 'pan', 'passport', 'drivingLicense', 'country', 'state', 'city', 'addressLine1', 'addressLine2', 'postalCode', 'percentage', 'isEmergencyContact', 'status', 'createdBy', 'updatedBy'];
 
 function rowFromBody(b, emp, req, forCreate) {
   return {
@@ -68,7 +68,7 @@ function rowFromBody(b, emp, req, forCreate) {
     mobile: clean(b.mobile), email: clean(b.email), nationality: clean(b.nationality) || 'India', maritalStatus: clean(b.maritalStatus),
     aadhaar: clean(b.aadhaar), pan: clean(b.pan) ? clean(b.pan).toUpperCase() : null, passport: clean(b.passport), drivingLicense: clean(b.drivingLicense),
     country: clean(b.country) || 'India', state: clean(b.state), city: clean(b.city), addressLine1: clean(b.addressLine1), addressLine2: clean(b.addressLine2), postalCode: clean(b.postalCode),
-    percentage: num(b.percentage), isEmergencyContact: bool(b.isEmergencyContact), isDependent: bool(b.isDependent), isLegalHeir: bool(b.isLegalHeir),
+    percentage: num(b.percentage), isEmergencyContact: bool(b.isEmergencyContact),
     status: clean(b.status) || 'Active',
     createdBy: forCreate ? actorName(req) : undefined, updatedBy: actorName(req),
   };
@@ -101,7 +101,8 @@ exports.list = async (req, res) => {
     if (!access.ok) return res.status(access.code).json({ error: access.error });
     const rows = await prisma.$queryRawUnsafe('SELECT * FROM employee_nominees WHERE employeeId = ? ORDER BY status ASC, id ASC', access.emp.id);
     const docMap = await nomineeDocs(rows.map(r => r.id));
-    const nominees = rows.map(r => ({ ...r, isEmergencyContact: !!r.isEmergencyContact, isDependent: !!r.isDependent, isLegalHeir: !!r.isLegalHeir, percentage: Number(r.percentage), documents: docMap[r.id] || [] }));
+    // Dependent / Legal Heir flags are deprecated — stripped from the API payload.
+    const nominees = rows.map(({ isDependent, isLegalHeir, ...r }) => ({ ...r, isEmergencyContact: !!r.isEmergencyContact, percentage: Number(r.percentage), documents: docMap[r.id] || [] }));
     const totalPercentage = nominees.filter(n => n.status === 'Active').reduce((s, n) => s + n.percentage, 0);
     res.json({ nominees, totalPercentage, isValid: Math.abs(totalPercentage - 100) < 0.01 || nominees.length === 0, relationships: RELATIONSHIPS });
   } catch (e) { console.error('nominee.list', e); res.status(500).json({ error: e.message || 'Server error' }); }

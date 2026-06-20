@@ -27,6 +27,7 @@ import { getCompanyInitials } from '../utils/workspaceUtils';
 import { api, type SuperAdminStats } from '../api/apiClient';
 import { getApiErrorMessage } from '../utils/apiError';
 import { downloadCompanyExcel, downloadCompanyPDF } from '../utils/companyExportUtils';
+import { ui } from '../components/ui/feedback';
 
 interface CompaniesProps {
   _role: Role;
@@ -148,7 +149,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       downloadCompanyExcel(payload);
     } catch (err: any) {
       console.error('Company Excel export failed:', err);
-      alert(`Excel export failed: ${err?.message || 'Unknown error.'}`);
+      ui.toast.error(`Excel export failed: ${err?.message || 'Unknown error.'}`);
     } finally {
       setIsExporting(null);
     }
@@ -163,7 +164,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       await downloadCompanyPDF(payload, superAdminStats);
     } catch (err: any) {
       console.error('Company PDF export failed:', err);
-      alert(`PDF export failed: ${err?.message || 'Unknown error.'}`);
+      ui.toast.error(`PDF export failed: ${err?.message || 'Unknown error.'}`);
     } finally {
       setIsExporting(null);
     }
@@ -243,10 +244,10 @@ export const Companies: React.FC<CompaniesProps> = ({
       onUpdateCompanies(companies.map(c => c.id === editingCompanyId ? updatedCompany : c));
       onRefresh?.();
       setEditCompanyModalOpen(false);
-      alert('Company details updated successfully.');
+      ui.toast.success('Company details updated successfully.');
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not update the company.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not update the company.'));
     }
   };
 
@@ -379,7 +380,7 @@ export const Companies: React.FC<CompaniesProps> = ({
   const handleCreateCompany = async () => {
     // Require validation
     if (errors.mobileNumber || !newCompany.name || !newCompany.email || !newCompany.mobileNumber || !newCompany.address) {
-      alert('Error: Please resolve validation errors before saving.');
+      ui.toast.error('Please resolve validation errors before saving.');
       return;
     }
 
@@ -459,7 +460,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       createdCompany = await api.companies.create(fresh);
     } catch (err) {
       console.error('Company create failed:', err);
-      alert(getApiErrorMessage(err, 'Could not create the company.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not create the company.'));
       return;   // company not created — keep the form open with the entered data
     }
     try {
@@ -495,9 +496,13 @@ export const Companies: React.FC<CompaniesProps> = ({
     });
     setErrors({});
 
-    alert(`Company registered successfully.${headCreated
-      ? `\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`
-      : headWarning}`);
+    await ui.alert({
+      title: 'Company Registered',
+      variant: 'success',
+      message: `Company registered successfully.${headCreated
+        ? `\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`
+        : headWarning}`
+    });
   };
 
   const openStatusModal = (company: Company) => {
@@ -555,7 +560,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         const failures = results.filter(r => r.status === 'rejected');
         if (failures.length > 0) {
           console.error('Status update failures:', failures.map(f => (f as PromiseRejectedResult).reason));
-          alert(`Failed to ${nextStatus === 'Active' ? 'restore/reactivate' : 'suspend'} ${failures.length} of ${targets.length} record(s). The change was not saved. Please try again.`);
+          ui.toast.error(`Failed to ${nextStatus === 'Active' ? 'restore/reactivate' : 'suspend'} ${failures.length} of ${targets.length} record(s). The change was not saved. Please try again.`);
         }
         // Always re-sync from the database so the UI reflects the true persisted
         // state (reverts the optimistic update if the backend rejected it).
@@ -620,13 +625,13 @@ export const Companies: React.FC<CompaniesProps> = ({
       setEditPlanModal(null);
     }).catch(err => {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not save the plan.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save the plan.'));
     });
   };
 
-  const handleSaveBranch = () => {
+  const handleSaveBranch = async () => {
     if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
-      alert('Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).');
+      await ui.alert({ message: 'Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).', variant: 'warning' });
       return;
     }
 
@@ -675,10 +680,10 @@ export const Companies: React.FC<CompaniesProps> = ({
         onUpdateCompanies(updatedCompanies);
         onRefresh?.();
         setBranchModalOpen(false);
-        alert('Branch updated successfully.');
+        ui.toast.success('Branch updated successfully.');
       }).catch(err => {
         console.error(err);
-        alert(getApiErrorMessage(err, 'Could not update the branch.'));
+        ui.toast.error(getApiErrorMessage(err, 'Could not update the branch.'));
       });
     } else {
       // Create mode
@@ -741,7 +746,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           createdBranch = await api.branches.create(newBranchObj);
         } catch (err: any) {
           console.error('Branch create error:', err);
-          alert(getApiErrorMessage(err, 'Could not create the branch.'));
+          ui.toast.error(getApiErrorMessage(err, 'Could not create the branch.'));
           return;   // keep modal open so the user can adjust / upgrade
         }
         let adminMsg = '';
@@ -756,7 +761,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         onUpdateCompanies([...companies, newBranchObj]);
         onRefresh?.();
         setBranchModalOpen(false);
-        alert(`Branch created successfully.${adminMsg}`);
+        await ui.alert({ title: 'Branch Created', variant: 'success', message: `Branch created successfully.${adminMsg}` });
       })();
       return;
     }
@@ -794,7 +799,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       setWorkspaceAssignUser(null);
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not save workspace access.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not save workspace access.'));
     }
   };
 
@@ -803,13 +808,13 @@ export const Companies: React.FC<CompaniesProps> = ({
     const nameErr = validateName(officerForm.name).error;
     const emailErr = validateEmail(officerForm.email).error;
     if (nameErr || emailErr) {
-      alert('Error: Please resolve validation errors before saving.');
+      ui.toast.error('Please resolve validation errors before saving.');
       return;
     }
     const existingUser = userAccounts.find(u => u.username.toLowerCase() === officerForm.username.toLowerCase());
     if (existingUser) {
       if (existingUser.accessibleCompanyIds && existingUser.accessibleCompanyIds.includes(manageAccountsModal.id)) {
-        alert('Error: This user already has access to this workspace.');
+        ui.toast.warning('This user already has access to this workspace.');
         return;
       }
       
@@ -827,7 +832,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       onUpdateAccounts(updated);
       setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
       setOfficerErrors({});
-      alert(`Existing user detected — additional branch/company access granted to ${manageAccountsModal.name}.`);
+      ui.toast.success(`Existing user detected — additional branch/company access granted to ${manageAccountsModal.name}.`);
       return;
     }
 
@@ -848,10 +853,10 @@ export const Companies: React.FC<CompaniesProps> = ({
       onUpdateAccounts([...userAccounts, newUser]);
       setOfficerForm({ name: '', email: '', username: '', password: '', role: 'Company Head' });
       setOfficerErrors({});
-      alert(`Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}`);
+      ui.alert({ title: 'Officer Provisioned', variant: 'success', message: `Successfully provisioned new ${officerForm.role} credential:\nID: ${newUser.username}\nPassword: ${newUser.passwordStr}` });
     }).catch(err => {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not create the user account.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not create the user account.'));
     });
   };
 
@@ -864,20 +869,20 @@ export const Companies: React.FC<CompaniesProps> = ({
       // toggle that only changed React state reverted on refresh.
       await api.users.update(userId, { status: nextStatus });
       onUpdateAccounts(userAccounts.map(u => u.id === userId ? { ...u, status: nextStatus as 'Active' | 'Disabled' } : u));
-      alert('User status toggled successfully.');
+      ui.toast.success('User status toggled successfully.');
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not update the user status.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not update the user status.'));
     }
   };
 
   const handleResetUserPassword = async (userId: string) => {
-    const newPass = prompt('Enter new access password (min 8 characters):');
+    const newPass = await ui.prompt({ message: 'Enter new access password (min 8 characters):' });
     if (!newPass || newPass.length < 8) {
-      if (newPass) alert('Password must be at least 8 characters long.');
+      if (newPass) ui.toast.warning('Password must be at least 8 characters long.');
       return;
     }
-    
+
     try {
       await api.users.resetPassword(userId, newPass);
       const updated = userAccounts.map(u => {
@@ -887,25 +892,25 @@ export const Companies: React.FC<CompaniesProps> = ({
         return u;
       });
       onUpdateAccounts(updated);
-      alert('Password updated successfully.');
+      ui.toast.success('Password updated successfully.');
     } catch (err: any) {
       console.error(err);
-      alert(`Failed to reset password: ${err.message}`);
+      ui.toast.error(`Failed to reset password: ${err.message}`);
     }
   };
 
   const handleRevokeUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to revoke this user access?')) return;
+    if (!(await ui.confirm({ message: 'Are you sure you want to revoke this user access?', variant: 'danger', confirmText: 'Revoke Access' }))) return;
     try {
       // Delete in the database first; only then drop from the list. The old
       // version filtered local state only, so the "revoked" user reappeared on
       // the next refresh.
       await api.users.delete(userId);
       onUpdateAccounts(userAccounts.filter(u => u.id !== userId));
-      alert('Access revoked successfully.');
+      ui.toast.success('Access revoked successfully.');
     } catch (err) {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not revoke this user.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not revoke this user.'));
     }
   };
 
@@ -923,7 +928,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
   const handleStartOffboarding = (company: Company) => {
     if (company.status === 'Archived') {
-       alert("Company is already archived.");
+       ui.toast.warning("Company is already archived.");
        return;
     }
     setOffboardCompany({
@@ -945,7 +950,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     if (!offboardCompany) return;
     const state = offboardCompany.offboardingState;
     if (!state?.payrollVerified || !state?.invoiceCleared || !state?.complianceVerified || !state?.assetCheckCompleted || !state?.financialSettlement) {
-      alert("Cannot finalize closure: Pending clearances or settlements.");
+      ui.toast.error("Cannot finalize closure: Pending clearances or settlements.");
       return;
     }
     const today = new Date().toISOString().split('T')[0];
@@ -1009,10 +1014,10 @@ export const Companies: React.FC<CompaniesProps> = ({
       onRefresh?.();
       setIsConfirmingOffboard(false);
       setOffboardCompany(null);
-      alert(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
+      ui.toast.success(`Company/Branch ${offboardCompany.name} and any child branches were offboarded and safely archived. All linked employees were automatically archived.`);
     }).catch(err => {
       console.error(err);
-      alert(getApiErrorMessage(err, 'Could not offboard this company.'));
+      ui.toast.error(getApiErrorMessage(err, 'Could not offboard this company.'));
     });
   };
 
@@ -2293,7 +2298,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                       });
                       onUpdateCompanies(updated);
                       setDeleteTarget(null);
-                      alert('Company/Branch archived successfully.');
+                      ui.toast.success('Company/Branch archived successfully.');
                     }).catch(console.error);
                   }}
                   className="bg-amber-500 hover:bg-amber-600 text-white"
@@ -2309,7 +2314,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                     api.companies.hardDelete(deleteTarget.id).then(() => {
                       onUpdateCompanies(companies.filter(c => c.id !== deleteTarget.id));
                       setDeleteTarget(null);
-                      alert('Permanently deleted successfully.');
+                      ui.toast.success('Permanently deleted successfully.');
                     }).catch(console.error);
                   }}
                   className="bg-rose-500 hover:bg-rose-600 text-white"

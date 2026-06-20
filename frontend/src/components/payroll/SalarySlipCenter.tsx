@@ -7,6 +7,7 @@ import {
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
 import { Button } from '../ui/Button';
+import { ui } from '../ui/feedback';
 
 // ── Status → badge mapping ────────────────────────────────────────────────
 const payrollStatusBadge = (status?: string): { label: string; variant: any } => {
@@ -160,16 +161,16 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
             <Button variant="outline" onClick={() => onDownloadZip(records, `All_Salary_Slips_${safe(monthLabel)}`)}>
               <FileArchive size={13} className="mr-1" /> Download All ZIP
             </Button>
-            <Button variant="outline" onClick={() => { const recs = selectedRecords(); recs.length ? onDownloadZip(recs, `Selected_Salary_Slips_${safe(monthLabel)}`) : alert('Select at least one employee.'); }}>
+            <Button variant="outline" onClick={() => { const recs = selectedRecords(); recs.length ? onDownloadZip(recs, `Selected_Salary_Slips_${safe(monthLabel)}`) : ui.toast.warning('Select at least one employee.'); }}>
               <FileArchive size={13} className="mr-1" /> Selected ZIP ({selected.size})
             </Button>
             {canEdit && onApprove && (
-              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onApprove(ids) : alert('Select records to approve.'); }}>
+              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onApprove(ids) : ui.toast.warning('Select records to approve.'); }}>
                 <CheckCircle2 size={13} className="mr-1" /> Approve
               </Button>
             )}
             {canEdit && onLock && (
-              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onLock(ids) : alert('Select records to lock.'); }}>
+              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onLock(ids) : ui.toast.warning('Select records to lock.'); }}>
                 <Archive size={13} className="mr-1" /> Lock
               </Button>
             )}
