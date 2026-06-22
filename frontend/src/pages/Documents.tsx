@@ -48,6 +48,39 @@ const DOCUMENT_TYPES = [
   'Custom Document',
 ];
 
+// ── Required document checklist (Standard 8) ─────────────────────────────────
+// Drives "Total Required", "Uploaded", "Missing" and the auto compliance status.
+// `type` is free-text, so each slot matches by keyword against the document's
+// type or name (case-insensitive).
+const REQUIRED_DOCS = [
+  { key: 'aadhaar',    label: 'Aadhaar',                category: 'Identity',   match: ['aadhaar', 'adhaar'] },
+  { key: 'pan',        label: 'PAN',                    category: 'Identity',   match: ['pan'] },
+  { key: 'resume',     label: 'Resume',                 category: 'Employment', match: ['resume', 'cv', 'curriculum', 'biodata'] },
+  { key: 'offer',      label: 'Offer Letter',           category: 'Employment', match: ['offer'] },
+  { key: 'joining',    label: 'Joining Letter',         category: 'Employment', match: ['joining', 'appointment'] },
+  { key: 'bank',       label: 'Bank Passbook',          category: 'Financial',  match: ['passbook', 'bank', 'cheque'] },
+  { key: 'degree',     label: 'Degree Certificate',     category: 'Education',  match: ['degree', 'education', 'marksheet', 'qualification', 'diploma'] },
+  { key: 'experience', label: 'Experience Certificate', category: 'Education',  match: ['experience', 'relieving', 'service'] },
+];
+const TOTAL_REQUIRED = REQUIRED_DOCS.length;
+
+// Categories for the employee document workspace grouping (Phase 3).
+const DOC_CATEGORY_ORDER = ['Identity', 'Employment', 'Education', 'Financial', 'Compliance', 'Other'];
+
+// Which required slot (if any) a document satisfies — match on type then name.
+const matchRequiredKey = (doc: { type?: string; name?: string }): string | null => {
+  const hay = `${doc.type || ''} ${doc.name || ''}`.toLowerCase();
+  const found = REQUIRED_DOCS.find(r => r.match.some(m => hay.includes(m)));
+  return found ? found.key : null;
+};
+
+// Auto compliance status per the spec:
+//   all 8 uploaded & verified → Verified · any rejected → Action Required
+//   some verified → Partially Verified · otherwise → Pending
+type ComplianceStatus = 'Verified' | 'Partially Verified' | 'Pending' | 'Action Required';
+const complianceBadgeVariant = (s: ComplianceStatus) =>
+  s === 'Verified' ? 'green' : s === 'Action Required' ? 'red' : s === 'Partially Verified' ? 'indigo' : 'amber';
+
 // File upload rules — files are stored as base64 in the DB, so cap the size to
 // keep payloads and rows reasonable.
 const ALLOWED_DOC_EXT = ['jpg', 'jpeg', 'png', 'pdf', 'doc', 'docx'];
@@ -361,42 +394,34 @@ export const Documents: React.FC<DocumentsProps> = ({
   const dossiers = useMemo(() => {
     return companyEmployees.map(emp => {
       const empDocs = list.filter(d => d.employeeId === emp.id);
-      const primaryCount = (emp.aadhaarUpload ? 1 : 0) + (emp.panUpload ? 1 : 0) + (emp.photoUpload ? 1 : 0);
-      const totalDocs = primaryCount + empDocs.length;
-      
-      let status: 'Verified' | 'Pending Documents' | 'Missing Audit' | 'Under Review' = 'Missing Audit';
-      
-      const allVaultVerified = empDocs.length > 0 && empDocs.every(d => d.status === 'Verified');
-      const anyVaultPending = empDocs.some(d => d.status === 'Pending');
-      const anyVaultRejected = empDocs.some(d => d.status === 'Rejected');
-      
-      if (totalDocs === 0) {
-        status = 'Missing Audit';
-      } else if (anyVaultPending) {
-        status = 'Under Review';
-      } else if (primaryCount > 0 && empDocs.length === 0) {
-        status = 'Pending Documents';
-      } else if (allVaultVerified) {
-        status = 'Verified';
-      } else if (anyVaultRejected) {
-        status = 'Pending Documents';
-      } else {
-        status = 'Pending Documents';
-      }
+      // Resolve each required slot against the employee's documents (and the
+      // identity scans stored directly on the employee record for Aadhaar/PAN).
+      const slots = REQUIRED_DOCS.map(req => {
+        const matches = empDocs.filter(d => matchRequiredKey(d) === req.key);
+        const empScan = (req.key === 'aadhaar' && !!emp.aadhaarUpload) || (req.key === 'pan' && !!emp.panUpload);
+        const present = matches.length > 0 || empScan;
+        const verified = matches.some(d => d.status === 'Verified');
+        const rejected = matches.length > 0 && matches.every(d => d.status === 'Rejected');
+        return { req, present, verified, rejected, doc: matches[0] || null };
+      });
+      const uploaded = slots.filter(s => s.present).length;
+      const verifiedCount = slots.filter(s => s.verified).length;
+      const rejectedCount = slots.filter(s => s.rejected).length;
+      const missing = TOTAL_REQUIRED - uploaded;
+      const pending = slots.filter(s => s.present && !s.verified && !s.rejected).length;
+
+      let status: ComplianceStatus;
+      if (rejectedCount > 0) status = 'Action Required';
+      else if (uploaded === TOTAL_REQUIRED && verifiedCount === TOTAL_REQUIRED) status = 'Verified';
+      else if (verifiedCount > 0) status = 'Partially Verified';
+      else status = 'Pending';
 
       let lastUpdated = emp.joinDate || '—';
       if (empDocs.length > 0) {
-        const sortedDocs = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn));
-        lastUpdated = sortedDocs[0].uploadedOn;
+        lastUpdated = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn))[0].uploadedOn;
       }
-      
-      return {
-        emp,
-        totalDocs,
-        status,
-        lastUpdated,
-        empDocs
-      };
+
+      return { emp, empDocs, slots, uploaded, missing, verifiedCount, pending, rejectedCount, status, lastUpdated, totalDocs: empDocs.length };
     });
   }, [companyEmployees, list]);
 
@@ -1081,82 +1106,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           </div>
 
           <div className="space-y-6">
-            {/* Compliance Verification Vault Files Card */}
-            <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
-              <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck size={15} className="text-indigo-600" />
-                  Compliance Verification Vault Files
-                </h3>
-                <span className="text-[10px] text-slate-400 font-bold">Main Registry Vault</span>
-              </div>
-              <Table>
-                <Thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                    <Th>Employee Name</Th>
-                    <Th>Document Title / Type</Th>
-                    <Th>Uploaded Date</Th>
-                    <Th>Verification Status</Th>
-                    <Th>Actions</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {filteredCompliance.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">No compliance files in company registry</td></tr>
-                  ) : (
-                    filteredCompliance.map(d => (
-                      <Tr key={d.id}>
-                        <Td>
-                          <div>
-                            <p className="text-xs font-semibold text-gray-900">{d.employeeName || 'Corporate Archive'}</p>
-                            <p className="text-[10px] text-gray-400">Code: {uniqueEmployees.find(e => e.id === d.employeeId || e.employeeId === d.employeeId)?.employeeId || '—'}</p>
-                          </div>
-                        </Td>
-                        <Td>
-                          <div className="flex items-center gap-1.5">
-                            <FileText size={14} className="text-gray-400" />
-                            <div>
-                              <p className="text-xs font-medium text-gray-750">{d.name}</p>
-                              <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-bold uppercase">{d.type}</span>
-                            </div>
-                          </div>
-                        </Td>
-                        <Td><span className="text-xs text-gray-600">{d.uploadedOn}</span></Td>
-                        <Td>
-                          <div className="flex items-center gap-1">
-                            <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} dot>
-                              {d.status}
-                            </Badge>
-                            {d.status === 'Verified' && <Award size={12} className="text-emerald-600" />}
-                          </div>
-                        </Td>
-                        <Td>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => handlePreview(d)} title="Preview" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 flex items-center justify-center transition-colors"><Eye size={12} /></button>
-                            <button onClick={() => handleDownload(d)} title="Download" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-colors"><Download size={12} /></button>
-                            {canEdit && (
-                              <>
-                                <button onClick={() => openEditDoc(d)} title="Edit details" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 flex items-center justify-center transition-colors"><Edit size={12} /></button>
-                                <button onClick={() => triggerReplace(d.id)} title="Replace file" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 flex items-center justify-center transition-colors"><RefreshCw size={12} /></button>
-                                <button onClick={() => handleDeleteDoc(d)} title="Delete" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition-colors"><Trash2 size={12} /></button>
-                              </>
-                            )}
-                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit && (
-                              <>
-                                <button onClick={() => handleToggleStatus(d.id, 'Verified')} className="text-[10px] px-2 py-0.5 ml-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors">Verify</button>
-                                <button onClick={() => handleToggleStatus(d.id, 'Rejected')} className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors">Reject</button>
-                              </>
-                            )}
-                          </div>
-                        </Td>
-                      </Tr>
-                    ))
-                  )}
-                </Tbody>
-              </Table>
-            </Card>
-
-            {/* REDESIGNED Employee Dossier History Logs */}
+            {/* Employee-centric Compliance Verification Vault (one employee = one row) */}
             <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
               {/* Sticky header with Counters */}
               <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-slate-100 p-4 z-10 flex flex-wrap gap-4 items-center justify-between">
@@ -1165,38 +1115,36 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <Sliders size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">
-                      Employee Dossier History Logs
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1.5">
+                      <ShieldCheck size={15} className="text-indigo-600" /> Compliance Verification Vault
                     </h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Audits, verification status and dossier completion for all roster members
+                      One row per employee · {TOTAL_REQUIRED} required documents tracked per the company checklist
                     </p>
                   </div>
                 </div>
 
-                {/* Counter statistics widgets */}
-                <div className="flex items-center gap-2.5">
-                  <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[70px]">
+                {/* Counter statistics widgets (Total · Verified · Partial · Missing · Pending) */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-slate-800">{companyEmployees.length}</span>
                     <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
                   </div>
-                  <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-emerald-700">
-                      {dossiers.filter(d => d.status === 'Verified').length}
-                    </span>
+                  <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-emerald-700">{dossiers.filter(d => d.status === 'Verified').length}</span>
                     <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-wider">Verified</span>
                   </div>
-                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-amber-700">
-                      {dossiers.filter(d => d.status === 'Pending Documents' || d.status === 'Under Review').length}
-                    </span>
-                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Audits</span>
+                  <div className="px-3 py-1 bg-indigo-50 border border-indigo-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-indigo-700">{dossiers.filter(d => d.status === 'Partially Verified').length}</span>
+                    <span className="text-[8px] text-indigo-600 font-bold uppercase tracking-wider">Partial</span>
                   </div>
-                  <div className="px-3 py-1 bg-rose-50 border border-rose-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-rose-700">
-                      {dossiers.filter(d => d.status === 'Missing Audit').length}
-                    </span>
+                  <div className="px-3 py-1 bg-rose-50 border border-rose-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-rose-700">{dossiers.filter(d => d.missing > 0).length}</span>
                     <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Missing</span>
+                  </div>
+                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pending > 0).length}</span>
+                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Pending</span>
                   </div>
                 </div>
               </div>
@@ -1228,9 +1176,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                   >
                     <option value="">All Verification Status</option>
                     <option value="Verified">Verified</option>
-                    <option value="Pending Documents">Pending Documents</option>
-                    <option value="Missing Audit">Missing Audit</option>
-                    <option value="Under Review">Under Review</option>
+                    <option value="Partially Verified">Partially Verified</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Action Required">Action Required</option>
                   </select>
                 </div>
 
@@ -1244,23 +1192,26 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <Table>
                   <Thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                      <Th className="pl-4">Employee Details</Th>
-                      <Th>Department & Role</Th>
-                      <Th>Document Progress</Th>
+                      <Th className="pl-4">Employee</Th>
+                      <Th>Department</Th>
+                      <Th className="text-center">Required</Th>
+                      <Th className="text-center">Uploaded</Th>
+                      <Th className="text-center">Missing</Th>
+                      <Th>Progress</Th>
                       <Th>Verification Status</Th>
                       <Th>Last Updated</Th>
-                      <Th className="text-center pr-4">Compliance Actions</Th>
+                      <Th className="text-center pr-4">Actions</Th>
                     </tr>
                   </Thead>
                   <Tbody>
                     {paginatedDossiers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-xs text-gray-400 bg-white">
-                          No matching dossiers found.
+                        <td colSpan={9} className="text-center py-12 text-xs text-gray-400 bg-white">
+                          No matching employees found.
                         </td>
                       </tr>
                     ) : (
-                      paginatedDossiers.map(({ emp, totalDocs, status, lastUpdated }) => {
+                      paginatedDossiers.map(({ emp, uploaded, missing, status, lastUpdated }) => {
                         return (
                           <Tr key={emp.id} className="hover:bg-slate-50/50 transition duration-150">
                             <Td className="pl-4">
@@ -1276,51 +1227,42 @@ export const Documents: React.FC<DocumentsProps> = ({
                             </Td>
                             <Td>
                               <div>
-                                <p className="text-xs text-slate-800 font-medium">{emp.designation || 'Staff'}</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{emp.department || 'Clinical'}</p>
+                                <p className="text-xs text-slate-800 font-medium">{emp.department || '—'}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{emp.designation || 'Staff'}</p>
                               </div>
                             </Td>
+                            <Td className="text-center"><span className="text-xs font-bold text-slate-700">{TOTAL_REQUIRED}</span></Td>
+                            <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{uploaded}</span></Td>
+                            <Td className="text-center"><span className={`text-xs font-bold ${missing > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{missing}</span></Td>
                             <Td>
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
-                                  <span>{totalDocs} / 5 uploads</span>
-                                  <span className="font-mono">{Math.round((totalDocs / 5) * 100)}%</span>
+                                  <span>{uploaded} / {TOTAL_REQUIRED}</span>
+                                  <span className="font-mono">{Math.round((uploaded / TOTAL_REQUIRED) * 100)}%</span>
                                 </div>
                                 <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-150">
                                   <div
                                     className={`h-full rounded-full transition-all duration-300 ${
-                                      status === 'Verified'
-                                        ? 'bg-emerald-500'
-                                        : status === 'Missing Audit'
-                                        ? 'bg-rose-500'
-                                        : 'bg-indigo-500'
+                                      status === 'Verified' ? 'bg-emerald-500'
+                                        : status === 'Action Required' ? 'bg-rose-500'
+                                        : status === 'Partially Verified' ? 'bg-indigo-500'
+                                        : 'bg-amber-500'
                                     }`}
-                                    style={{ width: `${Math.min(100, (totalDocs / 5) * 100)}%` }}
+                                    style={{ width: `${Math.min(100, (uploaded / TOTAL_REQUIRED) * 100)}%` }}
                                   ></div>
                                 </div>
                               </div>
                             </Td>
                             <Td>
                               <Badge
-                                variant={
-                                  status === 'Verified'
-                                    ? 'green'
-                                    : status === 'Pending Documents'
-                                    ? 'amber'
-                                    : status === 'Missing Audit'
-                                    ? 'red'
-                                    : 'indigo'
-                                }
+                                variant={complianceBadgeVariant(status)}
                                 className="text-[9px] px-2 py-0.5 rounded-full border shadow-2xs font-extrabold flex items-center gap-1.5 w-fit"
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full ${
-                                  status === 'Verified'
-                                    ? 'bg-emerald-500'
-                                    : status === 'Pending Documents'
-                                    ? 'bg-amber-500'
-                                    : status === 'Missing Audit'
-                                    ? 'bg-rose-500'
-                                    : 'bg-indigo-505 bg-indigo-500'
+                                  status === 'Verified' ? 'bg-emerald-500'
+                                    : status === 'Action Required' ? 'bg-rose-500'
+                                    : status === 'Partially Verified' ? 'bg-indigo-500'
+                                    : 'bg-amber-500'
                                 }`}></span>
                                 {status}
                               </Badge>
