@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Eye, Download, CheckCircle2, XCircle, Trash2, StickyNote, UploadCloud, FileText, ShieldCheck } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Eye, Download, CheckCircle2, XCircle, Trash2, StickyNote, UploadCloud, FileText, ShieldCheck, History, Loader2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -26,6 +26,21 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
   open, onClose, employee, documents, onUpdateDocuments, canEdit, role, onPreview, onUpload,
 }) => {
   const empDocs = useMemo(() => (employee ? documents.filter(d => d.employeeId === employee.id) : []), [documents, employee]);
+
+  // ── Per-document audit history (Issue 5) ──
+  const [historyDoc, setHistoryDoc] = useState<any | null>(null);
+  const [historyLogs, setHistoryLogs] = useState<any[] | null>(null);
+  const openHistory = async (doc: any) => {
+    setHistoryDoc(doc);
+    setHistoryLogs(null);
+    try {
+      const all = await api.audit.getAll('?module=Document&limit=500');
+      const rows = (Array.isArray(all) ? all : []).filter((l: any) => String(l.targetId) === String(doc.id));
+      setHistoryLogs(rows);
+    } catch {
+      setHistoryLogs([]);
+    }
+  };
 
   const { sections, uploaded, verifiedCount, missing, status } = useMemo(() => {
     // Required slots, resolved against the employee's documents.
@@ -117,6 +132,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
       <div className="flex items-center gap-1 shrink-0">
         <button onClick={() => onPreview(doc)} title="Preview" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><Eye size={12} /></button>
         <button onClick={() => download(doc)} title="Download" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center"><Download size={12} /></button>
+        <button onClick={() => openHistory(doc)} title="View audit history" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-violet-600 hover:bg-violet-50 flex items-center justify-center"><History size={12} /></button>
         {canVerify && doc.status !== 'Verified' && <button onClick={() => setStatus(doc, 'Verified')} title="Verify" className="w-6 h-6 rounded border border-slate-200 text-emerald-600 hover:bg-emerald-50 flex items-center justify-center"><CheckCircle2 size={12} /></button>}
         {canVerify && doc.status !== 'Rejected' && <button onClick={() => setStatus(doc, 'Rejected')} title="Reject" className="w-6 h-6 rounded border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><XCircle size={12} /></button>}
         {canEdit && <button onClick={() => addNote(doc)} title="Add note" className="w-6 h-6 rounded border border-slate-200 text-amber-600 hover:bg-amber-50 flex items-center justify-center"><StickyNote size={12} /></button>}
@@ -126,6 +142,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
   );
 
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -181,5 +198,44 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
         ))}
       </div>
     </Modal>
+
+    {/* Audit history for a single document (Issue 5) */}
+    <Modal
+      open={!!historyDoc}
+      onClose={() => { setHistoryDoc(null); setHistoryLogs(null); }}
+      title="Document Audit History"
+      size="md"
+    >
+      <div className="space-y-3">
+        {historyDoc && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
+            <p className="text-xs font-bold text-slate-800">{historyDoc.name}</p>
+            <p className="text-[10px] text-slate-400">{historyDoc.type} · current status: {historyDoc.status}</p>
+          </div>
+        )}
+        {historyLogs === null ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-xs text-slate-400">
+            <Loader2 size={14} className="animate-spin" /> Loading history…
+          </div>
+        ) : historyLogs.length === 0 ? (
+          <p className="py-8 text-center text-xs text-slate-400">No audit entries recorded for this document yet.</p>
+        ) : (
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {historyLogs.map(l => (
+              <div key={l.id} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <History size={13} className="text-violet-500 mt-0.5 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-slate-800">{(l.action || '').replace(/_/g, ' ')}</p>
+                  <p className="text-[10px] text-slate-400">
+                    {l.actorName}{l.actorRole ? ` · ${l.actorRole}` : ''} · {new Date(l.createdAt).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+    </>
   );
 };

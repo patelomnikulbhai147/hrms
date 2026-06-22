@@ -1151,6 +1151,10 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pending > 0).length}</span>
                     <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Pending</span>
                   </div>
+                  <div className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-rose-700">{list.filter(d => d.status === 'Rejected').length}</span>
+                    <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Rejected</span>
+                  </div>
                 </div>
               </div>
 
