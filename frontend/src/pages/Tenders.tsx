@@ -5,6 +5,8 @@ import { type UserAccount } from '@/pages/Login';
 import { api } from '@/api/apiClient';
 import { TendersTab } from '@/components/tenders/TendersTab';
 import { ContractsTab } from '@/components/tenders/ContractsTab';
+import { SitesTab } from '@/components/tenders/SitesTab';
+import { DeploymentTab } from '@/components/tenders/DeploymentTab';
 
 interface TendersProps {
   role: Role;
@@ -98,10 +100,12 @@ export const Tenders: React.FC<TendersProps> = ({ role, activeCompanyId }) => {
 
       {tab === 'tenders' && <TendersTab activeCompanyId={activeCompanyId} canManageCommercial={canManageCommercial} onConverted={() => { bumpReload(); setTab('contracts'); }} onChanged={bumpReload} />}
       {tab === 'contracts' && <ContractsTab activeCompanyId={activeCompanyId} canManageCommercial={canManageCommercial} reloadKey={reloadKey} onChanged={bumpReload} />}
+      {tab === 'sites' && <SitesTab activeCompanyId={activeCompanyId} canManageCommercial={canManageCommercial} onChanged={bumpReload} />}
+      {tab === 'deployment' && <DeploymentTab activeCompanyId={activeCompanyId} role={role} onChanged={bumpReload} />}
 
-      {(tab === 'sites' || tab === 'deployment' || tab === 'renewals') && (
+      {tab === 'renewals' && (
         <div className="bg-white rounded-xl border border-[#DBEAFE] p-10 text-center">
-          <p className="text-sm font-bold text-slate-600">{TABS.find(t => t.id === tab)?.label}</p>
+          <p className="text-sm font-bold text-slate-600">Renewals</p>
           <p className="text-xs text-slate-400 mt-1">Arriving in the next update of this module.</p>
         </div>
       )}
