@@ -6,7 +6,18 @@
  */
 const prisma = require('../src/config/prisma');
 
-const TABLE = 'employee';
+// Resolve real table name (case-sensitive on Linux/RDS); model `Employee` has no
+// @@map, so the table is `Employee`, and hard-coding 'employee' fails on RDS.
+let TABLE = 'employee';
+async function resolveTable(logicalName) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT TABLE_NAME AS t FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = LOWER(?) LIMIT 1`,
+    logicalName,
+  );
+  if (!rows?.[0]) throw new Error(`Table matching "${logicalName}" not found.`);
+  return rows[0].t;
+}
 const COLUMNS = [
   { name: 'state', ddl: 'VARCHAR(191) NULL' },
   { name: 'city',  ddl: 'VARCHAR(191) NULL' },
@@ -23,6 +34,7 @@ async function columnExists(col) {
 
 (async () => {
   try {
+    TABLE = await resolveTable(TABLE);
     let added = 0;
     for (const { name, ddl } of COLUMNS) {
       if (await columnExists(name)) { console.log(`= ${TABLE}.${name} exists — skipped`); continue; }
