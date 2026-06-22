@@ -3,7 +3,7 @@ import { cn } from '@/utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, Fingerprint, Gift
+  ClipboardList, Briefcase, History, IdCard, Fingerprint
 } from 'lucide-react';
 import type { Role, Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
@@ -31,7 +31,9 @@ const navItems: NavItem[] = [
   { id: 'attendance-devices', label: 'Attendance Devices', icon: <Fingerprint size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
-  { id: 'bonus', label: 'Bonus Management', icon: <Gift size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
+  // Standalone "Bonus Management" removed — bonuses are now handled inside
+  // Employee Management + Payroll. The statutory engine (Form C/D) is retained
+  // for compliance but no longer a daily-operations menu item.
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },

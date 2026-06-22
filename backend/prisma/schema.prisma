@@ -583,6 +583,16 @@ model Employee {
   presentAddress    String?        @db.Text
   relationType      String?
   signatureUpload   String?        @db.LongText
+  // ── Bonus configuration (per-employee, managed from Employee + Payroll) ──
+  // Recurring bonus rule that flows into payroll. One-time bonuses (festival /
+  // performance) live in the EmployeeBonus table instead.
+  bonusApplicable   Boolean        @default(false)
+  bonusType         String?        // Monthly / Quarterly / Half-Yearly / Yearly / Performance / Festival / Custom
+  bonusCalcMethod   String?        // "Fixed Amount" | "Percentage of Salary"
+  bonusValue        Float?         // flat amount, or percent of salary, per bonusCalcMethod
+  bonusEffectiveDate DateTime?
+  bonusEndDate      DateTime?
+  bonusNotes        String?        @db.Text
   attendance        Attendance[]
   branch            Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
   company           Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -592,6 +602,43 @@ model Employee {
   overtimes         Overtime[]
   leaveBalances     LeaveBalance[]
   attendanceSummaries AttendanceSummary[]
+  employeeBonuses   EmployeeBonus[]
+}
+
+// ── Per-employee bonus ledger — the new bonus model ──────────────────────────
+// Every bonus that touches an employee: recurring config snapshots applied each
+// payroll cycle, and one-time festival/performance bonuses issued from Payroll.
+// Keeps full history; generic AuditLog records create/update/delete/apply/paid.
+model EmployeeBonus {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  source          String    @default("employee") // "employee" (recurring) | "payroll" (one-time)
+  bonusType       String    // Monthly / Quarterly / Half-Yearly / Yearly / Performance / Festival / Custom
+  calcMethod      String?   // "Fixed Amount" | "Percentage of Salary"
+  amount          Float     @default(0) // resolved bonus amount in currency
+  percent         Float?    // when calcMethod is percentage
+  reason          String?   @db.Text // performance reason / festival name
+  approvedBy      Int?
+  approvedByName  String?
+  approvalDate    DateTime?
+  effectiveDate   DateTime?
+  endDate         DateTime?
+  status          String    @default("Active") // Active / Paid / Cancelled
+  payrollMonth    String?   // month it was applied/paid through payroll
+  payrollYear     Int?
+  notes           String?   @db.Text
+  createdBy       Int?
+  createdByName   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([payrollMonth, payrollYear])
+  @@map("employee_bonuses")
 }
 
 model Payroll {
@@ -626,6 +673,11 @@ model Payroll {
   paymentMethod    String?
   paidBy           String?
   bonus            Float?
+  // Overtime surfaced as its own payroll line (the amount is still part of
+  // `allowances` for net-salary math; this column lets the UI show it separately
+  // without double-counting). Bonus is folded INTO netSalary (Basic + Allowances
+  // + Overtime + Bonus − Deductions).
+  overtime         Float?   @default(0)
   tax              Float?
   notes            String?
   companyPayrollId String?

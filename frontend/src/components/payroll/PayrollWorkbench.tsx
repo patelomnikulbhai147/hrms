@@ -115,6 +115,10 @@ export const PayrollWorkbench: React.FC<Props> = ({
       branch: emp?.branchLocation || r.employee?.branchLocation || 'Head Office',
       dept: r.department || emp?.department || '—',
       gross: (r.basicSalary || 0) + (r.allowances || 0) + (r.bonus || 0),
+      // Overtime & Bonus are broken out as their own columns (both are already
+      // part of gross — overtime sits inside allowances, bonus is added on top).
+      overtime: (r as any).overtime || 0,
+      bonus: r.bonus || 0,
       deductions: (r.deductions || 0) + (r.tax || 0),
       net: r.netSalary || 0,
     };
@@ -357,6 +361,8 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 <th className="px-2 py-2.5">Branch</th>
                 <th className="px-2 py-2.5">Department</th>
                 <th className="px-2 py-2.5 text-right">Gross Salary</th>
+                <th className="px-2 py-2.5 text-right">Overtime</th>
+                <th className="px-2 py-2.5 text-right">Bonus</th>
                 <th className="px-2 py-2.5 text-right">Deductions</th>
                 <th className="px-2 py-2.5 text-right">Net Salary</th>
                 <th className="px-2 py-2.5">Payment Status</th>
@@ -365,7 +371,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
             </thead>
             <tbody className="divide-y divide-slate-50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-400">No payroll records. Run “Generate Payroll” to begin.</td></tr>
+                <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-400">No payroll records. Run “Generate Payroll” to begin.</td></tr>
               ) : filtered.map((x, i) => {
                 const pb = paymentBadge(x.r);
                 const sel = selected.has(x.r.id);
@@ -382,6 +388,8 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     <td className="px-2 py-2 text-slate-600">{x.branch}</td>
                     <td className="px-2 py-2 text-slate-600">{x.dept}</td>
                     <td className="px-2 py-2 text-right text-slate-700">{inr(x.gross)}</td>
+                    <td className="px-2 py-2 text-right text-sky-600">{x.overtime ? inr(x.overtime) : '—'}</td>
+                    <td className={`px-2 py-2 text-right font-semibold ${x.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{x.bonus ? inr(x.bonus) : '—'}</td>
                     <td className="px-2 py-2 text-right text-rose-600">{inr(x.deductions)}</td>
                     <td className="px-2 py-2 text-right font-bold text-slate-900">{inr(x.net)}</td>
                     <td className="px-2 py-2"><Badge variant={pb.variant}>{pb.label}</Badge></td>

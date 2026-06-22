@@ -1,11 +1,11 @@
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDate } from '@/utils/formatDate';
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
-  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive
+  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -38,6 +38,7 @@ import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee, isOffboarded } from '@/utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '@/utils/idFormat';
 import { BankDetails } from '@/components/employee/BankDetails';
+import { BonusConfigSection } from '@/components/employee/BonusConfigSection';
 import { usePermissions } from '@/context/PermissionContext';
 import { ui } from '@/components/ui/feedback';
 
@@ -134,7 +135,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tabs in drawer
-  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address' | 'nominees'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address' | 'nominees' | 'bonus'>('personal');
 
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
@@ -173,6 +174,60 @@ export const Employees: React.FC<EmployeesProps> = ({
         l.companyId === activeCompanyId
     );
   }, [leaves, viewEmp, activeCompanyId]);
+
+  // One-time / historical bonus ledger for the profile being viewed.
+  const [empBonusHistory, setEmpBonusHistory] = useState<any[]>([]);
+  const loadBonusHistory = useCallback(async (empId: any) => {
+    try { const rows = await api.employeeBonuses.list(`?employeeId=${empId}`); setEmpBonusHistory(Array.isArray(rows) ? rows : []); }
+    catch { setEmpBonusHistory([]); }
+  }, []);
+  useEffect(() => {
+    if (!viewEmp) { setEmpBonusHistory([]); return; }
+    loadBonusHistory(viewEmp.id);
+  }, [viewEmp, loadBonusHistory]);
+
+  // ── Bonus tab quick actions (Add one-time bonus / Disable recurring bonus) ──
+  const [addBonusOpen, setAddBonusOpen] = useState(false);
+  const [bonusBusy, setBonusBusy] = useState(false);
+  const [bonusForm, setBonusForm] = useState({ bonusType: 'Festival', calcMethod: 'Fixed Amount', value: '', reason: '' });
+
+  const handleAddBonus = async () => {
+    if (!viewEmp) return;
+    const num = Number(bonusForm.value);
+    if (!num || num <= 0) { ui.toast.warning('Enter a bonus amount or percentage greater than zero.'); return; }
+    const isPct = bonusForm.calcMethod.toLowerCase().includes('percent');
+    const amount = isPct ? Math.round((viewEmp.salary || 0) * num / 100) : Math.round(num);
+    setBonusBusy(true);
+    try {
+      await api.employeeBonuses.create({
+        companyId: viewEmp.companyId, employeeId: viewEmp.id, source: 'employee',
+        bonusType: bonusForm.bonusType, calcMethod: bonusForm.calcMethod,
+        amount, percent: isPct ? num : null, reason: bonusForm.reason || null, status: 'Active',
+      });
+      ui.toast.success('Bonus added to the employee history.');
+      await loadBonusHistory(viewEmp.id);
+      setAddBonusOpen(false);
+      setBonusForm({ bonusType: 'Festival', calcMethod: 'Fixed Amount', value: '', reason: '' });
+    } catch (e: any) {
+      ui.toast.error(`Failed to add bonus: ${e?.message || 'Unknown error'}`);
+    } finally { setBonusBusy(false); }
+  };
+
+  const handleDisableBonus = async () => {
+    if (!viewEmp) return;
+    if (!viewEmp.bonusApplicable) { ui.toast.info('Recurring bonus is already disabled for this employee.'); return; }
+    const ok = await ui.confirm({ title: 'Disable Bonus', message: `Disable the recurring bonus for ${viewEmp.name}? Existing bonus history is kept; future payrolls will not auto-include it.`, confirmText: 'Disable', variant: 'warning' });
+    if (!ok) return;
+    try {
+      const updated = { ...viewEmp, bonusApplicable: false } as Employee;
+      const saved = await api.employees.update(viewEmp.id, updated);
+      onUpdateEmployees(employees.map(e => e.id === saved.id ? saved : e));
+      setViewEmp(saved);
+      ui.toast.success('Recurring bonus disabled.');
+    } catch (e: any) {
+      ui.toast.error(`Failed to disable bonus: ${e?.message || 'Unknown error'}`);
+    }
+  };
 
   // Handlers for premium document upload and base64 parsing
   const handleUploadDocType = async (docType: 'photoUpload' | 'aadhaarUpload' | 'panUpload' | 'signatureUpload' | 'otherUpload', fileUrl: string) => {
@@ -307,6 +362,15 @@ export const Employees: React.FC<EmployeesProps> = ({
     state: '',
     city: '',
     shiftId: '' as number | string,
+
+    // Bonus configuration
+    bonusApplicable: false,
+    bonusType: '' as string,
+    bonusCalcMethod: 'Fixed Amount' as string,
+    bonusValue: null as number | null,
+    bonusEffectiveDate: '' as string,
+    bonusEndDate: '' as string,
+    bonusNotes: '' as string,
   });
 
 
@@ -331,6 +395,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
       state: '', city: '',
       shiftId: '',
+      bonusApplicable: false, bonusType: '', bonusCalcMethod: 'Fixed Amount', bonusValue: null, bonusEffectiveDate: '', bonusEndDate: '', bonusNotes: '',
     });
     setErrors({});
     setWizardNominees([]);
@@ -687,6 +752,15 @@ export const Employees: React.FC<EmployeesProps> = ({
       presentAddress: form.presentAddress,
       permanentAddress: form.permanentAddress,
       shiftId: form.shiftId ? Number(form.shiftId) : null,
+
+      // Bonus configuration
+      bonusApplicable: form.bonusApplicable,
+      bonusType: form.bonusApplicable ? form.bonusType : null,
+      bonusCalcMethod: form.bonusApplicable ? form.bonusCalcMethod : null,
+      bonusValue: form.bonusApplicable ? form.bonusValue : null,
+      bonusEffectiveDate: form.bonusApplicable ? (form.bonusEffectiveDate || null) : null,
+      bonusEndDate: form.bonusApplicable ? (form.bonusEndDate || null) : null,
+      bonusNotes: form.bonusApplicable ? (form.bonusNotes || null) : null,
     };
 
     // Validate staged nominee allocation BEFORE creating the employee, so we never
@@ -1351,6 +1425,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Details</button>
               <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment Details</button>
               <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Payroll & Banking</button>
+              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Bonus</button>
               <button onClick={() => setActiveTab('compliance')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'compliance' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance IDs</button>
               <button onClick={() => setActiveTab('documents')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'documents' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
               <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Nominees</button>
@@ -1403,6 +1478,77 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div><p className="text-[10px] text-gray-400">Exit Reason</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.exitReason || '—'}</p></div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ── Dedicated Bonus tab — config snapshot + history + quick actions ── */}
+            {activeTab === 'bonus' && (
+              <div className="space-y-4 p-1">
+                {/* Current Bonus Information */}
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Gift size={15} className="text-amber-600" />
+                      <p className="text-sm font-bold text-slate-800">Current Bonus Information</p>
+                    </div>
+                    <Badge variant={viewEmp.bonusApplicable ? 'green' : 'gray'} dot>{viewEmp.bonusApplicable ? 'Active' : 'Not Applicable'}</Badge>
+                  </div>
+                  {viewEmp.bonusApplicable ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div><p className="text-[10px] text-gray-400">Bonus Type</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.bonusType || '—'}</p></div>
+                      <div><p className="text-[10px] text-gray-400">Calculation Method</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.bonusCalcMethod || '—'}</p></div>
+                      <div><p className="text-[10px] text-gray-400">{viewEmp.bonusCalcMethod === 'Percentage of Salary' ? 'Percentage' : 'Amount'}</p><p className="font-bold text-amber-700 mt-0.5">{viewEmp.bonusCalcMethod === 'Percentage of Salary' ? `${viewEmp.bonusValue || 0}%` : `₹${(viewEmp.bonusValue || 0).toLocaleString('en-IN')}`}</p></div>
+                      <div><p className="text-[10px] text-gray-400">Effective Date</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.bonusEffectiveDate ? formatDate(viewEmp.bonusEffectiveDate) : '—'}</p></div>
+                      <div><p className="text-[10px] text-gray-400">End Date</p><p className="font-semibold text-slate-800 mt-0.5">{viewEmp.bonusEndDate ? formatDate(viewEmp.bonusEndDate) : '—'}</p></div>
+                      <div><p className="text-[10px] text-gray-400">Status</p><p className="font-semibold text-emerald-600 mt-0.5">Active</p></div>
+                      {viewEmp.bonusNotes && <div className="col-span-2 sm:col-span-3"><p className="text-[10px] text-gray-400">Notes</p><p className="font-medium text-slate-700 mt-0.5">{viewEmp.bonusNotes}</p></div>}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No recurring bonus configured. Use “Edit Bonus” to set one up, or “Add Bonus” to issue a one-time bonus.</p>
+                  )}
+                </div>
+
+                {/* Quick Actions */}
+                {canEdit && (
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" icon={<Plus size={13} />} onClick={() => setAddBonusOpen(true)}>Add Bonus</Button>
+                    <Button size="sm" variant="outline" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Bonus</Button>
+                    <Button size="sm" variant="outline" icon={<XCircle size={13} />} onClick={handleDisableBonus} disabled={!viewEmp.bonusApplicable}>Disable Bonus</Button>
+                  </div>
+                )}
+
+                {/* Bonus History Table */}
+                <div>
+                  <p className="text-xs font-bold text-slate-700 mb-2">Bonus History ({empBonusHistory.length})</p>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-400">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Date</th>
+                          <th className="px-3 py-2 text-left">Bonus Type</th>
+                          <th className="px-3 py-2 text-right">Amount</th>
+                          <th className="px-3 py-2 text-left">Applied By</th>
+                          <th className="px-3 py-2 text-left">Remarks</th>
+                          <th className="px-3 py-2 text-left">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {empBonusHistory.length === 0 ? (
+                          <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-400 italic">No bonuses issued yet.</td></tr>
+                        ) : empBonusHistory.map((b: any) => (
+                          <tr key={b.id} className="hover:bg-slate-50">
+                            <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{b.payrollMonth ? `${b.payrollMonth} ${b.payrollYear || ''}` : formatDate(b.createdAt)}</td>
+                            <td className="px-3 py-2 font-semibold text-slate-800">{b.bonusType}</td>
+                            <td className="px-3 py-2 text-right font-bold text-amber-700">₹{(b.amount || 0).toLocaleString('en-IN')}</td>
+                            <td className="px-3 py-2 text-slate-600">{b.approvedByName || b.createdByName || '—'}</td>
+                            <td className="px-3 py-2 text-slate-500">{b.reason || '—'}</td>
+                            <td className="px-3 py-2"><Badge variant={b.status === 'Cancelled' ? 'red' : b.status === 'Paid' ? 'green' : 'blue'}>{b.status}</Badge></td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1747,6 +1893,45 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
+      {/* Add one-time bonus (festival / performance / custom) to an employee's history */}
+      <Modal
+        open={addBonusOpen}
+        onClose={() => setAddBonusOpen(false)}
+        title={`Add Bonus${viewEmp ? ` — ${viewEmp.name}` : ''}`}
+        size="md"
+        footer={
+          <div className="flex justify-end gap-2 w-full">
+            <Button variant="outline" onClick={() => setAddBonusOpen(false)} disabled={bonusBusy}>Cancel</Button>
+            <Button icon={<Gift size={14} />} onClick={handleAddBonus} disabled={bonusBusy}>{bonusBusy ? 'Adding…' : 'Add Bonus'}</Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Bonus Type</label>
+              <Select value={bonusForm.bonusType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setBonusForm(f => ({ ...f, bonusType: e.target.value }))}
+                options={['Festival', 'Performance', 'Custom'].map(t => ({ value: t, label: t }))} />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">Calculation Method</label>
+              <Select value={bonusForm.calcMethod} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setBonusForm(f => ({ ...f, calcMethod: e.target.value }))}
+                options={['Fixed Amount', 'Percentage of Salary'].map(m => ({ value: m, label: m }))} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">{bonusForm.calcMethod.includes('Percentage') ? 'Percentage of Salary (%)' : 'Bonus Amount (₹)'}</label>
+            <Input type="number" min="0" value={bonusForm.value} onChange={e => setBonusForm(f => ({ ...f, value: e.target.value }))}
+              placeholder={bonusForm.calcMethod.includes('Percentage') ? 'e.g. 10' : 'e.g. 5000'} />
+          </div>
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Remarks / Reason <span className="text-slate-400">(e.g. Diwali, performance)</span></label>
+            <Input value={bonusForm.reason} onChange={e => setBonusForm(f => ({ ...f, reason: e.target.value }))} placeholder="Optional" />
+          </div>
+          <p className="text-[11px] text-slate-400">This records a one-time bonus in the employee's history. To apply it to a specific payroll month for payout, use Payroll → Apply Bonus.</p>
+        </div>
+      </Modal>
+
       {/* Biometric Code bulk import (maps machine codes to employees; no sync) */}
       <BiometricImportModal
         open={bioImportOpen}
@@ -1995,6 +2180,12 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <Select id="field-shift" label="Shift (Optional)" value={form.shiftId || ''} onChange={e => setForm({ ...form, shiftId: e.target.value })} options={shiftSelectOptions} />
               </div>
+              <BonusConfigSection
+                data={form}
+                salary={form.salary}
+                onChange={patch => setForm((f: any) => ({ ...f, ...patch }))}
+                errors={errors}
+              />
             </div>
           )}
 
@@ -2125,6 +2316,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <Select id="field-shift" label="Shift (Optional)" value={editEmp.shiftId != null ? String(editEmp.shiftId) : ''} onChange={e => setEditEmp({ ...editEmp, shiftId: e.target.value ? Number(e.target.value) : null } as any)} options={shiftSelectOptions} />
                 </div>
+                <BonusConfigSection
+                  data={editEmp as any}
+                  salary={editEmp.salary}
+                  onChange={patch => setEditEmp((e: any) => ({ ...e, ...patch }))}
+                  errors={errors}
+                />
                 <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
                   <Input id="field-exitDate" label="Exit Date" type="date" value={(editEmp.exitDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
                   <Input id="field-exitReason" label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} error={errors.exitReason} />

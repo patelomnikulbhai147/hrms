@@ -83,6 +83,36 @@ export interface Company {
   inheritParentDepartments?: boolean;
 }
 
+export type BonusType =
+  | 'Monthly' | 'Quarterly' | 'Half-Yearly' | 'Yearly'
+  | 'Performance' | 'Festival' | 'Custom';
+
+export type BonusCalcMethod = 'Fixed Amount' | 'Percentage of Salary';
+
+// One-time / historical bonus ledger entry (festival, performance, etc.).
+export interface EmployeeBonus {
+  id: string;
+  companyId: string;
+  employeeId: string;
+  source: 'employee' | 'payroll';
+  bonusType: BonusType;
+  calcMethod?: BonusCalcMethod;
+  amount: number;
+  percent?: number | null;
+  reason?: string | null;
+  approvedBy?: number | null;
+  approvedByName?: string | null;
+  approvalDate?: string | null;
+  effectiveDate?: string | null;
+  endDate?: string | null;
+  status: 'Active' | 'Paid' | 'Cancelled';
+  payrollMonth?: string | null;
+  payrollYear?: number | null;
+  notes?: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+}
+
 export interface Employee {
   id: string;
   employeeId: string;
@@ -143,6 +173,15 @@ export interface Employee {
   panUpload?: string;
   photoUpload?: string;
   signatureUpload?: string;
+
+  // ── Bonus configuration (recurring rule that flows into payroll) ──
+  bonusApplicable?: boolean;
+  bonusType?: BonusType;
+  bonusCalcMethod?: BonusCalcMethod;
+  bonusValue?: number | null;
+  bonusEffectiveDate?: string | null;
+  bonusEndDate?: string | null;
+  bonusNotes?: string | null;
 
   offboardingState?: {
     initiatedOn?: string;
@@ -237,6 +276,7 @@ export interface PayrollRecord {
   paidBy?: string;
 
   bonus?: number;
+  overtime?: number;
   tax?: number;
   notes?: string;
 }

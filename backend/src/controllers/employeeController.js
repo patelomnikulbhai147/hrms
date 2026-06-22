@@ -5,6 +5,7 @@ const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { prepareEmployeeWriteData } = require('../utils/employeeWriteData');
 const locationMaster = require('./locationMasterController');
 
 // Remember any custom state/city on an employee payload for dropdown reuse
@@ -161,8 +162,12 @@ exports.createEmployee = async (req, res) => {
       data.employeeId = await generateEmployeeCode(data.branchId, data.companyId);
     }
 
+    // Whitelist to real Employee columns + coerce bonus config fields. `employeeId`
+    // was just resolved above, so re-attach it after the pick.
+    const createData = prepareEmployeeWriteData(data);
+    createData.employeeId = data.employeeId;
     const employee = await prisma.employee.create({
-      data
+      data: createData
     });
 
     // Auto-create initial payroll draft for the current month
@@ -259,21 +264,22 @@ exports.bulkCreate = async (req, res) => {
       if (dup) {
         // Same person already on file → UPDATE that record (never insert a 2nd
         // row). Keep the existing unique code; don't overwrite it with a blank.
-        const patch = { ...data };
-        delete patch.id;
+        const patch = prepareEmployeeWriteData(data);
         delete patch.employeeId;
         result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
         merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
       } else if (data.employeeId) {
         // Has an explicit code → upsert on the unique code.
+        const clean = prepareEmployeeWriteData(data);
+        clean.employeeId = data.employeeId;
         result = await prisma.employee.upsert({
           where: { employeeId: data.employeeId },
-          update: data,
-          create: data,
+          update: clean,
+          create: clean,
         });
         created.push(result);
       } else {
-        result = await prisma.employee.create({ data });
+        result = await prisma.employee.create({ data: prepareEmployeeWriteData(data) });
         created.push(result);
       }
       addToIndex(result);
@@ -460,7 +466,7 @@ exports.updateEmployee = async (req, res) => {
 
     const employee = await prisma.employee.update({
       where: { id: idParam(id) },
-      data
+      data: prepareEmployeeWriteData(data)
     });
     res.json(employee);
   } catch (error) {
