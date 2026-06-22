@@ -545,8 +545,8 @@ export const api = {
     emailSlip: async (id: string, payload: { pdfBase64?: string; fileName?: string; to?: string }) => { return await apiFetch(`${BASE_URL}/payroll/${id}/email-slip`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) }); },
     approve: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/approve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     markPaid: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/mark-paid`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
-    lock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
-    unlock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
+    lock: async (ids: string[], reason?: string) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, reason }) }); },
+    unlock: async (ids: string[], reason?: string) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, reason }) }); },
     recalculate: async (data: { ids?: any[]; month?: string; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/payroll/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Bonus inside payroll — apply to selected/department/company, or remove.
     applyBonus: async (data: { companyId: any; month: string; year: number; scope: 'selected' | 'department' | 'company'; employeeIds?: any[]; department?: string; bonusType: string; calcMethod: string; amount?: number; percent?: number; reason?: string }) => { return await apiFetch(`${BASE_URL}/payroll/apply-bonus`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
