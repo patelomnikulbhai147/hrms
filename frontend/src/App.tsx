@@ -67,7 +67,7 @@ const pageTitles: Record<PageId, string> = {
   billing: 'Billing & Subscriptions',
   users: 'User Management',
   tasks: 'Task Manager',
-  tenders: 'Tender Information',
+  tenders: 'Tenders & Contracts',
   'select-workspace': 'Select Workspace'
 };
 

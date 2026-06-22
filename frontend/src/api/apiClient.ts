@@ -488,6 +488,26 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/tenders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    convert: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}/convert`, { method: 'POST', headers: getHeaders() }); },
+  },
+  contracts: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/contracts`, { headers: getHeaders() }); },
+    getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/contracts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+  contractSites: {
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/contract-sites${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/contract-sites`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/contract-sites/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/contract-sites/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+  deployments: {
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/deployments${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/deployments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/deployments/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/deployments/${id}`, { method: 'DELETE', headers: getHeaders() }); },
   },
 
   documents: {
