@@ -28,6 +28,7 @@ import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
+import { formatDate } from '@/utils/formatDate';
 import { BulkUploadModal } from '@/components/employee/BulkUploadModal';
 import { EmployeeDocWorkspace } from '@/components/employee/EmployeeDocWorkspace';
 
@@ -1223,14 +1224,14 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <Td>
                           <Badge variant={complianceBadgeVariant(status)} dot>{status}</Badge>
                         </Td>
-                        <Td><span className="text-[11px] text-slate-500 font-medium">{pendingSince}</span></Td>
+                        <Td><span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{formatDate(pendingSince)}</span></Td>
                         <Td className="text-center pr-4">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="p-1 text-slate-550 hover:text-indigo-700 hover:bg-indigo-50 rounded transition"><Eye size={13} /></button>
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"><Eye size={14} /></button>
                             {canEdit && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
                               <>
-                                <button onClick={() => handleQuickVerify(emp.id)} title="Approve / Verify pending" className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"><Check size={13} /></button>
-                                <button onClick={() => handleRejectAllPending(emp.id)} title="Reject pending" className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition"><X size={13} /></button>
+                                <button onClick={() => handleQuickVerify(emp.id)} title="Approve / Verify pending" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition"><Check size={14} /></button>
+                                <button onClick={() => handleRejectAllPending(emp.id)} title="Reject pending" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-rose-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 transition"><X size={14} /></button>
                               </>
                             )}
                           </div>
@@ -1337,15 +1338,15 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <Table>
                   <Thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                      <Th className="pl-4 w-[17%]">Employee</Th>
-                      <Th className="w-[12%]">Department</Th>
-                      <Th className="text-center w-[7%]">Required</Th>
-                      <Th className="text-center w-[7%]">Uploaded</Th>
-                      <Th className="text-center w-[7%]">Missing</Th>
-                      <Th className="w-[12%]">Progress</Th>
-                      <Th className="w-[14%]">Status</Th>
-                      <Th className="w-[10%]">Updated</Th>
-                      <Th className="text-center pr-4 w-[14%]">Actions</Th>
+                      <Th className="pl-4 w-[18%]">Employee</Th>
+                      <Th className="w-[11%]">Department</Th>
+                      <Th className="text-center w-[6%]">Required</Th>
+                      <Th className="text-center w-[6%]">Uploaded</Th>
+                      <Th className="text-center w-[6%]">Missing</Th>
+                      <Th className="w-[11%]">Progress</Th>
+                      <Th className="w-[12%]">Status</Th>
+                      <Th className="w-[12%] pr-5">Updated</Th>
+                      <Th className="text-center pl-3 pr-4 w-[18%]">Actions</Th>
                     </tr>
                   </Thead>
                   <Tbody>
@@ -1412,44 +1413,44 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 {status}
                               </Badge>
                             </Td>
-                            <Td>
-                              <span className="text-[11px] text-slate-500 font-medium">{lastUpdated}</span>
+                            <Td className="pr-5">
+                              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{formatDate(lastUpdated)}</span>
                             </Td>
-                            <Td className="text-center pr-4">
-                              {/* Direct row actions — no drawer required (View · Upload · Edit · Verify · Download) */}
-                              <div className="flex items-center justify-center gap-1">
+                            <Td className="text-center pl-3 pr-4">
+                              {/* Direct row actions — consistent icon system (no drawer) */}
+                              <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => setSelectedReviewEmp(emp)}
-                                  className="p-1 text-slate-550 hover:text-indigo-700 hover:bg-indigo-50 rounded transition"
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
                                   title="View document workspace"
                                 >
-                                  <Eye size={13} />
+                                  <Eye size={14} />
                                 </button>
                                 {canEdit && (
                                   <button
                                     onClick={() => openBulkUpload(emp.id)}
-                                    className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
+                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
                                     title="Upload documents"
                                   >
-                                    <Upload size={13} />
+                                    <Upload size={14} />
                                   </button>
                                 )}
                                 {canEdit && (
                                   <button
                                     onClick={() => setSelectedReviewEmp(emp)}
-                                    className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition"
+                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-200 transition"
                                     title="Edit documents"
                                   >
-                                    <Edit size={13} />
+                                    <Edit size={14} />
                                   </button>
                                 )}
                                 <button
                                   onClick={() => handleDownloadEmployeeDocs(emp.id)}
                                   disabled={totalDocs === 0}
-                                  className="p-1 text-slate-550 hover:text-blue-700 hover:bg-blue-50 rounded transition disabled:opacity-30 disabled:hover:bg-transparent"
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-sky-600 hover:text-sky-700 hover:bg-sky-50 hover:border-sky-200 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:border-slate-200"
                                   title={totalDocs === 0 ? 'No files to download' : 'Download all documents'}
                                 >
-                                  <Download size={13} />
+                                  <Download size={14} />
                                 </button>
                               </div>
                             </Td>
@@ -2119,11 +2120,11 @@ export const Documents: React.FC<DocumentsProps> = ({
         {previewDoc && (
           <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] border-t border-slate-100 pt-3 text-slate-700">
             {previewDoc.documentNumber && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Doc Number</span>{previewDoc.documentNumber}</div>}
-            {previewDoc.issueDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Issue Date</span>{previewDoc.issueDate}</div>}
-            {previewDoc.expiryDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Expiry Date</span>{previewDoc.expiryDate}</div>}
-            <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Uploaded By</span>{previewDoc.uploadedBy} · {previewDoc.uploadedOn}</div>
-            {previewDoc.verifiedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Verified By</span>{previewDoc.verifiedBy}{previewDoc.verifiedOn ? ` · ${String(previewDoc.verifiedOn).split('T')[0]}` : ''}</div>}
-            {previewDoc.editedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Last Edited By</span>{previewDoc.editedBy}{previewDoc.editedOn ? ` · ${String(previewDoc.editedOn).split('T')[0]}` : ''}</div>}
+            {previewDoc.issueDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Issue Date</span>{formatDate(previewDoc.issueDate)}</div>}
+            {previewDoc.expiryDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Expiry Date</span>{formatDate(previewDoc.expiryDate)}</div>}
+            <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Uploaded By</span>{previewDoc.uploadedBy} · {formatDate(previewDoc.uploadedOn)}</div>
+            {previewDoc.verifiedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Verified By</span>{previewDoc.verifiedBy}{previewDoc.verifiedOn ? ` · ${formatDate(previewDoc.verifiedOn)}` : ''}</div>}
+            {previewDoc.editedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Last Edited By</span>{previewDoc.editedBy}{previewDoc.editedOn ? ` · ${formatDate(previewDoc.editedOn)}` : ''}</div>}
             {previewDoc.remarks && <div className="col-span-2 sm:col-span-3"><span className="text-slate-400 font-bold uppercase text-[9px] block">Remarks</span>{previewDoc.remarks}</div>}
           </div>
         )}

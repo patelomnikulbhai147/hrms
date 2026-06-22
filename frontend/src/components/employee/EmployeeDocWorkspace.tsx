@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ui } from '@/components/ui/feedback';
 import { api } from '@/api/apiClient';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import {
   REQUIRED_DOCS, TOTAL_REQUIRED, DOC_CATEGORY_ORDER, matchRequiredKey, categoryOf,
   complianceBadgeVariant, type ComplianceStatus,
@@ -126,17 +127,17 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
       <FileText size={15} className="text-slate-400 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="text-xs font-semibold text-slate-800 truncate">{doc.name}</p>
-        <p className="text-[10px] text-slate-400">{doc.type} · {doc.uploadedOn}{doc.remarks ? ` · ${doc.remarks}` : ''}</p>
+        <p className="text-[10px] text-slate-400">{doc.type} · {formatDate(doc.uploadedOn)}{doc.remarks ? ` · ${doc.remarks}` : ''}</p>
       </div>
       <Badge variant={doc.status === 'Verified' ? 'green' : doc.status === 'Rejected' ? 'red' : 'amber'} dot>{doc.status}</Badge>
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={() => onPreview(doc)} title="Preview" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><Eye size={12} /></button>
-        <button onClick={() => download(doc)} title="Download" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 flex items-center justify-center"><Download size={12} /></button>
-        <button onClick={() => openHistory(doc)} title="View audit history" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-violet-600 hover:bg-violet-50 flex items-center justify-center"><History size={12} /></button>
-        {canVerify && doc.status !== 'Verified' && <button onClick={() => setStatus(doc, 'Verified')} title="Verify" className="w-6 h-6 rounded border border-slate-200 text-emerald-600 hover:bg-emerald-50 flex items-center justify-center"><CheckCircle2 size={12} /></button>}
-        {canVerify && doc.status !== 'Rejected' && <button onClick={() => setStatus(doc, 'Rejected')} title="Reject" className="w-6 h-6 rounded border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><XCircle size={12} /></button>}
-        {canEdit && <button onClick={() => addNote(doc)} title="Add note" className="w-6 h-6 rounded border border-slate-200 text-amber-600 hover:bg-amber-50 flex items-center justify-center"><StickyNote size={12} /></button>}
-        {canEdit && <button onClick={() => removeDoc(doc)} title="Delete" className="w-6 h-6 rounded border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><Trash2 size={12} /></button>}
+        <button onClick={() => onPreview(doc)} title="Preview" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><Eye size={12} /></button>
+        <button onClick={() => download(doc)} title="Download" className="w-7 h-7 rounded-lg border border-slate-200 text-sky-600 hover:text-sky-700 hover:bg-sky-50 flex items-center justify-center"><Download size={12} /></button>
+        <button onClick={() => openHistory(doc)} title="View audit history" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-violet-600 hover:bg-violet-50 flex items-center justify-center"><History size={12} /></button>
+        {canVerify && doc.status !== 'Verified' && <button onClick={() => setStatus(doc, 'Verified')} title="Verify" className="w-7 h-7 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50 flex items-center justify-center"><CheckCircle2 size={12} /></button>}
+        {canVerify && doc.status !== 'Rejected' && <button onClick={() => setStatus(doc, 'Rejected')} title="Reject" className="w-7 h-7 rounded-lg border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><XCircle size={12} /></button>}
+        {canEdit && <button onClick={() => addNote(doc)} title="Add note" className="w-7 h-7 rounded-lg border border-slate-200 text-amber-600 hover:bg-amber-50 flex items-center justify-center"><StickyNote size={12} /></button>}
+        {canEdit && <button onClick={() => removeDoc(doc)} title="Delete" className="w-7 h-7 rounded-lg border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><Trash2 size={12} /></button>}
       </div>
     </div>
   );
@@ -195,7 +196,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
                     <p className="text-[10px] text-rose-400">{s.present ? 'On employee record (not in vault)' : 'Required · not uploaded'}</p>
                   </div>
                   <Badge variant={s.present ? 'amber' : 'red'} dot>{s.present ? 'Pending' : 'Missing'}</Badge>
-                  {canEdit && <button onClick={() => onUpload(employee.id)} title="Upload" className="w-6 h-6 rounded border border-slate-200 text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><UploadCloud size={12} /></button>}
+                  {canEdit && <button onClick={() => onUpload(employee.id)} title="Upload" className="w-7 h-7 rounded-lg border border-slate-200 text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><UploadCloud size={12} /></button>}
                 </div>
               ))}
               {section.extras.map(docRow)}
@@ -233,7 +234,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-800">{(l.action || '').replace(/_/g, ' ')}</p>
                   <p className="text-[10px] text-slate-400">
-                    {l.actorName}{l.actorRole ? ` · ${l.actorRole}` : ''} · {new Date(l.createdAt).toLocaleString()}
+                    {l.actorName}{l.actorRole ? ` · ${l.actorRole}` : ''} · {formatDateTime(l.createdAt)}
                   </p>
                 </div>
               </div>
