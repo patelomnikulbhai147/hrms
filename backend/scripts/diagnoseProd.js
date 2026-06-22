@@ -42,7 +42,7 @@ const prisma = require('../src/config/prisma');
       "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND LOWER(TABLE_NAME)='employee'"
     );
     const have = new Set(cols.map((c) => String(c.COLUMN_NAME).toLowerCase()));
-    const need = ['bonusapplicable', 'bonustype', 'bonuscalcmethod', 'bonusvalue', 'bonuseffectivedate', 'bonusenddate', 'bonusnotes', 'state', 'city'];
+    const need = ['biometricid', 'legacyemployeeid', 'bonusapplicable', 'bonustype', 'bonuscalcmethod', 'bonusvalue', 'bonuseffectivedate', 'bonusenddate', 'bonusnotes', 'state', 'city', 'signatureupload', 'photoupload'];
     const missing = need.filter((c) => !have.has(c));
     line('Expected-but-MISSING columns: ' + (missing.length ? missing.join(', ') : '(none — schema is in sync)'));
     if (missing.length) line('\n>>> ROOT CAUSE: run  node scripts/migrateAll.js  then  npx prisma generate  &&  pm2 reload hrms-backend');
