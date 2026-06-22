@@ -493,6 +493,7 @@ export const api = {
   contracts: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/contracts`, { headers: getHeaders() }); },
     getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { headers: getHeaders() }); },
+    getCost: async (id: any, query: string = '') => { return await apiFetch(`${BASE_URL}/contracts/${id}/cost${query}`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/contracts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'DELETE', headers: getHeaders() }); },

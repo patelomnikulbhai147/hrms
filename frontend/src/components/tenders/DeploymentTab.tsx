@@ -6,9 +6,20 @@ import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { ExportMenu } from '@/components/ui/ExportMenu';
 import { api } from '@/api/apiClient';
 import { formatDate } from '@/utils/formatDate';
 import { ui } from '@/components/ui/feedback';
+
+const DEPLOY_REPORT_COLS = [
+  { header: 'Employee', key: 'employeeName', width: 24 },
+  { header: 'Code', key: 'employeeCode', width: 14 },
+  { header: 'Site', key: 'siteName', width: 22 },
+  { header: 'Role', key: 'roleAtSite', width: 16 },
+  { header: 'Assigned', key: 'assignmentDate', width: 14, format: (v: any) => formatDate(v) },
+  { header: 'Alloc %', key: 'allocationPercent', width: 10 },
+  { header: 'Status', key: 'status', width: 12 },
+];
 
 interface Props {
   activeCompanyId: string;
@@ -91,7 +102,12 @@ export const DeploymentTab: React.FC<Props> = ({ activeCompanyId, role, onChange
           <div className="w-64"><Select value={contractId} onChange={e => setContractId(e.target.value)}
             options={[{ value: '', label: contracts.length ? 'Select contract…' : 'No contracts yet' }, ...contracts.map(c => ({ value: String(c.id), label: c.contractName }))]} /></div>
         </div>
-        {canDeploy && contractId && sites.length > 0 && <Button icon={<Plus size={15} />} onClick={() => { setForm({ ...emptyForm, siteId: sites[0] ? String(sites[0].id) : '' }); setAssignOpen(true); }}>Assign Employee</Button>}
+        <div className="flex items-center gap-2">
+          {contractId && deployments.length > 0 && <ExportMenu fileName="Deployment_Report" title="Deployment Report" sheetName="Deployment"
+            columns={DEPLOY_REPORT_COLS}
+            rows={() => deployments.map(d => ({ employeeName: d.employee?.name, employeeCode: d.employee?.employeeId, siteName: d.site?.siteName, roleAtSite: d.roleAtSite, assignmentDate: d.assignmentDate, allocationPercent: d.allocationPercent ?? 100, status: d.status }))} />}
+          {canDeploy && contractId && sites.length > 0 && <Button icon={<Plus size={15} />} onClick={() => { setForm({ ...emptyForm, siteId: sites[0] ? String(sites[0].id) : '' }); setAssignOpen(true); }}>Assign Employee</Button>}
+        </div>
       </div>
 
       {/* Headcount summary */}

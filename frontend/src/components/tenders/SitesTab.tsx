@@ -6,8 +6,18 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { ExportMenu } from '@/components/ui/ExportMenu';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
+
+const SITE_REPORT_COLS = [
+  { header: 'Site Name', key: 'siteName', width: 24 },
+  { header: 'Address', key: 'siteAddress', width: 28 },
+  { header: 'Supervisor', key: 'siteSupervisor', width: 20 },
+  { header: 'Required', key: 'requiredHeadcount', width: 10 },
+  { header: 'Assigned', key: 'assignedHeadcount', width: 10 },
+  { header: 'Vacancies', key: 'vacancies', width: 10 },
+];
 
 interface Props {
   activeCompanyId: string;
@@ -66,7 +76,10 @@ export const SitesTab: React.FC<Props> = ({ activeCompanyId, canManageCommercial
           <div className="w-64"><Select value={contractId} onChange={e => setContractId(e.target.value)}
             options={[{ value: '', label: contracts.length ? 'Select contract…' : 'No contracts yet' }, ...contracts.map(c => ({ value: String(c.id), label: c.contractName }))]} /></div>
         </div>
-        {canManageCommercial && contractId && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Site</Button>}
+        <div className="flex items-center gap-2">
+          {contractId && sites.length > 0 && <ExportMenu fileName="Site_Report" title="Site Report" sheetName="Sites" columns={SITE_REPORT_COLS} rows={() => sites} />}
+          {canManageCommercial && contractId && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Site</Button>}
+        </div>
       </div>
 
       {!contractId ? (

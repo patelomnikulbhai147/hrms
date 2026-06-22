@@ -131,6 +131,60 @@ exports.update = async (req, res) => {
   }
 };
 
+// GET /api/contracts/:id/cost?month=&year=  → payroll cost rollup for a contract,
+// reusing the existing payroll/salary data. Allocates each deployed employee's
+// cost by allocationPercent (split-across-sites), grouped by site and employee.
+exports.getCost = async (req, res) => {
+  try {
+    const id = idParam(req.params.id);
+    const contract = await prisma.contract.findUnique({
+      where: { id },
+      include: {
+        deployments: {
+          where: { status: { not: 'Released' } },
+          include: {
+            employee: { select: { id: true, name: true, employeeId: true, salary: true } },
+            site: { select: { id: true, siteName: true } },
+          },
+        },
+      },
+    });
+    if (!contract) return res.status(404).json({ error: 'Contract not found.' });
+    if (!isSuper(req) && !allowedIdsFor(req).includes(contract.companyId)) return res.status(403).json({ error: 'This contract is outside your workspace.' });
+
+    const month = req.query.month;
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const empIds = [...new Set(contract.deployments.map((d) => d.employeeId))];
+    let payrollByEmp = {};
+    if (empIds.length) {
+      const pw = { employeeId: { in: empIds } };
+      if (month) pw.month = month;
+      if (year) pw.year = year;
+      const payrolls = await prisma.payroll.findMany({ where: pw, orderBy: { createdAt: 'desc' } });
+      for (const p of payrolls) if (payrollByEmp[p.employeeId] == null) payrollByEmp[p.employeeId] = p.netSalary || 0;
+    }
+
+    const bySite = {};
+    const byEmployee = [];
+    let total = 0;
+    for (const d of contract.deployments) {
+      // Use the period's payroll net when available; otherwise the employee's
+      // monthly salary as the manpower-cost basis (no separate payroll module).
+      const base = payrollByEmp[d.employeeId] != null ? payrollByEmp[d.employeeId] : (d.employee?.salary || 0);
+      const alloc = (d.allocationPercent != null ? d.allocationPercent : 100) / 100;
+      const cost = Math.round(base * alloc);
+      total += cost;
+      const sk = d.site?.siteName || 'Unassigned';
+      bySite[sk] = (bySite[sk] || 0) + cost;
+      byEmployee.push({ employee: d.employee?.name, employeeId: d.employee?.employeeId, site: d.site?.siteName, allocationPercent: d.allocationPercent ?? 100, cost });
+    }
+    res.json({ contractId: id, period: month && year ? `${month} ${year}` : 'Latest / salary basis', total, bySite, byEmployee });
+  } catch (e) {
+    console.error('contract.getCost', e);
+    res.status(500).json({ error: 'Could not compute contract cost.' });
+  }
+};
+
 exports.remove = async (req, res) => {
   try {
     if (!canManageCommercial(req)) return res.status(403).json({ error: 'Only a Company Head can delete contracts.' });

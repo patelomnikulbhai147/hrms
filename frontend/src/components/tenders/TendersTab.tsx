@@ -6,9 +6,20 @@ import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
+import { ExportMenu } from '@/components/ui/ExportMenu';
 import { api } from '@/api/apiClient';
 import { formatDate } from '@/utils/formatDate';
 import { ui } from '@/components/ui/feedback';
+
+const TENDER_REPORT_COLS = [
+  { header: 'Tender No', key: 'tenderNumber', width: 16 },
+  { header: 'Name', key: 'tenderName', width: 28 },
+  { header: 'Client', key: 'clientName', width: 22 },
+  { header: 'Service', key: 'serviceType', width: 16 },
+  { header: 'Value', key: 'tenderValue', width: 14 },
+  { header: 'Status', key: 'status', width: 14 },
+  { header: 'End Date', key: 'endDate', width: 14, format: (v: any) => formatDate(v) },
+];
 
 const TENDER_STATUSES = ['Draft', 'Submitted', 'Under Review', 'Won', 'Lost', 'Cancelled'];
 const CATEGORIES = ['Government', 'Private', 'HR Service', 'Recruitment', 'Vendor'];
@@ -94,6 +105,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
         <div className="flex items-center gap-2">
           <Input icon={<Search size={14} />} placeholder="Search tenders…" value={search} onChange={e => setSearch(e.target.value)} />
           <div className="w-40"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...TENDER_STATUSES.map(s => ({ value: s, label: s }))]} /></div>
+          <ExportMenu fileName="Tender_Report" title="Tender Report" sheetName="Tenders" columns={TENDER_REPORT_COLS} rows={() => rows} />
           {canManageCommercial && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Tender</Button>}
         </div>
       </div>

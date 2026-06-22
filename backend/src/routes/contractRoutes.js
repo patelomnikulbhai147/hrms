@@ -9,6 +9,7 @@ router.use(protect);
 router.use(require('../middleware/readOnlyMiddleware'));
 
 router.get('/', ctrl.getAll);
+router.get('/:id/cost', ctrl.getCost);
 router.get('/:id', ctrl.getOne);
 router.post('/', ctrl.create);
 router.put('/:id', ctrl.update);
