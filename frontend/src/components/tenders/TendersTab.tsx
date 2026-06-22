@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle } from 'lucide-react';
+import { Plus, Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle, ChevronLeft, Save } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -20,6 +20,14 @@ const TENDER_REPORT_COLS = [
   { header: 'Status', key: 'status', width: 14 },
   { header: 'End Date', key: 'endDate', width: 14, format: (v: any) => formatDate(v) },
 ];
+
+// Section wrapper for the full-page form — a titled block with a responsive grid.
+const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+    <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-3">{title}</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+  </div>
+);
 
 const TENDER_STATUSES = ['Draft', 'Submitted', 'Under Review', 'Won', 'Lost', 'Cancelled'];
 const CATEGORIES = ['Government', 'Private', 'HR Service', 'Recruitment', 'Vendor'];
@@ -98,6 +106,46 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
     catch (e: any) { ui.toast.error(e?.message || 'Delete failed.'); }
   };
 
+  const closeForm = () => { setCreateOpen(false); setEditingId(null); };
+
+  // ── Dedicated full-page form (no modal — always fully visible) ──
+  if (createOpen) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <button onClick={closeForm} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to tenders</button>
+          <h3 className="text-base font-extrabold text-slate-800">{editingId ? 'Edit Tender' : 'Create Tender'}</h3>
+        </div>
+        <div className="space-y-4 max-w-5xl">
+          <FormSection title="Tender Details">
+            <Input label="Tender Number" value={form.tenderNumber} onChange={e => setForm({ ...form, tenderNumber: e.target.value })} />
+            <Input label="Tender Name *" value={form.tenderName} onChange={e => setForm({ ...form, tenderName: e.target.value })} />
+            <Input label="Service Type" placeholder="Security / Housekeeping / Manpower…" value={form.serviceType} onChange={e => setForm({ ...form, serviceType: e.target.value })} />
+            <Select label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={CATEGORIES.map(c => ({ value: c, label: c }))} />
+            <Input label="Tender Value (₹)" type="number" value={form.tenderValue} onChange={e => setForm({ ...form, tenderValue: e.target.value })} />
+          </FormSection>
+          <FormSection title="Client Information">
+            <Input label="Client Name" value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} />
+          </FormSection>
+          <FormSection title="Dates & Status">
+            <Input label="Start Date" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
+            <Input label="End Date" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
+            <Input label="Closing Date" type="date" value={form.closingDate} onChange={e => setForm({ ...form, closingDate: e.target.value })} />
+            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={TENDER_STATUSES.map(s => ({ value: s, label: s }))} />
+          </FormSection>
+          <FormSection title="Documents & Notes">
+            <div className="sm:col-span-2 lg:col-span-3"><Input label="Document Link / Attachment URL" placeholder="https://… or document reference" value={form.documentPath} onChange={e => setForm({ ...form, documentPath: e.target.value })} /></div>
+            <div className="sm:col-span-2 lg:col-span-3"><Textarea label="Remarks" rows={3} value={form.remarks} onChange={e => setForm({ ...form, remarks: e.target.value })} /></div>
+          </FormSection>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={closeForm}>Cancel</Button>
+            <Button icon={<Save size={14} />} loading={busy} onClick={submit}>{editingId ? 'Update Tender' : 'Save Tender'}</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -144,27 +192,6 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
           </Table>
         </div>
       )}
-
-      {/* Create / Edit */}
-      <Modal open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} title={editingId ? 'Edit Tender' : 'Add Tender'}
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setCreateOpen(false); setEditingId(null); }}>Cancel</Button><Button loading={busy} onClick={submit}>{editingId ? 'Update Tender' : 'Save Tender'}</Button></div>}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Tender Number" value={form.tenderNumber} onChange={e => setForm({ ...form, tenderNumber: e.target.value })} />
-            <Input label="Tender Name *" value={form.tenderName} onChange={e => setForm({ ...form, tenderName: e.target.value })} />
-            <Input label="Client Name" value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} />
-            <Input label="Service Type" placeholder="Security / Housekeeping / Manpower…" value={form.serviceType} onChange={e => setForm({ ...form, serviceType: e.target.value })} />
-            <Select label="Category" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={CATEGORIES.map(c => ({ value: c, label: c }))} />
-            <Input label="Tender Value (₹)" type="number" value={form.tenderValue} onChange={e => setForm({ ...form, tenderValue: e.target.value })} />
-            <Input label="Start Date" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
-            <Input label="End Date" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
-            <Input label="Closing Date" type="date" value={form.closingDate} onChange={e => setForm({ ...form, closingDate: e.target.value })} />
-            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={TENDER_STATUSES.map(s => ({ value: s, label: s }))} />
-          </div>
-          <Input label="Document Link / Attachment URL" placeholder="https://… or document reference" value={form.documentPath} onChange={e => setForm({ ...form, documentPath: e.target.value })} />
-          <Textarea label="Remarks" rows={2} value={form.remarks} onChange={e => setForm({ ...form, remarks: e.target.value })} />
-        </div>
-      </Modal>
 
       {/* View detail */}
       <Modal open={!!viewTender} onClose={() => setViewTender(null)} title={viewTender?.tenderName || 'Tender'}

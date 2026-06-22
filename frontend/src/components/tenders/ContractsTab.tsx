@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Inbox, Eye, Edit2, Search, FileSignature } from 'lucide-react';
+import { Plus, Trash2, Eye, Edit2, Search, FileSignature, ChevronLeft, Save } from 'lucide-react';
+
+// Section wrapper for the full-page form — a titled block with a responsive grid.
+const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+    <p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mb-3">{title}</p>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">{children}</div>
+  </div>
+);
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -83,6 +91,42 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
     catch (e: any) { ui.toast.error(e?.message || 'Delete failed.'); }
   };
 
+  const closeForm = () => { setCreateOpen(false); setEditingId(null); };
+
+  // ── Dedicated full-page form (no modal — always fully visible) ──
+  if (createOpen) {
+    return (
+      <div className="space-y-4 animate-fade-in">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <button onClick={closeForm} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to contracts</button>
+          <h3 className="text-base font-extrabold text-slate-800">{editingId ? 'Edit Contract' : 'Create Contract'}</h3>
+        </div>
+        <div className="space-y-4 max-w-5xl">
+          <FormSection title="Contract Details">
+            <Input label="Contract Number" value={form.contractNumber} onChange={e => setForm({ ...form, contractNumber: e.target.value })} />
+            <Input label="Contract Name *" value={form.contractName} onChange={e => setForm({ ...form, contractName: e.target.value })} />
+            <Input label="Contract Value (₹)" type="number" value={form.contractValue} onChange={e => setForm({ ...form, contractValue: e.target.value })} />
+          </FormSection>
+          <FormSection title="Client Information">
+            <Input label="Client Name" value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} />
+          </FormSection>
+          <FormSection title="Dates & Status">
+            <Input label="Start Date" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
+            <Input label="End Date" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
+            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={CONTRACT_STATUSES.map(s => ({ value: s, label: s }))} />
+          </FormSection>
+          <FormSection title="Documents & Notes">
+            <div className="sm:col-span-2 lg:col-span-3"><Textarea label="Notes" rows={3} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></div>
+          </FormSection>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={closeForm}>Cancel</Button>
+            <Button icon={<Save size={14} />} loading={busy} onClick={submit}>{editingId ? 'Update Contract' : 'Save Contract'}</Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -127,23 +171,6 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
           </Table>
         </div>
       )}
-
-      {/* Create / Edit (commercial) */}
-      <Modal open={createOpen} onClose={() => { setCreateOpen(false); setEditingId(null); }} title={editingId ? 'Edit Contract' : 'Add Contract'}
-        footer={<div className="flex justify-end gap-2"><Button variant="outline" onClick={() => { setCreateOpen(false); setEditingId(null); }}>Cancel</Button><Button loading={busy} onClick={submit}>{editingId ? 'Update Contract' : 'Save Contract'}</Button></div>}>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="Contract Number" value={form.contractNumber} onChange={e => setForm({ ...form, contractNumber: e.target.value })} />
-            <Input label="Contract Name *" value={form.contractName} onChange={e => setForm({ ...form, contractName: e.target.value })} />
-            <Input label="Client Name" value={form.clientName} onChange={e => setForm({ ...form, clientName: e.target.value })} />
-            <Input label="Contract Value (₹)" type="number" value={form.contractValue} onChange={e => setForm({ ...form, contractValue: e.target.value })} />
-            <Input label="Start Date" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
-            <Input label="End Date" type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
-            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={CONTRACT_STATUSES.map(s => ({ value: s, label: s }))} />
-          </div>
-          <Textarea label="Notes" rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} />
-        </div>
-      </Modal>
 
       {/* View detail (sites + deployments summary) */}
       <Modal open={!!viewId} onClose={() => setViewId(null)} title={detail?.contractName || 'Contract'} size="lg"
