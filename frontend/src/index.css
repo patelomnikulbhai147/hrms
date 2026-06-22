@@ -551,3 +551,9 @@ html[data-theme="light"] textarea:focus {
 html[data-theme="light"] .shadow-indigo-500\/10 {
   box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08) !important;
 }
+/* Documents — fixed-layout doc tables so all columns + actions always fit the
+   viewport (1366×768 and up) with no horizontal scrollbar. */
+.doc-tables-fit table { table-layout: fixed; width: 100%; }
+.doc-tables-fit th,
+.doc-tables-fit td { padding-left: 0.5rem; padding-right: 0.5rem; }
+.doc-tables-fit > div { overflow-x: hidden; }

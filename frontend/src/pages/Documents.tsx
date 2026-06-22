@@ -395,6 +395,21 @@ export const Documents: React.FC<DocumentsProps> = ({
     ui.toast.success(`All pending documents for this employee have been audited as Verified.`);
   };
 
+  // Reject every pending document for an employee (Document Verification queue).
+  const handleRejectAllPending = async (empId: string) => {
+    const reason = await ui.prompt({ message: 'Reason for rejecting this employee\'s pending documents (optional):', defaultValue: '' });
+    if (reason === null) return; // cancelled
+    const updatedPromises = documents.map(async d => {
+      if (d.employeeId === empId && d.status === 'Pending') {
+        const optimistic = { ...d, status: 'Rejected' as const, remarks: reason || d.remarks };
+        return await api.documents.update(d.id, { status: 'Rejected', remarks: reason || d.remarks }).catch(() => optimistic);
+      }
+      return d;
+    });
+    const updated = await Promise.all(updatedPromises); onUpdateDocuments(updated);
+    ui.toast.success('Pending documents marked as Rejected.');
+  };
+
   // Download every document on file for an employee — straight from the table,
   // no drawer/workspace needed.
   const handleDownloadEmployeeDocs = (empId: string) => {
@@ -431,6 +446,15 @@ export const Documents: React.FC<DocumentsProps> = ({
       const missing = TOTAL_REQUIRED - uploaded;
       const pending = slots.filter(s => s.present && !s.verified && !s.rejected).length;
 
+      // Actual document records awaiting verification (drives the separate
+      // Document Verification queue, not just the required-slot view).
+      const pendingDocsList = empDocs.filter(d => d.status === 'Pending');
+      const pendingDocs = pendingDocsList.length;
+      const rejectedDocs = empDocs.filter(d => d.status === 'Rejected').length;
+      const pendingSince = pendingDocs > 0
+        ? [...pendingDocsList].sort((a, b) => (a.uploadedOn || '').localeCompare(b.uploadedOn || ''))[0].uploadedOn
+        : '—';
+
       let status: ComplianceStatus;
       if (rejectedCount > 0) status = 'Action Required';
       else if (uploaded === TOTAL_REQUIRED && verifiedCount === TOTAL_REQUIRED) status = 'Verified';
@@ -442,7 +466,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         lastUpdated = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn))[0].uploadedOn;
       }
 
-      return { emp, empDocs, slots, uploaded, missing, verifiedCount, pending, rejectedCount, status, lastUpdated, totalDocs: empDocs.length };
+      return { emp, empDocs, slots, uploaded, missing, verifiedCount, pending, rejectedCount, pendingDocs, rejectedDocs, pendingSince, status, lastUpdated, totalDocs: empDocs.length };
     });
   }, [companyEmployees, list]);
 
@@ -460,6 +484,14 @@ export const Documents: React.FC<DocumentsProps> = ({
       return matchSearch && matchStatus;
     });
   }, [dossiers, dossierSearch, dossierStatusFilter]);
+
+  // Document Verification queue — only employees who have uploaded documents
+  // that are awaiting verification (Pending). Employees with 0 uploads or
+  // nothing pending never appear here.
+  const verificationQueue = useMemo(
+    () => dossiers.filter(d => d.pendingDocs > 0).sort((a, b) => (a.pendingSince || '').localeCompare(b.pendingSince || '')),
+    [dossiers],
+  );
 
   const totalDossierPages = Math.ceil(filteredDossiers.length / dossierItemsPerPage) || 1;
   
@@ -1140,7 +1172,76 @@ export const Documents: React.FC<DocumentsProps> = ({
             </div>
           </div>
 
-          <div className="space-y-6">
+          <div className="space-y-6 doc-tables-fit">
+            {/* ── DOCUMENT VERIFICATION — only employees with pending uploads ── */}
+            <Card padding={false} className="border border-amber-200 rounded-2xl overflow-hidden shadow-xs bg-white">
+              <div className="bg-amber-50/60 border-b border-amber-100 p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-100 text-amber-700 rounded-xl"><ShieldCheck size={16} /></div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Document Verification</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Employees with uploaded documents awaiting verification</p>
+                  </div>
+                </div>
+                <Badge variant="amber" dot>{verificationQueue.length} awaiting review</Badge>
+              </div>
+
+              {verificationQueue.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Check size={26} className="mx-auto text-emerald-500 mb-2" />
+                  <p className="text-xs font-bold text-slate-600">All caught up</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">No documents are currently pending verification.</p>
+                </div>
+              ) : (
+                <Table>
+                  <Thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-xs">
+                      <Th className="pl-4">Employee</Th>
+                      <Th className="text-center">Uploaded</Th>
+                      <Th className="text-center">Missing</Th>
+                      <Th className="text-center">Pending</Th>
+                      <Th>Verification Status</Th>
+                      <Th>Pending Since</Th>
+                      <Th className="text-center pr-4">Actions</Th>
+                    </tr>
+                  </Thead>
+                  <Tbody>
+                    {verificationQueue.map(({ emp, uploaded, missing, pendingDocs, status, pendingSince }) => (
+                      <Tr key={emp.id} className="hover:bg-amber-50/30 transition">
+                        <Td className="pl-4">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="h-8 w-8 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-700">{emp.name.slice(0, 2).toUpperCase()}</div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
+                              <p className="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">{emp.employeeId} · {emp.department || '—'}</p>
+                            </div>
+                          </div>
+                        </Td>
+                        <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{uploaded}</span></Td>
+                        <Td className="text-center"><span className={`text-xs font-bold ${missing > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{missing}</span></Td>
+                        <Td className="text-center"><span className="text-xs font-bold text-amber-600">{pendingDocs}</span></Td>
+                        <Td>
+                          <Badge variant={complianceBadgeVariant(status)} dot>{status}</Badge>
+                        </Td>
+                        <Td><span className="text-[11px] text-slate-500 font-medium">{pendingSince}</span></Td>
+                        <Td className="text-center pr-4">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="p-1 text-slate-550 hover:text-indigo-700 hover:bg-indigo-50 rounded transition"><Eye size={13} /></button>
+                            {canEdit && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
+                              <>
+                                <button onClick={() => handleQuickVerify(emp.id)} title="Approve / Verify pending" className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"><Check size={13} /></button>
+                                <button onClick={() => handleRejectAllPending(emp.id)} title="Reject pending" className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition"><X size={13} /></button>
+                              </>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              )}
+            </Card>
+
             {/* Employee-centric Compliance Verification Vault (one employee = one row) */}
             <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
               {/* Sticky header with Counters */}
@@ -1159,31 +1260,31 @@ export const Documents: React.FC<DocumentsProps> = ({
                   </div>
                 </div>
 
-                {/* Counter statistics widgets (Total · Verified · Partial · Missing · Pending) */}
+                {/* Counter widgets — Total · With Uploads · Pending · Verified · Rejected · Missing */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-slate-800">{companyEmployees.length}</span>
                     <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
                   </div>
+                  <div className="px-3 py-1 bg-sky-50 border border-sky-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-sky-700">{dossiers.filter(d => d.totalDocs > 0).length}</span>
+                    <span className="text-[8px] text-sky-600 font-bold uppercase tracking-wider">With Uploads</span>
+                  </div>
+                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pendingDocs > 0).length}</span>
+                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Pending</span>
+                  </div>
                   <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-emerald-700">{dossiers.filter(d => d.status === 'Verified').length}</span>
                     <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-wider">Verified</span>
                   </div>
-                  <div className="px-3 py-1 bg-indigo-50 border border-indigo-150 rounded-xl flex flex-col items-center min-w-[64px]">
-                    <span className="text-[11px] font-extrabold text-indigo-700">{dossiers.filter(d => d.status === 'Partially Verified').length}</span>
-                    <span className="text-[8px] text-indigo-600 font-bold uppercase tracking-wider">Partial</span>
-                  </div>
-                  <div className="px-3 py-1 bg-rose-50 border border-rose-150 rounded-xl flex flex-col items-center min-w-[64px]">
-                    <span className="text-[11px] font-extrabold text-rose-700">{dossiers.filter(d => d.missing > 0).length}</span>
-                    <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Missing</span>
-                  </div>
-                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[64px]">
-                    <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pending > 0).length}</span>
-                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Pending</span>
-                  </div>
                   <div className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-rose-700">{list.filter(d => d.status === 'Rejected').length}</span>
                     <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Rejected</span>
+                  </div>
+                  <div className="px-3 py-1 bg-orange-50 border border-orange-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-orange-700">{dossiers.filter(d => d.missing > 0).length}</span>
+                    <span className="text-[8px] text-orange-600 font-bold uppercase tracking-wider">Missing</span>
                   </div>
                 </div>
               </div>
@@ -1236,15 +1337,15 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <Table>
                   <Thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                      <Th className="pl-4">Employee</Th>
-                      <Th>Department</Th>
-                      <Th className="text-center">Required</Th>
-                      <Th className="text-center">Uploaded</Th>
-                      <Th className="text-center">Missing</Th>
-                      <Th>Progress</Th>
-                      <Th>Verification Status</Th>
-                      <Th>Last Updated</Th>
-                      <Th className="text-center pr-4">Actions</Th>
+                      <Th className="pl-4 w-[17%]">Employee</Th>
+                      <Th className="w-[12%]">Department</Th>
+                      <Th className="text-center w-[7%]">Required</Th>
+                      <Th className="text-center w-[7%]">Uploaded</Th>
+                      <Th className="text-center w-[7%]">Missing</Th>
+                      <Th className="w-[12%]">Progress</Th>
+                      <Th className="w-[14%]">Status</Th>
+                      <Th className="w-[10%]">Updated</Th>
+                      <Th className="text-center pr-4 w-[14%]">Actions</Th>
                     </tr>
                   </Thead>
                   <Tbody>
@@ -1259,20 +1360,20 @@ export const Documents: React.FC<DocumentsProps> = ({
                         return (
                           <Tr key={emp.id} className="hover:bg-slate-50/50 transition duration-150">
                             <Td className="pl-4">
-                              <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-750 shadow-inner">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="h-8 w-8 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-750 shadow-inner">
                                   {emp.name.slice(0, 2).toUpperCase()}
                                 </div>
-                                <div>
-                                  <p className="text-xs font-extrabold text-slate-900">{emp.name}</p>
-                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5">{emp.employeeId}</p>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
+                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5 truncate">{emp.employeeId}</p>
                                 </div>
                               </div>
                             </Td>
                             <Td>
-                              <div>
-                                <p className="text-xs text-slate-800 font-medium">{emp.department || '—'}</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{emp.designation || 'Staff'}</p>
+                              <div className="min-w-0">
+                                <p className="text-xs text-slate-800 font-medium truncate">{emp.department || '—'}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 truncate">{emp.designation || 'Staff'}</p>
                               </div>
                             </Td>
                             <Td className="text-center"><span className="text-xs font-bold text-slate-700">{TOTAL_REQUIRED}</span></Td>
@@ -1340,15 +1441,6 @@ export const Documents: React.FC<DocumentsProps> = ({
                                     title="Edit documents"
                                   >
                                     <Edit size={13} />
-                                  </button>
-                                )}
-                                {canEdit && status !== 'Verified' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
-                                  <button
-                                    onClick={() => handleQuickVerify(emp.id)}
-                                    className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"
-                                    title="Verify pending documents"
-                                  >
-                                    <Check size={13} />
                                   </button>
                                 )}
                                 <button
