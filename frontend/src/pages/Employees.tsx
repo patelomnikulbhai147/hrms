@@ -135,7 +135,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Tabs in drawer
-  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address' | 'nominees' | 'bonus'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'job' | 'banking' | 'compliance' | 'documents' | 'leaves' | 'address' | 'nominees' | 'bonus' | 'review'>('personal');
 
   // Unmasking state for sensitive fields
   const [unmaskedField, setUnmaskedField] = useState<Record<string, boolean>>({});
@@ -404,8 +404,11 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   // ── Add-wizard multi-step "Save & Continue" flow ──────────────────────────
-  const ADD_STEPS = ['personal', 'job', 'banking', 'address', 'nominees', 'review'] as const;
-  const ADD_STEP_LABELS: Record<string, string> = { personal: 'Personal Info', job: 'Employment Details', banking: 'Compliance & Bank', address: 'Addresses', nominees: 'Nominees', review: 'Review & Submit' };
+  // Bonus is a dedicated step placed immediately after Employment Details
+  // (which carries the Salary field), so compensation → bonus → payroll reads
+  // in the order HR thinks about pay.
+  const ADD_STEPS = ['personal', 'job', 'bonus', 'banking', 'address', 'nominees', 'review'] as const;
+  const ADD_STEP_LABELS: Record<string, string> = { personal: 'Personal Info', job: 'Employment Details', bonus: 'Bonus Configuration', banking: 'Compliance & Bank', address: 'Addresses', nominees: 'Nominees', review: 'Review & Submit' };
 
   // Validate ONLY the fields owned by the given step, so the user can advance.
   const validateAddSection = (tab: string): Record<string, string> => {
@@ -2053,18 +2056,19 @@ export const Employees: React.FC<EmployeesProps> = ({
           <div className="flex border-b border-gray-200 gap-3 text-xs">
             <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
             <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
-            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
-            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Nominees</button>
-            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Review</button>
+            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Bonus Configuration</button>
+            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
+            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
+            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
+            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
           </div>
 
-          {/* Step 5 — Nominees (staged locally; saved transactionally after the employee is created) */}
+          {/* Step 6 — Nominees (staged locally; saved transactionally after the employee is created) */}
           {activeTab === 'nominees' && (
             <NomineeWizardStep value={wizardNominees} onChange={setWizardNominees} />
           )}
 
-          {/* Step 6 — Review & Submit */}
+          {/* Step 7 — Review & Submit */}
           {activeTab === 'review' && (
             <div className="space-y-3 text-xs">
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
@@ -2180,6 +2184,13 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <Select id="field-shift" label="Shift (Optional)" value={form.shiftId || ''} onChange={e => setForm({ ...form, shiftId: e.target.value })} options={shiftSelectOptions} />
               </div>
+            </div>
+          )}
+
+          {/* Step 3 — Bonus Configuration (dedicated step, immediately after salary).
+              Master bonus setup consumed directly by payroll calculations. */}
+          {activeTab === 'bonus' && (
+            <div className="space-y-3">
               <BonusConfigSection
                 data={form}
                 salary={form.salary}
@@ -2240,9 +2251,10 @@ export const Employees: React.FC<EmployeesProps> = ({
             <div className="flex border-b border-gray-200 gap-3 text-xs">
               <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
               <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compliance & Bank</button>
-              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Addresses</button>
-              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Nominees</button>
+              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Bonus Configuration</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
+              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
+              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
             </div>
 
             {activeTab === 'nominees' && (
@@ -2316,16 +2328,22 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="grid grid-cols-2 gap-3">
                   <Select id="field-shift" label="Shift (Optional)" value={editEmp.shiftId != null ? String(editEmp.shiftId) : ''} onChange={e => setEditEmp({ ...editEmp, shiftId: e.target.value ? Number(e.target.value) : null } as any)} options={shiftSelectOptions} />
                 </div>
+                <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
+                  <Input id="field-exitDate" label="Exit Date" type="date" value={(editEmp.exitDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
+                  <Input id="field-exitReason" label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} error={errors.exitReason} />
+                </div>
+              </div>
+            )}
+
+            {/* Dedicated Bonus Configuration tab — master bonus setup used by payroll. */}
+            {activeTab === 'bonus' && (
+              <div className="space-y-3">
                 <BonusConfigSection
                   data={editEmp as any}
                   salary={editEmp.salary}
                   onChange={patch => setEditEmp((e: any) => ({ ...e, ...patch }))}
                   errors={errors}
                 />
-                <div className="border-t border-slate-700/50 pt-2 grid grid-cols-2 gap-3">
-                  <Input id="field-exitDate" label="Exit Date" type="date" value={(editEmp.exitDate || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, exitDate: e.target.value, status: e.target.value ? 'Terminated' : 'Active' })} error={errors.exitDate} />
-                  <Input id="field-exitReason" label="Exit Reason" value={editEmp.exitReason || ''} onChange={e => setEditEmp({ ...editEmp, exitReason: e.target.value })} error={errors.exitReason} />
-                </div>
               </div>
             )}
 

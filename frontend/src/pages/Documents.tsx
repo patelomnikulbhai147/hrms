@@ -28,6 +28,9 @@ import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
+import { formatDate } from '@/utils/formatDate';
+import { BulkUploadModal } from '@/components/employee/BulkUploadModal';
+import { EmployeeDocWorkspace } from '@/components/employee/EmployeeDocWorkspace';
 
 const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Document Name', key: 'name', width: 30 },
@@ -47,6 +50,39 @@ const DOCUMENT_TYPES = [
   'Appointment Letter', 'ESIC Documents', 'PF Documents', 'Medical Documents',
   'Custom Document',
 ];
+
+// ── Required document checklist (Standard 8) ─────────────────────────────────
+// Drives "Total Required", "Uploaded", "Missing" and the auto compliance status.
+// `type` is free-text, so each slot matches by keyword against the document's
+// type or name (case-insensitive).
+const REQUIRED_DOCS = [
+  { key: 'aadhaar',    label: 'Aadhaar',                category: 'Identity',   match: ['aadhaar', 'adhaar'] },
+  { key: 'pan',        label: 'PAN',                    category: 'Identity',   match: ['pan'] },
+  { key: 'resume',     label: 'Resume',                 category: 'Employment', match: ['resume', 'cv', 'curriculum', 'biodata'] },
+  { key: 'offer',      label: 'Offer Letter',           category: 'Employment', match: ['offer'] },
+  { key: 'joining',    label: 'Joining Letter',         category: 'Employment', match: ['joining', 'appointment'] },
+  { key: 'bank',       label: 'Bank Passbook',          category: 'Financial',  match: ['passbook', 'bank', 'cheque'] },
+  { key: 'degree',     label: 'Degree Certificate',     category: 'Education',  match: ['degree', 'education', 'marksheet', 'qualification', 'diploma'] },
+  { key: 'experience', label: 'Experience Certificate', category: 'Education',  match: ['experience', 'relieving', 'service'] },
+];
+const TOTAL_REQUIRED = REQUIRED_DOCS.length;
+
+// Categories for the employee document workspace grouping (Phase 3).
+const DOC_CATEGORY_ORDER = ['Identity', 'Employment', 'Education', 'Financial', 'Compliance', 'Other'];
+
+// Which required slot (if any) a document satisfies — match on type then name.
+const matchRequiredKey = (doc: { type?: string; name?: string }): string | null => {
+  const hay = `${doc.type || ''} ${doc.name || ''}`.toLowerCase();
+  const found = REQUIRED_DOCS.find(r => r.match.some(m => hay.includes(m)));
+  return found ? found.key : null;
+};
+
+// Auto compliance status per the spec:
+//   all 8 uploaded & verified → Verified · any rejected → Action Required
+//   some verified → Partially Verified · otherwise → Pending
+type ComplianceStatus = 'Verified' | 'Partially Verified' | 'Pending' | 'Action Required';
+const complianceBadgeVariant = (s: ComplianceStatus) =>
+  s === 'Verified' ? 'green' : s === 'Action Required' ? 'red' : s === 'Partially Verified' ? 'indigo' : 'amber';
 
 // File upload rules — files are stored as base64 in the DB, so cap the size to
 // keep payloads and rows reasonable.
@@ -335,6 +371,9 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkEmpId, setBulkEmpId] = useState<string | null>(null);
+  const openBulkUpload = (employeeId?: string | null) => { setBulkEmpId(employeeId || null); setBulkOpen(true); };
 
   // Dossier list redesigned states
   const [dossierSearch, setDossierSearch] = useState('');
@@ -357,46 +396,78 @@ export const Documents: React.FC<DocumentsProps> = ({
     ui.toast.success(`All pending documents for this employee have been audited as Verified.`);
   };
 
+  // Reject every pending document for an employee (Document Verification queue).
+  const handleRejectAllPending = async (empId: string) => {
+    const reason = await ui.prompt({ message: 'Reason for rejecting this employee\'s pending documents (optional):', defaultValue: '' });
+    if (reason === null) return; // cancelled
+    const updatedPromises = documents.map(async d => {
+      if (d.employeeId === empId && d.status === 'Pending') {
+        const optimistic = { ...d, status: 'Rejected' as const, remarks: reason || d.remarks };
+        return await api.documents.update(d.id, { status: 'Rejected', remarks: reason || d.remarks }).catch(() => optimistic);
+      }
+      return d;
+    });
+    const updated = await Promise.all(updatedPromises); onUpdateDocuments(updated);
+    ui.toast.success('Pending documents marked as Rejected.');
+  };
+
+  // Download every document on file for an employee — straight from the table,
+  // no drawer/workspace needed.
+  const handleDownloadEmployeeDocs = (empId: string) => {
+    const docs = list.filter(d => d.employeeId === empId && (d.fileData || d.url));
+    if (docs.length === 0) { ui.toast.info('No downloadable files on record for this employee yet.'); return; }
+    docs.forEach((doc, i) => {
+      setTimeout(() => {
+        if (doc.fileData) {
+          const a = document.createElement('a'); a.href = doc.fileData; a.download = doc.name || 'document';
+          document.body.appendChild(a); a.click(); a.remove();
+        } else if (doc.url) { window.open(doc.url, '_blank', 'noopener'); }
+      }, i * 250); // stagger so the browser allows multiple downloads
+    });
+    ui.toast.success(`Downloading ${docs.length} document(s) for this employee.`);
+  };
+
   // Compute dossier records reactively
   const dossiers = useMemo(() => {
     return companyEmployees.map(emp => {
       const empDocs = list.filter(d => d.employeeId === emp.id);
-      const primaryCount = (emp.aadhaarUpload ? 1 : 0) + (emp.panUpload ? 1 : 0) + (emp.photoUpload ? 1 : 0);
-      const totalDocs = primaryCount + empDocs.length;
-      
-      let status: 'Verified' | 'Pending Documents' | 'Missing Audit' | 'Under Review' = 'Missing Audit';
-      
-      const allVaultVerified = empDocs.length > 0 && empDocs.every(d => d.status === 'Verified');
-      const anyVaultPending = empDocs.some(d => d.status === 'Pending');
-      const anyVaultRejected = empDocs.some(d => d.status === 'Rejected');
-      
-      if (totalDocs === 0) {
-        status = 'Missing Audit';
-      } else if (anyVaultPending) {
-        status = 'Under Review';
-      } else if (primaryCount > 0 && empDocs.length === 0) {
-        status = 'Pending Documents';
-      } else if (allVaultVerified) {
-        status = 'Verified';
-      } else if (anyVaultRejected) {
-        status = 'Pending Documents';
-      } else {
-        status = 'Pending Documents';
-      }
+      // Resolve each required slot against the employee's documents (and the
+      // identity scans stored directly on the employee record for Aadhaar/PAN).
+      const slots = REQUIRED_DOCS.map(req => {
+        const matches = empDocs.filter(d => matchRequiredKey(d) === req.key);
+        const empScan = (req.key === 'aadhaar' && !!emp.aadhaarUpload) || (req.key === 'pan' && !!emp.panUpload);
+        const present = matches.length > 0 || empScan;
+        const verified = matches.some(d => d.status === 'Verified');
+        const rejected = matches.length > 0 && matches.every(d => d.status === 'Rejected');
+        return { req, present, verified, rejected, doc: matches[0] || null };
+      });
+      const uploaded = slots.filter(s => s.present).length;
+      const verifiedCount = slots.filter(s => s.verified).length;
+      const rejectedCount = slots.filter(s => s.rejected).length;
+      const missing = TOTAL_REQUIRED - uploaded;
+      const pending = slots.filter(s => s.present && !s.verified && !s.rejected).length;
+
+      // Actual document records awaiting verification (drives the separate
+      // Document Verification queue, not just the required-slot view).
+      const pendingDocsList = empDocs.filter(d => d.status === 'Pending');
+      const pendingDocs = pendingDocsList.length;
+      const rejectedDocs = empDocs.filter(d => d.status === 'Rejected').length;
+      const pendingSince = pendingDocs > 0
+        ? [...pendingDocsList].sort((a, b) => (a.uploadedOn || '').localeCompare(b.uploadedOn || ''))[0].uploadedOn
+        : '—';
+
+      let status: ComplianceStatus;
+      if (rejectedCount > 0) status = 'Action Required';
+      else if (uploaded === TOTAL_REQUIRED && verifiedCount === TOTAL_REQUIRED) status = 'Verified';
+      else if (verifiedCount > 0) status = 'Partially Verified';
+      else status = 'Pending';
 
       let lastUpdated = emp.joinDate || '—';
       if (empDocs.length > 0) {
-        const sortedDocs = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn));
-        lastUpdated = sortedDocs[0].uploadedOn;
+        lastUpdated = [...empDocs].sort((a, b) => b.uploadedOn.localeCompare(a.uploadedOn))[0].uploadedOn;
       }
-      
-      return {
-        emp,
-        totalDocs,
-        status,
-        lastUpdated,
-        empDocs
-      };
+
+      return { emp, empDocs, slots, uploaded, missing, verifiedCount, pending, rejectedCount, pendingDocs, rejectedDocs, pendingSince, status, lastUpdated, totalDocs: empDocs.length };
     });
   }, [companyEmployees, list]);
 
@@ -414,6 +485,14 @@ export const Documents: React.FC<DocumentsProps> = ({
       return matchSearch && matchStatus;
     });
   }, [dossiers, dossierSearch, dossierStatusFilter]);
+
+  // Document Verification queue — only employees who have uploaded documents
+  // that are awaiting verification (Pending). Employees with 0 uploads or
+  // nothing pending never appear here.
+  const verificationQueue = useMemo(
+    () => dossiers.filter(d => d.pendingDocs > 0).sort((a, b) => (a.pendingSince || '').localeCompare(b.pendingSince || '')),
+    [dossiers],
+  );
 
   const totalDossierPages = Math.ceil(filteredDossiers.length / dossierItemsPerPage) || 1;
   
@@ -1059,6 +1138,20 @@ export const Documents: React.FC<DocumentsProps> = ({
 
       {/* ─── TAB 1: COMPLIANCE vault ─────────────────────────────────────────── */}
       {activeTab === 'compliance' && (
+        selectedReviewEmp ? (
+          /* Dedicated full-page Employee Document Workspace (replaces the table — no drawer) */
+          <EmployeeDocWorkspace
+            open
+            onClose={() => setSelectedReviewEmp(null)}
+            employee={selectedReviewEmp}
+            documents={documents}
+            onUpdateDocuments={onUpdateDocuments}
+            canEdit={canEdit}
+            role={role}
+            onPreview={(d) => handlePreview(d)}
+            onUpload={(empId) => openBulkUpload(empId)}
+          />
+        ) : (
         <div className="space-y-4 animate-fade-in">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="w-72">
@@ -1080,83 +1173,77 @@ export const Documents: React.FC<DocumentsProps> = ({
             </div>
           </div>
 
-          <div className="space-y-6">
-            {/* Compliance Verification Vault Files Card */}
-            <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
-              <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck size={15} className="text-indigo-600" />
-                  Compliance Verification Vault Files
-                </h3>
-                <span className="text-[10px] text-slate-400 font-bold">Main Registry Vault</span>
+          <div className="space-y-6 doc-tables-fit">
+            {/* ── DOCUMENT VERIFICATION — only employees with pending uploads ── */}
+            <Card padding={false} className="border border-amber-200 rounded-2xl overflow-hidden shadow-xs bg-white">
+              <div className="bg-amber-50/60 border-b border-amber-100 p-4 flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-amber-100 text-amber-700 rounded-xl"><ShieldCheck size={16} /></div>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">Document Verification</h3>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Employees with uploaded documents awaiting verification</p>
+                  </div>
+                </div>
+                <Badge variant="amber" dot>{verificationQueue.length} awaiting review</Badge>
               </div>
-              <Table>
-                <Thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                    <Th>Employee Name</Th>
-                    <Th>Document Title / Type</Th>
-                    <Th>Uploaded Date</Th>
-                    <Th>Verification Status</Th>
-                    <Th>Actions</Th>
-                  </tr>
-                </Thead>
-                <Tbody>
-                  {filteredCompliance.length === 0 ? (
-                    <tr><td colSpan={5} className="text-center py-8 text-sm text-gray-400">No compliance files in company registry</td></tr>
-                  ) : (
-                    filteredCompliance.map(d => (
-                      <Tr key={d.id}>
-                        <Td>
-                          <div>
-                            <p className="text-xs font-semibold text-gray-900">{d.employeeName || 'Corporate Archive'}</p>
-                            <p className="text-[10px] text-gray-400">Code: {uniqueEmployees.find(e => e.id === d.employeeId || e.employeeId === d.employeeId)?.employeeId || '—'}</p>
-                          </div>
-                        </Td>
-                        <Td>
-                          <div className="flex items-center gap-1.5">
-                            <FileText size={14} className="text-gray-400" />
-                            <div>
-                              <p className="text-xs font-medium text-gray-750">{d.name}</p>
-                              <span className="text-[9px] text-indigo-600 bg-indigo-50 px-1 py-0.5 rounded font-bold uppercase">{d.type}</span>
+
+              {verificationQueue.length === 0 ? (
+                <div className="py-10 text-center">
+                  <Check size={26} className="mx-auto text-emerald-500 mb-2" />
+                  <p className="text-xs font-bold text-slate-600">All caught up</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">No documents are currently pending verification.</p>
+                </div>
+              ) : (
+                <Table>
+                  <Thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-xs">
+                      <Th className="pl-4">Employee</Th>
+                      <Th className="text-center">Uploaded</Th>
+                      <Th className="text-center">Missing</Th>
+                      <Th className="text-center">Pending</Th>
+                      <Th>Verification Status</Th>
+                      <Th>Pending Since</Th>
+                      <Th className="text-center pr-4">Actions</Th>
+                    </tr>
+                  </Thead>
+                  <Tbody>
+                    {verificationQueue.map(({ emp, uploaded, missing, pendingDocs, status, pendingSince }) => (
+                      <Tr key={emp.id} className="hover:bg-amber-50/30 transition">
+                        <Td className="pl-4">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="h-8 w-8 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-700">{emp.name.slice(0, 2).toUpperCase()}</div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
+                              <p className="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">{emp.employeeId} · {emp.department || '—'}</p>
                             </div>
                           </div>
                         </Td>
-                        <Td><span className="text-xs text-gray-600">{d.uploadedOn}</span></Td>
+                        <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{uploaded}</span></Td>
+                        <Td className="text-center"><span className={`text-xs font-bold ${missing > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{missing}</span></Td>
+                        <Td className="text-center"><span className="text-xs font-bold text-amber-600">{pendingDocs}</span></Td>
                         <Td>
-                          <div className="flex items-center gap-1">
-                            <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} dot>
-                              {d.status}
-                            </Badge>
-                            {d.status === 'Verified' && <Award size={12} className="text-emerald-600" />}
-                          </div>
+                          <Badge variant={complianceBadgeVariant(status)} dot>{status}</Badge>
                         </Td>
-                        <Td>
-                          <div className="flex items-center gap-1">
-                            <button onClick={() => handlePreview(d)} title="Preview" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 flex items-center justify-center transition-colors"><Eye size={12} /></button>
-                            <button onClick={() => handleDownload(d)} title="Download" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 flex items-center justify-center transition-colors"><Download size={12} /></button>
-                            {canEdit && (
+                        <Td><span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{formatDate(pendingSince)}</span></Td>
+                        <Td className="text-center pr-4">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"><Eye size={14} /></button>
+                            {canEdit && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
                               <>
-                                <button onClick={() => openEditDoc(d)} title="Edit details" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 flex items-center justify-center transition-colors"><Edit size={12} /></button>
-                                <button onClick={() => triggerReplace(d.id)} title="Replace file" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-violet-600 hover:border-violet-200 hover:bg-violet-50 flex items-center justify-center transition-colors"><RefreshCw size={12} /></button>
-                                <button onClick={() => handleDeleteDoc(d)} title="Delete" className="w-6 h-6 rounded border border-slate-200 text-slate-500 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 flex items-center justify-center transition-colors"><Trash2 size={12} /></button>
-                              </>
-                            )}
-                            {d.status === 'Pending' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && canEdit && (
-                              <>
-                                <button onClick={() => handleToggleStatus(d.id, 'Verified')} className="text-[10px] px-2 py-0.5 ml-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded transition-colors">Verify</button>
-                                <button onClick={() => handleToggleStatus(d.id, 'Rejected')} className="text-[10px] px-2 py-0.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded transition-colors">Reject</button>
+                                <button onClick={() => handleQuickVerify(emp.id)} title="Approve / Verify pending" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition"><Check size={14} /></button>
+                                <button onClick={() => handleRejectAllPending(emp.id)} title="Reject pending" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-rose-600 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-200 transition"><X size={14} /></button>
                               </>
                             )}
                           </div>
                         </Td>
                       </Tr>
-                    ))
-                  )}
-                </Tbody>
-              </Table>
+                    ))}
+                  </Tbody>
+                </Table>
+              )}
             </Card>
 
-            {/* REDESIGNED Employee Dossier History Logs */}
+            {/* Employee-centric Compliance Verification Vault (one employee = one row) */}
             <Card padding={false} className="border border-slate-150 rounded-2xl overflow-hidden shadow-xs bg-white">
               {/* Sticky header with Counters */}
               <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-slate-100 p-4 z-10 flex flex-wrap gap-4 items-center justify-between">
@@ -1165,38 +1252,40 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <Sliders size={16} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight">
-                      Employee Dossier History Logs
+                    <h3 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1.5">
+                      <ShieldCheck size={15} className="text-indigo-600" /> Compliance Verification Vault
                     </h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      Audits, verification status and dossier completion for all roster members
+                      One row per employee · {TOTAL_REQUIRED} required documents tracked per the company checklist
                     </p>
                   </div>
                 </div>
 
-                {/* Counter statistics widgets */}
-                <div className="flex items-center gap-2.5">
-                  <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[70px]">
+                {/* Counter widgets — Total · With Uploads · Pending · Verified · Rejected · Missing */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-slate-800">{companyEmployees.length}</span>
                     <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
                   </div>
-                  <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-emerald-700">
-                      {dossiers.filter(d => d.status === 'Verified').length}
-                    </span>
+                  <div className="px-3 py-1 bg-sky-50 border border-sky-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-sky-700">{dossiers.filter(d => d.totalDocs > 0).length}</span>
+                    <span className="text-[8px] text-sky-600 font-bold uppercase tracking-wider">With Uploads</span>
+                  </div>
+                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pendingDocs > 0).length}</span>
+                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Pending</span>
+                  </div>
+                  <div className="px-3 py-1 bg-emerald-50 border border-emerald-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-emerald-700">{dossiers.filter(d => d.status === 'Verified').length}</span>
                     <span className="text-[8px] text-emerald-600 font-bold uppercase tracking-wider">Verified</span>
                   </div>
-                  <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-amber-700">
-                      {dossiers.filter(d => d.status === 'Pending Documents' || d.status === 'Under Review').length}
-                    </span>
-                    <span className="text-[8px] text-amber-600 font-bold uppercase tracking-wider">Audits</span>
+                  <div className="px-3 py-1 bg-rose-50 border border-rose-200 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-rose-700">{list.filter(d => d.status === 'Rejected').length}</span>
+                    <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Rejected</span>
                   </div>
-                  <div className="px-3 py-1 bg-rose-50 border border-rose-150 rounded-xl flex flex-col items-center min-w-[70px]">
-                    <span className="text-[11px] font-extrabold text-rose-700">
-                      {dossiers.filter(d => d.status === 'Missing Audit').length}
-                    </span>
-                    <span className="text-[8px] text-rose-600 font-bold uppercase tracking-wider">Missing</span>
+                  <div className="px-3 py-1 bg-orange-50 border border-orange-150 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-orange-700">{dossiers.filter(d => d.missing > 0).length}</span>
+                    <span className="text-[8px] text-orange-600 font-bold uppercase tracking-wider">Missing</span>
                   </div>
                 </div>
               </div>
@@ -1228,14 +1317,19 @@ export const Documents: React.FC<DocumentsProps> = ({
                   >
                     <option value="">All Verification Status</option>
                     <option value="Verified">Verified</option>
-                    <option value="Pending Documents">Pending Documents</option>
-                    <option value="Missing Audit">Missing Audit</option>
-                    <option value="Under Review">Under Review</option>
+                    <option value="Partially Verified">Partially Verified</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Action Required">Action Required</option>
                   </select>
                 </div>
 
-                <div className="text-[11px] text-slate-400 font-bold">
-                  Showing {filteredDossiers.length} records
+                <div className="flex items-center gap-3">
+                  <div className="text-[11px] text-slate-400 font-bold">
+                    Showing {filteredDossiers.length} records
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" icon={<Upload size={13} />} onClick={() => openBulkUpload(null)}>Bulk Upload</Button>
+                  )}
                 </div>
               </div>
 
@@ -1244,120 +1338,120 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <Table>
                   <Thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-xs">
-                      <Th className="pl-4">Employee Details</Th>
-                      <Th>Department & Role</Th>
-                      <Th>Document Progress</Th>
-                      <Th>Verification Status</Th>
-                      <Th>Last Updated</Th>
-                      <Th className="text-center pr-4">Compliance Actions</Th>
+                      <Th className="pl-4 w-[18%]">Employee</Th>
+                      <Th className="w-[11%]">Department</Th>
+                      <Th className="text-center w-[6%]">Required</Th>
+                      <Th className="text-center w-[6%]">Uploaded</Th>
+                      <Th className="text-center w-[6%]">Missing</Th>
+                      <Th className="w-[11%]">Progress</Th>
+                      <Th className="w-[12%]">Status</Th>
+                      <Th className="w-[12%] pr-5">Updated</Th>
+                      <Th className="text-center pl-3 pr-4 w-[18%]">Actions</Th>
                     </tr>
                   </Thead>
                   <Tbody>
                     {paginatedDossiers.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-12 text-xs text-gray-400 bg-white">
-                          No matching dossiers found.
+                        <td colSpan={9} className="text-center py-12 text-xs text-gray-400 bg-white">
+                          No matching employees found.
                         </td>
                       </tr>
                     ) : (
-                      paginatedDossiers.map(({ emp, totalDocs, status, lastUpdated }) => {
+                      paginatedDossiers.map(({ emp, uploaded, missing, status, lastUpdated, totalDocs }) => {
                         return (
                           <Tr key={emp.id} className="hover:bg-slate-50/50 transition duration-150">
                             <Td className="pl-4">
-                              <div className="flex items-center gap-2.5">
-                                <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-750 shadow-inner">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="h-8 w-8 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-750 shadow-inner">
                                   {emp.name.slice(0, 2).toUpperCase()}
                                 </div>
-                                <div>
-                                  <p className="text-xs font-extrabold text-slate-900">{emp.name}</p>
-                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5">{emp.employeeId}</p>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
+                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5 truncate">{emp.employeeId}</p>
                                 </div>
                               </div>
                             </Td>
                             <Td>
-                              <div>
-                                <p className="text-xs text-slate-800 font-medium">{emp.designation || 'Staff'}</p>
-                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{emp.department || 'Clinical'}</p>
+                              <div className="min-w-0">
+                                <p className="text-xs text-slate-800 font-medium truncate">{emp.department || '—'}</p>
+                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5 truncate">{emp.designation || 'Staff'}</p>
                               </div>
                             </Td>
+                            <Td className="text-center"><span className="text-xs font-bold text-slate-700">{TOTAL_REQUIRED}</span></Td>
+                            <Td className="text-center"><span className="text-xs font-bold text-emerald-600">{uploaded}</span></Td>
+                            <Td className="text-center"><span className={`text-xs font-bold ${missing > 0 ? 'text-rose-600' : 'text-slate-300'}`}>{missing}</span></Td>
                             <Td>
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px] text-slate-500 font-bold">
-                                  <span>{totalDocs} / 5 uploads</span>
-                                  <span className="font-mono">{Math.round((totalDocs / 5) * 100)}%</span>
+                                  <span>{uploaded} / {TOTAL_REQUIRED}</span>
+                                  <span className="font-mono">{Math.round((uploaded / TOTAL_REQUIRED) * 100)}%</span>
                                 </div>
                                 <div className="w-24 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-150">
                                   <div
                                     className={`h-full rounded-full transition-all duration-300 ${
-                                      status === 'Verified'
-                                        ? 'bg-emerald-500'
-                                        : status === 'Missing Audit'
-                                        ? 'bg-rose-500'
-                                        : 'bg-indigo-500'
+                                      status === 'Verified' ? 'bg-emerald-500'
+                                        : status === 'Action Required' ? 'bg-rose-500'
+                                        : status === 'Partially Verified' ? 'bg-indigo-500'
+                                        : 'bg-amber-500'
                                     }`}
-                                    style={{ width: `${Math.min(100, (totalDocs / 5) * 100)}%` }}
+                                    style={{ width: `${Math.min(100, (uploaded / TOTAL_REQUIRED) * 100)}%` }}
                                   ></div>
                                 </div>
                               </div>
                             </Td>
                             <Td>
                               <Badge
-                                variant={
-                                  status === 'Verified'
-                                    ? 'green'
-                                    : status === 'Pending Documents'
-                                    ? 'amber'
-                                    : status === 'Missing Audit'
-                                    ? 'red'
-                                    : 'indigo'
-                                }
+                                variant={complianceBadgeVariant(status)}
                                 className="text-[9px] px-2 py-0.5 rounded-full border shadow-2xs font-extrabold flex items-center gap-1.5 w-fit"
                               >
                                 <span className={`w-1.5 h-1.5 rounded-full ${
-                                  status === 'Verified'
-                                    ? 'bg-emerald-500'
-                                    : status === 'Pending Documents'
-                                    ? 'bg-amber-500'
-                                    : status === 'Missing Audit'
-                                    ? 'bg-rose-500'
-                                    : 'bg-indigo-505 bg-indigo-500'
+                                  status === 'Verified' ? 'bg-emerald-500'
+                                    : status === 'Action Required' ? 'bg-rose-500'
+                                    : status === 'Partially Verified' ? 'bg-indigo-500'
+                                    : 'bg-amber-500'
                                 }`}></span>
                                 {status}
                               </Badge>
                             </Td>
-                            <Td>
-                              <span className="text-[11px] text-slate-500 font-medium">{lastUpdated}</span>
+                            <Td className="pr-5">
+                              <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{formatDate(lastUpdated)}</span>
                             </Td>
-                            <Td className="text-center pr-4">
+                            <Td className="text-center pl-3 pr-4">
+                              {/* Direct row actions — consistent icon system (no drawer) */}
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => setSelectedReviewEmp(emp)}
-                                  className="p-1 text-slate-550 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-                                  title="View Uploaded Docs"
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
+                                  title="View document workspace"
                                 >
-                                  <Eye size={13} />
+                                  <Eye size={14} />
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    setSelectedEmpId(emp.id);
-                                    setUploadOpen(true);
-                                  }}
-                                  className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
-                                  title="Upload New Document"
-                                >
-                                  <Upload size={13} />
-                                </button>
-                                {status !== 'Verified' && (role === 'Company Head' || role === 'HR') ? (
+                                {canEdit && (
                                   <button
-                                    onClick={() => handleQuickVerify(emp.id)}
-                                    className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"
-                                    title="Quick Verify Dossier"
+                                    onClick={() => openBulkUpload(emp.id)}
+                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
+                                    title="Upload documents"
                                   >
-                                    <Check size={13} />
+                                    <Upload size={14} />
                                   </button>
-                                ) : (
-                                  <div className="w-5"></div>
                                 )}
+                                {canEdit && (
+                                  <button
+                                    onClick={() => setSelectedReviewEmp(emp)}
+                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-amber-600 hover:text-amber-700 hover:bg-amber-50 hover:border-amber-200 transition"
+                                    title="Edit documents"
+                                  >
+                                    <Edit size={14} />
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleDownloadEmployeeDocs(emp.id)}
+                                  disabled={totalDocs === 0}
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-sky-600 hover:text-sky-700 hover:bg-sky-50 hover:border-sky-200 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:border-slate-200"
+                                  title={totalDocs === 0 ? 'No files to download' : 'Download all documents'}
+                                >
+                                  <Download size={14} />
+                                </button>
                               </div>
                             </Td>
                           </Tr>
@@ -1398,6 +1492,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             </Card>
           </div>
         </div>
+        )
       )}
 
       {/* ─── TAB 2: VISUAL CANVA TEMPLATE GENERATOR ───────────────────────────── */}
@@ -2025,11 +2120,11 @@ export const Documents: React.FC<DocumentsProps> = ({
         {previewDoc && (
           <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px] border-t border-slate-100 pt-3 text-slate-700">
             {previewDoc.documentNumber && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Doc Number</span>{previewDoc.documentNumber}</div>}
-            {previewDoc.issueDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Issue Date</span>{previewDoc.issueDate}</div>}
-            {previewDoc.expiryDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Expiry Date</span>{previewDoc.expiryDate}</div>}
-            <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Uploaded By</span>{previewDoc.uploadedBy} · {previewDoc.uploadedOn}</div>
-            {previewDoc.verifiedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Verified By</span>{previewDoc.verifiedBy}{previewDoc.verifiedOn ? ` · ${String(previewDoc.verifiedOn).split('T')[0]}` : ''}</div>}
-            {previewDoc.editedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Last Edited By</span>{previewDoc.editedBy}{previewDoc.editedOn ? ` · ${String(previewDoc.editedOn).split('T')[0]}` : ''}</div>}
+            {previewDoc.issueDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Issue Date</span>{formatDate(previewDoc.issueDate)}</div>}
+            {previewDoc.expiryDate && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Expiry Date</span>{formatDate(previewDoc.expiryDate)}</div>}
+            <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Uploaded By</span>{previewDoc.uploadedBy} · {formatDate(previewDoc.uploadedOn)}</div>
+            {previewDoc.verifiedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Verified By</span>{previewDoc.verifiedBy}{previewDoc.verifiedOn ? ` · ${formatDate(previewDoc.verifiedOn)}` : ''}</div>}
+            {previewDoc.editedBy && <div><span className="text-slate-400 font-bold uppercase text-[9px] block">Last Edited By</span>{previewDoc.editedBy}{previewDoc.editedOn ? ` · ${formatDate(previewDoc.editedOn)}` : ''}</div>}
             {previewDoc.remarks && <div className="col-span-2 sm:col-span-3"><span className="text-slate-400 font-bold uppercase text-[9px] block">Remarks</span>{previewDoc.remarks}</div>}
           </div>
         )}
@@ -2372,94 +2467,17 @@ export const Documents: React.FC<DocumentsProps> = ({
         </div>
       </Modal>
 
-      {/* Premium Dossier Audit Details Modal */}
-      <Modal open={!!selectedReviewEmp} onClose={() => setSelectedReviewEmp(null)} title="Employee Dossier Verification Details" size="md">
-        {selectedReviewEmp && (() => {
-          const empDocs = list.filter(d => d.employeeId === selectedReviewEmp.id);
-          return (
-            <div className="space-y-4 text-left font-sans">
-              <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-805 text-indigo-700 font-bold flex items-center justify-center text-sm ring-2 ring-indigo-200">
-                  {selectedReviewEmp.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-xs font-extrabold text-slate-900">{selectedReviewEmp.name}</p>
-                  <p className="text-[10px] text-gray-500 font-medium">{selectedReviewEmp.designation || 'Staff'} · {selectedReviewEmp.employeeId}</p>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Primary Profile Uploads</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">Aadhaar Card</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Government ID</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.aadhaarUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.aadhaarUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">PAN Card</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Tax Account ID</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.panUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.panUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">Passport Photo</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Primary Picture</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.photoUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.photoUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Compliance Vault Documents ({empDocs.length})</h4>
-                {empDocs.length === 0 ? (
-                  <p className="text-center py-6 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">No compliance audit files uploaded in the main vault.</p>
-                ) : (
-                  <div className="space-y-2 max-h-[200px] overflow-auto pr-1">
-                    {empDocs.map(d => (
-                      <div key={d.id} className="border border-slate-150 p-2.5 rounded-xl flex items-center justify-between hover:bg-slate-50 transition">
-                        <div className="flex items-center gap-2">
-                          <FileText size={14} className="text-slate-400" />
-                          <div>
-                            <p className="text-[10px] font-bold text-slate-850 truncate max-w-[185px]">{d.name}</p>
-                            <span className="text-[8px] text-indigo-650 bg-indigo-50 px-1 py-0.2 rounded font-bold uppercase">{d.type}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} className="text-[8px] px-1 py-0">
-                            {d.status}
-                          </Badge>
-                          {d.status === 'Pending' && (
-                            <button
-                              onClick={() => {
-                                handleToggleStatus(d.id, 'Verified');
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded"
-                            >
-                              Verify
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
+      {/* Bulk multi-file upload (Phase 2) */}
+      <BulkUploadModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        employees={companyEmployees}
+        initialEmployeeId={bulkEmpId}
+        companyId={activeCompanyId}
+        documents={documents}
+        role={role}
+        onUploaded={(saved) => onUpdateDocuments([...saved, ...documents.filter(d => !saved.some((s: any) => s.id === d.id))])}
+      />
 
     </div>
   );

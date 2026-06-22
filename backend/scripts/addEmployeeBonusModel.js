@@ -64,25 +64,43 @@ async function columnExists(table, column) {
   return Number(rows[0].c) > 0;
 }
 
+// Resolve the REAL table name (case-sensitive on Linux/RDS). The Prisma models
+// `Employee`/`Payroll` have no @@map, so the table is created as `Employee` /
+// `Payroll`. On Windows MySQL (case-insensitive) any case matches; on RDS we must
+// use the exact stored case or ALTER fails with "table doesn't exist".
+async function resolveTable(logicalName) {
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT TABLE_NAME AS t FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = DATABASE() AND LOWER(TABLE_NAME) = LOWER(?) LIMIT 1`,
+    logicalName
+  );
+  if (!rows[0]) throw new Error(`Table matching "${logicalName}" not found in this database.`);
+  return rows[0].t;
+}
+
 async function run() {
+  const empTable = await resolveTable('Employee');
+  const payTable = await resolveTable('Payroll');
+  console.log(`==> Resolved tables: employee="${empTable}", payroll="${payTable}"`);
+
   console.log('==> Adding employee bonus config columns (idempotent)…');
   for (const [name, def] of EMPLOYEE_COLUMNS) {
-    if (await columnExists('employee', name)) {
-      console.log(`    • employee.${name} already exists — skipped`);
+    if (await columnExists(empTable, name)) {
+      console.log(`    • ${empTable}.${name} already exists — skipped`);
       continue;
     }
-    await prisma.$executeRawUnsafe(`ALTER TABLE \`employee\` ADD COLUMN \`${name}\` ${def}`);
-    console.log(`    ✓ added employee.${name}`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE \`${empTable}\` ADD COLUMN \`${name}\` ${def}`);
+    console.log(`    ✓ added ${empTable}.${name}`);
   }
 
   console.log('==> Adding payroll bonus/overtime columns (idempotent)…');
   for (const [name, def] of PAYROLL_COLUMNS) {
-    if (await columnExists('payroll', name)) {
-      console.log(`    • payroll.${name} already exists — skipped`);
+    if (await columnExists(payTable, name)) {
+      console.log(`    • ${payTable}.${name} already exists — skipped`);
       continue;
     }
-    await prisma.$executeRawUnsafe(`ALTER TABLE \`payroll\` ADD COLUMN \`${name}\` ${def}`);
-    console.log(`    ✓ added payroll.${name}`);
+    await prisma.$executeRawUnsafe(`ALTER TABLE \`${payTable}\` ADD COLUMN \`${name}\` ${def}`);
+    console.log(`    ✓ added ${payTable}.${name}`);
   }
 
   console.log('==> Creating employee_bonuses table (idempotent)…');
