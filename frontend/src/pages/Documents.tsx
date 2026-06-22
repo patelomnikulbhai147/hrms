@@ -28,6 +28,8 @@ import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
+import { BulkUploadModal } from '@/components/employee/BulkUploadModal';
+import { EmployeeDocWorkspace } from '@/components/employee/EmployeeDocWorkspace';
 
 const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Document Name', key: 'name', width: 30 },
@@ -368,6 +370,9 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // Local compliance override & filtering states
   const [selectedReviewEmp, setSelectedReviewEmp] = useState<Employee | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkEmpId, setBulkEmpId] = useState<string | null>(null);
+  const openBulkUpload = (employeeId?: string | null) => { setBulkEmpId(employeeId || null); setBulkOpen(true); };
 
   // Dossier list redesigned states
   const [dossierSearch, setDossierSearch] = useState('');
@@ -1182,8 +1187,13 @@ export const Documents: React.FC<DocumentsProps> = ({
                   </select>
                 </div>
 
-                <div className="text-[11px] text-slate-400 font-bold">
-                  Showing {filteredDossiers.length} records
+                <div className="flex items-center gap-3">
+                  <div className="text-[11px] text-slate-400 font-bold">
+                    Showing {filteredDossiers.length} records
+                  </div>
+                  {canEdit && (
+                    <Button size="sm" icon={<Upload size={13} />} onClick={() => openBulkUpload(null)}>Bulk Upload</Button>
+                  )}
                 </div>
               </div>
 
@@ -1275,17 +1285,14 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 <button
                                   onClick={() => setSelectedReviewEmp(emp)}
                                   className="p-1 text-slate-550 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-                                  title="View Uploaded Docs"
+                                  title="Open Document Workspace"
                                 >
                                   <Eye size={13} />
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    setSelectedEmpId(emp.id);
-                                    setUploadOpen(true);
-                                  }}
+                                  onClick={() => openBulkUpload(emp.id)}
                                   className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
-                                  title="Upload New Document"
+                                  title="Bulk Upload Documents"
                                 >
                                   <Upload size={13} />
                                 </button>
@@ -2314,94 +2321,30 @@ export const Documents: React.FC<DocumentsProps> = ({
         </div>
       </Modal>
 
-      {/* Premium Dossier Audit Details Modal */}
-      <Modal open={!!selectedReviewEmp} onClose={() => setSelectedReviewEmp(null)} title="Employee Dossier Verification Details" size="md">
-        {selectedReviewEmp && (() => {
-          const empDocs = list.filter(d => d.employeeId === selectedReviewEmp.id);
-          return (
-            <div className="space-y-4 text-left font-sans">
-              <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-805 text-indigo-700 font-bold flex items-center justify-center text-sm ring-2 ring-indigo-200">
-                  {selectedReviewEmp.name.slice(0, 2).toUpperCase()}
-                </div>
-                <div>
-                  <p className="text-xs font-extrabold text-slate-900">{selectedReviewEmp.name}</p>
-                  <p className="text-[10px] text-gray-500 font-medium">{selectedReviewEmp.designation || 'Staff'} · {selectedReviewEmp.employeeId}</p>
-                </div>
-              </div>
+      {/* Employee Document Workspace (Phase 3) — categories + verify/reject/notes */}
+      <EmployeeDocWorkspace
+        open={!!selectedReviewEmp}
+        onClose={() => setSelectedReviewEmp(null)}
+        employee={selectedReviewEmp}
+        documents={documents}
+        onUpdateDocuments={onUpdateDocuments}
+        canEdit={canEdit}
+        role={role}
+        onPreview={(d) => handlePreview(d)}
+        onUpload={(empId) => { setSelectedReviewEmp(null); openBulkUpload(empId); }}
+      />
 
-              <div>
-                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Primary Profile Uploads</h4>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">Aadhaar Card</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Government ID</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.aadhaarUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.aadhaarUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">PAN Card</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Tax Account ID</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.panUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.panUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                  <div className="border border-slate-150 p-2.5 rounded-xl bg-slate-50/50 flex flex-col justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-slate-800">Passport Photo</p>
-                      <p className="text-[8px] text-slate-400 mt-0.5">Primary Picture</p>
-                    </div>
-                    <span className={`text-[8px] font-bold mt-2 px-1.5 py-0.5 rounded text-center ${selectedReviewEmp.photoUpload ? 'bg-emerald-50 text-emerald-700 border border-emerald-150' : 'bg-slate-100 text-slate-400'}`}>
-                      {selectedReviewEmp.photoUpload ? 'Uploaded' : 'Missing'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h4 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Compliance Vault Documents ({empDocs.length})</h4>
-                {empDocs.length === 0 ? (
-                  <p className="text-center py-6 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">No compliance audit files uploaded in the main vault.</p>
-                ) : (
-                  <div className="space-y-2 max-h-[200px] overflow-auto pr-1">
-                    {empDocs.map(d => (
-                      <div key={d.id} className="border border-slate-150 p-2.5 rounded-xl flex items-center justify-between hover:bg-slate-50 transition">
-                        <div className="flex items-center gap-2">
-                          <FileText size={14} className="text-slate-400" />
-                          <div>
-                            <p className="text-[10px] font-bold text-slate-850 truncate max-w-[185px]">{d.name}</p>
-                            <span className="text-[8px] text-indigo-650 bg-indigo-50 px-1 py-0.2 rounded font-bold uppercase">{d.type}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Badge variant={d.status === 'Verified' ? 'green' : d.status === 'Pending' ? 'amber' : 'red'} className="text-[8px] px-1 py-0">
-                            {d.status}
-                          </Badge>
-                          {d.status === 'Pending' && (
-                            <button
-                              onClick={() => {
-                                handleToggleStatus(d.id, 'Verified');
-                              }}
-                              className="text-[9px] px-1.5 py-0.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded"
-                            >
-                              Verify
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
+      {/* Bulk multi-file upload (Phase 2) */}
+      <BulkUploadModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        employees={companyEmployees}
+        initialEmployeeId={bulkEmpId}
+        companyId={activeCompanyId}
+        documents={documents}
+        role={role}
+        onUploaded={(saved) => onUpdateDocuments([...saved, ...documents.filter(d => !saved.some((s: any) => s.id === d.id))])}
+      />
 
     </div>
   );
