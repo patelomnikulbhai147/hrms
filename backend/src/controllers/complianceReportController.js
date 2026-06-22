@@ -149,9 +149,17 @@ const REPORTS = {
   exit_settlement: { label: 'Exit Settlement Report', category: 'Gratuity & Settlement', available: true, generate: (s) => exitReport(s) },
 
   // ════════════════ 10) Bonus Reports ════════════════
-  bonus_register: { label: 'Bonus Register', category: 'Bonus Reports', available: true, generate: (s) => bonusReport(s, false) },
-  bonus_summary: { label: 'Bonus Summary', category: 'Bonus Reports', available: true, generate: (s) => bonusSummary(s) },
-  bonus_payment: { label: 'Bonus Payment Report', category: 'Bonus Reports', available: true, generate: (s) => bonusReport(s, true) },
+  bonus_register: { label: 'Bonus Register (Statutory)', category: 'Bonus Reports', available: true, generate: (s) => bonusReport(s, false) },
+  bonus_summary: { label: 'Bonus Summary (Statutory)', category: 'Bonus Reports', available: true, generate: (s) => bonusSummary(s) },
+  bonus_payment: { label: 'Bonus Payment Report (Statutory)', category: 'Bonus Reports', available: true, generate: (s) => bonusReport(s, true) },
+  // Phase 2 — employee-bonus model reports (sourced from employee_bonuses).
+  employee_bonus: { label: 'Employee Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => employeeBonusReport(s) },
+  monthly_bonus: { label: 'Monthly Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => monthlyBonusReport(s) },
+  yearly_bonus: { label: 'Yearly Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => yearlyBonusReport(s) },
+  festival_bonus: { label: 'Festival Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => festivalBonusReport(s) },
+  performance_bonus: { label: 'Performance Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => performanceBonusReport(s) },
+  department_bonus: { label: 'Department Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => departmentBonusReport(s) },
+  company_bonus: { label: 'Company Bonus Report', category: 'Bonus Reports', available: true, generate: (s) => companyBonusReport(s) },
 
   // ════════════════ Restored: Payroll Reports (variants) ════════════════
   salary_slip_tds: { label: 'Salary Slip (TDS)', category: 'Payroll Reports', available: true, generate: (s) => salarySlipTds(s) },
@@ -642,6 +650,105 @@ async function bonusSummary(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'department', label: 'Department' }, { key: 'employees', label: 'Employees' }, { key: 'amount', label: 'Bonus (₹)' }], rows, summary };
 }
 
+// ── Phase 2: employee-bonus reports (new model: employee_bonuses) ─────────────
+// These source bonuses from the per-employee bonus model (Employee config +
+// employee_bonuses ledger), NOT the legacy statutory cycle tables above.
+const bonusActive = (b) => b.status !== 'Cancelled';
+const bonusPeriod = (b) => (b.payrollMonth ? `${b.payrollMonth} ${b.payrollYear || ''}`.trim() : (b.createdAt ? new Date(b.createdAt).toLocaleDateString('en-IN') : '—'));
+
+// Fetch in-scope employees (respects branch/department/employee filters) + their
+// non-cancelled bonus ledger entries (respects financialYear when provided).
+async function bonusLedger(s, extraWhere = {}) {
+  const emps = await prisma.employee.findMany({ where: empWhere(s), orderBy: { name: 'asc' } });
+  const em = new Map(emps.map(e => [e.id, e]));
+  const ids = emps.map(e => e.id);
+  const where = { companyId: { in: s.companyIds }, employeeId: { in: ids.length ? ids : [-1] }, ...extraWhere };
+  if (s.year) where.payrollYear = s.year;
+  const raw = await prisma.employeeBonus.findMany({ where, orderBy: [{ payrollYear: 'desc' }, { createdAt: 'desc' }] });
+  return { emps, em, bonuses: raw.filter(bonusActive) };
+}
+
+function groupBonuses(bonuses, keyFn, labelFn) {
+  const m = new Map();
+  for (const b of bonuses) {
+    const k = keyFn(b);
+    if (!m.has(k)) m.set(k, { label: labelFn(b), emps: new Set(), count: 0, amount: 0 });
+    const g = m.get(k); g.emps.add(b.employeeId); g.count++; g.amount += (b.amount || 0);
+  }
+  return [...m.values()];
+}
+
+// 1) Employee Bonus Report — per-employee config + total bonus received.
+async function employeeBonusReport(s) {
+  const { emps, bonuses } = await bonusLedger(s);
+  const totals = new Map();
+  for (const b of bonuses) totals.set(b.employeeId, (totals.get(b.employeeId) || 0) + (b.amount || 0));
+  const rows = emps.map((e, i) => ({
+    sr: i + 1, code: e.employeeId, name: e.name, department: e.department || '',
+    applicable: e.bonusApplicable ? 'Yes' : 'No',
+    type: e.bonusApplicable ? (e.bonusType || '—') : '—',
+    config: e.bonusApplicable ? (e.bonusCalcMethod === 'Percentage of Salary' ? `${e.bonusValue || 0}%` : `₹${r2(e.bonusValue || 0)}`) : '—',
+    totalPaid: r2(totals.get(e.id) || 0),
+  }));
+  const summary = { employees: rows.length, totalPaid: r2([...totals.values()].reduce((t, v) => t + v, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'applicable', label: 'Bonus?' }, { key: 'type', label: 'Type' }, { key: 'config', label: 'Configured' }, { key: 'totalPaid', label: 'Total Bonus (₹)' }], rows, summary, warnings: rows.length ? [] : ['No employees in scope.'] };
+}
+
+// 2) Monthly Bonus Report — totals per payout month.
+async function monthlyBonusReport(s) {
+  const { bonuses } = await bonusLedger(s);
+  const groups = groupBonuses(bonuses, b => `${b.payrollYear || 0}-${b.payrollMonth || 'NA'}`, b => bonusPeriod(b));
+  const rows = groups.map((g, i) => ({ sr: i + 1, period: g.label, employees: g.emps.size, count: g.count, amount: r2(g.amount) }));
+  const summary = { count: rows.reduce((t, r) => t + r.count, 0), amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'period', label: 'Month' }, { key: 'employees', label: 'Employees' }, { key: 'count', label: 'Bonuses' }, { key: 'amount', label: 'Total (₹)' }], rows, summary, warnings: rows.length ? [] : ['No bonuses found for the selected scope.'] };
+}
+
+// 3) Yearly Bonus Report — totals per year.
+async function yearlyBonusReport(s) {
+  const { bonuses } = await bonusLedger(s);
+  const yearOf = (b) => String(b.payrollYear || (b.createdAt ? new Date(b.createdAt).getFullYear() : 'NA'));
+  const groups = groupBonuses(bonuses, yearOf, yearOf);
+  const rows = groups.map((g, i) => ({ sr: i + 1, year: g.label, employees: g.emps.size, count: g.count, amount: r2(g.amount) }));
+  const summary = { count: rows.reduce((t, r) => t + r.count, 0), amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'year', label: 'Year' }, { key: 'employees', label: 'Employees' }, { key: 'count', label: 'Bonuses' }, { key: 'amount', label: 'Total (₹)' }], rows, summary, warnings: rows.length ? [] : ['No bonuses found for the selected scope.'] };
+}
+
+// 4) Festival Bonus Report — one-time festival bonuses (Diwali/Eid/etc.).
+async function festivalBonusReport(s) {
+  const { bonuses, em } = await bonusLedger(s, { bonusType: 'Festival' });
+  const rows = bonuses.map((b, i) => ({ sr: i + 1, date: bonusPeriod(b), code: em.get(b.employeeId)?.employeeId || '', name: em.get(b.employeeId)?.name || '', festival: b.reason || '—', amount: r2(b.amount), status: b.status }));
+  const summary = { count: rows.length, amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'festival', label: 'Festival' }, { key: 'amount', label: 'Amount (₹)' }, { key: 'status', label: 'Status' }], rows, summary, warnings: rows.length ? [] : ['No festival bonuses found for the selected scope.'] };
+}
+
+// 5) Performance Bonus Report — with approval trail.
+async function performanceBonusReport(s) {
+  const { bonuses, em } = await bonusLedger(s, { bonusType: 'Performance' });
+  const rows = bonuses.map((b, i) => ({ sr: i + 1, date: bonusPeriod(b), code: em.get(b.employeeId)?.employeeId || '', name: em.get(b.employeeId)?.name || '', reason: b.reason || '—', amount: r2(b.amount), approvedBy: b.approvedByName || b.createdByName || '—', approvalDate: b.approvalDate ? new Date(b.approvalDate).toLocaleDateString('en-IN') : '—', status: b.status }));
+  const summary = { count: rows.length, amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'reason', label: 'Reason' }, { key: 'amount', label: 'Amount (₹)' }, { key: 'approvedBy', label: 'Approved By' }, { key: 'approvalDate', label: 'Approved On' }, { key: 'status', label: 'Status' }], rows, summary, warnings: rows.length ? [] : ['No performance bonuses found for the selected scope.'] };
+}
+
+// 6) Department Bonus Report — totals per department.
+async function departmentBonusReport(s) {
+  const { bonuses, em } = await bonusLedger(s);
+  const deptOf = (b) => em.get(b.employeeId)?.department || 'General';
+  const groups = groupBonuses(bonuses, deptOf, deptOf);
+  const rows = groups.map((g, i) => ({ sr: i + 1, department: g.label, employees: g.emps.size, count: g.count, amount: r2(g.amount) }));
+  const summary = { departments: rows.length, amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'department', label: 'Department' }, { key: 'employees', label: 'Employees' }, { key: 'count', label: 'Bonuses' }, { key: 'amount', label: 'Total (₹)' }], rows, summary, warnings: rows.length ? [] : ['No bonuses found for the selected scope.'] };
+}
+
+// 7) Company Bonus Report — totals per bonus type across the company.
+async function companyBonusReport(s) {
+  const { bonuses } = await bonusLedger(s);
+  const typeOf = (b) => b.bonusType || 'Other';
+  const groups = groupBonuses(bonuses, typeOf, typeOf);
+  const rows = groups.map((g, i) => ({ sr: i + 1, type: g.label, employees: g.emps.size, count: g.count, amount: r2(g.amount) }));
+  const summary = { types: rows.length, count: rows.reduce((t, r) => t + r.count, 0), amount: r2(rows.reduce((t, r) => t + r.amount, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'type', label: 'Bonus Type' }, { key: 'employees', label: 'Employees' }, { key: 'count', label: 'Bonuses' }, { key: 'amount', label: 'Total (₹)' }], rows, summary, warnings: rows.length ? [] : ['No bonuses found for the selected scope.'] };
+}
+
 // ── Restored payroll generators ──────────────────────────────────────────────
 async function salarySlipTds(s) {
   const pay = await prisma.payroll.findMany({ where: payrollWhere(s), orderBy: { employeeName: 'asc' } });
@@ -875,8 +982,15 @@ const DESCRIPTIONS = {
   esi_challan: 'ESI challan employee/employer split.',
   form16: 'Annual salary & TDS (Form 16 Part B) per employee.',
   tds_report: 'Monthly TDS deducted from payroll.',
-  bonus_register: 'Statutory bonus computed per eligible employee.',
-  bonus_summary: 'Department-wise bonus totals.',
+  bonus_register: 'Statutory bonus computed per eligible employee (legacy cycle data).',
+  bonus_summary: 'Department-wise bonus totals (legacy cycle data).',
+  employee_bonus: 'Per-employee bonus configuration and total bonus received.',
+  monthly_bonus: 'Bonus totals grouped by payout month.',
+  yearly_bonus: 'Bonus totals grouped by year.',
+  festival_bonus: 'One-time festival bonuses (Diwali, Eid, Christmas, etc.).',
+  performance_bonus: 'Performance bonuses with reason and approval trail.',
+  department_bonus: 'Bonus totals grouped by department.',
+  company_bonus: 'Company-wide bonus totals grouped by bonus type.',
   gratuity_report: 'Gratuity eligibility & amount per employee.',
   fnf_settlement: 'Full & Final settlement (gratuity + leave encashment).',
 };
@@ -926,6 +1040,14 @@ const FILTERS_BY_KEY = {
   company_annual_salary: ['financialYear'],
   pf_form_5: ['dateRange', 'branch'],
   pf_form_10: ['dateRange', 'branch'],
+  // Phase 2 bonus reports
+  employee_bonus: ['branch', 'department', 'employee'],
+  monthly_bonus: ['financialYear', 'branch', 'department'],
+  yearly_bonus: ['branch', 'department'],
+  festival_bonus: ['financialYear', 'department', 'employee'],
+  performance_bonus: ['financialYear', 'department', 'employee'],
+  department_bonus: ['financialYear', 'branch'],
+  company_bonus: ['financialYear'],
 };
 function filtersFor(key, category) { return FILTERS_BY_KEY[key] || FILTERS_BY_CATEGORY[category] || ['dateRange', 'branch', 'department', 'employee']; }
 

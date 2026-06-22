@@ -115,6 +115,20 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format: 'EXCEL', companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {});
   };
 
+  const exportCsv = () => {
+    if (!report?.rows?.length) return;
+    const esc = (v: any) => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+    const header = report.columns.map((c: any) => esc(c.label)).join(',');
+    const lines = report.rows.map((row: any) => report.columns.map((c: any) => esc(row[c.key])).join(','));
+    const csv = '﻿' + [header, ...lines].join('\r\n'); // BOM so Excel reads UTF-8
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${report.reportName.replace(/[^a-z0-9]+/gi, '_')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format: 'CSV', companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {});
+  };
+
   const exportPdf = async () => {
     if (!report?.rows?.length) return;
     const { default: jsPDF } = await import('jspdf');
@@ -330,7 +344,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         <Card className="lg:col-span-2">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-slate-800">{selected ? selected.label : 'Select a report'}</h3>
-            {report?.canExport && <div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={printReport}>Print</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportExcel}>Excel</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportPdf}>PDF</Button></div>}
+            {report?.canExport && <div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={printReport}>Print</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportExcel}>Excel</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportPdf}>PDF</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportCsv}>CSV</Button></div>}
           </div>
 
           {/* Filters — Phase 5: only the filters relevant to the selected report */}
