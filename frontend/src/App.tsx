@@ -488,15 +488,20 @@ export default function App() {
   // Message shown on the Login page after an auto-logout (inactivity / expiry).
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [isHydrating, setIsHydrating] = useState(true);
+  // Names of critical datasets whose fetch failed — drives a visible banner so a
+  // backend/DB error never again silently looks like "all records are gone".
+  const [loadError, setLoadError] = useState<string | null>(null);
 
     // Data hydration from backend MySQL
   const hydrateAll = async () => {
     setIsHydrating(true);
+    const failed: string[] = [];
     try {
-      const catchApi = (apiCall: Promise<any>, name: string) => 
+      const catchApi = (apiCall: Promise<any>, name: string) =>
         apiCall.catch((e: any) => {
           if (e.status === 401 || e.message?.includes('Not authorized')) throw e;
           console.warn(`[Hydration] API error (${name}):`, e);
+          failed.push(name);
           return null;
         });
 
@@ -511,25 +516,37 @@ export default function App() {
         catchApi(api.attendance.getAll(), 'attendance')
       ]);
       
-      let allEntities: any[] = fetchedCompanies ? [...fetchedCompanies] : [];
-      if (fetchedBranches) {
-        const mappedBranches = fetchedBranches.map((b: any) => ({
-           ...b,
-           name: b.branchName || b.name,
-           isHeadOffice: false,
-           parentCompanyId: b.companyId,
-           parentCompanyName: b.parentCompanyName
-        }));
-        allEntities = [...allEntities, ...mappedBranches];
+      // Only overwrite a dataset when its fetch SUCCEEDED. Never blank good data
+      // to [] because of a transient backend/DB error — that is what made past
+      // outages look like "every record was deleted" when the data was intact.
+      if (fetchedCompanies) {
+        let allEntities: any[] = [...fetchedCompanies];
+        if (fetchedBranches) {
+          const mappedBranches = fetchedBranches.map((b: any) => ({
+             ...b,
+             name: b.branchName || b.name,
+             isHeadOffice: false,
+             parentCompanyId: b.companyId,
+             parentCompanyName: b.parentCompanyName
+          }));
+          allEntities = [...allEntities, ...mappedBranches];
+        }
+        setCompanies(allEntities);
       }
-      setCompanies(allEntities);
-      
-      setEmployees(fetchedEmployees || []);
-      setUserAccounts(fetchedUsers || []);
-      setPayroll(fetchedPayroll || []);
-      setDocuments(fetchedDocuments || []);
-      setLeaves(fetchedLeaves || []);
-      setAttendance(fetchedAttendance || []);
+      if (fetchedEmployees) setEmployees(fetchedEmployees);
+      if (fetchedUsers) setUserAccounts(fetchedUsers);
+      if (fetchedPayroll) setPayroll(fetchedPayroll);
+      if (fetchedDocuments) setDocuments(fetchedDocuments);
+      if (fetchedLeaves) setLeaves(fetchedLeaves);
+      if (fetchedAttendance) setAttendance(fetchedAttendance);
+
+      // Surface critical failures instead of silently rendering empty modules.
+      const critical = failed.filter(n => n === 'companies' || n === 'employees');
+      setLoadError(
+        critical.length
+          ? `Couldn't load ${critical.join(' & ')} from the server. The records still exist — this is a connection/backend error, not deleted data.`
+          : null
+      );
 
       // Live Super Admin KPI counts straight from MySQL.
       // Only fetch for Super Admin — other roles are denied by the backend.
@@ -1228,6 +1245,20 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           <path fill="currentColor" d="M0,160L48,170.7C96,181,192,203,288,197.3C384,192,480,160,576,149.3C672,139,768,149,864,170.7C960,192,1056,224,1152,213.3C1248,203,1344,149,1392,122.7L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
         </svg>
       </div>
+
+      {loadError && (
+        <div className="fixed top-0 inset-x-0 z-[60] bg-rose-600 text-white text-xs sm:text-sm font-semibold px-4 py-2 flex items-center justify-center gap-3 shadow-lg">
+          <span>⚠️ {loadError}</span>
+          <button
+            onClick={() => hydrateAll()}
+            disabled={isHydrating}
+            className="px-3 py-0.5 rounded-md bg-white/20 hover:bg-white/30 font-bold transition disabled:opacity-50"
+          >
+            {isHydrating ? 'Retrying…' : 'Retry'}
+          </button>
+          <button onClick={() => setLoadError(null)} className="px-2 font-bold hover:text-rose-200" title="Dismiss">✕</button>
+        </div>
+      )}
 
       <div className="flex h-screen overflow-hidden font-sans antialiased relative z-10">
         <Sidebar
