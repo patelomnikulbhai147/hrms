@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Eye, Download, CheckCircle2, XCircle, Trash2, StickyNote, UploadCloud, FileText, ShieldCheck, History, Loader2 } from 'lucide-react';
+import { Eye, Download, CheckCircle2, XCircle, Trash2, StickyNote, UploadCloud, FileText, ShieldCheck, History, Loader2, ChevronLeft } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -141,20 +141,26 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
     </div>
   );
 
+  if (!open) return null;
+
   return (
     <>
-    <Modal
-      open={open}
-      onClose={onClose}
-      title="Employee Document Workspace"
-      size="xl"
-      footer={
-        <div className="flex items-center justify-between w-full">
-          <span className="text-xs text-slate-500">{uploaded}/{TOTAL_REQUIRED} required uploaded · {verifiedCount} verified · {missing} missing</span>
+    {/* Dedicated full-page workspace (NOT a drawer/modal overlay) */}
+    <div className="space-y-4 animate-fade-in">
+      {/* Page toolbar: Back + Upload */}
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"
+        >
+          <ChevronLeft size={15} /> Back to all employees
+        </button>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline text-xs text-slate-500">{uploaded}/{TOTAL_REQUIRED} required uploaded · {verifiedCount} verified · {missing} missing</span>
           {canEdit && <Button icon={<UploadCloud size={14} />} onClick={() => onUpload(employee.id)}>Upload / Bulk Upload</Button>}
         </div>
-      }
-    >
+      </div>
+
       <div className="space-y-4">
         {/* Employee header */}
         <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 p-3">
@@ -197,9 +203,9 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
           </div>
         ))}
       </div>
-    </Modal>
+    </div>
 
-    {/* Audit history for a single document (Issue 5) */}
+    {/* Audit history for a single document (Issue 5) — small centered popup, not a side drawer */}
     <Modal
       open={!!historyDoc}
       onClose={() => { setHistoryDoc(null); setHistoryLogs(null); }}

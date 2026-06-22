@@ -395,6 +395,22 @@ export const Documents: React.FC<DocumentsProps> = ({
     ui.toast.success(`All pending documents for this employee have been audited as Verified.`);
   };
 
+  // Download every document on file for an employee — straight from the table,
+  // no drawer/workspace needed.
+  const handleDownloadEmployeeDocs = (empId: string) => {
+    const docs = list.filter(d => d.employeeId === empId && (d.fileData || d.url));
+    if (docs.length === 0) { ui.toast.info('No downloadable files on record for this employee yet.'); return; }
+    docs.forEach((doc, i) => {
+      setTimeout(() => {
+        if (doc.fileData) {
+          const a = document.createElement('a'); a.href = doc.fileData; a.download = doc.name || 'document';
+          document.body.appendChild(a); a.click(); a.remove();
+        } else if (doc.url) { window.open(doc.url, '_blank', 'noopener'); }
+      }, i * 250); // stagger so the browser allows multiple downloads
+    });
+    ui.toast.success(`Downloading ${docs.length} document(s) for this employee.`);
+  };
+
   // Compute dossier records reactively
   const dossiers = useMemo(() => {
     return companyEmployees.map(emp => {
@@ -1089,6 +1105,20 @@ export const Documents: React.FC<DocumentsProps> = ({
 
       {/* ─── TAB 1: COMPLIANCE vault ─────────────────────────────────────────── */}
       {activeTab === 'compliance' && (
+        selectedReviewEmp ? (
+          /* Dedicated full-page Employee Document Workspace (replaces the table — no drawer) */
+          <EmployeeDocWorkspace
+            open
+            onClose={() => setSelectedReviewEmp(null)}
+            employee={selectedReviewEmp}
+            documents={documents}
+            onUpdateDocuments={onUpdateDocuments}
+            canEdit={canEdit}
+            role={role}
+            onPreview={(d) => handlePreview(d)}
+            onUpload={(empId) => openBulkUpload(empId)}
+          />
+        ) : (
         <div className="space-y-4 animate-fade-in">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="w-72">
@@ -1225,7 +1255,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         </td>
                       </tr>
                     ) : (
-                      paginatedDossiers.map(({ emp, uploaded, missing, status, lastUpdated }) => {
+                      paginatedDossiers.map(({ emp, uploaded, missing, status, lastUpdated, totalDocs }) => {
                         return (
                           <Tr key={emp.id} className="hover:bg-slate-50/50 transition duration-150">
                             <Td className="pl-4">
@@ -1285,32 +1315,50 @@ export const Documents: React.FC<DocumentsProps> = ({
                               <span className="text-[11px] text-slate-500 font-medium">{lastUpdated}</span>
                             </Td>
                             <Td className="text-center pr-4">
-                              <div className="flex items-center justify-center gap-1.5">
+                              {/* Direct row actions — no drawer required (View · Upload · Edit · Verify · Download) */}
+                              <div className="flex items-center justify-center gap-1">
                                 <button
                                   onClick={() => setSelectedReviewEmp(emp)}
-                                  className="p-1 text-slate-550 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-                                  title="Open Document Workspace"
+                                  className="p-1 text-slate-550 hover:text-indigo-700 hover:bg-indigo-50 rounded transition"
+                                  title="View document workspace"
                                 >
                                   <Eye size={13} />
                                 </button>
-                                <button
-                                  onClick={() => openBulkUpload(emp.id)}
-                                  className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
-                                  title="Bulk Upload Documents"
-                                >
-                                  <Upload size={13} />
-                                </button>
-                                {status !== 'Verified' && (role === 'Company Head' || role === 'HR') ? (
+                                {canEdit && (
+                                  <button
+                                    onClick={() => openBulkUpload(emp.id)}
+                                    className="p-1 text-indigo-650 hover:text-indigo-900 hover:bg-indigo-50 rounded transition"
+                                    title="Upload documents"
+                                  >
+                                    <Upload size={13} />
+                                  </button>
+                                )}
+                                {canEdit && (
+                                  <button
+                                    onClick={() => setSelectedReviewEmp(emp)}
+                                    className="p-1 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded transition"
+                                    title="Edit documents"
+                                  >
+                                    <Edit size={13} />
+                                  </button>
+                                )}
+                                {canEdit && status !== 'Verified' && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
                                   <button
                                     onClick={() => handleQuickVerify(emp.id)}
                                     className="p-1 text-emerald-650 hover:text-emerald-950 hover:bg-emerald-50 rounded transition"
-                                    title="Quick Verify Dossier"
+                                    title="Verify pending documents"
                                   >
                                     <Check size={13} />
                                   </button>
-                                ) : (
-                                  <div className="w-5"></div>
                                 )}
+                                <button
+                                  onClick={() => handleDownloadEmployeeDocs(emp.id)}
+                                  disabled={totalDocs === 0}
+                                  className="p-1 text-slate-550 hover:text-blue-700 hover:bg-blue-50 rounded transition disabled:opacity-30 disabled:hover:bg-transparent"
+                                  title={totalDocs === 0 ? 'No files to download' : 'Download all documents'}
+                                >
+                                  <Download size={13} />
+                                </button>
                               </div>
                             </Td>
                           </Tr>
@@ -1351,6 +1399,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             </Card>
           </div>
         </div>
+        )
       )}
 
       {/* ─── TAB 2: VISUAL CANVA TEMPLATE GENERATOR ───────────────────────────── */}
@@ -2324,19 +2373,6 @@ export const Documents: React.FC<DocumentsProps> = ({
 
         </div>
       </Modal>
-
-      {/* Employee Document Workspace (Phase 3) — categories + verify/reject/notes */}
-      <EmployeeDocWorkspace
-        open={!!selectedReviewEmp}
-        onClose={() => setSelectedReviewEmp(null)}
-        employee={selectedReviewEmp}
-        documents={documents}
-        onUpdateDocuments={onUpdateDocuments}
-        canEdit={canEdit}
-        role={role}
-        onPreview={(d) => handlePreview(d)}
-        onUpload={(empId) => { setSelectedReviewEmp(null); openBulkUpload(empId); }}
-      />
 
       {/* Bulk multi-file upload (Phase 2) */}
       <BulkUploadModal
