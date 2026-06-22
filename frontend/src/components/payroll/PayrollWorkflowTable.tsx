@@ -42,6 +42,8 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
           <Th>Department</Th>
           <Th>Basic Portion</Th>
           <Th>Allowances</Th>
+          <Th>Overtime</Th>
+          <Th>Bonus</Th>
           <Th>Deductions</Th>
           <Th>Net Salary</Th>
           <Th>Workflow Status</Th>
@@ -51,7 +53,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
       <Tbody>
         {records.length === 0 ? (
           <Tr>
-            <td colSpan={8} className="px-3 py-10 text-center text-gray-400 text-sm">
+            <td colSpan={10} className="px-3 py-10 text-center text-gray-400 text-sm">
               No payroll records found for this company. Prepare payroll to begin reconciliation.
             </td>
           </Tr>
@@ -74,6 +76,12 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                 </Td>
                 <Td>
                   <span className="text-sm text-emerald-600 font-semibold">+₹{r.allowances.toLocaleString('en-IN')}</span>
+                </Td>
+                <Td>
+                  <span className="text-sm text-sky-600 font-semibold">{(r as any).overtime ? `+₹${Number((r as any).overtime).toLocaleString('en-IN')}` : '—'}</span>
+                </Td>
+                <Td>
+                  <span className={`text-sm font-semibold ${r.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{r.bonus ? `+₹${Number(r.bonus).toLocaleString('en-IN')}` : '—'}</span>
                 </Td>
                 <Td>
                   <span className="text-sm text-rose-600 font-semibold">-₹{r.deductions.toLocaleString('en-IN')}</span>

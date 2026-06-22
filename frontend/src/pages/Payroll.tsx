@@ -7,7 +7,8 @@ import {
   DollarSign,
   Eye,
   EyeOff,
-  Building2
+  Building2,
+  Gift
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -41,6 +42,7 @@ import {
 import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '@/utils/salarySlipGenerator';
 import { PayrollWorkbench } from '@/components/payroll/PayrollWorkbench';
 import { PayrollWorksheet } from '@/components/payroll/PayrollWorksheet';
+import { ApplyBonusModal } from '@/components/payroll/ApplyBonusModal';
 import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { deriveCompanyPayrollStatus } from '@/utils/payroll';
@@ -119,6 +121,9 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [monthFilter, setMonthFilter] = useState('June');
   const [viewPayslip, setViewPayslip] = useState<PayrollRecord | null>(null);
   const [worksheetRecord, setWorksheetRecord] = useState<PayrollRecord | null>(null);
+  const [showBonusModal, setShowBonusModal] = useState(false);
+  // Re-fetch payroll after a bonus is applied/removed so net salaries refresh.
+  const refreshPayroll = async () => { try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ } };
   const [auditRecord, setAuditRecord] = useState<PayrollRecord | null>(null);
   const [remarksInput, setRemarksInput] = useState('');
 
@@ -937,6 +942,11 @@ export const Payroll: React.FC<PayrollProps> = ({
               onChange={e => setMonthFilter(e.target.value)}
               options={[{ value: 'June', label: 'June 2026' }, { value: 'May', label: 'May 2026' }, { value: 'April', label: 'April 2026' }]}
             />
+            {canEdit && (
+              <Button variant="outline" icon={<Gift size={14} />} onClick={() => setShowBonusModal(true)}>
+                Apply Bonus
+              </Button>
+            )}
             <ExportMenu
               fileName={`Payroll_${currentCompany.name}`}
               title={`Payroll - ${currentCompany.name}`}
@@ -977,6 +987,17 @@ export const Payroll: React.FC<PayrollProps> = ({
         onGenerateSlips={handleGenerateSlips}
         onLock={handleLockPayroll}
         onRecalculate={handleRecalculate}
+      />
+
+      {/* ── Apply Bonus inside payroll (selected / department / company) ── */}
+      <ApplyBonusModal
+        open={showBonusModal}
+        onClose={() => setShowBonusModal(false)}
+        employees={companyEmployees as any[]}
+        companyId={activeCompanyId}
+        month={monthFilter}
+        year={2026}
+        onApplied={refreshPayroll}
       />
 
       {/* ── Salary Worksheet (spreadsheet-style earnings/deductions editor) ── */}

@@ -4,6 +4,7 @@ const prisma = require('../config/prisma');
 // in the rest of the file (payroll edit/delete 500'd with "idParam is not defined").
 const idParam = require('../utils/idParam');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
 
 // Helper to sync payroll for missing employees
 const syncPayrollForEmployees = async (companyWhere, month, year) => {
@@ -130,16 +131,22 @@ async function recalcOne(payroll, summary, emp, company) {
   const statutory = Math.round(basicSalary * (pfRate / 100)) + Math.round(basicSalary * (esicRate / 100)) + profTax;
   const lwpDeduction = Math.round(perDay * lwp);
   const deductions = statutory + lwpDeduction;
-  const netSalary = Math.max(0, (basicSalary + allowances) - deductions);
+
+  // Bonus = recurring (employee config) + one-time (festival/performance applied
+  // to this month). Folded into net per the new formula:
+  //   Net = Basic + Allowances (incl. OT) + Bonus − Deductions
+  const { total: bonus } = await bonusForPayroll(prisma, emp || { id: payroll.employeeId }, payroll.month, payroll.year);
+  const netSalary = Math.max(0, (basicSalary + allowances + bonus) - deductions);
 
   return prisma.payroll.update({
     where: { id: payroll.id },
     data: {
-      basicSalary, allowances, deductions, netSalary,
+      basicSalary, allowances, deductions, netSalary, bonus,
+      overtime: otAmount,
       presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
       halfDays: half, otHours: ot, payableDays,
       isOutdated: false, summarySyncedAt: new Date(),
-      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s).`,
+      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s)${bonus ? `, bonus ₹${bonus}` : ''}.`,
     },
   });
 }
@@ -341,7 +348,10 @@ exports.generate = async (req, res) => {
       const pfDeduction = Math.round(basicSalary * (pfRate / 100));
       const esicDeduction = Math.round(basicSalary * (esicRate / 100));
       const deductions = pfDeduction + esicDeduction + profTax;
-      const netSalary = Math.max(0, (basicSalary + allowances) - deductions);
+      // Recurring bonus from the employee's config (one-time bonuses are applied
+      // separately and picked up on the next recalc). Net includes the bonus.
+      const bonus = recurringBonusFor(emp, month, year);
+      const netSalary = Math.max(0, (basicSalary + allowances + bonus) - deductions);
 
       totalAmount += netSalary;
 
@@ -356,6 +366,8 @@ exports.generate = async (req, res) => {
         allowances,
         deductions,
         netSalary,
+        bonus,
+        overtime: 0,
         // Workflow: generate → Pending Approval (NOT paid). Approval and payment
         // are separate explicit stages (approve, then mark-paid).
         payrollStatus: 'pending_approval',
@@ -447,6 +459,95 @@ exports.generate = async (req, res) => {
     });
   } catch (error) {
     console.error('Error generating payroll', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// ── Bonus inside payroll ─────────────────────────────────────────────────────
+// Recompute a payroll row's bonus (recurring + one-time) and net salary in place,
+// preserving the already-computed basic/allowances/deductions. Locked rows skip.
+async function syncBonusOnPayroll(employeeId, month, year) {
+  const rows = await prisma.payroll.findMany({
+    where: { employeeId: Number(employeeId), month, year },
+    include: { employee: true },
+  });
+  for (const p of rows) {
+    if (p.payrollStatus === 'locked') continue;
+    const { total: bonus } = await bonusForPayroll(prisma, p.employee, month, year);
+    const netSalary = Math.max(0, (p.basicSalary + p.allowances + bonus) - p.deductions);
+    await prisma.payroll.update({ where: { id: p.id }, data: { bonus, netSalary } });
+  }
+}
+
+// POST /api/payroll/apply-bonus
+// Body: { companyId, month, year, scope: 'selected'|'department'|'company',
+//         employeeIds?, department?, bonusType, calcMethod, amount?, percent?, reason? }
+// Creates a one-time bonus per targeted employee and folds it into payroll.
+exports.applyBonus = async (req, res) => {
+  try {
+    const { companyId, month, year, scope, employeeIds, department,
+            bonusType, calcMethod, amount, percent, reason } = req.body;
+    if (!companyId || !month || !year || !bonusType) {
+      return res.status(400).json({ error: 'companyId, month, year and bonusType are required.' });
+    }
+
+    // Resolve target employees by scope.
+    const where = { status: { notIn: OFFBOARDED_STATUSES }, OR: [{ companyId: Number(companyId) }, { branchId: Number(companyId) }] };
+    if (scope === 'selected') {
+      const ids = (Array.isArray(employeeIds) ? employeeIds : []).map(Number).filter(Boolean);
+      if (!ids.length) return res.status(400).json({ error: 'No employees selected.' });
+      where.id = { in: ids };
+    } else if (scope === 'department') {
+      if (!department) return res.status(400).json({ error: 'department is required for department scope.' });
+      where.department = department;
+    }
+    const employees = await prisma.employee.findMany({ where });
+    if (!employees.length) return res.status(400).json({ error: 'No matching employees found.' });
+
+    const isPercent = String(calcMethod || '').toLowerCase().includes('percent');
+    const created = [];
+    for (const emp of employees) {
+      const resolved = isPercent ? Math.round((Number(emp.salary) || 0) * (Number(percent) || 0) / 100) : Math.round(Number(amount) || 0);
+      if (resolved <= 0) continue;
+      const row = await prisma.employeeBonus.create({
+        data: {
+          companyId: emp.companyId, employeeId: emp.id, source: 'payroll',
+          bonusType, calcMethod: calcMethod || 'Fixed Amount',
+          amount: resolved, percent: isPercent ? Number(percent) : null,
+          reason: reason || null, status: 'Active',
+          payrollMonth: String(month), payrollYear: Number(year),
+          approvedBy: req.user?.id || null, approvedByName: req.user?.name || null,
+          approvalDate: new Date(),
+          createdBy: req.user?.id || null, createdByName: req.user?.name || null,
+        },
+      });
+      created.push(row);
+      await syncBonusOnPayroll(emp.id, month, year);
+    }
+
+    res.status(201).json({ message: `Bonus applied to ${created.length} employee(s).`, count: created.length });
+  } catch (error) {
+    console.error('Error applying bonus', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// POST /api/payroll/remove-bonus  { employeeId, month, year }
+// Cancels one-time bonuses for the employee/month and recomputes net.
+exports.removeBonus = async (req, res) => {
+  try {
+    const { employeeId, month, year } = req.body;
+    if (!employeeId || !month || !year) {
+      return res.status(400).json({ error: 'employeeId, month and year are required.' });
+    }
+    await prisma.employeeBonus.updateMany({
+      where: { employeeId: Number(employeeId), payrollMonth: String(month), payrollYear: Number(year), status: 'Active' },
+      data: { status: 'Cancelled' },
+    });
+    await syncBonusOnPayroll(employeeId, month, year);
+    res.json({ message: 'Bonus removed from payroll.' });
+  } catch (error) {
+    console.error('Error removing bonus', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };

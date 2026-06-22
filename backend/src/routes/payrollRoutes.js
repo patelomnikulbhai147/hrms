@@ -21,6 +21,8 @@ router.post('/mark-paid', requirePermission('payroll', 'edit'), controller.markP
 router.post('/lock', requirePermission('payroll', 'edit'), controller.lock);
 router.post('/unlock', requirePermission('payroll', 'edit'), controller.unlock);
 router.post('/recalculate', requirePermission('payroll', 'edit'), controller.recalculate);
+router.post('/apply-bonus', requirePermission('payroll', 'edit'), controller.applyBonus);
+router.post('/remove-bonus', requirePermission('payroll', 'edit'), controller.removeBonus);
 router.post('/', requirePermission('payroll', 'create'), controller.create);
 router.patch('/:id/slip-event', requirePermission('payroll', 'view'), controller.slipEvent);
 router.post('/:id/email-slip', requirePermission('payroll', 'view'), controller.emailSlip);

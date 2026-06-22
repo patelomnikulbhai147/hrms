@@ -96,6 +96,7 @@ app.use('/api/attendance-vendors', attendanceVendorRoutes);
 app.use('/api/biometric-mappings', require('./src/routes/biometricMappingRoutes'));
 app.use('/api/attendance-import', require('./src/routes/attendanceImportRoutes'));
 app.use('/api/bonus', require('./src/routes/bonusRoutes'));
+app.use('/api/employee-bonuses', require('./src/routes/employeeBonusRoutes'));
 app.use('/api/location-masters', require('./src/routes/locationMasterRoutes'));
 app.use('/api/compliance-reports', require('./src/routes/complianceReportRoutes'));
 app.use('/api/nominees', require('./src/routes/nomineeRoutes'));

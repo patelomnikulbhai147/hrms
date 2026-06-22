@@ -414,6 +414,15 @@ export const api = {
     dashboard: async () => { return await apiFetch(`${BASE_URL}/bonus/dashboard`, { headers: getHeaders() }); },
   },
 
+  // Per-employee bonus ledger — the new bonus model (Employee + Payroll driven).
+  // One-time festival/performance bonuses + bonus history per employee.
+  employeeBonuses: {
+    list: async (query: string = '') => { return await apiFetch(`${BASE_URL}/employee-bonuses${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/employee-bonuses`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/employee-bonuses/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any, hard = false) => { return await apiFetch(`${BASE_URL}/employee-bonuses/${id}${hard ? '?hard=1' : ''}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
   // Biometric Code mappings (Phase 4 — mapping only, no attendance sync).
   // Maps the attendance-machine code to an employee without touching Employee IDs.
   biometricMappings: {
@@ -539,6 +548,9 @@ export const api = {
     lock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     unlock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     recalculate: async (data: { ids?: any[]; month?: string; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/payroll/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Bonus inside payroll — apply to selected/department/company, or remove.
+    applyBonus: async (data: { companyId: any; month: string; year: number; scope: 'selected' | 'department' | 'company'; employeeIds?: any[]; department?: string; bonusType: string; calcMethod: string; amount?: number; percent?: number; reason?: string }) => { return await apiFetch(`${BASE_URL}/payroll/apply-bonus`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    removeBonus: async (data: { employeeId: any; month: string; year: number }) => { return await apiFetch(`${BASE_URL}/payroll/remove-bonus`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Salary Worksheet (granular earnings/deductions enhancement layer)
     worksheet: {
       get: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { headers: getHeaders() }); },
