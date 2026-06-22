@@ -29,6 +29,7 @@ const SCRIPTS = [
   'addVendorArchitecture.js',     // attendance_devices cols + attendance_vendors (+ seed)
   'addDeviceConfigColumns.js',    // attendance_devices config columns
   'addEmployeeBonusModel.js',     // Employee bonus cols + Payroll.overtime + employee_bonuses
+  'createTendersContracts.js',    // ← Tenders & Contracts: Tender cols + contracts/contract_sites/deployments
 ];
 
 const results = [];

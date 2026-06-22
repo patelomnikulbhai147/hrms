@@ -603,6 +603,7 @@ model Employee {
   leaveBalances     LeaveBalance[]
   attendanceSummaries AttendanceSummary[]
   employeeBonuses   EmployeeBonus[]
+  deployments       Deployment[]
 }
 
 // ── Per-employee bonus ledger — the new bonus model ──────────────────────────
@@ -1038,13 +1039,97 @@ model Tender {
   tenderValue  Float    @default(0)
   publishDate  String?
   closingDate  String?
-  status       String   @default("Upcoming") // Upcoming / Live / Closed
+  status       String   @default("Draft") // Draft / Submitted / Under Review / Won / Lost / Cancelled
   documentPath String?
   category     String?  // Government / Private / HR Service / Recruitment / Vendor
   companyId    Int?
   notes        String?  @db.Text
+  // ── Tenders & Contracts lifecycle additions ──
+  clientName   String?
+  branchId     Int?
+  serviceType  String?  // e.g. Security / Housekeeping / Manpower
+  startDate    String?
+  endDate      String?
+  remarks      String?  @db.Text
+  convertedContractId Int? // set once a Won tender is converted to a Contract
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  contract     Contract?
+
   @@index([companyId])
+}
+
+// ── Contract (auto-created from a Won tender) ──────────────────────────────
+model Contract {
+  id             Int      @id @default(autoincrement())
+  contractNumber String?
+  contractName   String
+  clientName     String?
+  companyId      Int
+  branchId       Int?
+  tenderId       Int?     @unique // source tender (1:1)
+  contractValue  Float    @default(0)
+  startDate      String?
+  endDate        String?
+  status         String   @default("Active") // Active / Expiring Soon / Expired / Closed
+  documentPath   String?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tender         Tender?        @relation(fields: [tenderId], references: [id], onDelete: SetNull)
+  sites          ContractSite[]
+  deployments    Deployment[]
+
+  @@index([companyId])
+  @@map("contracts")
+}
+
+// ── Site under a contract (a contract can have many sites) ──────────────────
+model ContractSite {
+  id                Int      @id @default(autoincrement())
+  contractId        Int
+  companyId         Int
+  siteName          String
+  siteAddress       String?  @db.Text
+  siteSupervisor    String?
+  requiredHeadcount Int      @default(0)
+  status            String   @default("Active")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contract          Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  deployments       Deployment[]
+
+  @@index([contractId])
+  @@index([companyId])
+  @@map("contract_sites")
+}
+
+// ── Deployment of an employee to a site (split across sites supported) ──────
+model Deployment {
+  id                Int      @id @default(autoincrement())
+  contractId        Int
+  siteId            Int
+  employeeId        Int
+  companyId         Int
+  roleAtSite        String?
+  assignmentDate    String?
+  releaseDate       String?
+  allocationPercent Int      @default(100) // employee may be split across sites
+  status            String   @default("Assigned") // Assigned / Transferred / Released
+  notes             String?  @db.Text
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contract          Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  site              ContractSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  employee          Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([siteId])
+  @@index([employeeId])
+  @@index([companyId])
+  @@map("deployments")
 }
