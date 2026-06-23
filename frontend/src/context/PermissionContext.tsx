@@ -8,24 +8,31 @@ import { isCompanyArchived } from '@/utils/companyStatus';
 // This is intentionally scoped to ONLY these modules: any module not listed here
 // returns `false` from roleDefault(), so every EXISTING module keeps its current
 // strict deny-by-default behaviour and no existing isolation is weakened.
+// Permission model is consolidated to exactly four actions: VIEW, CREATE, EDIT,
+// EXPORT. delete/approve fold into EDIT and print folds into EXPORT (see the
+// can* helpers below), so only these four are configured anywhere.
 const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string, string[]>>>> = {
   tasks: {
     view: ['Company Head', 'HR', 'Finance', 'Employee'],
-    edit: ['Company Head', 'HR', 'Finance'],
     create: ['Company Head', 'HR', 'Finance'],
-    delete: ['Company Head', 'HR'],
+    edit: ['Company Head', 'HR', 'Finance'],
     export: ['Company Head', 'HR', 'Finance'],
-    approve: ['Company Head', 'HR'],
-    print: ['Company Head', 'HR', 'Finance'],
   },
+  // Tender Management = business opportunities. HR may VIEW only — they cannot
+  // touch tender value / commercial terms (enforced role-side too).
   tenders: {
     view: ['Company Head', 'HR', 'Finance'],
-    edit: ['Company Head', 'HR'],
-    create: ['Company Head', 'HR'],
-    delete: ['Company Head'],
+    create: ['Company Head'],
+    edit: ['Company Head'],
     export: ['Company Head', 'HR'],
-    approve: ['Company Head'],
-    print: ['Company Head', 'HR'],
+  },
+  // Contract Management = operational execution. HR manages deployment/assignment
+  // (so they need view), but commercial create/edit stays with Company Head.
+  contracts: {
+    view: ['Company Head', 'HR', 'Finance'],
+    create: ['Company Head'],
+    edit: ['Company Head'],
+    export: ['Company Head', 'HR'],
   },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
@@ -100,22 +107,18 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
 export const checkCanCreate = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
-  if (!checkCanEdit(module, authProfile, role)) return false;
+  // CREATE is INDEPENDENT of EDIT — a user may add new records without being able
+  // to modify existing ones. It still requires VIEW (you must see a module to use it).
+  if (!checkCanView(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
     return authProfile.permissions[module].create === true;
   }
   return roleDefault(module, 'create', role);
 };
 
-export const checkCanDelete = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
-  if (role === 'Super Admin') return true;
-  if (!authProfile) return false;
-  if (!checkCanEdit(module, authProfile, role)) return false;
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].delete === true;
-  }
-  return roleDefault(module, 'delete', role);
-};
+// DELETE is not a separate permission — removing an existing record requires EDIT.
+export const checkCanDelete = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
+  checkCanEdit(module, authProfile, role);
 
 export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
   if (role === 'Super Admin') return true;
@@ -143,25 +146,13 @@ export const checkCanExport = (module: AppModules, authProfile: UserAccount | nu
   return roleDefault(module, 'export', role);
 };
 
-export const checkCanApprove = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
-  if (role === 'Super Admin') return true;
-  if (!authProfile) return false;
-  if (!checkCanView(module, authProfile, role)) return false;
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].approve === true;
-  }
-  return roleDefault(module, 'approve', role);
-};
+// APPROVE is not a separate permission — approving an existing record requires EDIT.
+export const checkCanApprove = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
+  checkCanEdit(module, authProfile, role);
 
-export const checkCanPrint = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
-  if (role === 'Super Admin') return true;
-  if (!authProfile) return false;
-  if (!checkCanView(module, authProfile, role)) return false;
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].print === true;
-  }
-  return roleDefault(module, 'print', role);
-};
+// PRINT is not a separate permission — producing output is folded into EXPORT.
+export const checkCanPrint = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
+  checkCanExport(module, authProfile, role);
 
 export const PermissionProvider: React.FC<PermissionProviderProps> = ({
   children,

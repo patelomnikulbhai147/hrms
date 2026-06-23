@@ -25,9 +25,22 @@ function resolveScope(req) {
   let companyIds, primaryCompanyId;
   if (isSuperAdmin(req)) { companyIds = reqCompany ? [reqCompany] : []; primaryCompanyId = reqCompany; }
   else { const scope = companyScopeFor(req); companyIds = (reqCompany && scope.includes(reqCompany)) ? [reqCompany] : scope; primaryCompanyId = reqCompany || companyIds[0]; }
+  // ── Branch-level data scope (critical access control) ────────────────────────
+  // A BRANCH user — assigned specific branch(es) with NO company-wide ownership —
+  // must only ever see employees of those branches. The auth middleware already
+  // empties accessibleCompanyIds for such a user and fills accessibleBranchIds.
+  // We carry that through to EVERY report query (branchId / employee.branchId),
+  // never the UI, so branch totals are branch-specific. A company-level user
+  // (companyWideIds set) or Super Admin keeps full, all-branch company scope.
+  const branchIds = (req.user?.accessibleBranchIds || []).map(Number).filter(Boolean);
+  const companyWide = req.user?.accessibleCompanyIds || [];
+  const branchScoped = !isSuperAdmin(req) && companyWide.length === 0 && branchIds.length > 0;
   const startDate = b.startDate || null, endDate = b.endDate || null;
   const year = startDate && /^\d{4}/.test(startDate) ? parseInt(startDate.slice(0, 4), 10) : null;
-  return { companyIds, primaryCompanyId, branch: b.branch || null, department: b.department || null, startDate, endDate, year, employeeId: idParam(b.employeeId) || null };
+  // Wage-compliance reports receive the State Wage Master + branch→state map from
+  // the client (it lives in the Labour Compliance settings). Additive — every other
+  // report ignores these. wageRules: { State: { unskilled, semiSkilled, skilled, highlySkilled } }.
+  return { companyIds, primaryCompanyId, branchScoped, branchIds, branch: b.branch || null, department: b.department || null, startDate, endDate, year, employeeId: idParam(b.employeeId) || null, wageRules: b.wageRules || null, branchStateMap: b.branchStateMap || null };
 }
 
 async function companyMeta(companyId) {
@@ -45,9 +58,13 @@ async function companyMeta(companyId) {
   };
 }
 
-const empWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.branch) w.branchLocation = s.branch; if (s.employeeId) w.id = s.employeeId; return w; };
+const empWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.branch) w.branchLocation = s.branch; if (s.employeeId) w.id = s.employeeId; if (s.branchScoped) w.branchId = { in: s.branchIds }; return w; };
 const dateWhere = (s) => (s.startDate && s.endDate) ? { date: { gte: s.startDate, lte: s.endDate } } : {};
-const payrollWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.employeeId) w.employeeId = s.employeeId; if (s.year) w.year = s.year; return w; };
+const payrollWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.employeeId) w.employeeId = s.employeeId; if (s.year) w.year = s.year; if (s.branchScoped) w.employee = { branchId: { in: s.branchIds } }; return w; };
+// Branch restriction for related tables (payroll / attendance / leave / overtime)
+// that carry no branchId column — scoped through their `employee` relation so a
+// branch user's totals never include another branch's records. {} for company scope.
+const branchRel = (s) => (s.branchScoped ? { employee: { branchId: { in: s.branchIds } } } : {});
 
 const empCols = (extra = []) => [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Department' }, ...extra];
 
@@ -57,7 +74,7 @@ const scopedEmps = (s) => prisma.employee.findMany({ where: empWhere(s), orderBy
 const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('en-IN'); } catch { return String(d); } };
 const monthOf = (d) => { if (!d) return null; const dt = new Date(d); return isNaN(dt) ? null : dt.getMonth(); };
 function yearsBetween(start, end) { if (!start) return 0; const s = new Date(start), e = end ? new Date(end) : new Date(); return (e - s) / (1000 * 60 * 60 * 24 * 365.25); }
-async function lastBasicMap(s) { const pay = await prisma.payroll.findMany({ where: { companyId: { in: s.companyIds } }, orderBy: { year: 'desc' } }); const m = new Map(); for (const p of pay) if (!m.has(p.employeeId)) m.set(p.employeeId, p.basicSalary); return m; }
+async function lastBasicMap(s) { const pay = await prisma.payroll.findMany({ where: { companyId: { in: s.companyIds }, ...branchRel(s) }, orderBy: { year: 'desc' } }); const m = new Map(); for (const p of pay) if (!m.has(p.employeeId)) m.set(p.employeeId, p.basicSalary); return m; }
 
 // ── Report registry ──────────────────────────────────────────────────────────
 // Each entry: { label, category, available, generate(scope, ctx) }.
@@ -147,6 +164,19 @@ const REPORTS = {
   gratuity_report: { label: 'Gratuity Report', category: 'Gratuity & Settlement', available: true, generate: (s) => gratuityReport(s) },
   fnf_settlement: { label: 'Full & Final Settlement', category: 'Gratuity & Settlement', available: true, generate: (s) => fnfSettlement(s) },
   exit_settlement: { label: 'Exit Settlement Report', category: 'Gratuity & Settlement', available: true, generate: (s) => exitReport(s) },
+
+  // ════════════════ Wage Reports (State-Wise Minimum Wage) ════════════════
+  // Computed from existing employees + attendance summaries + the State Wage
+  // Master (client-supplied). Branch-scoped like every other report.
+  wage_register: { label: 'Wage Register', category: 'Wage Reports', available: true, generate: (s) => wageRegister(s) },
+  daily_wage_register: { label: 'Daily Wage Register', category: 'Wage Reports', available: true, generate: (s) => dailyWageRegister(s) },
+  monthly_wage_register: { label: 'Monthly Wage Register', category: 'Wage Reports', available: true, generate: (s) => monthlyWageRegister(s) },
+  wage_overtime_register: { label: 'Overtime Register (Wages)', category: 'Wage Reports', available: true, generate: (s) => overtimeRegister(s) },
+  state_wage_compliance: { label: 'State Compliance Report', category: 'Wage Reports', available: true, generate: (s) => stateWageCompliance(s) },
+  branch_wage_report: { label: 'Branch Wage Report', category: 'Wage Reports', available: true, generate: (s) => branchWageReport(s) },
+  labour_cost_summary: { label: 'Labour Cost Summary', category: 'Wage Reports', available: true, generate: (s) => labourCostSummary(s) },
+  wage_comparison: { label: 'Wage Comparison Report', category: 'Wage Reports', available: true, generate: (s) => wageComparison(s) },
+  min_wage_violation: { label: 'Minimum Wage Violation Report', category: 'Wage Reports', available: true, generate: (s) => minWageViolation(s) },
 
   // ════════════════ 10) Bonus Reports ════════════════
   bonus_register: { label: 'Bonus Register (Statutory)', category: 'Bonus Reports', available: true, generate: (s) => bonusReport(s, false) },
@@ -255,7 +285,24 @@ async function salaryReg(s) {
 }
 async function salarySlip(s) {
   const pay = await prisma.payroll.findMany({ where: payrollWhere(s), orderBy: { employeeName: 'asc' } });
-  const rows = pay.map((p, i) => ({ sr: i + 1, code: p.employeeId, name: p.employeeName, department: p.department, period: `${p.month} ${p.year}`, payableDays: p.payableDays, basic: r2(p.basicSalary), allowances: r2(p.allowances), bonus: r2(p.bonus || 0), deductions: r2(p.deductions), tax: r2(p.tax || 0), net: r2(p.netSalary), status: p.paymentStatus }));
+  // Join the employee master so the printable slip template can show statutory
+  // identifiers (UAN / PF No / ESIC No), designation, work place and bank A/C —
+  // all REAL stored fields. Attendance day counts come straight off the payroll
+  // record (no recomputation — payroll logic is untouched).
+  const emps = await scopedEmps(s); const em = new Map(emps.map(e => [e.id, e]));
+  const rows = pay.map((p, i) => {
+    const e = em.get(p.employeeId) || {};
+    return {
+      sr: i + 1, code: e.employeeId || p.employeeId, name: p.employeeName, department: p.department,
+      designation: e.designation || '', period: `${p.month} ${p.year}`, month: p.month, year: p.year,
+      uan: e.uan || '', pfNumber: e.pfNumber || '', esiNumber: e.esiNumber || '',
+      workPlace: e.branchLocation || e.location || '', accountNumber: e.accountNumber || '',
+      presentDays: p.presentDays ?? 0, payableDays: p.payableDays ?? 0, clDays: p.clDays ?? 0,
+      slDays: p.slDays ?? 0, plDays: p.plDays ?? 0, lwpDays: p.lwpDays ?? 0, halfDays: p.halfDays ?? 0, otHours: p.otHours ?? 0,
+      basic: r2(p.basicSalary), allowances: r2(p.allowances), bonus: r2(p.bonus || 0),
+      deductions: r2(p.deductions), tax: r2(p.tax || 0), net: r2(p.netSalary), status: p.paymentStatus,
+    };
+  });
   const summary = { slips: rows.length, net: r2(rows.reduce((t, r) => t + r.net, 0)) };
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'period', label: 'Period' }, { key: 'payableDays', label: 'Pay Days' }, { key: 'basic', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'deductions', label: 'Deductions' }, { key: 'tax', label: 'Tax' }, { key: 'net', label: 'Net Pay' }, { key: 'status', label: 'Status' }], rows, summary, warnings: ['One row per generated payslip. Use the per-employee filter for a single slip.'] };
 }
@@ -301,7 +348,7 @@ async function incrementReport(s) {
 
 // ── Attendance generators ────────────────────────────────────────────────────
 async function dailyAttendance(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: [{ date: 'asc' }] });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: [{ date: 'asc' }] });
   const rows = att.map((a, i) => ({ sr: i + 1, date: a.date, name: a.employeeName, department: a.department, status: a.status, clockIn: a.clockIn, clockOut: a.clockOut, hours: a.hoursWorked }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'status', label: 'Status' }, { key: 'clockIn', label: 'In' }, { key: 'clockOut', label: 'Out' }, { key: 'hours', label: 'Hours' }], rows };
 }
@@ -312,14 +359,14 @@ async function monthlyAttendance(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'period', label: 'Period' }, { key: 'present', label: 'Present' }, { key: 'absent', label: 'Absent' }, { key: 'leave', label: 'Leave' }, { key: 'lwp', label: 'LWP' }, { key: 'half', label: 'Half' }, { key: 'ot', label: 'OT Hrs' }, { key: 'payable', label: 'Payable' }], rows };
 }
 async function musterRoll(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) } });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) } });
   const m = new Map();
   for (const a of att) { const k = a.employeeId; if (!m.has(k)) m.set(k, { name: a.employeeName, department: a.department, present: 0, absent: 0, leave: 0, half: 0, total: 0, hours: 0 }); const r = m.get(k); r.total++; r.hours += a.hoursWorked || 0; const st = (a.status || '').toLowerCase(); if (st.includes('present')) r.present++; else if (st.includes('absent')) r.absent++; else if (st.includes('half')) r.half++; else if (st.includes('leave')) r.leave++; }
   const rows = [...m.values()].map((r, i) => ({ sr: i + 1, name: r.name, department: r.department, present: r.present, absent: r.absent, leave: r.leave, half: r.half, total: r.total, hours: r2(r.hours) }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'present', label: 'Present' }, { key: 'absent', label: 'Absent' }, { key: 'leave', label: 'Leave' }, { key: 'half', label: 'Half' }, { key: 'total', label: 'Days' }, { key: 'hours', label: 'Hours' }], rows };
 }
 async function overtimeRegister(s) {
-  const ot = await prisma.overtime.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: { date: 'desc' } });
+  const ot = await prisma.overtime.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: { date: 'desc' } });
   const rows = ot.map((o, i) => ({ sr: i + 1, name: o.employeeName, department: o.department || '', date: o.date, inTime: o.inTime, outTime: o.outTime, otHours: o.otHours, type: o.type, status: o.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'date', label: 'Date' }, { key: 'inTime', label: 'In' }, { key: 'outTime', label: 'Out' }, { key: 'otHours', label: 'OT Hrs' }, { key: 'type', label: 'Type' }, { key: 'status', label: 'Status' }], rows };
 }
@@ -329,7 +376,7 @@ async function shiftReport(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'shift', label: 'Shift' }, { key: 'timing', label: 'Timing' }], rows };
 }
 async function lateComing(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: [{ date: 'asc' }] });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: [{ date: 'asc' }] });
   const isLate = (a) => { const st = (a.status || '').toLowerCase(); if (st.includes('late')) return true; const ci = a.clockIn; return ci && /^\d{2}:\d{2}/.test(ci) && ci.slice(0, 5) > '09:30'; };
   const rows = att.filter(isLate).map((a, i) => ({ sr: i + 1, date: a.date, name: a.employeeName, department: a.department, clockIn: a.clockIn, status: a.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'clockIn', label: 'Clock In' }, { key: 'status', label: 'Status' }], rows, warnings: ['Late = status marked late, or clock-in after 09:30.'] };
@@ -343,14 +390,14 @@ async function attendanceSummaryReport(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'present', label: 'Present' }, { key: 'absent', label: 'Absent' }, { key: 'leave', label: 'Leave' }, { key: 'lwp', label: 'LWP' }, { key: 'half', label: 'Half' }, { key: 'ot', label: 'OT Hrs' }, { key: 'payable', label: 'Payable' }], rows };
 }
 async function attendanceRegister(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: [{ date: 'asc' }] });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: [{ date: 'asc' }] });
   const rows = att.map((a, i) => ({ sr: i + 1, date: a.date, name: a.employeeName, department: a.department, status: a.status, clockIn: a.clockIn, clockOut: a.clockOut, hours: a.hoursWorked }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'status', label: 'Status' }, { key: 'clockIn', label: 'In' }, { key: 'clockOut', label: 'Out' }, { key: 'hours', label: 'Hours' }], rows };
 }
 
 // ── Leave generators ─────────────────────────────────────────────────────────
 async function leaveRegister(s) {
-  const lv = await prisma.leaveRequest.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}) }, orderBy: { fromDate: 'desc' } });
+  const lv = await prisma.leaveRequest.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...branchRel(s) }, orderBy: { fromDate: 'desc' } });
   const rows = lv.map((l, i) => ({ sr: i + 1, name: l.employeeName, department: l.department, type: l.leaveType, from: l.fromDate, to: l.toDate, days: l.days, paid: l.paidDays, lwp: l.lwpDays, status: l.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'type', label: 'Type' }, { key: 'from', label: 'From' }, { key: 'to', label: 'To' }, { key: 'days', label: 'Days' }, { key: 'paid', label: 'Paid' }, { key: 'lwp', label: 'LWP' }, { key: 'status', label: 'Status' }], rows };
 }
@@ -361,7 +408,7 @@ async function leaveBalance(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'cl', label: 'CL Bal' }, { key: 'pl', label: 'PL Bal' }, { key: 'sl', label: 'SL Bal' }, { key: 'clUsed', label: 'CL Used' }, { key: 'plUsed', label: 'PL Used' }, { key: 'slUsed', label: 'SL Used' }, { key: 'carryForward', label: 'C/F' }], rows };
 }
 async function leaveSummary(s) {
-  const lv = await prisma.leaveRequest.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}) } });
+  const lv = await prisma.leaveRequest.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...branchRel(s) } });
   const m = new Map();
   for (const l of lv) { const k = l.employeeId; if (!m.has(k)) m.set(k, { name: l.employeeName, department: l.department, cl: 0, pl: 0, sl: 0, other: 0, total: 0, lwp: 0 }); const r = m.get(k); const t = (l.leaveType || '').toUpperCase(); if (t.includes('CL') || t.includes('CASUAL')) r.cl += l.days; else if (t.includes('PL') || t.includes('PRIVILEGE') || t.includes('EARNED')) r.pl += l.days; else if (t.includes('SL') || t.includes('SICK')) r.sl += l.days; else r.other += l.days; r.total += l.days; r.lwp += l.lwpDays || 0; }
   const rows = [...m.values()].map((r, i) => ({ sr: i + 1, name: r.name, department: r.department, cl: r2(r.cl), pl: r2(r.pl), sl: r2(r.sl), other: r2(r.other), total: r2(r.total), lwp: r2(r.lwp) }));
@@ -447,7 +494,7 @@ async function bonusFormD(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'particular', label: 'Particulars' }, { key: 'value', label: 'Value' }], rows, warnings: ['Payment of Bonus Act — Form D (Annual return of bonus paid).'] };
 }
 async function annualWageReturn(s) {
-  const pay = await prisma.payroll.findMany({ where: { companyId: { in: s.companyIds }, ...(s.year ? { year: s.year } : {}), ...(s.department ? { department: s.department } : {}) } });
+  const pay = await prisma.payroll.findMany({ where: { companyId: { in: s.companyIds }, ...(s.year ? { year: s.year } : {}), ...(s.department ? { department: s.department } : {}), ...branchRel(s) } });
   const m = new Map();
   for (const p of pay) { const k = p.employeeId; if (!m.has(k)) m.set(k, { name: p.employeeName, department: p.department, months: 0, basic: 0, gross: 0, deductions: 0, net: 0 }); const r = m.get(k); r.months++; r.basic += p.basicSalary; r.gross += grossOf(p); r.deductions += p.deductions; r.net += p.netSalary; }
   const rows = [...m.values()].map((r, i) => ({ sr: i + 1, name: r.name, department: r.department, months: r.months, basic: r2(r.basic), gross: r2(r.gross), deductions: r2(r.deductions), net: r2(r.net) }));
@@ -583,7 +630,7 @@ async function taxAnnualPerEmployee(s) {
 async function form16(s) {
   const emps = await scopedEmps(s); const em = new Map(emps.map(e => [e.id, e]));
   const agg = await taxAnnualPerEmployee(s);
-  const rows = agg.map((r, i) => { const e = em.get(r.id) || {}; const taxable = Math.max(0, r.gross - r.deductions); return { sr: i + 1, code: e.employeeId || '', name: r.name, pan: e.pan || '', grossSalary: r2(r.gross), deductions: r2(r.deductions), taxable: r2(taxable), tds: r2(r.tds) }; });
+  const rows = agg.map((r, i) => { const e = em.get(r.id) || {}; const taxable = Math.max(0, r.gross - r.deductions); return { sr: i + 1, code: e.employeeId || '', name: r.name, pan: e.pan || '', designation: e.designation || '', department: r.department || e.department || '', grossSalary: r2(r.gross), deductions: r2(r.deductions), taxable: r2(taxable), tds: r2(r.tds) }; });
   const summary = { employees: rows.length, tds: r2(rows.reduce((t, r) => t + r.tds, 0)) };
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'pan', label: 'PAN' }, { key: 'grossSalary', label: 'Gross Salary' }, { key: 'deductions', label: 'Deductions' }, { key: 'taxable', label: 'Taxable' }, { key: 'tds', label: 'TDS Deducted' }], rows, summary, warnings: ['Form 16 Part B summary — annual salary & TDS consolidated from payroll. Pick a year via the date range.'] };
 }
@@ -789,7 +836,7 @@ async function companyAnnualSalary(s) {
 
 // ── Restored attendance generators ───────────────────────────────────────────
 async function weeklyAttendance(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) } });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) } });
   const weekOf = (d) => { const dt = new Date(d); const day = (dt.getDay() + 6) % 7; const mon = new Date(dt); mon.setDate(dt.getDate() - day); return mon.toISOString().slice(0, 10); };
   const m = new Map();
   for (const a of att) { const wk = weekOf(a.date); const k = `${a.employeeId}|${wk}`; if (!m.has(k)) m.set(k, { name: a.employeeName, department: a.department, week: wk, present: 0, absent: 0, leave: 0, half: 0, wo: 0, holiday: 0 }); const r = m.get(k); const st = (a.status || '').toLowerCase(); if (/present|on duty|wfo|wfh|work from home/.test(st)) r.present++; else if (/half/.test(st)) r.half++; else if (/leave/.test(st)) r.leave++; else if (/holiday/.test(st)) r.holiday++; else if (/weekly off|week off/.test(st)) r.wo++; else r.absent++; }
@@ -797,18 +844,18 @@ async function weeklyAttendance(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'week', label: 'Week' }, { key: 'present', label: 'P' }, { key: 'absent', label: 'A' }, { key: 'leave', label: 'L' }, { key: 'half', label: 'HD' }, { key: 'wo', label: 'WO' }, { key: 'holiday', label: 'H' }], rows, warnings: rows.length ? [] : ['No attendance in the selected range. Pick a From/To date range.'] };
 }
 async function missingPunch(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: [{ date: 'asc' }] });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: [{ date: 'asc' }] });
   const rows = att.filter(a => { const st = (a.status || '').toLowerCase(); const present = /present|on duty|wfo|half|wfh|work from home/.test(st); return present && (!a.clockIn || !a.clockOut); }).map((a, i) => ({ sr: i + 1, date: a.date, name: a.employeeName, department: a.department, clockIn: a.clockIn || '— missing', clockOut: a.clockOut || '— missing', status: a.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'clockIn', label: 'In' }, { key: 'clockOut', label: 'Out' }, { key: 'status', label: 'Status' }], rows, warnings: ['Rows where an employee was present but a punch (in/out) is missing.'] };
 }
 async function earlyExit(s) {
-  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) }, orderBy: [{ date: 'asc' }] });
+  const att = await prisma.attendance.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) }, orderBy: [{ date: 'asc' }] });
   const isEarly = (a) => { const st = (a.status || '').toLowerCase(); if (/early/.test(st)) return true; const co = a.clockOut; return co && /^\d{2}:\d{2}/.test(co) && co.slice(0, 5) < '18:00'; };
   const rows = att.filter(a => { const st = (a.status || '').toLowerCase(); const present = /present|on duty|wfo|half/.test(st); return present && isEarly(a); }).map((a, i) => ({ sr: i + 1, date: a.date, name: a.employeeName, department: a.department, clockOut: a.clockOut, status: a.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'date', label: 'Date' }, { key: 'name', label: 'Employee' }, { key: 'department', label: 'Dept' }, { key: 'clockOut', label: 'Clock Out' }, { key: 'status', label: 'Status' }], rows, warnings: ['Early exit = status marked early, or clock-out before 18:00.'] };
 }
 async function overtimeSummary(s) {
-  const ot = await prisma.overtime.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s) } });
+  const ot = await prisma.overtime.findMany({ where: { companyId: { in: s.companyIds }, ...(s.department ? { department: s.department } : {}), ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...dateWhere(s), ...branchRel(s) } });
   const m = new Map();
   for (const o of ot) { const k = o.employeeId || o.empId; if (!m.has(k)) m.set(k, { name: o.employeeName, department: o.department || '', entries: 0, hours: 0, approved: 0 }); const r = m.get(k); r.entries++; r.hours += Number(o.otHours || o.overtimeHours || 0); if (/approved/i.test(o.status || '')) r.approved += Number(o.otHours || o.overtimeHours || 0); }
   const rows = [...m.values()].map((r, i) => ({ sr: i + 1, name: r.name, department: r.department, entries: r.entries, hours: r2(r.hours), approved: r2(r.approved) }));
@@ -867,12 +914,12 @@ async function identityCardRegister(s) {
 
 // ── Document generators ──────────────────────────────────────────────────────
 async function documentRegister(s) {
-  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}) }, orderBy: { uploadedOn: 'desc' } });
+  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...(s.branchScoped ? { branchId: { in: s.branchIds } } : {}) }, orderBy: { uploadedOn: 'desc' } });
   const rows = docs.map((d, i) => ({ sr: i + 1, name: d.name, type: d.type, employee: d.employeeName || '', number: d.documentNumber || '', expiry: d.expiryDate || '', status: d.status, uploadedBy: d.uploadedBy, uploadedOn: d.uploadedOn }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'name', label: 'Document' }, { key: 'type', label: 'Type' }, { key: 'employee', label: 'Employee' }, { key: 'number', label: 'Doc No' }, { key: 'expiry', label: 'Expiry' }, { key: 'status', label: 'Status' }, { key: 'uploadedBy', label: 'Uploaded By' }, { key: 'uploadedOn', label: 'Uploaded On' }], rows, warnings: rows.length ? [] : ['No documents uploaded for the selected scope.'] };
 }
 async function docTypeReport(s, keywords, label) {
-  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}) } });
+  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...(s.branchScoped ? { branchId: { in: s.branchIds } } : {}) } });
   const match = docs.filter(d => { const t = `${d.type || ''} ${d.name || ''}`.toLowerCase(); return keywords.some(k => t.includes(k)); });
   const rows = match.map((d, i) => ({ sr: i + 1, employee: d.employeeName || '', name: d.name, number: d.documentNumber || '', issue: d.issueDate || '', expiry: d.expiryDate || '', status: d.status }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'employee', label: 'Employee' }, { key: 'name', label: 'Document' }, { key: 'number', label: `${label} No` }, { key: 'issue', label: 'Issue' }, { key: 'expiry', label: 'Expiry' }, { key: 'status', label: 'Status' }], rows, warnings: rows.length ? [] : [`No ${label} documents uploaded yet.`] };
@@ -890,7 +937,7 @@ async function bankDocumentReport(s) {
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'bank', label: 'Bank' }, { key: 'account', label: 'Account No' }, { key: 'ifsc', label: 'IFSC' }, { key: 'holder', label: 'Holder' }, { key: 'status', label: 'Status' }], rows, warnings: missing ? [`${missing} employee(s) have incomplete bank details.`] : [] };
 }
 async function pendingDocuments(s) {
-  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}) } });
+  const docs = await prisma.document.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...(s.branchScoped ? { branchId: { in: s.branchIds } } : {}) } });
   const pending = docs.filter(d => !/verif|approv|complete/i.test(d.status || ''));
   const rows = pending.map((d, i) => ({ sr: i + 1, employee: d.employeeName || '', name: d.name, type: d.type, status: d.status, uploadedOn: d.uploadedOn }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'employee', label: 'Employee' }, { key: 'name', label: 'Document' }, { key: 'type', label: 'Type' }, { key: 'status', label: 'Status' }, { key: 'uploadedOn', label: 'Uploaded On' }], rows, warnings: rows.length ? ['Documents awaiting verification/approval.'] : ['No pending documents — all verified.'] };
@@ -994,6 +1041,115 @@ const DESCRIPTIONS = {
   gratuity_report: 'Gratuity eligibility & amount per employee.',
   fnf_settlement: 'Full & Final settlement (gratuity + leave encashment).',
 };
+// ── Wage & labour-cost generators (State-Wise Minimum Wage compliance) ─────────
+// Read-only: derived from EXISTING employees + attendance summaries + the client's
+// State Wage Master (passed in scope.wageRules / scope.branchStateMap). No new
+// tables, no change to payroll/attendance calculations. Branch-scoped via the
+// shared empWhere/attendance scope, so a branch user only sees their branch.
+const SKILL_OF = (cat) => {
+  const c = String(cat || '').toLowerCase();
+  if (c.includes('highly')) return 'highlySkilled';
+  if (c.includes('semi')) return 'semiSkilled';
+  if (c.includes('unskill')) return 'unskilled';
+  if (c.includes('skill')) return 'skilled';
+  return '';
+};
+const SKILL_LABEL = { unskilled: 'Unskilled', semiSkilled: 'Semi Skilled', skilled: 'Skilled', highlySkilled: 'Highly Skilled' };
+// Canonical comparison key — case-insensitive, whitespace-tolerant. Branch/state
+// names are matched via nz() so "Ahmedabad" / "AHMEDABAD" / " ahmedabad " unify.
+const nz = (v) => String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toLowerCase();
+const wageStateOf = (s, e) => {
+  const map = s.branchStateMap || {};
+  const b = nz(e.branchLocation);
+  if (!b) return e.state || '';
+  // exact normalized match, then partial (branch contains key or key contains branch)
+  const exact = Object.keys(map).find(k => nz(k) === b);
+  if (exact) return map[exact];
+  const partial = Object.keys(map).find(k => { const nk = nz(k); return nk && (b.includes(nk) || nk.includes(b)); });
+  if (partial) return map[partial];
+  return e.state || '';
+};
+const minWageOf = (s, state, skill) => {
+  if (!state || !skill || !s.wageRules) return null;
+  const key = Object.keys(s.wageRules).find(k => nz(k) === nz(state));
+  const rates = key ? s.wageRules[key] : null;
+  const v = rates ? rates[skill] : null;
+  return (typeof v === 'number' && !isNaN(v)) ? v : null;
+};
+async function presentDaysMap(s) {
+  const sum = await prisma.attendanceSummary.findMany({ where: { companyId: { in: s.companyIds }, ...(s.employeeId ? { employeeId: s.employeeId } : {}), ...(s.year ? { year: s.year } : {}) } });
+  const m = new Map();
+  for (const r of sum) { const cur = m.get(r.employeeId) || { present: 0, payable: 0 }; cur.present += (r.presentDays || 0); cur.payable += (r.payableDays || 0); m.set(r.employeeId, cur); }
+  return m;
+}
+async function wageRows(s) {
+  const emps = await scopedEmps(s);
+  const days = await presentDaysMap(s);
+  const noRules = !s.wageRules || Object.keys(s.wageRules).length === 0;
+  const rows = emps.map((e) => {
+    const skill = SKILL_OF(e.category);
+    const state = wageStateOf(s, e);
+    const minWage = minWageOf(s, state, skill);
+    const present = r2((days.get(e.id) || {}).present || 0);
+    const monthly = Number(e.salary) || 0;
+    const dailySalary = r2(monthly / 26);
+    const compliant = minWage == null ? null : dailySalary >= minWage;
+    return { e, skill, skillLabel: SKILL_LABEL[skill] || (e.category || '—'), state, minWage, present, monthly, dailySalary, compliant };
+  });
+  return { rows, noRules };
+}
+const wageWarn = (noRules) => noRules ? ['No State Wage Master configured. Set wage rules in Settings → Labour Compliance to populate minimum-wage figures.'] : [];
+
+async function wageRegister(s) {
+  const { rows, noRules } = await wageRows(s);
+  const out = rows.map((r, i) => ({ sr: i + 1, code: r.e.employeeId, name: r.e.name, skill: r.skillLabel, state: r.state || '—', branch: r.e.branchLocation || '—', present: r.present, minWage: r.minWage == null ? '—' : r.minWage, statutory: r.minWage == null ? '—' : r2(r.present * r.minWage), dailySalary: r.dailySalary, status: r.compliant == null ? '—' : (r.compliant ? 'Compliant' : 'Below Min') }));
+  const summary = { employees: rows.length, belowMinimum: rows.filter(r => r.compliant === false).length };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'skill', label: 'Skill' }, { key: 'state', label: 'State' }, { key: 'branch', label: 'Branch' }, { key: 'present', label: 'Present Days' }, { key: 'minWage', label: 'Min Wage/Day (₹)' }, { key: 'statutory', label: 'Statutory Earned (₹)' }, { key: 'dailySalary', label: 'Daily Pay (₹)' }, { key: 'status', label: 'Compliance' }], rows: out, summary, warnings: wageWarn(noRules) };
+}
+async function dailyWageRegister(s) {
+  const { rows, noRules } = await wageRows(s);
+  const out = rows.map((r, i) => ({ sr: i + 1, code: r.e.employeeId, name: r.e.name, skill: r.skillLabel, state: r.state || '—', minWage: r.minWage == null ? '—' : r.minWage, dailySalary: r.dailySalary, gap: r.minWage == null ? '—' : r2(r.dailySalary - r.minWage), status: r.compliant == null ? '—' : (r.compliant ? 'Compliant' : 'Below Min') }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'skill', label: 'Skill' }, { key: 'state', label: 'State' }, { key: 'minWage', label: 'Min Wage/Day (₹)' }, { key: 'dailySalary', label: 'Daily Pay (₹)' }, { key: 'gap', label: 'Gap (₹)' }, { key: 'status', label: 'Compliance' }], rows: out, warnings: wageWarn(noRules) };
+}
+async function monthlyWageRegister(s) {
+  const { rows, noRules } = await wageRows(s);
+  const out = rows.map((r, i) => ({ sr: i + 1, code: r.e.employeeId, name: r.e.name, skill: r.skillLabel, present: r.present, minWage: r.minWage == null ? '—' : r.minWage, statutory: r.minWage == null ? '—' : r2(r.present * r.minWage), monthly: r.monthly, status: r.compliant == null ? '—' : (r.compliant ? 'Compliant' : 'Below Min') }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'skill', label: 'Skill' }, { key: 'present', label: 'Present Days' }, { key: 'minWage', label: 'Min Wage/Day (₹)' }, { key: 'statutory', label: 'Statutory Monthly (₹)' }, { key: 'monthly', label: 'Actual Monthly (₹)' }, { key: 'status', label: 'Compliance' }], rows: out, warnings: wageWarn(noRules) };
+}
+async function stateWageCompliance(s) {
+  const { rows, noRules } = await wageRows(s);
+  const m = new Map();
+  for (const r of rows) { const k = r.state || 'Unmapped'; const a = m.get(k) || { state: k, employees: 0, compliant: 0, below: 0, unknown: 0 }; a.employees++; if (r.compliant === true) a.compliant++; else if (r.compliant === false) a.below++; else a.unknown++; m.set(k, a); }
+  const out = [...m.values()].sort((a, b) => b.employees - a.employees).map((a, i) => ({ sr: i + 1, state: a.state, employees: a.employees, compliant: a.compliant, below: a.below, unknown: a.unknown, rate: a.employees ? `${r2((a.compliant / a.employees) * 100)}%` : '—' }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'state', label: 'State' }, { key: 'employees', label: 'Employees' }, { key: 'compliant', label: 'Compliant' }, { key: 'below', label: 'Below Min' }, { key: 'unknown', label: 'No Rule' }, { key: 'rate', label: 'Compliance %' }], rows: out, summary: { belowMinimum: rows.filter(r => r.compliant === false).length }, warnings: wageWarn(noRules) };
+}
+async function branchWageReport(s) {
+  const { rows, noRules } = await wageRows(s);
+  const m = new Map();
+  for (const r of rows) { const k = r.e.branchLocation || 'Head Office'; const a = m.get(k) || { branch: k, headcount: 0, present: 0, cost: 0, below: 0 }; a.headcount++; a.present += r.present; a.cost += r.monthly; if (r.compliant === false) a.below++; m.set(k, a); }
+  const out = [...m.values()].sort((a, b) => b.cost - a.cost).map((a, i) => ({ sr: i + 1, branch: a.branch, headcount: a.headcount, present: r2(a.present), cost: r2(a.cost), below: a.below }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'branch', label: 'Branch' }, { key: 'headcount', label: 'Wage Employees' }, { key: 'present', label: 'Total Present Days' }, { key: 'cost', label: 'Monthly Labour Cost (₹)' }, { key: 'below', label: 'Below Min' }], rows: out, warnings: wageWarn(noRules) };
+}
+async function labourCostSummary(s) {
+  const { rows, noRules } = await wageRows(s);
+  const m = new Map();
+  for (const r of rows) { const k = r.skillLabel; const a = m.get(k) || { skill: k, headcount: 0, cost: 0, days: 0 }; a.headcount++; a.cost += r.monthly; a.days += r.present; m.set(k, a); }
+  const out = [...m.values()].map((a, i) => ({ sr: i + 1, skill: a.skill, headcount: a.headcount, cost: r2(a.cost), avgDaily: a.headcount ? r2(a.cost / a.headcount / 26) : 0, days: r2(a.days) }));
+  const total = rows.reduce((t, r) => t + r.monthly, 0);
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'skill', label: 'Skill Category' }, { key: 'headcount', label: 'Employees' }, { key: 'cost', label: 'Monthly Cost (₹)' }, { key: 'avgDaily', label: 'Avg Daily Pay (₹)' }, { key: 'days', label: 'Total Present Days' }], rows: out, summary: { totalMonthlyLabourCost: r2(total), employees: rows.length }, warnings: wageWarn(noRules) };
+}
+async function wageComparison(s) {
+  const { rows, noRules } = await wageRows(s);
+  const out = rows.map((r, i) => ({ sr: i + 1, code: r.e.employeeId, name: r.e.name, skill: r.skillLabel, state: r.state || '—', minWage: r.minWage == null ? '—' : r.minWage, dailySalary: r.dailySalary, gap: r.minWage == null ? '—' : r2(r.dailySalary - r.minWage), gapPct: r.minWage ? `${r2(((r.dailySalary - r.minWage) / r.minWage) * 100)}%` : '—', status: r.compliant == null ? '—' : (r.compliant ? 'At/Above' : 'Below') }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'skill', label: 'Skill' }, { key: 'state', label: 'State' }, { key: 'minWage', label: 'Min Wage (₹)' }, { key: 'dailySalary', label: 'Daily Pay (₹)' }, { key: 'gap', label: 'Gap (₹)' }, { key: 'gapPct', label: 'Gap %' }, { key: 'status', label: 'Vs Minimum' }], rows: out, warnings: wageWarn(noRules) };
+}
+async function minWageViolation(s) {
+  const { rows, noRules } = await wageRows(s);
+  const viol = rows.filter(r => r.compliant === false);
+  const out = viol.map((r, i) => ({ sr: i + 1, code: r.e.employeeId, name: r.e.name, skill: r.skillLabel, state: r.state || '—', branch: r.e.branchLocation || '—', minWage: r.minWage, dailySalary: r.dailySalary, shortfall: r2(r.minWage - r.dailySalary) }));
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'skill', label: 'Skill' }, { key: 'state', label: 'State' }, { key: 'branch', label: 'Branch' }, { key: 'minWage', label: 'Min Wage/Day (₹)' }, { key: 'dailySalary', label: 'Daily Pay (₹)' }, { key: 'shortfall', label: 'Shortfall/Day (₹)' }], rows: out, summary: { violations: viol.length }, warnings: viol.length ? [] : (noRules ? wageWarn(noRules) : ['No minimum-wage violations found for the selected scope.']) };
+}
+
 function describe(key, def) {
   if (DESCRIPTIONS[key]) return DESCRIPTIONS[key];
   return `${def.label} — generated live from ${def.category.replace(/ Reports$/, '').toLowerCase()} data.`;
@@ -1019,6 +1175,7 @@ const FILTERS_BY_CATEGORY = {
   'Tax Reports': ['financialYear', 'employee'],
   'Gratuity & Settlement': ['branch', 'department', 'employee'],
   'Bonus Reports': ['branch', 'department', 'employee'],
+  'Wage Reports': ['branch', 'department', 'employee'],
 };
 const FILTERS_BY_KEY = {
   form16: ['financialYear', 'employee'],
@@ -1096,6 +1253,50 @@ exports.generate = async (req, res) => {
     if (!def) return res.status(400).json({ error: 'Unknown report.' });
     if (!def.available) return res.status(400).json({ error: `${def.label} is not available yet.` });
     const scope = resolveScope(req);
+    // ── Active-workspace BRANCH scope (top-right scope selector) ────────────────
+    // A company-level user (or Super Admin) who switched their active workspace to
+    // a specific BRANCH must see ONLY that branch's data — strict DB-level scope,
+    // identical to a true branch user. The frontend sends x-workspace-kind='branch'
+    // and the selected workspace id (body.companyId / x-workspace-id). That id may
+    // be a Company-record-as-branch (parentCompanyId set) OR a Branch-table id; we
+    // resolve it to the parent company + the matching Branch row(s) so the existing
+    // branchScoped/branchIds filters narrow employees AND all related tables.
+    // (Skipped for a true branch user — scope.branchScoped is already set by token.)
+    if (!scope.branchScoped) {
+      const wsKind = String(req.headers['x-workspace-kind'] || '').toLowerCase();
+      const wsId = idParam(req.body?.companyId || req.headers['x-workspace-id']);
+      if (wsKind === 'branch' && wsId) {
+        let parentCompanyId = null, branchName = null, branchTableIds = [];
+        const wsCompany = await prisma.company.findUnique({ where: { id: wsId } }).catch(() => null);
+        if (wsCompany && wsCompany.parentCompanyId) { parentCompanyId = wsCompany.parentCompanyId; branchName = wsCompany.branchName || wsCompany.name; }
+        else {
+          const wsBranch = await prisma.branch.findUnique({ where: { id: wsId } }).catch(() => null);
+          if (wsBranch) { parentCompanyId = wsBranch.companyId; branchName = wsBranch.branchName; branchTableIds = [wsBranch.id]; }
+        }
+        const allowedCompany = parentCompanyId && (isSuperAdmin(req) || companyScopeFor(req).includes(parentCompanyId));
+        if (allowedCompany) {
+          if (!branchTableIds.length && branchName) {
+            const brs = await prisma.branch.findMany({ where: { companyId: parentCompanyId, branchName: { equals: branchName } }, select: { id: true } }).catch(() => []);
+            branchTableIds = brs.map(x => x.id);
+          }
+          scope.companyIds = [parentCompanyId]; scope.primaryCompanyId = parentCompanyId;
+          if (branchTableIds.length) { scope.branchScoped = true; scope.branchIds = branchTableIds; scope._branchNames = branchName ? [branchName] : []; }
+          else if (branchName) { scope.branch = branchName; scope._branchNames = [branchName]; } // fallback: filter employees by branchLocation name
+        }
+      }
+    }
+    // Branch-level users carry BRANCH ids in their grant set (companyId/branch ids
+    // share one id space). Resolve those branches to their PARENT company so the
+    // company filter, the header company, and company-level columns all match the
+    // real employee rows (employee.companyId = parent), while branchId narrows the
+    // data to exactly the user's branch(es). Without this, companyId IN [branchId]
+    // would match no employees and the header company would be blank.
+    if (scope.branchScoped && scope.branchIds.length) {
+      const brs = await prisma.branch.findMany({ where: { id: { in: scope.branchIds } }, select: { companyId: true, branchName: true } });
+      const parentIds = [...new Set(brs.map(x => x.companyId).filter(Boolean))];
+      if (parentIds.length) { scope.companyIds = parentIds; scope.primaryCompanyId = parentIds[0]; }
+      scope._branchNames = brs.map(x => x.branchName).filter(Boolean);
+    }
     if (!scope.primaryCompanyId || !scope.companyIds.length) return res.status(400).json({ error: 'Select a company to generate the report.' });
 
     // ── Backend ENFORCEMENT of report-specific filters (not just hidden in the UI) ──
@@ -1108,6 +1309,13 @@ exports.generate = async (req, res) => {
     if (!allowed.includes('dateRange') && !allowed.includes('financialYear')) { scope.startDate = null; scope.endDate = null; scope.year = null; }
 
     const meta = await companyMeta(scope.primaryCompanyId);
+    // Header identification: keep the main company name on line 1 (unchanged) and
+    // add the branch name as line 2 ONLY when the report scope is branch-specific —
+    // a branch-level user, or a company user who picked a branch in the filter.
+    if (meta) {
+      if (scope.branch) meta.branchName = scope.branch;
+      else if (scope._branchNames && scope._branchNames.length) meta.branchName = scope._branchNames.join(', ');
+    }
     const ctx = { meta };
     const out = await def.generate(scope, ctx);
     const warnings = out.warnings || [];

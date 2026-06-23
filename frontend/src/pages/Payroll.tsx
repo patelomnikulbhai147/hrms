@@ -8,7 +8,8 @@ import {
   Eye,
   EyeOff,
   Building2,
-  Gift
+  Gift,
+  Scale, Wallet, FileText, Clock, ShieldCheck, BarChart3
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -62,6 +63,8 @@ interface PayrollProps {
   attendance?: AttendanceRecord[];
   leaves?: LeaveRequest[];
   authProfile?: UserAccount | null;
+  /** Navigate to another module (Reports / Settings) — used by the Bonus & Wages launcher. */
+  onNavigate?: (page: string) => void;
 }
 
 interface AuditLog {
@@ -114,7 +117,8 @@ export const Payroll: React.FC<PayrollProps> = ({
   employees,
   attendance = [],
   leaves = [],
-  authProfile
+  authProfile,
+  onNavigate
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -419,6 +423,11 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   const handleSavePayrollEdits = async () => {
     if (!viewPayslip) return;
+    // A locked payroll can only be edited by a Company Head / Super Admin.
+    if (isLocked(viewPayslip) && !canOverrideLock) {
+      ui.toast.error('This payroll is locked. Only a Company Head can edit a locked payroll.');
+      return;
+    }
     const finalNet = editForm.basicSalary + editForm.allowances + editForm.bonus - editForm.deductions - editForm.tax;
     
     const updatedRecord: any = {
@@ -534,16 +543,47 @@ export const Payroll: React.FC<PayrollProps> = ({
     }
   };
 
+  const isPaid = (r: any) => String(r.paymentStatus || '').toLowerCase() === 'paid';
+  const isLocked = (r: any) => String(r.payrollStatus || r.status || '').toLowerCase() === 'locked';
+  const canOverrideLock = role === 'Company Head' || role === 'Super Admin';
+  // A row is editable when: not locked (HR/Head with edit perm), OR locked but the
+  // user is a Company Head / Super Admin (override authority).
+  const canEditRow = (r: any) => canEdit && (!isLocked(r) || canOverrideLock);
+
   const handleLockPayroll = async (ids: string[]) => {
-    if (!(await ui.confirm({ message: `Lock ${ids.length} payroll record(s)? Locked records can no longer be edited.`, variant: 'warning', confirmText: 'Lock' }))) return;
+    // Only fully PAID payroll may be locked — never lock unpaid records.
+    const paidIds = ids.filter(id => isPaid(payroll.find(r => r.id === id)));
+    const skipped = ids.length - paidIds.length;
+    if (!paidIds.length) { ui.toast.warning('Only fully paid payroll can be locked. Mark payroll as Paid first.'); return; }
+    if (!(await ui.confirm({
+      message: `Lock ${paidIds.length} paid payroll record(s)?${skipped ? ` ${skipped} unpaid record(s) will be skipped.` : ''}\n\nAfter locking, only a Company Head can edit them.`,
+      variant: 'warning', confirmText: 'Lock',
+    }))) return;
     try {
-      await api.payroll.lock(ids);
-      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r));
-      saveAuditLog('bulk', `Locked ${ids.length} payroll record(s).`);
-      ui.toast.success(`Locked ${ids.length} payroll record(s).`);
+      const res = await api.payroll.lock(paidIds);
+      onUpdatePayroll(payroll.map(r => paidIds.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r));
+      saveAuditLog('bulk', `Locked ${res?.locked ?? paidIds.length} paid payroll record(s).`);
+      ui.toast.success(`Locked ${res?.locked ?? paidIds.length} payroll record(s)${res?.skippedUnpaid ? ` (${res.skippedUnpaid} unpaid skipped)` : ''}.`);
     } catch (e: any) {
       console.error('Lock failed:', e);
       ui.toast.error(`Failed to lock payroll: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // Company Head / Super Admin override: unlock paid+locked payroll for corrections.
+  const handleUnlockPayroll = async (ids: string[]) => {
+    if (!canOverrideLock) { ui.toast.error('Only a Company Head can unlock payroll.'); return; }
+    if (!ids.length) { ui.toast.warning('No locked payroll selected.'); return; }
+    const reason = await ui.prompt({ message: `Unlock ${ids.length} payroll record(s) for correction. Reason (recorded in the audit log):`, defaultValue: '' });
+    if (reason === null) return;
+    try {
+      const res = await api.payroll.unlock(ids, reason || undefined);
+      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'paid', lockedAt: null } as any : r));
+      saveAuditLog('bulk', `Unlocked ${res?.unlocked ?? ids.length} payroll record(s). Reason: ${reason || '(none)'}`);
+      ui.toast.success(`Unlocked ${res?.unlocked ?? ids.length} payroll record(s).`);
+    } catch (e: any) {
+      console.error('Unlock failed:', e);
+      ui.toast.error(`Failed to unlock payroll: ${e?.message || 'Unknown error'}`);
     }
   };
 
@@ -930,6 +970,30 @@ export const Payroll: React.FC<PayrollProps> = ({
   return (
     <div className="space-y-5 font-sans">
 
+      {/* ── Bonus & Wages — shared navigation grouping only (Bonus & Wage logic stay separate) ── */}
+      <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale size={15} className="text-indigo-600" /> Bonus &amp; Wages</h3>
+          <span className="text-[10px] text-slate-400">Quick access · Bonus and Wage logic remain separate</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          {[
+            { label: 'Bonus Management', icon: <Gift size={15} />, onClick: () => { if (canEdit) setShowBonusModal(true); } },
+            { label: 'Wages Management', icon: <Wallet size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Wage Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Overtime Register', icon: <Clock size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Advance Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Minimum Wage Compliance', icon: <ShieldCheck size={15} />, onClick: () => onNavigate?.('settings') },
+            { label: 'Wage Reports', icon: <BarChart3 size={15} />, onClick: () => onNavigate?.('reports') },
+          ].map(it => (
+            <button key={it.label} onClick={it.onClick} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50 hover:border-indigo-200 px-2 py-3 text-center transition-colors">
+              <span className="text-indigo-600">{it.icon}</span>
+              <span className="text-[10px] font-semibold text-slate-700 leading-tight">{it.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="text-left">
@@ -986,6 +1050,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         onGenerateSelected={canCreate ? handleGenerateSelected : undefined}
         onGenerateSlips={handleGenerateSlips}
         onLock={handleLockPayroll}
+        onUnlock={handleUnlockPayroll}
         onRecalculate={handleRecalculate}
       />
 
@@ -1015,8 +1080,8 @@ export const Payroll: React.FC<PayrollProps> = ({
         title="Verify Payroll Record"
         footer={
           <>
-            <Button variant="outline" onClick={() => setAuditRecord(null)}>Cancel</Button>
-            <Button onClick={handleVerifyPayrollConfirm}>Confirm Verification</Button>
+            <Button variant="outline" onClick={() => setAuditRecord(null)}>{canEdit ? 'Cancel' : 'Close'}</Button>
+            {canEdit && <Button onClick={handleVerifyPayrollConfirm}>Confirm Verification</Button>}
           </>
         }
       >
@@ -1055,8 +1120,14 @@ export const Payroll: React.FC<PayrollProps> = ({
         size="md"
         footer={
           <>
+            {viewPayslip && isLocked(viewPayslip) && !canOverrideLock && (
+              <span className="text-[11px] text-amber-600 font-semibold mr-auto flex items-center gap-1">🔒 Locked — only a Company Head can edit</span>
+            )}
+            {viewPayslip && isLocked(viewPayslip) && canOverrideLock && (
+              <Button variant="outline" onClick={() => { const r = viewPayslip; setViewPayslip(null); handleUnlockPayroll([r.id]); }}>Unlock</Button>
+            )}
             <Button variant="outline" onClick={() => setViewPayslip(null)}>Close</Button>
-            {canEdit && <Button onClick={handleSavePayrollEdits}>Save Changes</Button>}
+            {viewPayslip && canEditRow(viewPayslip) && <Button onClick={handleSavePayrollEdits}>Save Changes</Button>}
           </>
         }
       >
@@ -1259,6 +1330,9 @@ export const Payroll: React.FC<PayrollProps> = ({
         open={showPayrollModal}
         onClose={() => !isPayrollGenerating && setShowPayrollModal(false)}
         title="Generate Payroll"
+        variant="page"
+        breadcrumbs={[{ label: 'Payroll', onClick: () => !isPayrollGenerating && setShowPayrollModal(false) }, { label: 'Generate Payroll' }]}
+        subtitle="Select the employees to include in this payroll run."
         size="lg"
         footer={
           <>

@@ -1508,6 +1508,9 @@ export const Companies: React.FC<CompaniesProps> = ({
         open={addOpen}
         onClose={() => setAddOpen(false)}
         title="Add SaaS Client Tenant"
+        variant="page"
+        breadcrumbs={[{ label: 'Companies', onClick: () => setAddOpen(false) }, { label: 'New Company' }]}
+        subtitle="Register a new client company and its default administrator."
         size="md"
         footer={
           <>
@@ -1869,7 +1872,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
       
       {/* Edit Company Modal */}
-      <Modal open={editCompanyModalOpen} onClose={() => setEditCompanyModalOpen(false)} title="Edit Parent Company" size="lg" footer={<>
+      <Modal open={editCompanyModalOpen} onClose={() => setEditCompanyModalOpen(false)} title="Edit Parent Company" variant="page" breadcrumbs={[{ label: 'Companies', onClick: () => setEditCompanyModalOpen(false) }, { label: 'Edit Company' }]} subtitle="Update company profile and configuration." size="lg" footer={<>
         <Button variant="outline" onClick={() => setEditCompanyModalOpen(false)}>Cancel</Button>
         <Button onClick={handleSaveCompany} style={{ backgroundColor: '#4f46e5' }}>Save Changes</Button>
       </>}>
@@ -1917,6 +1920,9 @@ export const Companies: React.FC<CompaniesProps> = ({
         open={branchModalOpen}
         onClose={() => setBranchModalOpen(false)}
         title={editingBranch ? `Edit Regional Branch: ${editingBranch.branchName || editingBranch.name}` : "Create Subsidiary Regional Branch"}
+        variant="page"
+        breadcrumbs={[{ label: 'Companies', onClick: () => setBranchModalOpen(false) }, { label: editingBranch ? 'Edit Branch' : 'New Branch' }]}
+        subtitle="Configure branch details, administrator, payroll parameters and notifications."
         size="lg"
         footer={
           <>

@@ -39,6 +39,9 @@ const MODULES_LIST: { id: AppModules; name: string }[] = [
   { id: 'attendance', name: 'Attendance' },
   { id: 'documents', name: 'Documents' },
   { id: 'reports', name: 'Reports' },
+  { id: 'tasks', name: 'Task Manager' },
+  { id: 'tenders', name: 'Tender Management' },
+  { id: 'contracts', name: 'Contract Management' },
   { id: 'settings', name: 'Settings' }
 ];
 
@@ -53,8 +56,10 @@ const DEFAULT_PERMISSIONS: ModulePermissions = {
   manage: false
 };
 
-// Every granular action under a module's ACCESS master.
-const ALL_ACTIONS: Array<keyof ModulePermissions> = ['view', 'create', 'edit', 'delete', 'export', 'approve', 'print', 'manage'];
+// Consolidated permission model — exactly four actions. VIEW (read/search/open),
+// CREATE (add new), EDIT (modify existing — also covers delete & approve),
+// EXPORT (download/print). Standalone delete/approve/print/manage are removed.
+const ALL_ACTIONS: Array<keyof ModulePermissions> = ['view', 'create', 'edit', 'export'];
 const fullPerms = (val: boolean): ModulePermissions =>
   ALL_ACTIONS.reduce((o, a) => { (o as any)[a] = val; return o; }, {} as ModulePermissions);
 
@@ -68,17 +73,17 @@ const ROLE_TEMPLATES: { id: string; label: string; build: (modules: AppModules[]
     }),
   },
   {
-    id: 'readOnly', label: 'Read Only',
+    id: 'readOnly', label: 'View Only',
     build: (mods) => ({
       access: Object.fromEntries(mods.map(m => [m, true])),
-      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, export: true, print: true }])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, export: true }])),
     }),
   },
   {
-    id: 'manager', label: 'Manager (no delete)',
+    id: 'createOnly', label: 'Create + View',
     build: (mods) => ({
       access: Object.fromEntries(mods.map(m => [m, true])),
-      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(true), delete: false, manage: false }])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, create: true, export: true }])),
     }),
   },
   {
@@ -258,10 +263,9 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     const turningOn = !perms[action];
     perms[action] = turningOn;
 
-    // MANAGE implies every lower permission.
-    if (action === 'manage' && turningOn) ALL_ACTIONS.forEach(a => { (perms as any)[a] = true; });
-    // Removing any lower permission must drop MANAGE (no contradictory state).
-    if (action !== 'manage' && !turningOn && perms.manage) perms.manage = false;
+    // EDIT covers delete & approve; turning EDIT off must not leave those legacy
+    // flags dangling on older records.
+    if (action === 'edit' && !turningOn) { (perms as any).delete = false; (perms as any).approve = false; }
 
     // ACCESS reflects whether ANY action is granted (no "permission without access").
     updatedUser.permissions[moduleId] = perms;
@@ -1294,7 +1298,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                               {/* Granular Permissions */}
                               {isEnabled && (
                                 <div className="p-3.5 grid grid-cols-2 lg:grid-cols-4 gap-3">
-                                  {(['view', 'create', 'edit', 'delete', 'export', 'approve', 'print', 'manage'] as Array<keyof ModulePermissions>).map(action => {
+                                  {ALL_ACTIONS.map(action => {
                                     const hasAction = perms[action];
                                     const displayAction = action === 'view' ? 'read' : action;
                                     return (

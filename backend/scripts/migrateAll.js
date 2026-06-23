@@ -18,15 +18,18 @@ const path = require('path');
 // not needed to make reads work and can fail on existing data; run them by hand.
 const SCRIPTS = [
   'addCompanyProfileFields.js',   // ← Company profile columns (fixes the empty Companies table)
-  'addEmployeeStateCity.js',      // Employee.state / city
+  'syncEmployeeColumns.js',       // ← ALL Employee columns (fixes biometricId drift → 0 employees)
+  'addEmployeeStateCity.js',      // Employee.state / city (also covered by sync; kept for safety)
   'addLocationMasters.js',        // location_masters
   'addComplianceReportLogs.js',   // compliance_report_logs
   'createNomineeTables.js',       // employee_nominees / nominee_documents / nominee_audit_logs
   'createPayrollWorksheetTables.js', // payroll_worksheet (+ audit)
   'addAttendanceImportSafety.js', // attendance_import_logs / unmatched_attendance_queue
+  'createAttendanceDevices.js',   // ← base attendance_devices table (fixes "table doesn't exist")
   'addVendorArchitecture.js',     // attendance_devices cols + attendance_vendors (+ seed)
   'addDeviceConfigColumns.js',    // attendance_devices config columns
   'addEmployeeBonusModel.js',     // Employee bonus cols + Payroll.overtime + employee_bonuses
+  'createTendersContracts.js',    // ← Tenders & Contracts: Tender cols + contracts/contract_sites/deployments
 ];
 
 const results = [];

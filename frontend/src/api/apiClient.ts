@@ -34,13 +34,18 @@ export interface SuperAdminStats {
 const getHeaders = () => {
   const token = authStorage.get('hrms_jwt_token');
   const workspaceId = localStorage.getItem('hrms_active_company_id');
+  // The active workspace KIND ('company' | 'branch') lets the backend apply strict
+  // branch scope when a company-level user selects a specific branch in the
+  // top-right scope selector (company/branch ids share one space).
+  const workspaceKind = localStorage.getItem('hrms_active_workspace_kind');
   return {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Pragma': 'no-cache',
     'Expires': '0',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...(workspaceId ? { 'x-workspace-id': workspaceId } : {})
+    ...(workspaceId ? { 'x-workspace-id': workspaceId } : {}),
+    ...(workspaceKind ? { 'x-workspace-kind': workspaceKind } : {})
   };
 };
 
@@ -488,6 +493,27 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/tenders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    convert: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}/convert`, { method: 'POST', headers: getHeaders() }); },
+  },
+  contracts: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/contracts`, { headers: getHeaders() }); },
+    getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { headers: getHeaders() }); },
+    getCost: async (id: any, query: string = '') => { return await apiFetch(`${BASE_URL}/contracts/${id}/cost${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/contracts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/contracts/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+  contractSites: {
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/contract-sites${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/contract-sites`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/contract-sites/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/contract-sites/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+  deployments: {
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/deployments${query}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/deployments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/deployments/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/deployments/${id}`, { method: 'DELETE', headers: getHeaders() }); },
   },
 
   documents: {
@@ -545,8 +571,8 @@ export const api = {
     emailSlip: async (id: string, payload: { pdfBase64?: string; fileName?: string; to?: string }) => { return await apiFetch(`${BASE_URL}/payroll/${id}/email-slip`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) }); },
     approve: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/approve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
     markPaid: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/mark-paid`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
-    lock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
-    unlock: async (ids: string[]) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids }) }); },
+    lock: async (ids: string[], reason?: string) => { return await apiFetch(`${BASE_URL}/payroll/lock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, reason }) }); },
+    unlock: async (ids: string[], reason?: string) => { return await apiFetch(`${BASE_URL}/payroll/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ ids, reason }) }); },
     recalculate: async (data: { ids?: any[]; month?: string; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/payroll/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Bonus inside payroll — apply to selected/department/company, or remove.
     applyBonus: async (data: { companyId: any; month: string; year: number; scope: 'selected' | 'department' | 'company'; employeeIds?: any[]; department?: string; bonusType: string; calcMethod: string; amount?: number; percent?: number; reason?: string }) => { return await apiFetch(`${BASE_URL}/payroll/apply-bonus`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },

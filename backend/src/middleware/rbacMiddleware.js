@@ -23,7 +23,18 @@ exports.requireSuperAdmin = (req, res, next) => {
   return next();
 };
 
+// Permission model is consolidated to exactly four actions: VIEW, CREATE, EDIT,
+// EXPORT. Legacy/compound actions map onto those four so older route guards keep
+// working without touching every route:
+//   • delete  → edit   (modifying/removing an existing record requires EDIT)
+//   • approve → edit   (approving an existing record requires EDIT)
+//   • manage  → edit
+//   • print   → export (producing output is an EXPORT-class action)
+const ACTION_ALIASES = { delete: 'edit', approve: 'edit', manage: 'edit', print: 'export' };
+const normalizeAction = (action) => ACTION_ALIASES[action] || action;
+
 exports.requirePermission = (moduleName, action) => {
+  const effectiveAction = normalizeAction(action);
   return async (req, res, next) => {
     try {
       // req.user is populated by protect middleware
@@ -35,17 +46,17 @@ exports.requirePermission = (moduleName, action) => {
         return next();
       }
 
-      // Re-fetch user to get latest permissions just in case? 
+      // Re-fetch user to get latest permissions just in case?
       // protect middleware already fetches user. Let's use req.user.
       const rawPermissions = req.user.permissions || {};
       const parsedPerms = rawPermissions.permissions || {};
-      // Authorization is action-based only (view / edit / create / delete). The
+      // Authorization is action-based only (view / create / edit / export). The
       // legacy "Access" (moduleAccess) gate and the "Manage" permission have been
-      // removed — they are no longer consulted for any authorization decision.
+      // removed; delete/approve/print are folded into edit/export above.
 
       // Check granular action permission
       if (parsedPerms[moduleName] !== undefined) {
-        if (parsedPerms[moduleName][action] === true) {
+        if (parsedPerms[moduleName][effectiveAction] === true) {
           return next();
         } else {
           return res.status(403).json({ error: `Access denied. You do not have permission to ${action} in ${moduleName}.` });

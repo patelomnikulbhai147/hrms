@@ -2,6 +2,8 @@ import React, { useMemo, useRef, useState } from 'react';
 
 interface Props {
   label?: string;
+  /** Optional id applied to the field container, so validation can scroll/focus it. */
+  id?: string;
   value: string;
   options: string[];
   placeholder?: string;
@@ -29,7 +31,7 @@ interface Props {
  * Validation is the parent's job (only "not empty" is required) — any typed text
  * is accepted as the value.
  */
-export const CreatableSelect: React.FC<Props> = ({ label, value, options, placeholder, error, disabled, onChange, onCreate, allowCustom = true }) => {
+export const CreatableSelect: React.FC<Props> = ({ label, id, value, options, placeholder, error, disabled, onChange, onCreate, allowCustom = true }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -66,7 +68,7 @@ export const CreatableSelect: React.FC<Props> = ({ label, value, options, placeh
   };
 
   return (
-    <div className="flex flex-col gap-1.5 w-full relative">
+    <div id={id} className="flex flex-col gap-1.5 w-full relative">
       {label && <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{label}</label>}
       <div className="relative">
         <input
@@ -110,7 +112,7 @@ export const CreatableSelect: React.FC<Props> = ({ label, value, options, placeh
           )}
         </div>
       )}
-      {error && <p className="text-[11px] text-rose-450 font-bold">{error}</p>}
+      {error && <p className="text-[11px] text-rose-450 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
     </div>
   );
 };

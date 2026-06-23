@@ -39,6 +39,7 @@ import { isActiveEmployee, isOffboarded } from '@/utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '@/utils/idFormat';
 import { BankDetails } from '@/components/employee/BankDetails';
 import { BonusConfigSection } from '@/components/employee/BonusConfigSection';
+import { MinimumWageAdvisory } from '@/components/employee/MinimumWageAdvisory';
 import { usePermissions } from '@/context/PermissionContext';
 import { ui } from '@/components/ui/feedback';
 
@@ -408,7 +409,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   // (which carries the Salary field), so compensation → bonus → payroll reads
   // in the order HR thinks about pay.
   const ADD_STEPS = ['personal', 'job', 'bonus', 'banking', 'address', 'nominees', 'review'] as const;
-  const ADD_STEP_LABELS: Record<string, string> = { personal: 'Personal Info', job: 'Employment Details', bonus: 'Bonus Configuration', banking: 'Compliance & Bank', address: 'Addresses', nominees: 'Nominees', review: 'Review & Submit' };
+  const ADD_STEP_LABELS: Record<string, string> = { personal: 'Personal Info', job: 'Employment Details', bonus: 'Compensation Configuration', banking: 'Compliance & Bank', address: 'Addresses', nominees: 'Nominees', review: 'Review & Submit' };
 
   // Validate ONLY the fields owned by the given step, so the user can advance.
   const validateAddSection = (tab: string): Record<string, string> => {
@@ -437,14 +438,30 @@ export const Employees: React.FC<EmployeesProps> = ({
     return e;
   };
 
+  // Which error keys belong to which step — so the top summary only lists the
+  // currently-visible step's missing fields (and they remain scroll/focusable).
+  const ADD_STEP_FIELD_KEYS: Record<string, string[]> = {
+    personal: ['aadhaarName', 'name', 'gender', 'dob', 'maritalStatus', 'nationality', 'state', 'city', 'phone', 'employeeId'],
+    job: ['branchLocation', 'department', 'designation', 'category', 'employmentType', 'joinDate', 'salary'],
+  };
+  // Scroll the field into view and focus its control (works for Input/Select and
+  // the CreatableSelect container).
+  const focusField = (key: string) => {
+    const el = document.getElementById(`field-${key}`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const focusable = (el.matches('input,select,textarea') ? el : el.querySelector('input,select,textarea')) as HTMLElement | null;
+    setTimeout(() => focusable?.focus(), 250);
+  };
+
   const handleSaveContinue = () => {
     const idx = ADD_STEPS.indexOf(activeTab as any);
     if (idx === -1) return;
     const sectionErrors = validateAddSection(activeTab);
     if (Object.keys(sectionErrors).length) {
+      // Block progress, surface every invalid field, and jump to the first one.
       setErrors(prev => ({ ...prev, ...sectionErrors }));
-      const firstKey = Object.keys(sectionErrors)[0];
-      setTimeout(() => { document.getElementById(`field-${firstKey}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50);
+      setTimeout(() => focusField(Object.keys(sectionErrors)[0]), 50);
       return;
     }
     setErrors({});
@@ -1189,35 +1206,34 @@ export const Employees: React.FC<EmployeesProps> = ({
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
 
   return (
-    <div className="space-y-4 font-sans text-left">
-      {/* Top action header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Synchronized Employee Workspace</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Real enterprise roster synced across banking, government compliance and payroll modules
-          </p>
+    <div className="space-y-3 font-sans text-left">
+      {/* Compact single-row enterprise toolbar: title + counters + actions all on
+          one line on desktop; wraps only on tablet/mobile. */}
+      <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <div className="shrink-0">
+          <h2 className="text-base font-bold text-gray-900 leading-tight">Employee Management</h2>
+          <p className="text-[11px] text-gray-500 leading-tight">Manage employees and workforce records</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Main Tabs */}
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+        <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
+          {/* Counters */}
+          <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
             <button
               onClick={() => setActiveMainTab('all')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               All Staff ({companyEmployees.length})
             </button>
             <button
               onClick={() => setActiveMainTab('active')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Active Personnel ({stats.active})
+              Active ({stats.active})
             </button>
             <button
               onClick={() => setActiveMainTab('previous')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Previous Personnel ({companyEmployees.length - stats.active})
+              Previous ({companyEmployees.length - stats.active})
             </button>
           </div>
 
@@ -1231,13 +1247,13 @@ export const Employees: React.FC<EmployeesProps> = ({
 
           {isHR && canCreate && activeMainTab !== 'previous' && (
             <>
-              <Button variant="outline" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
-                Bulk Importer
+              <Button size="sm" variant="outline" className="whitespace-nowrap" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
+                Bulk Import
               </Button>
-              <Button variant="outline" icon={<Upload size={14} />} onClick={() => setBioImportOpen(true)}>
-                Import Biometric Codes
+              <Button size="sm" variant="outline" className="whitespace-nowrap" icon={<Upload size={14} />} onClick={() => setBioImportOpen(true)}>
+                Import Biometric
               </Button>
-              <Button icon={<Plus size={14} />} onClick={handleStartAdd}>
+              <Button size="sm" className="whitespace-nowrap" icon={<Plus size={14} />} onClick={handleStartAdd}>
                 Add Employee
               </Button>
             </>
@@ -2026,11 +2042,15 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Modal>
 
-      {/* Add Employee Master Modal */}
+      {/* Add Employee Master — dedicated full-page registration wizard */}
       <Modal
         open={addOpen}
         onClose={() => setAddOpen(false)}
         title="Register Master Employee File"
+        variant="page"
+        breadcrumbs={[{ label: 'Employees', onClick: () => setAddOpen(false) }, { label: 'Register Employee' }]}
+        subtitle="Complete all steps to create the employee master file."
+        context={form.branchLocation ? `Branch: ${form.branchLocation}` : undefined}
         size="md"
         footer={
           <div className="flex items-center justify-between w-full gap-2">
@@ -2056,12 +2076,35 @@ export const Employees: React.FC<EmployeesProps> = ({
           <div className="flex border-b border-gray-200 gap-3 text-xs">
             <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
             <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Bonus Configuration</button>
+            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
             <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
             <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
             <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
             <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
           </div>
+
+          {/* Validation summary — lists this step's missing/invalid fields; click to jump */}
+          {(() => {
+            const entries = Object.entries(errors).filter(([k]) => (ADD_STEP_FIELD_KEYS[activeTab] || []).includes(k));
+            if (entries.length === 0) return null;
+            return (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 p-3">
+                <p className="text-[12px] font-bold text-rose-700 flex items-center gap-1.5">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+                  Please complete the following {entries.length === 1 ? 'field' : `${entries.length} fields`}:
+                </p>
+                <ul className="mt-1.5 space-y-0.5">
+                  {entries.map(([k, msg]) => (
+                    <li key={k}>
+                      <button type="button" onClick={() => focusField(k)} className="text-[11px] text-rose-600 font-semibold hover:underline text-left flex items-start gap-1">
+                        <span className="mt-px">•</span><span>{msg}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })()}
 
           {/* Step 6 — Nominees (staged locally; saved transactionally after the employee is created) */}
           {activeTab === 'nominees' && (
@@ -2134,16 +2177,16 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <CreatableSelect label="State *" value={form.state} options={stateOptions}
+                <CreatableSelect id="field-state" label="State *" value={form.state} options={stateOptions}
                   placeholder="Select or type a state" error={errors.state}
                   onChange={v => setForm({ ...form, state: v, city: (form.state && v !== form.state) ? '' : form.city })} onCreate={rememberState} />
-                <CreatableSelect label="City *" value={form.city} options={cityOptionsFor(form.state)}
+                <CreatableSelect id="field-city" label="City *" value={form.city} options={cityOptionsFor(form.state)}
                   placeholder={form.state ? 'Select or type a city' : 'Select a state first'} error={errors.city}
                   disabled={!form.state}
                   onChange={v => setForm({ ...form, city: v })} onCreate={v => rememberCity(form.state, v)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <CreatableSelect label="Nationality *" value={form.nationality} options={countryOptions}
+                <CreatableSelect id="field-nationality" label="Nationality *" value={form.nationality} options={countryOptions}
                   placeholder="Select a country" error={errors.nationality} allowCustom={isSuperAdmin}
                   onChange={v => setForm({ ...form, nationality: v })} onCreate={rememberCountry} />
                 <Input id="field-phone" label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
@@ -2191,6 +2234,14 @@ export const Employees: React.FC<EmployeesProps> = ({
               Master bonus setup consumed directly by payroll calculations. */}
           {activeTab === 'bonus' && (
             <div className="space-y-3">
+              {/* State-wise minimum-wage advisory (additive; does not change payroll/bonus logic) */}
+              <MinimumWageAdvisory
+                companyId={String((currentComp as any)?.parentCompanyId || activeCompanyId)}
+                branch={form.branchLocation}
+                defaultSkill={form.category}
+                performedBy={role}
+                employeeName={form.name}
+              />
               <BonusConfigSection
                 data={form}
                 salary={form.salary}
@@ -2251,7 +2302,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             <div className="flex border-b border-gray-200 gap-3 text-xs">
               <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
               <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Bonus Configuration</button>
+              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
               <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
               <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
               <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>

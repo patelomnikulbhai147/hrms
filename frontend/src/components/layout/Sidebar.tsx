@@ -3,7 +3,7 @@ import { cn } from '@/utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, Fingerprint
+  ClipboardList, Briefcase, History, IdCard, Fingerprint, FileSignature
 } from 'lucide-react';
 import type { Role, Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
@@ -12,7 +12,7 @@ import { getCompanyInitials } from '@/utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'audit';
+  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit';
 
 interface NavItem {
   id: PageId;
@@ -37,7 +37,8 @@ const navItems: NavItem[] = [
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
-  { id: 'tenders', label: 'Tender Information', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
   // — not a platform concern. It is intentionally hidden from the Super Admin
   // root menu; a Super Admin configures a company's settings by entering that

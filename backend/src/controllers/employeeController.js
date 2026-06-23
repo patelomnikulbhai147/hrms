@@ -118,6 +118,20 @@ exports.createEmployee = async (req, res) => {
       if (!branch) data.branchId = null;
     }
 
+    // ── Write-ownership guard ────────────────────────────────────────────────
+    // A non-Super-Admin may only create an employee inside a company/branch they
+    // actually have access to. Without this a user could POST companyId/branchId
+    // outside their scope and write into a tenant they can't even see.
+    if (req.user && req.user.role !== 'Super Admin') {
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
+      const okCompany = data.companyId != null && companyScope.includes(String(data.companyId));
+      const okBranch = data.branchId != null && branchScope.includes(String(data.branchId));
+      if (!okCompany && !okBranch) {
+        return res.status(403).json({ error: 'You do not have access to the selected company or branch.' });
+      }
+    }
+
     // Biometric Code must be UNIQUE WITHIN THE COMPANY (blank exempt; different
     // companies may reuse the same code — validation is per-company, not global).
     if (data.biometricId) {
@@ -361,7 +375,7 @@ exports.updateEmployee = async (req, res) => {
     // Offboarding policy: an Archived (offboarded) employee is read-only —
     // history is preserved and cannot be edited. The only permitted change is
     // reactivation (status → Active).
-    const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true } });
+    const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true, companyId: true, branchId: true } });
     // Archived / offboarded employees are HISTORICAL records: read-only for
     // everyone except a Super Admin (who alone may edit or restore them).
     if (existingEmp && OFFBOARDED_STATUSES.includes(existingEmp.status) && !(req.user && req.user.role === 'Super Admin')) {
@@ -369,6 +383,25 @@ exports.updateEmployee = async (req, res) => {
         code: 'EMPLOYEE_OFFBOARDED',
         error: 'This employee is archived/offboarded and is read-only. Only a Super Admin can restore or modify it.',
       });
+    }
+
+    // ── Write-ownership guard ────────────────────────────────────────────────
+    // A non-Super-Admin may only edit an employee that is inside their company/
+    // branch scope, AND may not move that employee into a company/branch outside
+    // their scope. Both the current record and any new companyId/branchId checked.
+    if (existingEmp && req.user && req.user.role !== 'Super Admin') {
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
+      const inScope = (cid, bid) =>
+        (cid != null && companyScope.includes(String(cid))) || (bid != null && branchScope.includes(String(bid)));
+      if (!inScope(existingEmp.companyId, existingEmp.branchId)) {
+        return res.status(403).json({ error: 'You do not have access to this employee.' });
+      }
+      const targetCompany = data.companyId != null ? data.companyId : existingEmp.companyId;
+      const targetBranch = data.branchId !== undefined ? data.branchId : existingEmp.branchId;
+      if (!inScope(targetCompany, targetBranch)) {
+        return res.status(403).json({ error: 'You do not have access to the selected company or branch.' });
+      }
     }
 
     // Validation for critical fields if they are provided
@@ -502,13 +535,26 @@ exports.validateCode = async (req, res) => {
 exports.deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
+
+    // ── Write-ownership guard ────────────────────────────────────────────────
+    // A non-Super-Admin may only archive an employee inside their company/branch.
+    if (req.user && req.user.role !== 'Super Admin') {
+      const existing = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true, branchId: true } });
+      if (!existing) return res.status(404).json({ error: 'Employee not found.' });
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
+      const inScope = (existing.companyId != null && companyScope.includes(String(existing.companyId)))
+        || (existing.branchId != null && branchScope.includes(String(existing.branchId)));
+      if (!inScope) return res.status(403).json({ error: 'You do not have access to this employee.' });
+    }
+
     // Archive employee instead of hard delete
     const employee = await prisma.employee.update({
       where: { id: idParam(id) },
-      data: { 
-        status: 'Archived', 
-        exitDate: new Date(), 
-        exitReason: 'Admin Archived' 
+      data: {
+        status: 'Archived',
+        exitDate: new Date(),
+        exitReason: 'Admin Archived'
       }
     });
     res.json({ message: 'Employee archived successfully', employee });

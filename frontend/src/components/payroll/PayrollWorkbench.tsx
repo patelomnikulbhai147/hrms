@@ -43,6 +43,7 @@ interface Props {
   onGenerateSelected?: (records: any[]) => void;
   onGenerateSlips?: (records: any[]) => void;
   onLock?: (ids: string[]) => void;
+  onUnlock?: (ids: string[]) => void;
   onRecalculate?: (ids?: string[]) => void;
   // workflow step actions
   onGeneratePayroll: () => void;
@@ -67,7 +68,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
   records, company, getEmployee, monthLabel, role, canEdit = true,
   onGeneratePayroll, onApproveAll, onGenerateSlipsAll, onExportBank, onMarkPaidAll, onLockMonth,
   onView, onOpenWorksheet, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
-  onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onRecalculate,
+  onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onUnlock, onRecalculate,
 }) => {
   const [companyFilter, setCompanyFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
@@ -190,6 +191,9 @@ export const PayrollWorkbench: React.FC<Props> = ({
   const approveDone = m.generated > 0 && m.pendingApproval === 0;
   const allPaid = total > 0 && m.paid >= total;
   const anyLocked = records.some(r => String(r.payrollStatus).toLowerCase() === 'locked' || r.lockedAt);
+  const lockedIds = records.filter(r => String(r.payrollStatus).toLowerCase() === 'locked' || r.lockedAt).map(r => r.id);
+  // Only fully-PAID payroll may be locked; Company Head / Super Admin can unlock.
+  const canOverrideLock = role === 'Company Head' || role === 'Super Admin';
 
   // ── Single workflow that respects the grid selection ──────────────────────
   // With rows selected → the action targets ONLY those employees. With nothing
@@ -216,8 +220,14 @@ export const PayrollWorkbench: React.FC<Props> = ({
       btn: perms.generateSlips && { label: `Generate Slips${selSuffix}`, onClick: slipsAction } },
     { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
       btn: null },
-    { key: 'lock', title: 'Lock Month', icon: <Lock size={15} />, done: anyLocked, status: anyLocked ? 'Locked' : 'Open',
-      btn: perms.lock && !anyLocked && { label: 'Lock Month', onClick: onLockMonth } },
+    { key: 'lock', title: 'Lock Month', icon: <Lock size={15} />, done: anyLocked,
+      // Locking is only allowed once the month is fully Paid; before that the
+      // step stays open and the button is withheld. A locked month can be
+      // reopened by a Company Head / Super Admin (override authority).
+      status: anyLocked ? 'Locked' : (allPaid ? 'Ready to lock' : 'Pay first'),
+      btn: anyLocked
+        ? (canOverrideLock && onUnlock && { label: 'Unlock Month', onClick: () => onUnlock(lockedIds) })
+        : (perms.lock && allPaid && { label: 'Lock Month', onClick: onLockMonth }) },
   ];
   const activeIdx = steps.findIndex(s => !s.done);
 

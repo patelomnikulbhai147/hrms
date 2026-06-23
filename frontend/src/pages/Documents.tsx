@@ -31,6 +31,8 @@ import { ui } from '@/components/ui/feedback';
 import { formatDate } from '@/utils/formatDate';
 import { BulkUploadModal } from '@/components/employee/BulkUploadModal';
 import { EmployeeDocWorkspace } from '@/components/employee/EmployeeDocWorkspace';
+import { buildTemplateLibrary, DOC_GROUPS, DEFAULT_CATEGORY } from '@/components/documents/templateLibrary';
+import { DocumentCanvas, LayoutThumbnail } from '@/components/documents/DocumentCanvas';
 
 const DOCUMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Document Name', key: 'name', width: 30 },
@@ -132,7 +134,10 @@ interface DocumentsProps {
 interface DocumentTemplate {
   id: string;
   templateName: string;
-  category: 'Corporate Offer Letter' | 'Startup Offer Letter' | 'Internship Offer Letter' | 'Experience Letter' | 'Joining Letter' | 'Relieving Letter' | 'Payslip Template';
+  category: string;
+  group?: string;
+  isSystem?: boolean;
+  layout?: string;
   subject: string;
   body: string;
   companyId: string;
@@ -147,140 +152,68 @@ interface DocumentTemplate {
   createdAt: string;
 }
 
-// Map template categories to friendly human names for display
-const FRIENDLY_CATEGORIES: Record<DocumentTemplate['category'], string> = {
-  'Corporate Offer Letter': 'Corporate Offer',
-  'Startup Offer Letter': 'Startup Offer',
-  'Internship Offer Letter': 'Internship Offer',
-  'Experience Letter': 'Experience Letter',
-  'Joining Letter': 'Joining Letter',
-  'Relieving Letter': 'Relieving Letter',
-  'Payslip Template': 'Payslip Template'
+// ── Universal Company/Branch document hierarchy ──────────────────────────────
+// Multi-tenant safe, ZERO hardcoding: the company is always the primary identity
+// and the branch the secondary, resolved dynamically from live DB records via
+// Employee → Branch → Company. Works for every current and future tenant.
+
+// Company logo initials from the COMPANY name (never the branch). First letter of
+// the first two SIGNIFICANT words, skipping legal suffixes: "Vishv Enterprise"→VE,
+// "ABC Healthcare Pvt Ltd"→AH, "Global Security Services"→GS, "TechNova Solutions"→TS.
+const DOC_NAME_STOPWORDS = new Set(['pvt', 'private', 'ltd', 'limited', 'llp', 'inc', 'incorporated', 'corp', 'corporation', 'co', 'and', 'the', 'of']);
+export const companyInitials = (name?: string): string => {
+  const raw = String(name || '').trim();
+  if (!raw) return 'CO';
+  const tokens = raw.split(/\s+/).map(w => w.replace(/[^A-Za-z0-9&]/g, '')).filter(Boolean);
+  const significant = tokens.filter(w => !DOC_NAME_STOPWORDS.has(w.toLowerCase()));
+  const use = (significant.length ? significant : tokens).slice(0, 2);
+  const ini = use.map(w => w[0]).join('');
+  return (ini || raw.slice(0, 2)).toUpperCase();
 };
 
-const getInitialTemplates = (companyId: string, companyName: string): DocumentTemplate[] => {
-  return [
-    {
-      id: 'offer-corp',
-      templateName: 'Standard Corporate Layout',
-      category: 'Corporate Offer Letter',
-      subject: 'Employment Offer Letter',
-      body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are delighted to extend an offer of employment to join our professional team as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> inside the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Key package details:</p><ul><li>Effective Joining Date: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Base Salary Payout: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span> per annum</li></ul><p>We are confident your skills and background will contribute significantly to our operations. Welcome aboard!</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#3b82f6',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'Authorized HR Operations Signatory',
-        footerText: `${companyName} · Confidential Corporate Document`,
-        watermark: 'OFFER'
-      }
-    },
-    {
-      id: 'offer-start',
-      templateName: 'Vibrant Startup Design',
-      category: 'Startup Offer Letter',
-      subject: 'Welcome to the Team! Offer for {{designation}}',
-      body: `<p>Hey <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We loved your energy, tech skills, and culture fit. We are thrilled to officially offer you the role of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> within our hyper-growth <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> squad at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>!</p><p>Details of your rocketship assignment:</p><ul><li>Launch Day: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Base Pay Package: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span> per annum</li></ul><p>Let's make history and build amazing experiences together!</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#10b981',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'The Founders Crew',
-        footerText: `${companyName} Hub · Built for builders`,
-        watermark: 'WELCOME'
-      }
-    },
-    {
-      id: 'offer-intern',
-      templateName: 'Internship Onboarding',
-      category: 'Internship Offer Letter',
-      subject: 'Offer of Internship Training Program',
-      body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are pleased to offer you an Internship assignment as a Software Trainee in the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Internship terms:</p><ul><li>Start Date: <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span></li><li>Monthly Training Stipend: INR <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="salary" contenteditable="false">👤 Salary</span></li></ul><p>We look forward to providing a highly rewarding learning environment to kickstart your career.</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#8b5cf6',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'Academic Relations Lead',
-        footerText: `${companyName} Training & Placement Academy`,
-        watermark: 'INTERNSHIP'
-      }
-    },
-    {
-      id: 'exp-cert',
-      templateName: 'Standard Work Experience',
-      category: 'Experience Letter',
-      subject: 'To Whom It May Concern - Professional Experience Record',
-      body: `<p>This certifies that <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span> was employed with <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span> as a <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> in the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> division from <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span> onwards.</p><p>During their tenure of service, we found them to be diligent, hard-working, and highly cooperative in team projects. We recommend them highly for future opportunities.</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#3b82f6',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'Head of Human Resources',
-        footerText: `${companyName} Corporate Employment Records`,
-        watermark: 'EXPERIENCE'
-      }
-    },
-    {
-      id: 'join-formal',
-      templateName: 'Official Onboarding Confirmation',
-      category: 'Joining Letter',
-      subject: 'Confirmation of Joining & Reporting Instructions',
-      body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We formally welcome you to the corporate offices of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>. We confirm that you have reported for duty in the role of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> within the <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="department" contenteditable="false">👤 Department</span> team on <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span>.</p><p>Please coordinate with Onboarding IT to setup your secure cloud network profiles. We look forward to achieving great things together.</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#3b82f6',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'VP of Talent Operations',
-        footerText: `${companyName} Onboarding Suite`,
-        watermark: 'JOINED'
-      }
-    },
-    {
-      id: 'relieve-combined',
-      templateName: 'Service Relieving Order',
-      category: 'Relieving Letter',
-      subject: 'Relieving Order and Acceptance of Resignation',
-      body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>This is in reference to your resignation from the services of <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>. We accept your resignation and confirm that you are officially relieved from your duties as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> effective immediately.</p><p>We thank you for your contributions during your tenure, which began on <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="joining_date" contenteditable="false">👤 Joining Date</span>, and wish you success in your future career endeavors.</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#f59e0b',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'Vice President of HR',
-        footerText: `${companyName} Employee Registry`,
-        watermark: 'RELIEVED'
-      }
-    },
-    {
-      id: 'slip-std',
-      templateName: 'Structured Corporate Payslip',
-      category: 'Payslip Template',
-      subject: 'Monthly Pay Statement',
-      body: `<p>Monthly Statement for <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span> serving as <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="designation" contenteditable="false">👤 Designation</span> at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Gross compensation is structured on the active corporate payroll tables below. For inquiries, email <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_email" contenteditable="false">👤 Company Email</span>.</p>`,
-      companyId,
-      createdAt: new Date().toISOString().split('T')[0],
-      branding: {
-        companyName: companyName,
-        primaryColor: '#3b82f6',
-        logoText: companyName.slice(0, 2).toUpperCase(),
-        signatureText: 'Payroll Specialist',
-        footerText: `${companyName} Accounts & Auditing Department`,
-        watermark: 'PAID'
-      }
+const _norm = (v?: string) => String(v ?? '').trim().toLowerCase();
+const _isBranchEntity = (c: any) => !!c && !!c.parentCompanyId && !c.isHeadOffice;
+
+// Resolve { companyName (primary), branchName (secondary), companyEntity } for a
+// document, given the selected employee and the active workspace. Priority:
+//   1) Employee → its Branch → that branch's parent Company  (most specific)
+//   2) Active workspace is a Branch → its parent Company + the branch name
+//   3) Active workspace is a Company → the company (branch from employee, if any)
+// The COMPANY is never a branch name; falls back gracefully when records are thin.
+export const resolveDocHierarchy = (companies: any[], emp: any, currentCompany: any) => {
+  const list = Array.isArray(companies) ? companies : [];
+  const byId = (id: any) => list.find(c => String(c.id) === String(id));
+  const parentOf = (c: any) => (_isBranchEntity(c) ? (byId(c.parentCompanyId) || null) : c);
+
+  let branchEntity: any = null, companyEntity: any = null, branchName = '';
+
+  if (emp) {
+    branchEntity = (emp.branchId != null && byId(emp.branchId)) || null;
+    if (branchEntity && !_isBranchEntity(branchEntity)) branchEntity = null; // id collision guard
+    if (!branchEntity && emp.branchLocation) {
+      branchEntity = list.find(c => _isBranchEntity(c) && _norm(c.name || c.branchName) === _norm(emp.branchLocation)) || null;
     }
-  ];
+    if (branchEntity) { branchName = branchEntity.name || branchEntity.branchName || ''; companyEntity = parentOf(branchEntity); }
+    else if (emp.branchLocation) { branchName = String(emp.branchLocation).trim(); }
+  }
+
+  if (!companyEntity) {
+    if (_isBranchEntity(currentCompany)) {
+      companyEntity = parentOf(currentCompany);
+      if (!branchName) branchName = currentCompany?.name || currentCompany?.branchName || '';
+    } else {
+      companyEntity = currentCompany || null;
+    }
+  }
+
+  const companyName =
+    (companyEntity && companyEntity.name) ||
+    (_isBranchEntity(currentCompany) ? '' : currentCompany?.name) ||
+    'Company Name';
+
+  return { companyEntity: companyEntity || currentCompany || null, companyName, branchName: String(branchName || '').trim() };
 };
+
 
 export const Documents: React.FC<DocumentsProps> = ({
   role,
@@ -503,20 +436,25 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // ─── Document Template Engine State ───
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
-  const [currentCategory, setCurrentCategory] = useState<DocumentTemplate['category']>('Corporate Offer Letter');
+  const [currentCategory, setCurrentCategory] = useState<string>(DEFAULT_CATEGORY);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
   const [zoomScale, setZoomScale] = useState<number>(0.85);
 
-  // Variables for dynamic filling
+  // Variables for dynamic filling. Keys map 1:1 to {{token}} placeholders the
+  // compiler replaces. `company` is an alias of `company_name`, plus branch /
+  // employee_id so {{branch}}, {{company}}, {{employee_id}} bind too.
   const [docVariables, setDocVariables] = useState({
     employee_name: 'Rajesh Kumar',
+    employee_id: 'EMP-0001',
     designation: 'Senior Developer',
     department: 'Engineering',
+    branch: 'Head Office',
     joining_date: '2026-06-01',
     salary: '9,50,000',
     bonus: '50,000',
     ctc: '10,000',
+    company: currentCompany.name,
     company_name: currentCompany.name,
     company_email: currentCompany.email || 'hr@company.com',
     company_address: currentCompany.address || 'Corporate Headquarters'
@@ -541,27 +479,31 @@ export const Documents: React.FC<DocumentsProps> = ({
   // Rich Text Editor Ref for selection targeting
   const editorRef = useRef<HTMLDivElement>(null);
 
-  // Load / Persist templates per company
+  // Load templates per company: the system library (always fresh, delete-protected)
+  // + the user's saved CUSTOM templates (persisted). This keeps the library
+  // versionable while never losing user-created templates. v${DOC_LIBRARY_VERSION}.
   useEffect(() => {
-    const storageKey = `hrms_templates_${activeCompanyId}`;
-    const stored = localStorage.getItem(storageKey);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        setTemplates(parsed);
-      } catch (err) {
-        const fallback = getInitialTemplates(activeCompanyId, currentCompany.name);
-        setTemplates(fallback);
+    const customKey = `hrms_doc_custom_${activeCompanyId}`;
+    const system = buildTemplateLibrary(activeCompanyId, currentCompany.name) as DocumentTemplate[];
+    let customs: DocumentTemplate[] = [];
+    try { const raw = JSON.parse(localStorage.getItem(customKey) || '[]'); if (Array.isArray(raw)) customs = raw; } catch { customs = []; }
+    // One-time migration: rescue any user templates from the legacy all-in-one key.
+    try {
+      const legacy = JSON.parse(localStorage.getItem(`hrms_templates_${activeCompanyId}`) || 'null');
+      if (Array.isArray(legacy)) {
+        const rescued = legacy.filter((t: any) => t && !t.isSystem && /^(custom|copy)-/.test(t.id) && !customs.some(c => c.id === t.id));
+        if (rescued.length) { customs = [...customs, ...rescued]; }
+        localStorage.setItem(customKey, JSON.stringify(customs));
+        localStorage.removeItem(`hrms_templates_${activeCompanyId}`); // superseded by the v2 library
       }
-    } else {
-      const initial = getInitialTemplates(activeCompanyId, currentCompany.name);
-      setTemplates(initial);
-      
-    }
+    } catch { /* ignore legacy parse errors */ }
+    setTemplates([...system, ...customs.map(c => ({ ...c, isSystem: false }))]);
   }, [activeCompanyId, currentCompany.name]);
 
+  // Persist only the CUSTOM templates; the system library is rebuilt on every load.
   const saveTemplatesToStorage = (updated: DocumentTemplate[]) => {
     setTemplates(updated);
+    try { localStorage.setItem(`hrms_doc_custom_${activeCompanyId}`, JSON.stringify(updated.filter(t => !t.isSystem))); } catch { /* storage full / disabled */ }
   };
 
   // Filtered templates of the active tab category
@@ -586,24 +528,62 @@ export const Documents: React.FC<DocumentsProps> = ({
     return templates.find(t => t.id === selectedTemplateId) || filteredTemplates[0];
   }, [templates, selectedTemplateId, filteredTemplates]);
 
-  // Auto-populate when employee selection swaps
+  // Auto-populate every placeholder when the selected employee swaps. Real-time:
+  // updating docVariables re-runs the compiledSubject/compiledBody memos, which
+  // re-render the preview (and feed PDF/Print/Save) instantly — no page refresh.
+  //
+  // CRITICAL: the dropdown value is a STRING (e.id coerced), while e.id may be a
+  // number — so the lookup MUST compare via String(); a strict === silently
+  // missed the employee and left the preview showing stale data.
+  const prevSelRef = useRef('');
   useEffect(() => {
-    if (!selectedEmployeeId) return;
-    const emp = companyEmployees.find(e => e.id === selectedEmployeeId);
+    const prevSel = prevSelRef.current;
+    prevSelRef.current = selectedEmployeeId;
+
+    // Cleared selection → manual mode. Wipe employee-sourced values so no stale
+    // employee data lingers, leaving the company letterhead intact. Only on an
+    // ACTIVE deselect (not the initial empty mount, which keeps the demo sample).
+    if (!selectedEmployeeId) {
+      if (prevSel) {
+        // Manual mode — company letterhead still resolves to the PARENT company
+        // (never a branch name), so {{company}} stays correct with no employee.
+        const h = resolveDocHierarchy(companies as any[], null, currentCompany);
+        const co = h.companyEntity || currentCompany;
+        setDocVariables(prev => ({
+          ...prev,
+          employee_name: '', employee_id: '', designation: '', department: '',
+          branch: '', joining_date: '', salary: '', bonus: '', ctc: '',
+          company: h.companyName, company_name: h.companyName,
+          company_email: co.email || 'hr@company.com',
+          company_address: co.address || 'Corporate Headquarters',
+        }));
+      }
+      return;
+    }
+
+    const emp = companyEmployees.find(e => String(e.id) === String(selectedEmployeeId));
     if (!emp) return;
+    const empAny = emp as any;
+    const salaryNum = Number(emp.salary) || 0;
+    // Resolve Employee → Branch → Company so company/branch are always correct.
+    const h = resolveDocHierarchy(companies as any[], emp, currentCompany);
+    const co = h.companyEntity || currentCompany;
 
     setDocVariables(prev => ({
       ...prev,
-      employee_name: emp.name,
-      designation: emp.designation,
-      department: emp.department,
-      joining_date: emp.joinDate,
-      salary: emp.salary.toLocaleString('en-IN'),
-      bonus: Math.round(emp.salary * 0.08).toLocaleString('en-IN'),
-      ctc: emp.salary.toLocaleString('en-IN'),
-      company_name: currentCompany.name,
-      company_email: currentCompany.email || 'hr@company.com',
-      company_address: currentCompany.address || 'Corporate Headquarters'
+      employee_name: emp.name || '',
+      employee_id: String(empAny.employeeId || empAny.empId || emp.id || ''),
+      designation: emp.designation || '',
+      department: emp.department || '',
+      branch: h.branchName,
+      joining_date: emp.joinDate || '',
+      salary: salaryNum.toLocaleString('en-IN'),
+      bonus: Math.round(salaryNum * 0.08).toLocaleString('en-IN'),
+      ctc: salaryNum.toLocaleString('en-IN'),
+      company: h.companyName,
+      company_name: h.companyName,
+      company_email: co.email || 'hr@company.com',
+      company_address: co.address || 'Corporate Headquarters'
     }));
   }, [selectedEmployeeId, activeCompanyId]);
 
@@ -936,8 +916,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     } else {
       setModalForm({
         id: `custom-${Date.now()}`,
-        templateName: `Custom ${FRIENDLY_CATEGORIES[currentCategory]} Format`,
-        subject: `Ref: Custom ${FRIENDLY_CATEGORIES[currentCategory]}`,
+        templateName: `Custom ${currentCategory} Format`,
+        subject: `Ref: Custom ${currentCategory}`,
         body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are excited to invite you to join our team at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Sincerely,</p><p>HR Management</p>`,
         companyName: currentCompany.name,
         primaryColor: currentCompany.primaryColor || '#3b82f6',
@@ -960,7 +940,6 @@ export const Documents: React.FC<DocumentsProps> = ({
     // Read edited body content directly from editor HTML
     const finalBodyHtml = editorRef.current ? editorRef.current.innerHTML : modalForm.body;
 
-    const targetId = saveAsNew ? `custom-${Date.now()}` : modalForm.id;
     const updatedBranding = {
       companyName: modalForm.companyName,
       primaryColor: modalForm.primaryColor,
@@ -970,12 +949,19 @@ export const Documents: React.FC<DocumentsProps> = ({
       watermark: modalForm.watermark
     };
 
+    // System (default) templates are protected: editing one never overwrites the
+    // default — it is saved as a new CUSTOM template. Custom templates update in place.
+    const targetIsSystem = templates.find(t => t.id === modalForm.id)?.isSystem;
+    const createNew = saveAsNew || modalMode === 'create' || targetIsSystem;
+
     let updatedList: DocumentTemplate[];
-    if (saveAsNew || modalMode === 'create') {
+    if (createNew) {
       const newTemplate: DocumentTemplate = {
-        id: targetId,
+        id: `custom-${Date.now()}`,
         templateName: saveAsNew ? `${modalForm.templateName} (Copy)` : modalForm.templateName,
         category: currentCategory,
+        group: templates.find(t => t.id === modalForm.id)?.group,
+        isSystem: false,
         subject: modalForm.subject,
         body: finalBodyHtml,
         companyId: activeCompanyId,
@@ -1001,7 +987,7 @@ export const Documents: React.FC<DocumentsProps> = ({
 
     saveTemplatesToStorage(updatedList);
     setIsEditModalOpen(false);
-    ui.toast.success(saveAsNew ? 'New template version duplicated successfully.' : 'Template details updated.');
+    ui.toast.success(saveAsNew ? 'New template version duplicated successfully.' : targetIsSystem ? 'Saved as a new custom template (system defaults stay protected).' : 'Template details updated.');
   };
 
   // Duplicate current template quick action
@@ -1011,6 +997,7 @@ export const Documents: React.FC<DocumentsProps> = ({
       ...activeTemplate,
       id: `copy-${Date.now()}`,
       templateName: `${activeTemplate.templateName} (Copy)`,
+      isSystem: false, // a duplicate is always an editable custom template
       createdAt: new Date().toISOString().split('T')[0]
     };
     const updated = [...templates, duplicated];
@@ -1019,9 +1006,13 @@ export const Documents: React.FC<DocumentsProps> = ({
     ui.toast.success(`Duplicated "${activeTemplate.templateName}" successfully.`);
   };
 
-  // Delete Template
+  // Delete Template — system/default templates are protected.
   const handleDeleteTemplate = async () => {
     if (!activeTemplate) return;
+    if (activeTemplate.isSystem) {
+      ui.toast.error('System default templates are protected. Duplicate it first to create an editable copy.');
+      return;
+    }
     if (await ui.confirm({ message: `Are you sure you want to permanently delete "${activeTemplate.templateName}"?`, variant: 'danger', confirmText: 'Delete' })) {
       const updated = templates.filter(t => t.id !== activeTemplate.id);
       saveTemplatesToStorage(updated);
@@ -1102,7 +1093,67 @@ export const Documents: React.FC<DocumentsProps> = ({
 
   // Derived colors
   const primaryColorHex = activeTemplate?.branding?.primaryColor || currentCompany.primaryColor || '#3b82f6';
-  const logoText = activeTemplate?.branding?.logoText || currentCompany.name.slice(0, 2).toUpperCase();
+
+  // Universal Company/Branch hierarchy for THIS document — dynamically resolved
+  // (Employee → Branch → Company) for every tenant, no hardcoding. Company is the
+  // primary identity, branch the secondary; logo initials come from the COMPANY.
+  const docHierarchy = useMemo(
+    () => resolveDocHierarchy(companies as any[], companyEmployees.find(e => String(e.id) === String(selectedEmployeeId)), currentCompany),
+    [companies, companyEmployees, selectedEmployeeId, currentCompany]
+  );
+  const headerCompanyName = docHierarchy.companyName;
+  const headerBranchName = docHierarchy.branchName;
+  // Logo initials always from the company name (never branch); honour an explicit
+  // custom logoText only when the user typed one that isn't the wrong auto-slice.
+  const seededLogo = ((docHierarchy.companyEntity?.name || currentCompany.name || '').slice(0, 2)).toUpperCase();
+  const customLogo = activeTemplate?.branding?.logoText && activeTemplate.branding.logoText !== seededLogo
+    ? activeTemplate.branding.logoText : '';
+  const logoText = customLogo || companyInitials(headerCompanyName);
+
+  // Payslip content block — UNCHANGED computation (payslipVals + company rates).
+  // Built only for the Payslip category (mirrors the original conditional render,
+  // so the company-rate fields are always present), then passed to DocumentCanvas.
+  const payslipNode = currentCategory === 'Payslip Template' ? (
+    <div className="space-y-4 font-sans">
+      <div className="text-xs text-slate-700 italic border-l-2 pl-3 py-1 mb-2" style={{ borderLeftColor: primaryColorHex }} dangerouslySetInnerHTML={{ __html: compiledBody }} />
+      <div className="grid grid-cols-2 gap-4 border border-slate-200 p-3 rounded-xl bg-slate-50/50 text-[10px]">
+        <div className="space-y-1">
+          <p>Employee Name: <span className="font-bold text-slate-900">{docVariables.employee_name}</span></p>
+          <p>Designation: <span className="font-semibold text-slate-800">{docVariables.designation}</span></p>
+          <p>Department: <span className="font-semibold text-slate-800">{docVariables.department}</span></p>
+        </div>
+        <div className="space-y-1">
+          <p>Base Location: <span className="font-semibold text-slate-800">{((currentCompany as any).address || (currentCompany as any).billingAddress || currentCompany.name || '—').split(',')[0]}</span></p>
+          <p>Joining Date: <span className="font-semibold text-slate-800">{docVariables.joining_date}</span></p>
+          <p>Billing Month: <span className="font-semibold text-slate-800">June 2026</span></p>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl overflow-hidden text-[10px]">
+        <div className="border-r border-slate-200">
+          <div className="px-3 py-1.5 font-bold border-b border-slate-200" style={{ backgroundColor: `${primaryColorHex}12`, color: primaryColorHex }}>Earnings (Monthly)</div>
+          <div className="p-3 space-y-2">
+            <div className="flex justify-between"><span>Basic Salary ({currentCompany.basicPercent}%):</span><span className="font-semibold text-slate-900">₹{payslipVals.basic.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between"><span>HRA Allowance (40%):</span><span className="font-semibold text-slate-900">₹{payslipVals.hra.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between"><span>Special Allowance:</span><span className="font-semibold text-slate-900">₹{payslipVals.special.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between border-t pt-1.5 font-bold text-slate-900"><span>Gross Earnings:</span><span>₹{payslipVals.ctc.toLocaleString('en-IN')}</span></div>
+          </div>
+        </div>
+        <div>
+          <div className="px-3 py-1.5 font-bold border-b border-slate-200" style={{ backgroundColor: `${primaryColorHex}12`, color: primaryColorHex }}>Deductions (Statutory)</div>
+          <div className="p-3 space-y-2">
+            <div className="flex justify-between text-slate-700"><span>PF ({currentCompany.pfRate}% of Basic):</span><span className="font-semibold text-red-600">-₹{payslipVals.pf.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between text-slate-700"><span>ESIC ({currentCompany.esicRate}% of Basic):</span><span className="font-semibold text-red-600">-₹{payslipVals.esic.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between text-slate-700"><span>Professional Tax:</span><span className="font-semibold text-red-600">-₹{payslipVals.profTax.toLocaleString('en-IN')}</span></div>
+            <div className="flex justify-between border-t pt-1.5 font-bold text-slate-900"><span>Total Deductions:</span><span className="text-red-600">-₹{(payslipVals.pf + payslipVals.esic + payslipVals.profTax).toLocaleString('en-IN')}</span></div>
+          </div>
+        </div>
+      </div>
+      <div className="border rounded-2xl p-3 text-center" style={{ backgroundColor: `${primaryColorHex}08`, borderColor: `${primaryColorHex}40` }}>
+        <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: primaryColorHex }}>Net Credited Take Home Salary</p>
+        <p className="text-base font-extrabold mt-0.5" style={{ color: primaryColorHex }}>₹{payslipVals.netTakeHome.toLocaleString('en-IN')}</p>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="space-y-4">
@@ -1132,7 +1183,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           }`}
         >
           <FileText size={14} />
-          Canva Letter Builder
+          Smart Document Builder
         </button>
       </div>
 
@@ -1495,31 +1546,45 @@ export const Documents: React.FC<DocumentsProps> = ({
         )
       )}
 
-      {/* ─── TAB 2: VISUAL CANVA TEMPLATE GENERATOR ───────────────────────────── */}
+      {/* ─── TAB 2: SMART DOCUMENT BUILDER ────────────────────────────────────── */}
       {activeTab === 'letters' && (
         <div className="space-y-4 animate-fade-in font-sans">
           
-          {/* Categorized Template Tabs */}
-          <div className="flex bg-slate-100 p-1 rounded-2xl gap-1 overflow-auto">
-            {([
-              'Corporate Offer Letter', 'Startup Offer Letter', 'Internship Offer Letter',
-              'Experience Letter', 'Joining Letter', 'Relieving Letter', 'Payslip Template'
-            ] as const).map(cat => {
-              const count = templates.filter(t => t.category === cat).length;
+          {/* Document category navigator — grouped, scales to the full library */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+              <FileText size={15} className="text-indigo-600" /> Document Category
+            </div>
+            <select
+              value={currentCategory}
+              onChange={e => setCurrentCategory(e.target.value)}
+              className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border border-slate-200 text-[12px] font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+            >
+              {DOC_GROUPS.map(g => (
+                <optgroup key={g.group} label={g.group}>
+                  {g.categories.map(cat => (
+                    <option key={cat} value={cat}>{cat} ({templates.filter(t => t.category === cat).length})</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <span className="text-[11px] font-semibold text-slate-500">
+              {DOC_GROUPS.find(g => g.categories.includes(currentCategory))?.group || 'Documents'} ·{' '}
+              <span className="text-indigo-600">{templates.filter(t => t.category === currentCategory).length} templates</span>
+            </span>
+          </div>
+
+          {/* Quick group chips for fast switching between sections */}
+          <div className="flex flex-wrap gap-1.5">
+            {DOC_GROUPS.map(g => {
+              const active = g.categories.includes(currentCategory);
               return (
                 <button
-                  key={cat}
-                  onClick={() => setCurrentCategory(cat)}
-                  className={`py-2 px-3 text-[11px] font-bold rounded-xl whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    currentCategory === cat
-                      ? 'bg-white text-indigo-600 shadow-sm'
-                      : 'text-slate-600 hover:bg-slate-200/50'
-                  }`}
+                  key={g.group}
+                  onClick={() => setCurrentCategory(g.categories[0])}
+                  className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
-                  <span>{FRIENDLY_CATEGORIES[cat]}</span>
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${currentCategory === cat ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-200 text-slate-500'}`}>
-                    {count}
-                  </span>
+                  {g.group}
                 </button>
               );
             })}
@@ -1537,7 +1602,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <Palette size={14} className="text-indigo-500" />
                     Select Document Style
                   </h3>
-                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold">{FRIENDLY_CATEGORIES[currentCategory]}</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold">{currentCategory}</span>
                 </div>
 
                 {filteredTemplates.length === 0 ? (
@@ -1556,18 +1621,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                             isActive ? 'border-indigo-600 bg-white ring-1 ring-indigo-600/30' : 'border-slate-200 hover:border-slate-300'
                           }`}
                         >
-                          {/* Miniature Template Thumbnail */}
-                          <div className="h-16 bg-white border border-slate-100 rounded-lg p-1.5 mb-2 flex flex-col justify-between overflow-hidden pointer-events-none select-none">
-                            <div className="flex justify-between items-center border-b border-slate-50 pb-0.5">
-                              <span className="text-[6px] font-extrabold text-slate-700 leading-none">{t.branding?.logoText || 'TN'}</span>
-                              <div className="w-1 h-1 rounded-full" style={{ backgroundColor: t.branding?.primaryColor || '#3b82f6' }}></div>
-                            </div>
-                            <div className="space-y-0.5">
-                              <div className="h-0.5 bg-slate-200 rounded w-full"></div>
-                              <div className="h-0.5 bg-slate-200 rounded w-5/6"></div>
-                              <div className="h-0.5 bg-slate-150 rounded w-2/3"></div>
-                            </div>
-                            <div className="h-0.5 bg-slate-100 rounded w-1/3"></div>
+                          {/* Layout-accurate thumbnail — shows the real structure, not a recolour */}
+                          <div className="mb-2">
+                            <LayoutThumbnail layout={t.layout} color={t.branding?.primaryColor || '#3b82f6'} />
                           </div>
 
                           <h4 className="text-[10px] font-bold text-slate-800 truncate">{t.templateName}</h4>
@@ -1602,7 +1658,8 @@ export const Documents: React.FC<DocumentsProps> = ({
                     </button>
                     <button
                       onClick={handleDeleteTemplate}
-                      disabled={templates.filter(t => t.category === currentCategory).length <= 1}
+                      disabled={!activeTemplate || activeTemplate.isSystem}
+                      title={activeTemplate?.isSystem ? 'System default templates are protected — duplicate to edit/delete' : 'Delete this custom template'}
                       className="py-1.5 px-2 border border-slate-200 hover:border-red-200 hover:bg-red-50 hover:text-red-700 rounded-xl text-[10px] font-extrabold text-slate-750 transition-all flex items-center justify-center gap-1 shadow-xs disabled:opacity-40"
                     >
                       <Trash2 size={11} className="text-red-500" />
@@ -1659,6 +1716,25 @@ export const Documents: React.FC<DocumentsProps> = ({
                       onChange={e => setDocVariables({ ...docVariables, joining_date: e.target.value })}
                     />
                   </div>
+
+                  <div className="grid grid-cols-2 gap-3.5">
+                    <Input
+                      label="Employee ID"
+                      value={docVariables.employee_id}
+                      onChange={e => setDocVariables({ ...docVariables, employee_id: e.target.value })}
+                    />
+                    <Input
+                      label="Branch"
+                      value={docVariables.branch}
+                      onChange={e => setDocVariables({ ...docVariables, branch: e.target.value })}
+                    />
+                  </div>
+
+                  <Input
+                    label="Company"
+                    value={docVariables.company}
+                    onChange={e => setDocVariables({ ...docVariables, company: e.target.value, company_name: e.target.value })}
+                  />
 
                   <div className="grid grid-cols-3 gap-2">
                     <Input
@@ -1782,174 +1858,28 @@ export const Documents: React.FC<DocumentsProps> = ({
                       width: '210mm',
                       minHeight: '297mm',
                       fontSize: '12px',
-                      lineHeight: '1.65',
-                      padding: '24mm 18mm'
+                      lineHeight: '1.65'
                     }}
-                    className="bg-white text-slate-800 font-serif relative h-full flex flex-col justify-between"
+                    className="bg-white relative overflow-hidden"
                   >
-                    
-                    {/* Watermark overlay */}
-                    {activeTemplate?.branding?.watermark && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden">
-                        <span className="text-[52px] font-sans font-extrabold text-slate-100 border-8 border-slate-100/65 px-5 py-1.5 rounded-2xl transform -rotate-45 uppercase tracking-widest opacity-20">
-                          {activeTemplate.branding.watermark}
-                        </span>
-                      </div>
-                    )}
-
-                    <div>
-                      {/* Top Header branding band */}
-                      <div
-                        className="flex items-center justify-between border-b-2 pb-4 mb-6"
-                        style={{ borderColor: primaryColorHex }}
-                      >
-                        <div className="font-sans">
-                          <h1
-                            className="text-base font-extrabold uppercase tracking-wider"
-                            style={{ color: primaryColorHex }}
-                          >
-                            {activeTemplate?.branding?.companyName || currentCompany.name}
-                          </h1>
-                          <p className="text-[9px] text-slate-500 mt-1">HQ Address: {docVariables.company_address}</p>
-                          <p className="text-[9px] text-slate-400 mt-0.5">Corporate Email: {docVariables.company_email}</p>
-                        </div>
-                        <div
-                          className="w-10 h-10 rounded-xl text-white flex items-center justify-center font-extrabold text-sm flex-shrink-0 shadow-sm uppercase font-sans"
-                          style={{ backgroundColor: primaryColorHex }}
-                        >
-                          {logoText}
-                        </div>
-                      </div>
-
-                      {/* Subject & Date Row */}
-                      <div className="flex justify-between items-baseline font-sans text-[10px] text-slate-500 mb-6">
-                        <span className="font-bold">Subject: {compiledSubject}</span>
-                        <span className="font-medium">Date: {new Date().toLocaleDateString('en-IN')}</span>
-                      </div>
-
-                      {/* Content block: letter head OR dynamic payslip table */}
-                      {currentCategory === 'Payslip Template' ? (
-                        <div className="space-y-4 font-sans">
-                          
-                          {/* Top mini notes block */}
-                          <div className="text-xs text-slate-700 italic border-l-2 pl-3 py-1 mb-2" style={{ borderLeftColor: primaryColorHex }} dangerouslySetInnerHTML={{ __html: compiledBody }} />
-
-                          {/* Details grid */}
-                          <div className="grid grid-cols-2 gap-4 border border-slate-200 p-3 rounded-xl bg-slate-50/50 text-[10px]">
-                            <div className="space-y-1">
-                              <p>Employee Name: <span className="font-bold text-slate-900">{docVariables.employee_name}</span></p>
-                              <p>Designation: <span className="font-semibold text-slate-800">{docVariables.designation}</span></p>
-                              <p>Department: <span className="font-semibold text-slate-800">{docVariables.department}</span></p>
-                            </div>
-                            <div className="space-y-1">
-                              <p>Base Location: <span className="font-semibold text-slate-800">{((currentCompany as any).address || (currentCompany as any).billingAddress || currentCompany.name || '—').split(',')[0]}</span></p>
-                              <p>Joining Date: <span className="font-semibold text-slate-800">{docVariables.joining_date}</span></p>
-                              <p>Billing Month: <span className="font-semibold text-slate-800">June 2026</span></p>
-                            </div>
-                          </div>
-
-                          {/* Earnings & Deductions grid */}
-                          <div className="grid grid-cols-2 gap-4 border border-slate-200 rounded-xl overflow-hidden text-[10px]">
-                            {/* Earnings */}
-                            <div className="border-r border-slate-200">
-                              <div
-                                className="px-3 py-1.5 font-bold border-b border-slate-200"
-                                style={{ backgroundColor: `${primaryColorHex}12`, color: primaryColorHex }}
-                              >
-                                Earnings (Monthly)
-                              </div>
-                              <div className="p-3 space-y-2">
-                                <div className="flex justify-between">
-                                  <span>Basic Salary ({currentCompany.basicPercent}%):</span>
-                                  <span className="font-semibold text-slate-900">₹{payslipVals.basic.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>HRA Allowance (40%):</span>
-                                  <span className="font-semibold text-slate-900">₹{payslipVals.hra.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Special Allowance:</span>
-                                  <span className="font-semibold text-slate-900">₹{payslipVals.special.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between border-t pt-1.5 font-bold text-slate-900">
-                                  <span>Gross Earnings:</span>
-                                  <span>₹{payslipVals.ctc.toLocaleString('en-IN')}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Deductions */}
-                            <div>
-                              <div
-                                className="px-3 py-1.5 font-bold border-b border-slate-200"
-                                style={{ backgroundColor: `${primaryColorHex}12`, color: primaryColorHex }}
-                              >
-                                Deductions (Statutory)
-                              </div>
-                              <div className="p-3 space-y-2">
-                                <div className="flex justify-between text-slate-700">
-                                  <span>PF ({currentCompany.pfRate}% of Basic):</span>
-                                  <span className="font-semibold text-red-650 text-red-600">-₹{payslipVals.pf.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between text-slate-700">
-                                  <span>ESIC ({currentCompany.esicRate}% of Basic):</span>
-                                  <span className="font-semibold text-red-650 text-red-600">-₹{payslipVals.esic.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between text-slate-700">
-                                  <span>Professional Tax:</span>
-                                  <span className="font-semibold text-red-650 text-red-600">-₹{payslipVals.profTax.toLocaleString('en-IN')}</span>
-                                </div>
-                                <div className="flex justify-between border-t pt-1.5 font-bold text-slate-900">
-                                  <span>Total Deductions:</span>
-                                  <span className="text-red-650 text-red-600">-₹{(payslipVals.pf + payslipVals.esic + payslipVals.profTax).toLocaleString('en-IN')}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Net Pay Box */}
-                          <div
-                            className="border rounded-2xl p-3 text-center"
-                            style={{
-                              backgroundColor: `${primaryColorHex}08`,
-                              borderColor: `${primaryColorHex}40`
-                            }}
-                          >
-                            <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: primaryColorHex }}>
-                              Net Credited Take Home Salary
-                            </p>
-                            <p className="text-base font-extrabold mt-0.5" style={{ color: primaryColorHex }}>
-                              ₹{payslipVals.netTakeHome.toLocaleString('en-IN')}
-                            </p>
-                          </div>
-
-                        </div>
-                      ) : (
-                        // Standard formatted letter body compiled HTML
-                        <div className="whitespace-pre-wrap leading-relaxed text-xs text-slate-800 font-serif" dangerouslySetInnerHTML={{ __html: compiledBody }} />
-                      )}
-                    </div>
-
-                    {/* Bottom Signature and Footer block */}
-                    <div className="mt-12">
-                      <div className="flex justify-between items-end border-t border-slate-100 pt-5 font-sans">
-                        <div>
-                          <p className="font-bold text-[11px]">For {activeTemplate?.branding?.companyName || currentCompany.name}</p>
-                          <p className="text-[10px] text-slate-500 italic mt-6">{activeTemplate?.branding?.signatureText || 'Authorized HR Operations Signatory'}</p>
-                          <p className="text-[8px] text-slate-400 mt-0.5">Corporate Operations Department</p>
-                        </div>
-                        <div className="text-right text-[8px] text-slate-400">
-                          <p className="font-bold">CONFIDENTIAL AND PROPRIETARY</p>
-                          <p className="mt-0.5">{activeTemplate?.branding?.companyName || currentCompany.name}</p>
-                        </div>
-                      </div>
-
-                      {/* Small Footer Text */}
-                      <div className="text-center text-[8px] text-slate-400 font-sans border-t border-slate-100 mt-6 pt-1.5">
-                        {activeTemplate?.branding?.footerText || `${currentCompany.name} · Confidential Employee Dossier Operations`}
-                      </div>
-                    </div>
-
+                    <DocumentCanvas
+                      layout={activeTemplate?.layout}
+                      primary={primaryColorHex}
+                      logoText={logoText}
+                      companyName={headerCompanyName}
+                      branchName={headerBranchName}
+                      address={docVariables.company_address}
+                      email={docVariables.company_email}
+                      subject={compiledSubject}
+                      dateStr={new Date().toLocaleDateString('en-IN')}
+                      bodyHtml={compiledBody}
+                      employeeName={docVariables.employee_name}
+                      signatureText={activeTemplate?.branding?.signatureText || 'Authorized HR Operations Signatory'}
+                      footerText={activeTemplate?.branding?.footerText || `${headerCompanyName} · Confidential Employee Dossier Operations`}
+                      watermark={activeTemplate?.branding?.watermark}
+                      isPayslip={currentCategory === 'Payslip Template'}
+                      payslipNode={payslipNode}
+                    />
                   </div>
                 </div>
 
@@ -1965,6 +1895,9 @@ export const Documents: React.FC<DocumentsProps> = ({
         open={uploadOpen}
         onClose={() => { setUploadOpen(false); }}
         title="Upload Employee Document"
+        variant="page"
+        breadcrumbs={[{ label: 'Documents', onClick: () => setUploadOpen(false) }, { label: 'Upload Document' }]}
+        subtitle="Attach a document file or link and tag it to an employee."
         size="lg"
         footer={
           canEdit && (
@@ -2138,8 +2071,8 @@ export const Documents: React.FC<DocumentsProps> = ({
         size="md"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditDoc(null)}>Cancel</Button>
-            <Button onClick={saveEditDoc}>Save Changes</Button>
+            <Button variant="outline" onClick={() => setEditDoc(null)}>{canEdit ? 'Cancel' : 'Close'}</Button>
+            {canEdit && <Button onClick={saveEditDoc}>Save Changes</Button>}
           </>
         }
       >
@@ -2305,10 +2238,13 @@ export const Documents: React.FC<DocumentsProps> = ({
               <div className="flex flex-wrap gap-2 pt-1.5">
                 {[
                   { key: 'employee_name', label: 'Employee Name' },
+                  { key: 'employee_id', label: 'Employee ID' },
                   { key: 'designation', label: 'Designation' },
                   { key: 'department', label: 'Department' },
+                  { key: 'branch', label: 'Branch' },
                   { key: 'joining_date', label: 'Joining Date' },
                   { key: 'salary', label: 'Salary' },
+                  { key: 'company', label: 'Company' },
                   { key: 'company_name', label: 'Company Name' },
                   { key: 'company_email', label: 'Company Email' }
                 ].map(chip => (

@@ -4,11 +4,14 @@ import {
   DollarSign, ShieldCheck, Activity, CreditCard, Wallet, Briefcase, Building2,
   BarChart3, ClipboardList, ArrowLeft
 } from 'lucide-react';
+import { Eye, Printer, FileDown, FileSpreadsheet } from 'lucide-react';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type PayrollRecord, type Role, type Company } from '@/data/mockData';
 import { Card, StatCard } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Reports } from '@/pages/Reports';
+import { templateForName, type TemplateDef } from '@/components/reports/templateRegistry';
+import { ReportTemplateViewer } from '@/components/reports/ReportTemplateViewer';
 
 interface ReportCenterProps {
   role: Role;
@@ -120,6 +123,8 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
   const [search, setSearch] = useState('');
   const [showClassic, setShowClassic] = useState(false);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Active template viewer (a live report opened from its card).
+  const [viewer, setViewer] = useState<{ def: TemplateDef; name: string; autoAction?: 'pdf' | 'excel' | 'print' | null } | null>(null);
 
   const q = search.trim().toLowerCase();
 
@@ -151,6 +156,20 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
   });
   const allOpen = collapsed.size === 0;
   const toggleAll = () => setCollapsed(allOpen ? new Set(CATEGORIES.map(c => c.id)) : new Set());
+
+  // A live report is open → render its dedicated template viewer (Preview / PDF /
+  // Excel / Print), replacing the catalog. Closing returns to the catalog.
+  if (viewer) {
+    return (
+      <ReportTemplateViewer
+        def={viewer.def}
+        reportName={viewer.name}
+        companyId={props.activeCompanyId}
+        autoAction={viewer.autoAction}
+        onClose={() => setViewer(null)}
+      />
+    );
+  }
 
   // Existing, working reports preserved — reachable via this toggle (req #8).
   if (showClassic) {
@@ -224,24 +243,53 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
 
               {isOpen(cat.id) && (
                 <div className="px-5 pb-5 pt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {cat.matches.map(name => (
-                    <div
-                      key={name}
-                      title="Coming soon"
-                      aria-disabled="true"
-                      className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-3 opacity-90 cursor-not-allowed select-none"
-                    >
-                      <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 text-slate-400 shrink-0">
-                        <FileText size={15} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-semibold text-slate-700 leading-snug">{name}</p>
-                        <span className="inline-flex items-center mt-1.5 text-[9px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
-                          Coming Soon
+                  {cat.matches.map(name => {
+                    const live = templateForName(name);
+                    if (live) {
+                      // ── LIVE report card: Name, Description + Preview / Generate /
+                      //    PDF / Excel / Print actions (all open the live viewer). ──
+                      return (
+                        <div key={name} className="flex flex-col rounded-xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40 p-3 shadow-sm">
+                          <div className="flex items-start gap-3">
+                            <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><FileText size={15} /></span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-slate-800 leading-snug">{name}</p>
+                                <span className="text-[8px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 border border-emerald-200 rounded-full px-1.5 py-0.5">Live</span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 mt-1 leading-snug">{live.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-2 border-t border-emerald-100">
+                            <Button size="sm" icon={<Eye size={13} />} onClick={() => setViewer({ def: live, name })}>Preview</Button>
+                            <Button variant="outline" size="sm" onClick={() => setViewer({ def: live, name })}>Generate</Button>
+                            <button title="Export PDF" onClick={() => setViewer({ def: live, name, autoAction: 'pdf' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-rose-600 shadow-sm"><FileDown size={14} /></button>
+                            <button title="Export Excel" onClick={() => setViewer({ def: live, name, autoAction: 'excel' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-emerald-600 shadow-sm"><FileSpreadsheet size={14} /></button>
+                            <button title="Print" onClick={() => setViewer({ def: live, name, autoAction: 'print' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 shadow-sm"><Printer size={14} /></button>
+                          </div>
+                        </div>
+                      );
+                    }
+                    // ── Not-yet-provided template → visible but disabled. ──
+                    return (
+                      <div
+                        key={name}
+                        title="Template not yet provided"
+                        aria-disabled="true"
+                        className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-3 opacity-90 cursor-not-allowed select-none"
+                      >
+                        <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-slate-100 text-slate-400 shrink-0">
+                          <FileText size={15} />
                         </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-slate-700 leading-snug">{name}</p>
+                          <span className="inline-flex items-center mt-1.5 text-[9px] font-bold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">
+                            Coming Soon
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

@@ -19,27 +19,31 @@ const MODULES: { key: AppModules; label: string }[] = [
   { key: 'reports', label: 'Reports' },
   { key: 'settings', label: 'Settings' },
   { key: 'tasks', label: 'Task Manager' },
-  { key: 'tenders', label: 'Tender Information' },
+  { key: 'tenders', label: 'Tender Management' },
+  { key: 'contracts', label: 'Contract Management' },
   { key: 'users', label: 'User Management' },
 ];
 
-// The matrix controls ONLY these four permissions. "Access" and "Manage" have
-// been removed from the system — authorization is driven by these alone.
-const ACTIONS = ['view', 'edit', 'create', 'delete'] as const;
+// The matrix controls ONLY these four permissions. The model is intentionally
+// simple: VIEW (read/search/open), CREATE (add new records), EDIT (modify/delete/
+// approve existing records), EXPORT (download/print data). "Access", "Manage",
+// standalone "Delete", "Approve" and "Print" have been removed — delete/approve
+// are covered by EDIT and print is covered by EXPORT, everywhere in the app.
+const ACTIONS = ['view', 'create', 'edit', 'export'] as const;
 type Action = typeof ACTIONS[number];
 
-const blankPerm = () => ({ view: false, edit: false, create: false, delete: false, export: false, approve: false, print: false });
+const blankPerm = () => ({ view: false, create: false, edit: false, export: false });
 
 // Role templates — quick presets applied across all modules.
 const TEMPLATES: Record<string, (m: AppModules) => any> = {
-  'Read Only': () => ({ ...blankPerm(), view: true }),
+  'View Only': () => ({ ...blankPerm(), view: true, export: true }),
   'HR Admin': (m) => ['employees', 'attendance', 'leaves', 'payroll', 'documents', 'reports', 'tasks', 'dashboard', 'settings'].includes(m)
-    ? { ...blankPerm(), view: true, edit: true, create: true, approve: true, export: true, print: true }
-    : { ...blankPerm(), view: m === 'tenders' },
+    ? { view: true, create: true, edit: true, export: true }
+    : { ...blankPerm(), view: m === 'tenders', export: m === 'tenders' },
   'Finance': (m) => ['payroll', 'reports', 'dashboard'].includes(m)
-    ? { ...blankPerm(), view: true, edit: true, export: true, print: true }
+    ? { ...blankPerm(), view: true, edit: true, export: true }
     : blankPerm(),
-  'Full (Company)': () => ({ view: true, edit: true, create: true, delete: true, export: true, approve: true, print: true }),
+  'Full (Company)': () => ({ view: true, create: true, edit: true, export: true }),
 };
 
 interface Props { role: string; }

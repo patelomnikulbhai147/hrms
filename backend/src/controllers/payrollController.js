@@ -184,6 +184,9 @@ exports.recalcForEmployeeMonth = recalcForEmployeeMonth;
 exports.recalculate = async (req, res) => {
   try {
     const isSuper = req.user?.role === 'Super Admin';
+    // Company Head has override authority over locked payroll (corrections);
+    // Super Admin too. HR cannot recalc locked records.
+    const canOverrideLock = isSuper || req.user?.role === 'Company Head';
     const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
 
     let where;
@@ -204,7 +207,7 @@ exports.recalculate = async (req, res) => {
     const records = await prisma.payroll.findMany({ where, include: { employee: true, company: true } });
     let recalculated = 0, skippedLocked = 0;
     for (const p of records) {
-      if (p.payrollStatus === 'locked' && !isSuper) { skippedLocked++; continue; }
+      if (p.payrollStatus === 'locked' && !canOverrideLock) { skippedLocked++; continue; }
       const summary = await prisma.attendanceSummary.findUnique({
         where: { employeeId_month_year: { employeeId: p.employeeId, month: p.month, year: p.year } },
       });
@@ -624,6 +627,15 @@ exports.update = async (req, res) => {
       return res.status(404).json({ error: 'Payroll record not found.' });
     }
 
+    // A LOCKED payroll may only be edited by a Company Head (override authority)
+    // or a Super Admin. HR must never edit a locked record.
+    if (existingRecord.payrollStatus === 'locked') {
+      const role = req.user?.role;
+      if (role !== 'Super Admin' && role !== 'Company Head') {
+        return res.status(403).json({ error: 'This payroll is locked. Only a Company Head can edit a locked payroll.' });
+      }
+    }
+
     if (payload.paymentStatus === 'paid' && existingRecord.paymentStatus === 'paid') {
       return res.status(400).json({ error: 'Payroll already paid.' });
     }
@@ -773,36 +785,85 @@ async function setSummaryLock(payrollIds, locked) {
   }
 }
 
-// POST /api/payroll/lock  { ids }  → lock record(s) AND their attendance month
+// POST /api/payroll/lock  { ids, reason? }  → lock ONLY fully-paid record(s)
+// Business rule: payroll is NEVER auto-locked and can only be locked once it is
+// fully Paid. Unpaid records are rejected/skipped so they stay editable.
 exports.lock = async (req, res) => {
   try {
     const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
-    const result = await prisma.payroll.updateMany({
+    const reason = (req.body.reason || '').toString();
+
+    const targets = await prisma.payroll.findMany({
       where: { id: { in: ids } },
+      select: { id: true, paymentStatus: true },
+    });
+    const paidIds = targets.filter(p => String(p.paymentStatus || '').toLowerCase() === 'paid').map(p => p.id);
+    const skippedUnpaid = targets.length - paidIds.length;
+    if (!paidIds.length) {
+      return res.status(400).json({ error: 'Only fully Paid payroll can be locked. None of the selected records are Paid.' });
+    }
+
+    const result = await prisma.payroll.updateMany({
+      where: { id: { in: paidIds } },
       data: { payrollStatus: 'locked', lockedAt: new Date() },
     });
-    await setSummaryLock(ids, true); // block attendance editing for the locked month
-    res.json({ locked: result.count });
+    await setSummaryLock(paidIds, true); // block attendance editing for the locked month
+
+    if (req.user?.id) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'LOCK_PAYROLL',
+          module: 'Payroll',
+          targetId: paidIds.join(','),
+          details: JSON.stringify({
+            by: req.user.name || req.user.email, role: req.user.role,
+            reason: reason || '(none)', locked: result.count, skippedUnpaid,
+          }).slice(0, 1500),
+        },
+      }).catch(() => {});
+    }
+    res.json({ locked: result.count, skippedUnpaid });
   } catch (error) {
     console.error('Error locking payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 
-// POST /api/payroll/unlock  { ids }  → Super Admin only: reopen month + attendance
+// POST /api/payroll/unlock  { ids, reason? }  → Company Head or Super Admin only.
+// HR can NEVER unlock. Reverts a locked record to 'paid' (it was paid before the
+// lock) so it becomes editable again for corrections, and reopens its attendance.
 exports.unlock = async (req, res) => {
   try {
-    if (req.user?.role !== 'Super Admin') {
-      return res.status(403).json({ error: 'Only a Super Admin can unlock a payroll month.' });
+    const role = req.user?.role;
+    if (role !== 'Super Admin' && role !== 'Company Head') {
+      return res.status(403).json({ error: 'Only a Company Head or Super Admin can unlock payroll.' });
     }
     const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
+    const reason = (req.body.reason || '').toString();
+
     const result = await prisma.payroll.updateMany({
       where: { id: { in: ids } },
-      data: { payrollStatus: 'approved', lockedAt: null },
+      data: { payrollStatus: 'paid', lockedAt: null },
     });
     await setSummaryLock(ids, false);
+
+    if (req.user?.id) {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user.id,
+          action: 'UNLOCK_PAYROLL',
+          module: 'Payroll',
+          targetId: ids.join(','),
+          details: JSON.stringify({
+            by: req.user.name || req.user.email, role,
+            reason: reason || '(none)', unlocked: result.count,
+          }).slice(0, 1500),
+        },
+      }).catch(() => {});
+    }
     res.json({ unlocked: result.count });
   } catch (error) {
     console.error('Error unlocking payroll', error);
