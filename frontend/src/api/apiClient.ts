@@ -34,13 +34,18 @@ export interface SuperAdminStats {
 const getHeaders = () => {
   const token = authStorage.get('hrms_jwt_token');
   const workspaceId = localStorage.getItem('hrms_active_company_id');
+  // The active workspace KIND ('company' | 'branch') lets the backend apply strict
+  // branch scope when a company-level user selects a specific branch in the
+  // top-right scope selector (company/branch ids share one space).
+  const workspaceKind = localStorage.getItem('hrms_active_workspace_kind');
   return {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Pragma': 'no-cache',
     'Expires': '0',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    ...(workspaceId ? { 'x-workspace-id': workspaceId } : {})
+    ...(workspaceId ? { 'x-workspace-id': workspaceId } : {}),
+    ...(workspaceKind ? { 'x-workspace-kind': workspaceKind } : {})
   };
 };
 

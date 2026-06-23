@@ -8,7 +8,8 @@ import {
   Eye,
   EyeOff,
   Building2,
-  Gift
+  Gift,
+  Scale, Wallet, FileText, Clock, ShieldCheck, BarChart3
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -62,6 +63,8 @@ interface PayrollProps {
   attendance?: AttendanceRecord[];
   leaves?: LeaveRequest[];
   authProfile?: UserAccount | null;
+  /** Navigate to another module (Reports / Settings) — used by the Bonus & Wages launcher. */
+  onNavigate?: (page: string) => void;
 }
 
 interface AuditLog {
@@ -114,7 +117,8 @@ export const Payroll: React.FC<PayrollProps> = ({
   employees,
   attendance = [],
   leaves = [],
-  authProfile
+  authProfile,
+  onNavigate
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -966,6 +970,30 @@ export const Payroll: React.FC<PayrollProps> = ({
   return (
     <div className="space-y-5 font-sans">
 
+      {/* ── Bonus & Wages — shared navigation grouping only (Bonus & Wage logic stay separate) ── */}
+      <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale size={15} className="text-indigo-600" /> Bonus &amp; Wages</h3>
+          <span className="text-[10px] text-slate-400">Quick access · Bonus and Wage logic remain separate</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+          {[
+            { label: 'Bonus Management', icon: <Gift size={15} />, onClick: () => { if (canEdit) setShowBonusModal(true); } },
+            { label: 'Wages Management', icon: <Wallet size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Wage Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Overtime Register', icon: <Clock size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Advance Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
+            { label: 'Minimum Wage Compliance', icon: <ShieldCheck size={15} />, onClick: () => onNavigate?.('settings') },
+            { label: 'Wage Reports', icon: <BarChart3 size={15} />, onClick: () => onNavigate?.('reports') },
+          ].map(it => (
+            <button key={it.label} onClick={it.onClick} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50 hover:border-indigo-200 px-2 py-3 text-center transition-colors">
+              <span className="text-indigo-600">{it.icon}</span>
+              <span className="text-[10px] font-semibold text-slate-700 leading-tight">{it.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="text-left">
@@ -1052,8 +1080,8 @@ export const Payroll: React.FC<PayrollProps> = ({
         title="Verify Payroll Record"
         footer={
           <>
-            <Button variant="outline" onClick={() => setAuditRecord(null)}>Cancel</Button>
-            <Button onClick={handleVerifyPayrollConfirm}>Confirm Verification</Button>
+            <Button variant="outline" onClick={() => setAuditRecord(null)}>{canEdit ? 'Cancel' : 'Close'}</Button>
+            {canEdit && <Button onClick={handleVerifyPayrollConfirm}>Confirm Verification</Button>}
           </>
         }
       >
@@ -1302,6 +1330,9 @@ export const Payroll: React.FC<PayrollProps> = ({
         open={showPayrollModal}
         onClose={() => !isPayrollGenerating && setShowPayrollModal(false)}
         title="Generate Payroll"
+        variant="page"
+        breadcrumbs={[{ label: 'Payroll', onClick: () => !isPayrollGenerating && setShowPayrollModal(false) }, { label: 'Generate Payroll' }]}
+        subtitle="Select the employees to include in this payroll run."
         size="lg"
         footer={
           <>

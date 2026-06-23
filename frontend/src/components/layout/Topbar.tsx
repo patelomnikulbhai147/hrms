@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { getApiErrorMessage } from '@/utils/apiError';
+import { useDismissable } from '@/hooks/useDismissable';
 import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History, KeyRound, CheckCircle2 } from 'lucide-react';
 import { type Role, type Company, type Notification } from '@/data/mockData';
 import { type UserAccount } from '@/pages/Login';
@@ -91,6 +92,17 @@ export const Topbar: React.FC<TopbarProps> = ({
   const [wsSearchTerm, setWsSearchTerm] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
 
+  // ── Enterprise dropdown dismissal (click-outside + Escape; one open at a time) ──
+  const wsRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+  const closeWorkspace = useCallback(() => setWorkspaceOpen(false), []);
+  const closeNotif = useCallback(() => setNotifOpen(false), []);
+  const closeProfile = useCallback(() => setProfileOpen(false), []);
+  useDismissable(workspaceOpen, closeWorkspace, wsRef);
+  useDismissable(notifOpen, closeNotif, notifRef);
+  useDismissable(profileOpen, closeProfile, profileRef);
+
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupName]: prev[groupName] === false ? true : false }));
   };
@@ -174,7 +186,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
           {/* Masquerade Workspace Switcher (Company / Branch) */}
           {isMasquerading && onCompanyChange && (
-            <div className="relative">
+            <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
                 className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
@@ -248,7 +260,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
           {/* Workspace Switcher */}
           {companies.length > 1 && activeRole !== 'Super Admin' && !isMasquerading && (
-            <div className="relative">
+            <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
                 className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
@@ -417,7 +429,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           )}
 
           {/* Notifications */}
-          <div className="relative">
+          <div className="relative" ref={notifRef}>
             <button
               onClick={() => { setNotifOpen(p => !p); setProfileOpen(false); setWorkspaceOpen(false); }}
               className="relative p-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-lg transition-all active:scale-95"
@@ -499,7 +511,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           </div>
 
           {/* User Profile info */}
-          <div className="relative">
+          <div className="relative" ref={profileRef}>
             <button
               onClick={() => { setProfileOpen(p => !p); setNotifOpen(false); setWorkspaceOpen(false); }}
               className="flex items-center gap-2 p-1 text-slate-300 hover:bg-slate-800/60 rounded-xl transition-all active:scale-95"

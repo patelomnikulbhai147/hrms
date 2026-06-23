@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { BarChart3, FileText, Download, Eye, AlertTriangle, History, ChevronRight, Printer, LayoutGrid, Zap, Sparkles, Star, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { BarChart3, FileText, Download, Eye, AlertTriangle, History, ChevronRight, ChevronDown, Search, X, Printer, LayoutGrid, Zap, Sparkles, Star, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { type Role, type Company } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -10,6 +10,12 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { type UserAccount } from '@/pages/Login';
 import { api } from '@/api/apiClient';
 import { formatDate } from '@/utils/formatDate';
+import { templateForKey, type TemplateDef } from '@/components/reports/templateRegistry';
+import { ReportTemplateViewer } from '@/components/reports/ReportTemplateViewer';
+import { isStatutoryReport } from '@/components/reports/reportClassification';
+import { BusinessReportView } from '@/components/reports/BusinessReportView';
+import { EditableReportCanvas } from '@/components/reports/EditableReportCanvas';
+import { exportWageRules, getSettings as getWageSettings } from '@/utils/wageMaster';
 
 interface Props { role: Role; activeCompanyId: string; companies?: Company[]; authProfile?: UserAccount | null; }
 
@@ -18,7 +24,7 @@ interface Props { role: Role; activeCompanyId: string; companies?: Company[]; au
 const CATEGORY_ORDER = [
   'Payroll Reports', 'Attendance Reports', 'Leave Reports', 'Employee Reports', 'Document Reports',
   'Compliance Reports', 'Statutory Registers', 'PF Reports', 'ESI Reports', 'Tax Reports',
-  'Gratuity & Settlement', 'Bonus Reports',
+  'Gratuity & Settlement', 'Bonus Reports', 'Wage Reports',
 ];
 const orderedCategories = (cats: string[]) => {
   const rank = (c: string) => { const i = CATEGORY_ORDER.indexOf(c); return i === -1 ? CATEGORY_ORDER.length : i; };
@@ -30,7 +36,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const [catalog, setCatalog] = useState<any[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
   const [selectedKey, setSelectedKey] = useState<string>('');
-  const [companyId, setCompanyId] = useState<string>(isSuperAdmin ? '' : String(authProfile?.companyId || activeCompanyId || ''));
+  const [companyId, setCompanyId] = useState<string>(isSuperAdmin ? '' : String(activeCompanyId || authProfile?.companyId || ''));
+  // The top-right scope selector is the MASTER filter. For non-Super-Admins the
+  // report scope must always follow the live active workspace (company OR branch),
+  // never a one-time snapshot of the user's home company — otherwise switching to
+  // a branch leaves reports showing the whole company. (Super Admin uses the picker.)
+  useEffect(() => {
+    if (!isSuperAdmin) setCompanyId(String(activeCompanyId || authProfile?.companyId || ''));
+  }, [activeCompanyId, isSuperAdmin, authProfile]);
   const [branch, setBranch] = useState(''); const [department, setDepartment] = useState('');
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [employeeId, setEmployeeId] = useState('');
   const [report, setReport] = useState<any>(null);
@@ -42,9 +55,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
   // Template gallery (landing) vs. live-generate mode + demo preview state.
   const [mode, setMode] = useState<'gallery' | 'generate'>('gallery');
+  // Preview presentation: editable Document canvas (default) vs the analytical Data view.
+  const [previewMode, setPreviewMode] = useState<'document' | 'data'>('document');
   const [previewKey, setPreviewKey] = useState<string>('');
   const [previewReport, setPreviewReport] = useState<any>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  // Active faithful-template viewer (Form 16 / Salary Register / Salary Slip).
+  const [templateView, setTemplateView] = useState<{ def: TemplateDef; name: string; autoAction?: 'pdf' | 'excel' | 'print' | null } | null>(null);
+  const openTemplate = (def: TemplateDef, name: string, autoAction?: 'pdf' | 'excel' | 'print' | null) => setTemplateView({ def, name, autoAction });
 
   const openPreview = async (key: string) => {
     setPreviewKey(key); setPreviewReport(null); setPreviewBusy(true);
@@ -69,6 +87,47 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const grouped = useMemo(() => { const g: Record<string, any[]> = {}; catalog.forEach(r => { (g[r.category] = g[r.category] || []).push(r); }); return g; }, [catalog]);
   const selected = catalog.find(r => r.key === selectedKey);
 
+  // ── Reports navigation: accordion categories + real-time search (UI only) ─────
+  // `openCat` drives accordion mode (one category open at a time). While a search
+  // term is active, matching categories auto-expand and `openCat` is ignored.
+  const [search, setSearch] = useState('');
+  const [openCat, setOpenCat] = useState<string | null>(null);
+  const q = search.trim().toLowerCase();
+
+  // A report matches if the term appears in its name, category or key (the key
+  // mirrors the name, e.g. "salary_register"). Kept precise so "Salary" returns
+  // salary reports — not every payroll report whose prose happens to say "salary".
+  const matchReport = useCallback((r: any) =>
+    !q || [r.label, r.category, r.key].some(v => String(v || '').toLowerCase().includes(q)), [q]);
+
+  // Categories to show, each with only its matching reports. When the term matches
+  // a category's name (e.g. "PF"), the whole category is kept so the user can browse it.
+  const visibleCats = useMemo(() => {
+    const out: { cat: string; reports: any[]; total: number }[] = [];
+    for (const cat of orderedCategories(Object.keys(grouped))) {
+      const all = grouped[cat];
+      const reports = q ? all.filter(matchReport) : all;
+      if (q && reports.length === 0 && cat.toLowerCase().includes(q)) { out.push({ cat, reports: all, total: all.length }); continue; }
+      if (reports.length) out.push({ cat, reports, total: all.length });
+    }
+    return out;
+  }, [grouped, q, matchReport]);
+
+  // Default the accordion to the first category once the catalog loads.
+  useEffect(() => { if (!openCat) { const first = orderedCategories(Object.keys(grouped))[0]; if (first) setOpenCat(first); } }, [grouped]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isCatOpen = (cat: string) => (q ? true : openCat === cat);
+  const toggleCat = (cat: string) => setOpenCat(prev => (prev === cat ? null : cat));
+
+  // Highlight the active search term inside a report name.
+  const hl = (text: string) => {
+    const term = search.trim();
+    if (!term) return text;
+    const idx = text.toLowerCase().indexOf(term.toLowerCase());
+    if (idx === -1) return text;
+    return (<>{text.slice(0, idx)}<mark className="bg-amber-200 text-slate-900 rounded px-0.5">{text.slice(idx, idx + term.length)}</mark>{text.slice(idx + term.length)}</>);
+  };
+
   // ── Report Center metrics (Phase 2) ──────────────────────────────────────────
   const STATUTORY_CATS = ['Compliance Reports', 'Statutory Registers', 'PF Reports', 'ESI Reports', 'Tax Reports'];
   const metrics = useMemo(() => {
@@ -87,6 +146,12 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     };
   }, [catalog, audit]);
   const favReports = useMemo(() => catalog.filter((c: any) => favs.includes(c.key)), [catalog, favs]);
+  // Wage-master scope = the TOP company that owns the Labour Compliance settings.
+  const wageCompanyId = useMemo(() => {
+    const cid = companyId || String(authProfile?.companyId || activeCompanyId || '');
+    const c = (companies || []).find((x: any) => String(x.id) === String(cid));
+    return String((c as any)?.parentCompanyId || cid);
+  }, [companyId, activeCompanyId, authProfile, companies]);
 
   // Reset operational filters when the selected report changes, so a filter that is
   // hidden for the new report can never silently carry over from the previous one.
@@ -97,7 +162,12 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     if (isSuperAdmin && !companyId) return flash('err', 'Select a company.');
     setBusy(true); setReport(null);
     try {
-      const r = await api.complianceReports.generate({ reportKey: selectedKey, companyId: companyId || undefined, branch: branch || undefined, department: department || undefined, startDate: startDate || undefined, endDate: endDate || undefined, employeeId: employeeId || undefined });
+      // Wage Reports also receive the (client-side) State Wage Master + branch→state
+      // map so the backend can compute minimum-wage figures. Ignored by every other report.
+      const wageExtras = selected?.category === 'Wage Reports'
+        ? { wageRules: exportWageRules(wageCompanyId), branchStateMap: getWageSettings(wageCompanyId).branchStateMap }
+        : {};
+      const r = await api.complianceReports.generate({ reportKey: selectedKey, companyId: companyId || undefined, branch: branch || undefined, department: department || undefined, startDate: startDate || undefined, endDate: endDate || undefined, employeeId: employeeId || undefined, ...wageExtras } as any);
       setReport(r);
       if (!r.canExport) flash('err', 'No data for the selected filters.');
     } catch (e: any) { flash('err', e?.message || 'Generation failed.'); } finally { setBusy(false); }
@@ -139,6 +209,8 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     let y = 12;
     if (m.logoImage) { try { doc.addImage(m.logoImage, 'PNG', 14, 8, 16, 16); } catch { /* ignore bad image */ } }
     doc.setFontSize(13); doc.setTextColor(20); doc.text(m.name || 'Company', m.logoImage ? 34 : 14, y); y += 5;
+    // Branch identification line — only when the report scope is branch-specific.
+    if (m.branchName) { doc.setFontSize(10); doc.setTextColor(40); doc.text(String(m.branchName), m.logoImage ? 34 : 14, y); y += 4; }
     doc.setFontSize(8); doc.setTextColor(90);
     if (m.address) { doc.text(String(m.address).slice(0, 110), m.logoImage ? 34 : 14, y); y += 4; }
     const ids = [m.cinNumber && `CIN: ${m.cinNumber}`, m.gstNumber && `GST: ${m.gstNumber}`, m.panNumber && `PAN: ${m.panNumber}`].filter(Boolean).join('   ');
@@ -198,6 +270,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
       </style></head><body>
       <div class="hdr">${m.logoImage ? `<img src="${esc(m.logoImage)}" alt="logo"/>` : ''}
         <div><p class="co">${esc(m.name || 'Company')}</p>
+        ${m.branchName ? `<div class="meta" style="font-weight:700;color:#1f2937;font-size:11px">${esc(m.branchName)}</div>` : ''}
         ${m.address ? `<div class="meta">${esc(m.address)}</div>` : ''}
         ${ids ? `<div class="meta">${ids}</div>` : ''}</div>
       </div>
@@ -217,6 +290,29 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
   // Reusable report card (used by Favourites and each category section).
   const renderReportCard = (r: any) => {
+    // Reports with a pixel-faithful template (Form 16 / Salary Register / Salary
+    // Slip) open the dedicated template viewer with the full action set; their
+    // Preview === PDF === Print. Everything else keeps the generic table flow.
+    const tpl = templateForKey(r.key);
+    if (tpl) {
+      const isFav = favs.includes(r.key);
+      return (
+        <div key={r.key} className="rounded-xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40 p-3 flex flex-col gap-2 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold text-slate-800 leading-snug">{hl(r.label)}</p>
+            <button onClick={() => toggleFav(r.key)} title={isFav ? 'Remove favourite' : 'Add to favourites'} className={`shrink-0 ${isFav ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></button>
+          </div>
+          <span className="self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 bg-emerald-100 text-emerald-700 border-emerald-200">Live Template</span>
+          <p className="text-[10px] text-slate-500 leading-snug flex-1 min-h-[26px]">{tpl.description}</p>
+          {/* Cards expose only Preview + Generate. Print/Excel/PDF live in the
+              viewer toolbar after the report is opened (enterprise UI standard). */}
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="sm" className="flex-1 text-[10px] h-7" icon={<Eye size={11} />} onClick={() => openTemplate(tpl, r.label)}>Preview</Button>
+            <Button size="sm" className="flex-1 text-[10px] h-7" icon={<Zap size={11} />} onClick={() => openTemplate(tpl, r.label)}>Generate</Button>
+          </div>
+        </div>
+      );
+    }
     const badge = r.status === 'available'
       ? { cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Template Available' }
       : r.status === 'coming'
@@ -226,7 +322,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     return (
       <div key={r.key} className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-3 flex flex-col gap-2">
         <div className="flex items-start justify-between gap-2">
-          <p className="text-xs font-bold text-slate-800 leading-snug">{r.label}</p>
+          <p className="text-xs font-bold text-slate-800 leading-snug">{hl(r.label)}</p>
           <button onClick={() => toggleFav(r.key)} title={isFav ? 'Remove favourite' : 'Add to favourites'} className={`shrink-0 ${isFav ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></button>
         </div>
         <span className={`self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 ${badge.cls}`}>{badge.label}</span>
@@ -247,6 +343,24 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     { label: 'Recent', value: m.recent.length, icon: <History size={15} />, color: 'bg-slate-500' },
     { label: 'Favourites', value: favReports.length, icon: <Star size={15} />, color: 'bg-amber-500' },
   ]);
+
+  // ── A faithful template is open → render its dedicated viewer (Preview / PDF /
+  //    Excel / Print of the exact government layout), replacing the catalog. ──
+  if (templateView) {
+    const cid = companyId || String(activeCompanyId || authProfile?.companyId || '');
+    return (
+      <ReportTemplateViewer
+        def={templateView.def}
+        reportName={templateView.name}
+        companyId={cid}
+        autoAction={templateView.autoAction}
+        canEdit={['Super Admin', 'Company Head', 'HR'].includes(role)}
+        userName={authProfile?.name || authProfile?.email || role}
+        role={role}
+        onClose={() => setTemplateView(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -304,15 +418,62 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
             </Card>
           )}
 
-          {/* Categories */}
-          {orderedCategories(Object.keys(grouped)).map(cat => (
-            <Card key={cat}>
-              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><FileText size={15} className="text-indigo-600" /> {cat} <span className="text-[10px] font-bold text-slate-400">({grouped[cat].length})</span></h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                {grouped[cat].map(renderReportCard)}
+          {/* Search bar — real-time, filters by name / category / keywords */}
+          <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-2.5 flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search reports by name, category or keyword — e.g. Salary, Bonus, PF, Attendance…"
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} title="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={15} /></button>
+              )}
+            </div>
+            {q && <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap pr-1">{visibleCats.reduce((n, c) => n + c.reports.length, 0)} match(es)</span>}
+          </div>
+
+          {/* Categories — accordion (one open at a time; all matches open while searching) */}
+          {visibleCats.length === 0 ? (
+            <Card>
+              <div className="py-12 text-center">
+                <Search size={28} className="mx-auto text-slate-300 mb-2" />
+                <p className="text-sm font-bold text-slate-600">No matching reports found.</p>
+                <p className="text-[11px] text-slate-400 mt-1">Try a different name, category, or keyword{search ? <> — or <button onClick={() => setSearch('')} className="text-indigo-600 font-semibold hover:underline">clear the search</button></> : '.'}</p>
               </div>
             </Card>
-          ))}
+          ) : (
+            <div className="space-y-2.5">
+              {visibleCats.map(({ cat, reports, total }) => {
+                const open = isCatOpen(cat);
+                return (
+                  <div key={cat} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
+                    <button
+                      onClick={() => toggleCat(cat)}
+                      aria-expanded={open}
+                      className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50/70 transition-colors"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                        <ChevronDown size={16} className={`text-indigo-600 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
+                        <FileText size={15} className="text-indigo-600" /> {cat}
+                        <span className="text-[10px] font-bold text-slate-400">({q ? `${reports.length}/${total}` : total})</span>
+                      </span>
+                      {!open && <span className="text-[10px] font-semibold text-slate-400">{reports.length} report{reports.length === 1 ? '' : 's'}</span>}
+                    </button>
+                    <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                      <div className="overflow-hidden">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 px-4 pb-4 pt-0.5">
+                          {reports.map(renderReportCard)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -342,9 +503,19 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
         {/* Filters + preview */}
         <Card className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <h3 className="text-sm font-bold text-slate-800">{selected ? selected.label : 'Select a report'}</h3>
-            {report?.canExport && <div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={printReport}>Print</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportExcel}>Excel</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportPdf}>PDF</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportCsv}>CSV</Button></div>}
+            {report?.canExport && (
+              <div className="flex items-center gap-2">
+                {/* Document (editable) vs Data (analytics) preview */}
+                <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+                  <button onClick={() => setPreviewMode('document')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'document' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Document</button>
+                  <button onClick={() => setPreviewMode('data')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Data</button>
+                </div>
+                {/* Quick (non-edited) exports for the data view; the Document view has its own edit-aware exports */}
+                {previewMode === 'data' && <div className="flex gap-2"><Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={printReport}>Print</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportExcel}>Excel</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportPdf}>PDF</Button><Button variant="outline" size="sm" icon={<Download size={13} />} onClick={exportCsv}>CSV</Button></div>}
+              </div>
+            )}
           </div>
 
           {/* Filters — Phase 5: only the filters relevant to the selected report */}
@@ -373,10 +544,21 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
             </div>
           )}
 
-          {/* Preview */}
+          {/* Preview — DOCUMENT mode is an editable, export-faithful document canvas;
+              DATA mode keeps the analytical view (modern for internal, table for statutory). */}
           {report && report.rows.length > 0 && (
+            previewMode === 'document' ? (
+              <EditableReportCanvas
+                report={report}
+                companyId={companyId || String(authProfile?.companyId || activeCompanyId || '')}
+                canEdit={['Super Admin', 'Company Head', 'HR'].includes(role)}
+                userName={authProfile?.name || authProfile?.email || role}
+                role={role}
+                onLog={(format) => api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format, companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {})}
+              />
+            ) : isStatutoryReport(report.reportKey, report.category) ? (
             <div className="mt-3">
-              <div className="text-[11px] text-slate-500 mb-1.5">{report.rows.length} record(s) · generated {new Date(report.generatedAt).toLocaleString('en-IN')}{report.generatedBy ? ` · by ${report.generatedBy}` : ''}</div>
+              <div className="text-[11px] text-slate-500 mb-1.5">{report.rows.length} record(s) · generated {new Date(report.generatedAt).toLocaleString('en-IN')}{report.generatedBy ? ` · by ${report.generatedBy}` : ''} · <span className="font-semibold text-slate-600">statutory format</span></div>
               <div className="overflow-x-auto max-h-[420px] border border-slate-100 rounded-lg">
                 <Table>
                   <Thead><Tr>{report.columns.map((c: any) => <Th key={c.key}>{c.label}</Th>)}</Tr></Thead>
@@ -385,6 +567,9 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               </div>
               {report.rows.length > 300 && <p className="text-[10px] text-slate-400 mt-1">Showing first 300 rows in preview · full data in the export.</p>}
             </div>
+            ) : (
+              <BusinessReportView report={report} />
+            )
           )}
         </Card>
       </div>

@@ -14,22 +14,26 @@ const prisma = require('../config/prisma');
 // it cannot be lost as a separate module file.
 const PERMISSION_MODULES = [
   'dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents',
-  'reports', 'settings', 'companies', 'billing', 'tasks', 'tenders', 'permissions',
+  'reports', 'settings', 'companies', 'billing', 'tasks', 'tenders', 'contracts', 'permissions',
 ];
 function defaultPermissionsForRole(role) {
   if (role === 'Super Admin') return { permissions: {}, moduleAccess: {} };
-  const full = () => ({ view: true, edit: true, create: true, delete: true });
-  const view = () => ({ view: true, edit: false, create: false, delete: false });
-  const none = () => ({ view: false, edit: false, create: false, delete: false });
+  // Consolidated 4-action model: view / create / edit / export.
+  // (delete & approve are covered by edit; print is covered by export.)
+  const full = () => ({ view: true, create: true, edit: true, export: true });
+  const view = () => ({ view: true, create: false, edit: false, export: true });
+  const none = () => ({ view: false, create: false, edit: false, export: false });
   const FULL = {
     'Company Head': PERMISSION_MODULES,
-    'HR': ['dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents', 'reports', 'tasks', 'tenders'],
+    // HR manages contract deployment (full) but is VIEW-only on tenders — they
+    // must never edit tender/contract value or commercial terms.
+    'HR': ['dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents', 'reports', 'tasks', 'contracts'],
     'Finance': ['dashboard', 'payroll', 'reports', 'documents'],
     'Employee': [],
   };
   const VIEW = {
-    'HR': ['settings'],
-    'Finance': ['employees', 'attendance', 'leaves'],
+    'HR': ['settings', 'tenders'],
+    'Finance': ['employees', 'attendance', 'leaves', 'tenders', 'contracts'],
     'Employee': ['dashboard', 'attendance', 'leaves', 'payroll', 'documents'],
   };
   const fullSet = new Set(FULL[role] || []);
@@ -103,6 +107,30 @@ exports.updateUser = async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
+    // ── Privilege-escalation & isolation guards ──────────────────────────────
+    // The route only checks the caller has users.edit; without these guards a
+    // Company Head / HR could (a) promote anyone to Super Admin, (b) re-home a
+    // user into another company, or (c) edit a user outside their own company.
+    const scope = permissionManagerScope(req);
+    if (!scope.all) {
+      // Cannot touch a Super Admin, nor grant the Super Admin role.
+      if (user.role === 'Super Admin') {
+        return res.status(403).json({ error: 'You cannot modify a Super Admin account.' });
+      }
+      if (role === 'Super Admin') {
+        return res.status(403).json({ error: 'You cannot assign the Super Admin role.' });
+      }
+      // Company isolation: target must live in the caller's company.
+      const callerCompany = await resolveTopCompany(req.user.companyId, req.user.branchId);
+      const targetCompany = await resolveTopCompany(user.companyId, user.branchId);
+      if (String(callerCompany) !== String(targetCompany)) {
+        return res.status(403).json({ error: 'You can only manage users within your own company.' });
+      }
+      if (scope.branch && req.user.branchId && user.branchId && String(user.branchId) !== String(req.user.branchId)) {
+        return res.status(403).json({ error: 'You can only manage users within your assigned branch.' });
+      }
+    }
+
     // Merge moduleAccess into permissions for Prisma if needed, or handle it based on schema
     // The frontend sends `moduleAccess` and `permissions` which we can store in the `permissions` JSON field
     let combinedPermissions = user.permissions || {};
@@ -112,7 +140,10 @@ exports.updateUser = async (req, res) => {
     const dataToUpdate = {};
     if (role) dataToUpdate.role = role;
     if (status) dataToUpdate.status = status;
-    if (accessibleCompanyIds) dataToUpdate.accessibleCompanyIds = accessibleCompanyIds;
+    // Only a Super Admin may re-assign which companies/branches a user can reach
+    // (the cross-tenant access grant). Lower roles cannot widen their own or
+    // others' workspace access.
+    if (accessibleCompanyIds && scope.all) dataToUpdate.accessibleCompanyIds = accessibleCompanyIds;
     if (permissions || moduleAccess) dataToUpdate.permissions = combinedPermissions;
 
     const updatedUser = await prisma.user.update({
@@ -229,7 +260,23 @@ exports.createUser = async (req, res) => {
 
 exports.getAllUsers = async (req, res) => {
   try {
+    // Company/branch isolation: a non-Super-Admin may only ever see users that
+    // belong to a company or branch they have access to. Without this filter the
+    // endpoint leaked EVERY user in EVERY company to any authenticated caller.
+    const where = {};
+    if (req.user && req.user.role !== 'Super Admin') {
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      const allowed = [...new Set([...companyScope, ...branchScope])];
+      where.OR = [
+        { companyId: { in: allowed.length ? allowed : [-1] } },
+        { branchId: { in: allowed.length ? allowed : [-1] } },
+      ];
+      // Never expose Super Admin accounts to a non-super caller.
+      where.NOT = { role: 'Super Admin' };
+    }
     const users = await prisma.user.findMany({
+      where,
       // Default ordering by ascending primary key. The id sequence may contain
       // gaps (e.g. a deleted/rolled-back row) — that is expected and the ids are
       // never re-sequenced; the UI shows a derived SR No instead of the raw id.
@@ -513,8 +560,40 @@ exports.updatePermissions = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    const { id } = req.params;
-    await prisma.user.delete({ where: { id: idParam(id) } });
+    const targetId = idParam(req.params.id);
+    const target = await prisma.user.findUnique({ where: { id: targetId } });
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+
+    // You can never delete yourself, and a non-Super-Admin can never delete a
+    // Super Admin or a user outside their own company/branch.
+    if (req.user && String(req.user.id) === String(targetId)) {
+      return res.status(400).json({ error: 'You cannot delete your own account.' });
+    }
+    const scope = permissionManagerScope(req);
+    if (!scope.all) {
+      if (target.role === 'Super Admin') {
+        return res.status(403).json({ error: 'You cannot delete a Super Admin account.' });
+      }
+      const callerCompany = await resolveTopCompany(req.user.companyId, req.user.branchId);
+      const targetCompany = await resolveTopCompany(target.companyId, target.branchId);
+      if (String(callerCompany) !== String(targetCompany)) {
+        return res.status(403).json({ error: 'You can only delete users within your own company.' });
+      }
+      if (scope.branch && req.user.branchId && target.branchId && String(target.branchId) !== String(req.user.branchId)) {
+        return res.status(403).json({ error: 'You can only delete users within your assigned branch.' });
+      }
+    }
+
+    await prisma.user.delete({ where: { id: targetId } });
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user ? req.user.id : null,
+        action: 'DELETE_USER',
+        module: 'Users',
+        targetId: String(targetId),
+        details: JSON.stringify({ target: target.name, email: target.email, role: target.role, by: req.user?.name || req.user?.email }),
+      },
+    }).catch(e => console.error('audit failed', e));
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
     return respondError(res, error);

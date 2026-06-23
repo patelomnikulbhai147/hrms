@@ -22,6 +22,7 @@ const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.U
 const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
 const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ default: m.TaskManager })));
 const Tenders = React.lazy(() => import('@/pages/Tenders').then(m => ({ default: m.Tenders })));
+const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ default: m.Contracts })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { authStorage } from '@/utils/authStorage';
@@ -67,7 +68,8 @@ const pageTitles: Record<PageId, string> = {
   billing: 'Billing & Subscriptions',
   users: 'User Management',
   tasks: 'Task Manager',
-  tenders: 'Tenders & Contracts',
+  tenders: 'Tender Management',
+  contracts: 'Contract Management',
   'select-workspace': 'Select Workspace'
 };
 
@@ -75,7 +77,7 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'bonus', 'attendance',
-  'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'audit',
+  'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
@@ -1119,6 +1121,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             authProfile={authProfile}
           />
         );
+      case 'contracts':
+        return (
+          <Contracts
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            authProfile={authProfile}
+          />
+        );
       case 'attendance':
         return (
           <Attendance
@@ -1162,6 +1172,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             attendance={attendance}
             leaves={leaves}
             authProfile={authProfile}
+            onNavigate={(p) => setCurrentPage(p as PageId)}
           />
         );
       case 'documents':

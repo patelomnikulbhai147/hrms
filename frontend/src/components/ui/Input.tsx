@@ -25,7 +25,7 @@ export const Input: React.FC<InputProps> = ({ label, error, success, icon, class
           )}
         />
       </div>
-      {error && <p className="text-[11px] text-rose-450 font-bold">{error}</p>}
+      {error && <p className="text-[11px] text-rose-450 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
     </div>
   );
 };
@@ -50,7 +50,7 @@ export const Select: React.FC<SelectProps> = ({ label, error, options, className
       >
         {options.map(o => <option key={o.value} value={o.value} disabled={o.disabled} className="bg-slate-950 text-slate-100">{o.label}</option>)}
       </select>
-      {error && <p className="text-[11px] text-rose-450 font-bold">{error}</p>}
+      {error && <p className="text-[11px] text-rose-450 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
     </div>
   );
 };
@@ -73,7 +73,7 @@ export const Textarea: React.FC<TextareaProps> = ({ label, error, className, ...
           className
         )}
       />
-      {error && <p className="text-[11px] text-rose-450 font-bold">{error}</p>}
+      {error && <p className="text-[11px] text-rose-450 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
     </div>
   );
 };

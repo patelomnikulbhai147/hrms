@@ -19,6 +19,8 @@ import {
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { PayrollComplianceEngine } from '@/components/settings/PayrollComplianceEngine';
+import { LabourCompliance } from '@/components/settings/LabourCompliance';
+import { Scale } from 'lucide-react';
 import { ui } from '@/components/ui/feedback';
 
 interface SettingsProps {
@@ -36,7 +38,7 @@ export const Settings: React.FC<SettingsProps> = ({
   onUpdateCompanies,
   onRefresh
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding' | 'departments' | 'roles'>('profile');
+  const [activeSubTab, setActiveSubTab] = useState<'profile' | 'payroll' | 'branding' | 'departments' | 'roles' | 'labour'>('profile');
   
   // Find current company context (kind-aware — resolves a branch workspace to
   // the branch, not the parent company it shares a numeric id with).
@@ -453,6 +455,17 @@ export const Settings: React.FC<SettingsProps> = ({
             User Roles & Permissions
           </button>
         )}
+        {(role === 'Company Head' || role === 'HR') && (
+          <button
+            onClick={() => setActiveSubTab('labour')}
+            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeSubTab === 'labour' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <Scale size={13} />
+            Labour Compliance
+          </button>
+        )}
       </div>
 
       {/* User Roles & Permissions — full width (its matrix needs the room) */}
@@ -460,8 +473,23 @@ export const Settings: React.FC<SettingsProps> = ({
         <PermissionManager role={role} />
       )}
 
+      {/* Labour Compliance — full width (its own tabs + tables) */}
+      {activeSubTab === 'labour' && (
+        <LabourCompliance
+          companyId={String((currentCompany as any).parentCompanyId || currentCompany.id)}
+          branchNames={Array.from(new Set(
+            companies
+              .filter(c => String((c as any).parentCompanyId) === String((currentCompany as any).parentCompanyId || currentCompany.id))
+              .map(c => (c as any).branchName || c.name)
+              .filter(Boolean)
+          ))}
+          canEdit={canEditBranding}
+          performedBy={role}
+        />
+      )}
+
       {/* Layout panels */}
-      {activeSubTab !== 'roles' && (
+      {activeSubTab !== 'roles' && activeSubTab !== 'labour' && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Dynamic Editor Panel */}

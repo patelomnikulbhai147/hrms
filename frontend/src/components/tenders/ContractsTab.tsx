@@ -19,7 +19,23 @@ import { api } from '@/api/apiClient';
 import { formatDate } from '@/utils/formatDate';
 import { ui } from '@/components/ui/feedback';
 
-const CONTRACT_STATUSES = ['Active', 'Expiring Soon', 'Expired', 'Closed'];
+const CONTRACT_STATUSES = ['Draft', 'Active', 'Expiring Soon', 'Expired', 'Renewed', 'Closed'];
+
+// The effective status used for tabs/cards: a manually-set Closed/Renewed/Draft
+// always wins; otherwise the date-derived status (Active/Expiring Soon/Expired).
+export const effectiveContractStatus = (c: any): string => {
+  if (['Closed', 'Renewed', 'Draft'].includes(c.status)) return c.status;
+  return c.derivedStatus || c.status || 'Active';
+};
+
+type ContractTab = 'active' | 'expiring' | 'expired' | 'closed' | 'renewed';
+const CONTRACT_TABS: { id: ContractTab; label: string; statuses: string[] }[] = [
+  { id: 'active', label: 'Active', statuses: ['Active'] },
+  { id: 'expiring', label: 'Expiring Soon', statuses: ['Expiring Soon'] },
+  { id: 'expired', label: 'Expired', statuses: ['Expired'] },
+  { id: 'closed', label: 'Closed', statuses: ['Closed'] },
+  { id: 'renewed', label: 'Renewed', statuses: ['Renewed'] },
+];
 const CONTRACT_REPORT_COLS = [
   { header: 'Contract No', key: 'contractNumber', width: 16 },
   { header: 'Name', key: 'contractName', width: 28 },
@@ -49,6 +65,7 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
   const [cost, setCost] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
+  const [tab, setTab] = useState<ContractTab>('active');
 
   const load = useCallback(async () => { try { setContracts(await api.contracts.getAll() || []); } catch { /* ignore */ } }, []);
   useEffect(() => { load(); }, [load, activeCompanyId, reloadKey]);
@@ -59,10 +76,13 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
     } else { setDetail(null); setCost(null); }
   }, [viewId]);
 
+  const activeStatuses = useMemo(() => CONTRACT_TABS.find(t => t.id === tab)?.statuses || [], [tab]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return contracts.filter(c => !q || `${c.contractName} ${c.contractNumber || ''} ${c.clientName || ''}`.toLowerCase().includes(q));
-  }, [contracts, search]);
+    return contracts.filter(c =>
+      activeStatuses.includes(effectiveContractStatus(c)) &&
+      (!q || `${c.contractName} ${c.contractNumber || ''} ${c.clientName || ''}`.toLowerCase().includes(q)));
+  }, [contracts, search, activeStatuses]);
 
   const emptyForm = { contractNumber: '', contractName: '', clientName: '', contractValue: '', startDate: '', endDate: '', status: 'Active', notes: '' };
   const [form, setForm] = useState<any>(emptyForm);
@@ -128,9 +148,21 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
   }
 
   return (
-    <Card>
+    <div className="space-y-4">
+      {/* Status tabs */}
+      <div className="flex flex-wrap gap-1">
+        {CONTRACT_TABS.map(t => {
+          const n = contracts.filter(c => t.statuses.includes(effectiveContractStatus(c))).length;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}<span className="ml-1 opacity-70">({n})</span></button>
+          );
+        })}
+      </div>
+
+      <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h3 className="text-sm font-bold text-slate-800">Contracts</h3>
+        <h3 className="text-sm font-bold text-slate-800">{CONTRACT_TABS.find(t => t.id === tab)?.label} Contracts</h3>
         <div className="flex items-center gap-2">
           <Input icon={<Search size={14} />} placeholder="Search contracts…" value={search} onChange={e => setSearch(e.target.value)} />
           <ExportMenu fileName="Contract_Report" title="Contract Report" sheetName="Contracts" columns={CONTRACT_REPORT_COLS} rows={() => rows} />
@@ -216,7 +248,8 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
           </div>
         )}
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 };
 

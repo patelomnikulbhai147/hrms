@@ -5,8 +5,10 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
+// Includes company-wide grants AND specific branch grants, so a branch-restricted
+// user is scoped to exactly their branch workspace(s) — never sibling branches.
 const allowedIdsFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || []), ...(req.user?.accessibleBranchIds || [])].filter(Boolean);
 const isSuper = (req) => req.user?.role === 'Super Admin';
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 const inScope = (req, companyId) => isSuper(req) || allowedIdsFor(req).includes(companyId);

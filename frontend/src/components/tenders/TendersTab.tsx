@@ -29,10 +29,23 @@ const FormSection: React.FC<{ title: string; children: React.ReactNode }> = ({ t
   </div>
 );
 
-const TENDER_STATUSES = ['Draft', 'Submitted', 'Under Review', 'Won', 'Lost', 'Cancelled'];
+// Tender lifecycle statuses (business opportunity pipeline).
+const TENDER_STATUSES = ['Draft', 'Live', 'Submitted', 'Under Review', 'Won', 'Lost', 'Cancelled'];
 const CATEGORIES = ['Government', 'Private', 'HR Service', 'Recruitment', 'Vendor'];
 const statusVariant = (s: string): any =>
-  s === 'Won' ? 'green' : s === 'Lost' || s === 'Cancelled' ? 'red' : s === 'Under Review' ? 'indigo' : s === 'Submitted' ? 'blue' : 'amber';
+  s === 'Won' ? 'green' : s === 'Lost' || s === 'Cancelled' ? 'red' : s === 'Under Review' ? 'indigo' : s === 'Submitted' ? 'blue' : s === 'Live' ? 'sky' : 'amber';
+
+// Tab → which tender statuses it shows. "Upcoming" = still in Draft (not yet open
+// for bidding); "Archived" = Cancelled. Cards mirror these groupings.
+type TenderTab = 'live' | 'upcoming' | 'submitted' | 'won' | 'lost' | 'archived';
+const TENDER_TABS: { id: TenderTab; label: string; statuses: string[] }[] = [
+  { id: 'live', label: 'Live', statuses: ['Live'] },
+  { id: 'upcoming', label: 'Upcoming', statuses: ['Draft'] },
+  { id: 'submitted', label: 'Submitted', statuses: ['Submitted', 'Under Review'] },
+  { id: 'won', label: 'Won', statuses: ['Won'] },
+  { id: 'lost', label: 'Lost', statuses: ['Lost'] },
+  { id: 'archived', label: 'Archived', statuses: ['Cancelled'] },
+];
 
 interface Props {
   activeCompanyId: string;
@@ -48,17 +61,31 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   const [viewTender, setViewTender] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [tab, setTab] = useState<TenderTab>('live');
 
   const load = useCallback(async () => { try { setTenders(await api.tenders.getAll() || []); } catch { /* ignore */ } }, []);
   useEffect(() => { load(); }, [load, activeCompanyId]);
 
+  // Dashboard card counts (independent of the active tab).
+  const counts = useMemo(() => {
+    const by = (statuses: string[]) => tenders.filter(t => statuses.includes(t.status)).length;
+    return {
+      live: by(['Live']),
+      upcoming: by(['Draft']),
+      submitted: by(['Submitted', 'Under Review']),
+      won: by(['Won']),
+      lost: by(['Lost']),
+      cancelled: by(['Cancelled']),
+    };
+  }, [tenders]);
+
+  const activeStatuses = useMemo(() => TENDER_TABS.find(t => t.id === tab)?.statuses || [], [tab]);
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return tenders.filter(t =>
-      (!statusFilter || t.status === statusFilter) &&
+      activeStatuses.includes(t.status) &&
       (!q || `${t.tenderName} ${t.tenderNumber || ''} ${t.clientName || ''} ${t.serviceType || ''}`.toLowerCase().includes(q)));
-  }, [tenders, search, statusFilter]);
+  }, [tenders, search, activeStatuses]);
 
   const emptyForm = { tenderNumber: '', tenderName: '', clientName: '', serviceType: '', category: 'Government', tenderValue: '', startDate: '', endDate: '', closingDate: '', status: 'Draft', documentPath: '', remarks: '' };
   const [form, setForm] = useState<any>(emptyForm);
@@ -146,13 +173,40 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
     );
   }
 
+  const CARDS: { label: string; value: number; tone: string }[] = [
+    { label: 'Live Tenders', value: counts.live, tone: 'border-sky-200 bg-gradient-to-br from-sky-50 to-white text-sky-700' },
+    { label: 'Upcoming', value: counts.upcoming, tone: 'border-amber-200 bg-gradient-to-br from-amber-50 to-white text-amber-700' },
+    { label: 'Submitted', value: counts.submitted, tone: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white text-blue-700' },
+    { label: 'Won', value: counts.won, tone: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-emerald-700' },
+    { label: 'Lost', value: counts.lost, tone: 'border-rose-200 bg-gradient-to-br from-rose-50 to-white text-rose-700' },
+    { label: 'Cancelled', value: counts.cancelled, tone: 'border-slate-200 bg-gradient-to-br from-slate-50 to-white text-slate-600' },
+  ];
+
   return (
-    <Card>
+    <div className="space-y-4">
+      {/* Dashboard cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {CARDS.map(c => (
+          <div key={c.label} className={`rounded-xl border p-4 ${c.tone}`}>
+            <p className="text-[10px] font-extrabold uppercase tracking-wider opacity-70">{c.label}</p>
+            <p className="text-3xl font-extrabold mt-1">{c.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Status tabs */}
+      <div className="flex flex-wrap gap-1">
+        {TENDER_TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
+        ))}
+      </div>
+
+      <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h3 className="text-sm font-bold text-slate-800">Tenders</h3>
+        <h3 className="text-sm font-bold text-slate-800">{TENDER_TABS.find(t => t.id === tab)?.label} Tenders</h3>
         <div className="flex items-center gap-2">
           <Input icon={<Search size={14} />} placeholder="Search tenders…" value={search} onChange={e => setSearch(e.target.value)} />
-          <div className="w-40"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All statuses' }, ...TENDER_STATUSES.map(s => ({ value: s, label: s }))]} /></div>
           <ExportMenu fileName="Tender_Report" title="Tender Report" sheetName="Tenders" columns={TENDER_REPORT_COLS} rows={() => rows} />
           {canManageCommercial && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Tender</Button>}
         </div>
@@ -181,7 +235,8 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
                     <div className="flex items-center gap-1.5">
                       <button onClick={() => setViewTender(t)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shadow-sm"><Eye size={13} /></button>
                       {canManageCommercial && <button onClick={() => openEdit(t)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Edit2 size={13} /></button>}
-                      {canManageCommercial && t.status === 'Draft' && <button onClick={() => setStatus(t, 'Submitted')} title="Submit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Send size={13} /></button>}
+                      {canManageCommercial && t.status === 'Draft' && <button onClick={() => setStatus(t, 'Live')} title="Mark Live" className="p-1.5 rounded-md border border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100 shadow-sm"><Send size={13} /></button>}
+                      {canManageCommercial && t.status === 'Live' && <button onClick={() => setStatus(t, 'Submitted')} title="Submit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Send size={13} /></button>}
                       {canManageCommercial && t.status === 'Won' && !t.convertedContractId && <button onClick={() => convert(t)} title="Convert to Contract" className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-sm"><ArrowRightCircle size={13} /></button>}
                       {canManageCommercial && <button onClick={() => remove(t.id)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                     </div>
@@ -219,7 +274,8 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
           </div>
         )}
       </Modal>
-    </Card>
+      </Card>
+    </div>
   );
 };
 

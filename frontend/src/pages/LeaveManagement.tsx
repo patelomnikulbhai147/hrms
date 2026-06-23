@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight,
-  History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, Settings2, ChevronDown
+  History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, Settings2, ChevronDown,
+  LayoutDashboard, Clock, CheckCircle2, AlertCircle, ArrowRight
 } from 'lucide-react';
 import {
   type Employee, type LeaveRequest, type Role, type Company,
@@ -21,8 +22,9 @@ import { api } from '@/api/apiClient';
 import { getUniqueEmployees } from '@/utils/deduplication';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { Leaves } from '@/pages/Leaves';
+import { useDismissable } from '@/hooks/useDismissable';
 
-type TabId = 'requests' | 'administration' | 'balances' | 'history' | 'reports' | 'policies';
+type TabId = 'dashboard' | 'requests' | 'administration' | 'balances' | 'history' | 'reports' | 'policies';
 
 interface LeaveManagementProps {
   role: Role;
@@ -42,6 +44,7 @@ const CATS = [
 const num = (n: any) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={14} /> },
   { id: 'requests', label: 'Leave Requests', icon: <FileText size={14} /> },
   { id: 'administration', label: 'Administration', icon: <Users size={14} /> },
   { id: 'balances', label: 'Leave Balances', icon: <Wallet size={14} /> },
@@ -57,7 +60,8 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   const canEdit = canEditMod('leaves');
   const canExport = canExportMod('leaves');
 
-  const [tab, setTab] = useState<TabId>('administration');
+  // Default landing is the Dashboard overview — never auto-open a child sub-tab.
+  const [tab, setTab] = useState<TabId>('dashboard');
   const [balances, setBalances] = useState<any[]>([]);
   const [config, setConfig] = useState<any>(null);
   const [auditLog, setAuditLog] = useState<any[]>([]);
@@ -118,6 +122,8 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   const [action, setAction] = useState<{ kind: ActionKind; row: any } | null>(null);
   const [form, setForm] = useState<any>({});
   const [manageOpen, setManageOpen] = useState(false);
+  const manageRef = useRef<HTMLDivElement>(null);
+  useDismissable(manageOpen, useCallback(() => setManageOpen(false), []), manageRef);
   const today = () => new Date().toISOString().slice(0, 10);
   const openAction = (kind: ActionKind, row: any) => {
     setForm(kind === 'edit'
@@ -190,6 +196,25 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   const scopedLeaves = useMemo(() => {
     return leaves.filter(l => (l.employeeId && scopedEmpIds.has(String(l.employeeId))) || empById.has(String(l.employeeId)));
   }, [leaves, scopedEmpIds, empById]);
+
+  // ── Dashboard overview (derived from already-loaded data; no new API / logic) ──
+  const dash = useMemo(() => {
+    const byDate = [...scopedLeaves].sort((a, b) => String(b.appliedOn || b.fromDate || '').localeCompare(String(a.appliedOn || a.fromDate || '')));
+    const pending = byDate.filter(l => l.status === 'Pending');
+    const approved = scopedLeaves.filter(l => l.status === 'Approved');
+    const rejected = scopedLeaves.filter(l => l.status === 'Rejected');
+    const totalRemaining = adminRows.reduce((t, r) => t + (Number(r.remaining) || 0), 0);
+    const totalTaken = adminRows.reduce((t, r) => t + (Number(r.taken) || 0), 0);
+    const totalCL = adminRows.reduce((t, r) => t + (Number(r.cl) || 0), 0);
+    const totalPL = adminRows.reduce((t, r) => t + (Number(r.pl) || 0), 0);
+    const totalSL = adminRows.reduce((t, r) => t + (Number(r.sl) || 0), 0);
+    const lowBalance = adminRows.filter(r => (Number(r.remaining) || 0) <= 2).length;
+    return {
+      total: scopedLeaves.length, pending, approved: approved.length, rejected: rejected.length,
+      recent: byDate.slice(0, 6), pendingList: pending.slice(0, 6),
+      totalRemaining: num(totalRemaining), totalTaken: num(totalTaken), totalCL: num(totalCL), totalPL: num(totalPL), totalSL: num(totalSL), lowBalance,
+    };
+  }, [scopedLeaves, adminRows]);
   const historyRows = useMemo(() => {
     const now = new Date('2026-06-13');
     let lo: Date | null = null;
@@ -252,7 +277,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         <div className="px-5 py-4 flex items-center justify-between border-b border-[#DBEAFE]">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Leave Management</h2>
-            <p className="text-xs text-slate-500">Administration · Balances · History · Reports · Policies</p>
+            <p className="text-xs text-slate-500">Dashboard · Requests · Administration · Balances · History · Reports · Policies</p>
           </div>
           <Badge variant="indigo">{scopedEmployees.length} employees in workspace</Badge>
         </div>
@@ -272,6 +297,96 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         </div>
       )}
 
+      {/* ── Dashboard (default landing — overview only; nothing auto-opens) ── */}
+      {tab === 'dashboard' && (() => {
+        const statusChip = (s: string) => {
+          const map: Record<string, string> = { Pending: 'bg-amber-50 text-amber-700 border-amber-200', Approved: 'bg-emerald-50 text-emerald-700 border-emerald-200', Rejected: 'bg-rose-50 text-rose-700 border-rose-200', Cancelled: 'bg-slate-100 text-slate-500 border-slate-200' };
+          return <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${map[s] || map.Cancelled}`}>{s}</span>;
+        };
+        const tiles = [
+          { label: 'Total Requests', value: dash.total, icon: <FileText size={16} />, color: 'bg-indigo-500' },
+          { label: 'Pending Approvals', value: dash.pending.length, icon: <Clock size={16} />, color: 'bg-amber-500' },
+          { label: 'Approved', value: dash.approved, icon: <CheckCircle2 size={16} />, color: 'bg-emerald-500' },
+          { label: 'Leave Balance (days)', value: dash.totalRemaining, icon: <Wallet size={16} />, color: 'bg-violet-500' },
+          { label: 'Employees', value: scopedEmployees.length, icon: <Users size={16} />, color: 'bg-blue-500' },
+        ];
+        const fmt = (d: string) => { try { return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }); } catch { return d; } };
+        const LeaveRow = ({ l }: { l: LeaveRequest }) => (
+          <div className="flex items-center justify-between gap-2 py-2 border-b border-slate-50 last:border-0">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-slate-800 truncate">{l.employeeName}</p>
+              <p className="text-[10px] text-slate-400">{l.leaveType} · {fmt(l.fromDate)}–{fmt(l.toDate)} · {l.days}d</p>
+            </div>
+            {statusChip(l.status)}
+          </div>
+        );
+        return (
+          <div className="space-y-4">
+            {/* Leave Statistics */}
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+              {tiles.map(t => (
+                <div key={t.label} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3.5 flex items-center gap-3">
+                  <span className={`w-10 h-10 rounded-xl text-white flex items-center justify-center ${t.color}`}>{t.icon}</span>
+                  <div className="min-w-0"><p className="text-xl font-bold text-slate-800 leading-none">{t.value}</p><p className="text-[10px] text-slate-500 font-semibold mt-1 truncate">{t.label}</p></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Pending Approvals */}
+              <Card>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Clock size={15} className="text-amber-500" /> Pending Approvals <span className="text-[10px] font-bold text-amber-600">({dash.pending.length})</span></h3>
+                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">Review all <ArrowRight size={12} /></button>
+                </div>
+                {dash.pendingList.length === 0
+                  ? <div className="py-8 text-center"><CheckCircle2 size={22} className="mx-auto text-emerald-500 mb-1" /><p className="text-xs font-semibold text-slate-500">No pending leave requests.</p></div>
+                  : <div>{dash.pendingList.map(l => <LeaveRow key={l.id} l={l} />)}</div>}
+              </Card>
+
+              {/* Recent Requests */}
+              <Card>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><HistoryIcon size={15} className="text-slate-500" /> Recent Requests</h3>
+                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">View all <ArrowRight size={12} /></button>
+                </div>
+                {dash.recent.length === 0
+                  ? <div className="py-8 text-center text-xs text-slate-400">No leave requests yet.</div>
+                  : <div>{dash.recent.map(l => <LeaveRow key={l.id} l={l} />)}</div>}
+              </Card>
+            </div>
+
+            {/* Leave Balances Overview */}
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Wallet size={15} className="text-violet-500" /> Leave Balances Overview</h3>
+                <button onClick={() => setTab('administration')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">Open Administration <ArrowRight size={12} /></button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
+                <div className="rounded-xl bg-blue-50 border border-blue-100 p-3"><p className="text-lg font-bold text-blue-700">{dash.totalCL}</p><p className="text-[10px] font-semibold text-blue-600/80">CL Available</p></div>
+                <div className="rounded-xl bg-violet-50 border border-violet-100 p-3"><p className="text-lg font-bold text-violet-700">{dash.totalPL}</p><p className="text-[10px] font-semibold text-violet-600/80">PL Available</p></div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-lg font-bold text-amber-700">{dash.totalSL}</p><p className="text-[10px] font-semibold text-amber-600/80">SL Available</p></div>
+                <div className="rounded-xl bg-rose-50 border border-rose-100 p-3"><p className="text-lg font-bold text-rose-700">{dash.totalTaken}</p><p className="text-[10px] font-semibold text-rose-600/80">Days Taken</p></div>
+                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3"><p className="text-lg font-bold text-slate-700 flex items-center justify-center gap-1">{dash.lowBalance > 0 && <AlertCircle size={14} className="text-amber-500" />}{dash.lowBalance}</p><p className="text-[10px] font-semibold text-slate-500">Low Balance (≤2)</p></div>
+              </div>
+            </Card>
+
+            {/* Quick Actions */}
+            <Card>
+              <h3 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h3>
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" icon={<FileText size={13} />} onClick={() => setTab('requests')}>Leave Requests</Button>
+                {canEdit && <Button size="sm" variant="outline" icon={<CalendarPlus size={13} />} onClick={() => setTab('administration')}>Manage Balances</Button>}
+                <Button size="sm" variant="outline" icon={<Wallet size={13} />} onClick={() => setTab('balances')}>Leave Balances</Button>
+                <Button size="sm" variant="outline" icon={<HistoryIcon size={13} />} onClick={() => setTab('history')}>History</Button>
+                <Button size="sm" variant="outline" icon={<BarChart3 size={13} />} onClick={() => setTab('reports')}>Reports</Button>
+                <Button size="sm" variant="outline" icon={<ShieldCheck size={13} />} onClick={() => setTab('policies')}>Policies &amp; Audit</Button>
+              </div>
+            </Card>
+          </div>
+        );
+      })()}
+
       {/* ── Requests (existing module) ── */}
       {tab === 'requests' && (
         <Leaves role={role} activeCompanyId={activeCompanyId} leaves={leaves} onUpdateLeaves={onUpdateLeaves}
@@ -285,13 +400,12 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
             <h3 className="text-sm font-bold text-slate-800">Leave Administration</h3>
             <div className="flex items-center gap-2">
               {canEdit && (
-                <div className="relative">
+                <div className="relative" ref={manageRef}>
                   <Button size="sm" icon={<CalendarPlus size={13} />} onClick={() => setManageOpen(o => !o)}>
                     Manage Leave <ChevronDown size={13} className="ml-1" />
                   </Button>
                   {manageOpen && (
                     <>
-                      <div className="fixed inset-0 z-10" onClick={() => setManageOpen(false)} />
                       <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-slate-200 bg-white shadow-lg py-1">
                         <button onClick={() => openManage('grant')}
                           className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors">

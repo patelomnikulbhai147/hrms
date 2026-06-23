@@ -7,8 +7,10 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
+// Includes company-wide grants AND specific branch grants, so a branch-restricted
+// user is scoped to exactly their branch workspace(s) — never sibling branches.
 const allowedIdsFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || []), ...(req.user?.accessibleBranchIds || [])].filter(Boolean);
 
 // Tenders carry commercial terms (value) — only Company Head / Super Admin may
 // create, edit, convert or delete. HR is view-only on tenders & contracts.
