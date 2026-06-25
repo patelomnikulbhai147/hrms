@@ -1,8 +1,0 @@
-{
-  "id": "integer",
-  "name": "string",
-  "_example": {
-    "id": 2,
-    "name": "Vision Enterprise"
-  }
-}
