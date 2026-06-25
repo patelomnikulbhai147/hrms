@@ -1,0 +1,5 @@
+{
+  "type": "aadhaar|pan|photo|signature|passbook|degree|experience|other",
+  "name": "string",
+  "dataUrl": "data:<mime>;base64,..."
+}

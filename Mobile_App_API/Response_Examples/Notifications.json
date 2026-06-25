@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "notifications": [
+      {
+        "id": 9,
+        "type": "announcement",
+        "title": "Holiday",
+        "message": "Office closed on Friday",
+        "read": false,
+        "timestamp": "2026-06-24 10:00"
+      }
+    ]
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

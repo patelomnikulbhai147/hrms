@@ -1,0 +1,11 @@
+{
+  "firstName": "string",
+  "middleName": "string?",
+  "lastName": "string",
+  "dob": "YYYY-MM-DD",
+  "gender": "string",
+  "maritalStatus": "string?",
+  "nationality": "string?",
+  "bloodGroup": "string?",
+  "email": "string?"
+}

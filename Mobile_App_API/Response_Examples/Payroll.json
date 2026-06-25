@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "payslips": [
+      {
+        "id": 5,
+        "month": "June",
+        "year": 2026,
+        "basicSalary": 21000,
+        "allowances": 15000,
+        "deductions": 4000,
+        "netSalary": 42000,
+        "paymentStatus": "pending",
+        "payslipGenerated": false
+      }
+    ]
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

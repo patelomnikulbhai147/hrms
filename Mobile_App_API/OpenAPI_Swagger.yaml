@@ -1,0 +1,1151 @@
+openapi: 3.0.3
+info:
+  title: HRMS Mobile App API
+  version: 1.0.0
+  description: >-
+    Employee mobile app API. OTP login linked to Temporary Employee records; 7-step resume-safe registration;
+    approval-gated dashboard. Every response uses { success, message, data, errors, timestamp }.
+servers:
+  - url: http://localhost:5000
+    description: Development
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+  - name: Authentication
+  - name: Registration
+  - name: Dashboard
+paths:
+  /api/app/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              mobile: '9876543210'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  sessionId: a1b2c3d4e5f6
+                  otpRequired: true
+                  otpLength: 4
+                  expiresIn: 300
+                  otpMode: development
+                  devOtp: '1111'
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '400':
+          description: MOBILE_REQUIRED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Mobile number is required.
+                data: null
+                errors:
+                  - code: MOBILE_REQUIRED
+                    message: Mobile number is required.
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '404':
+          description: EMPLOYEE_NOT_FOUND
+          content:
+            application/json:
+              example:
+                success: false
+                message: Employee not found.
+                data: null
+                errors:
+                  - code: EMPLOYEE_NOT_FOUND
+                    message: Employee not found.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/auth/verify-otp:
+    post:
+      tags:
+        - Authentication
+      summary: Verify OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              sessionId: a1b2c3d4e5f6
+              otp: '1234'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  accessToken: eyJhbGciOi...
+                  refreshToken: eyJhbGciOi...
+                  tokenType: Bearer
+                  expiresIn: 43200
+                  refreshExpiresIn: 2592000
+                  registrationCompleted: false
+                  currentStep: 1
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '400':
+          description: INVALID_OTP
+          content:
+            application/json:
+              example:
+                success: false
+                message: Enter any 4-digit code.
+                data: null
+                errors:
+                  - code: INVALID_OTP
+                    message: Enter any 4-digit code.
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '429':
+          description: TOO_MANY_ATTEMPTS
+          content:
+            application/json:
+              example:
+                success: false
+                message: Too many attempts.
+                data: null
+                errors:
+                  - code: TOO_MANY_ATTEMPTS
+                    message: Too many attempts.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh Token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              refreshToken: eyJhbGciOi...
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  accessToken: eyJhbGciOi...
+                  tokenType: Bearer
+                  expiresIn: 43200
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '400':
+          description: REFRESH_TOKEN_REQUIRED
+          content:
+            application/json:
+              example:
+                success: false
+                message: A refresh token is required.
+                data: null
+                errors:
+                  - code: REFRESH_TOKEN_REQUIRED
+                    message: A refresh token is required.
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '401':
+          description: REFRESH_TOKEN_INVALID
+          content:
+            application/json:
+              example:
+                success: false
+                message: Session expired. Please log in again.
+                data: null
+                errors:
+                  - code: REFRESH_TOKEN_INVALID
+                    message: Session expired. Please log in again.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data: {}
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '401':
+          description: NO_TOKEN
+          content:
+            application/json:
+              example:
+                success: false
+                message: Not authorized — no token provided.
+                data: null
+                errors:
+                  - code: NO_TOKEN
+                    message: Not authorized — no token provided.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/auth/session:
+    get:
+      tags:
+        - Authentication
+      summary: Session
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  loggedIn: true
+                  registrationCompleted: false
+                  currentStep: 4
+                  completionPercentage: 62
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '401':
+          description: TOKEN_INVALID
+          content:
+            application/json:
+              example:
+                success: false
+                message: Session expired. Please log in again.
+                data: null
+                errors:
+                  - code: TOKEN_INVALID
+                    message: Session expired. Please log in again.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/auth/me:
+    get:
+      tags:
+        - Authentication
+      summary: Get Me
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  tempEmployeeId: VE-TEMP-000002
+                  name: Om Patel
+                  mobile: '9876543210'
+                  email: om@example.com
+                  branch: Ahmedabad
+                  approvalStatus: Draft
+                  registrationCompleted: false
+                  currentStep: 4
+                  completionPercentage: 62
+                  employeeId: null
+                  isApproved: false
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '401':
+          description: TOKEN_INVALID
+          content:
+            application/json:
+              example:
+                success: false
+                message: Session expired.
+                data: null
+                errors:
+                  - code: TOKEN_INVALID
+                    message: Session expired.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/personal:
+    post:
+      tags:
+        - Registration
+      summary: Save Personal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              firstName: Om
+              middleName: ''
+              lastName: Patel
+              dob: '1998-05-10'
+              gender: Male
+              maritalStatus: Single
+              nationality: Indian
+              bloodGroup: O+
+              email: om@example.com
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 2
+                  completedSteps:
+                    - 1
+                  completionPercentage: 14
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: ALREADY_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Your profile is approved and can no longer be edited here.
+                data: null
+                errors:
+                  - code: ALREADY_APPROVED
+                    message: Your profile is approved and can no longer be edited here.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/address:
+    post:
+      tags:
+        - Registration
+      summary: Save Address
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              present:
+                line1: 12 MG Road
+                line2: ''
+                area: Navrangpura
+                landmark: Near Park
+                city: Ahmedabad
+                district: Ahmedabad
+                state: Gujarat
+                country: India
+                pincode: '380009'
+              sameAsPresent: true
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 3
+                  completedSteps:
+                    - 1
+                    - 2
+                  completionPercentage: 29
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/family:
+    post:
+      tags:
+        - Registration
+      summary: Save Family / Nominee
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              fatherSpouseName: Ramesh Patel
+              emergencyContactName: Ramesh Patel
+              emergencyContact: '9876500000'
+              relationship: Father
+              nominee:
+                name: Ramesh Patel
+                relationship: Father
+                share: 100
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 4
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                  completionPercentage: 43
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/bank:
+    post:
+      tags:
+        - Registration
+      summary: Save Bank
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              bankName: HDFC Bank
+              accountNumber: '50100123456789'
+              ifsc: HDFC0001234
+              accountHolderName: Om Patel
+              bankBranch: Navrangpura
+              accountType: Savings
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 5
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                  completionPercentage: 57
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/education:
+    post:
+      tags:
+        - Registration
+      summary: Save Education
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              education:
+                - degree: B.Tech
+                  institution: GTU
+                  year: '2020'
+                  grade: 8.2 CGPA
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 6
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+                  completionPercentage: 71
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/experience:
+    post:
+      tags:
+        - Registration
+      summary: Save Experience
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              experience:
+                - company: Acme Corp
+                  role: Developer
+                  from: 2020-07
+                  to: 2023-06
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 7
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+                    - 6
+                  completionPercentage: 86
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/documents:
+    post:
+      tags:
+        - Registration
+      summary: Save Documents (bulk)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              photo: data:image/jpeg;base64,...
+              documents:
+                aadhaarDoc:
+                  name: aadhaar.jpg
+                  dataUrl: data:image/jpeg;base64,...
+                panDoc:
+                  name: pan.jpg
+                  dataUrl: ...
+                bankProof:
+                  name: passbook.jpg
+                  dataUrl: ...
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  saved: true
+                  currentStep: 7
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+                    - 6
+                    - 7
+                  completionPercentage: 100
+                  totalSteps: 7
+                  canSubmit: true
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+    get:
+      tags:
+        - Dashboard
+      summary: Profile Documents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  photo: data:image/jpeg;base64,...
+                  documents:
+                    aadhaarDoc:
+                      name: aadhaar.jpg
+                    panDoc:
+                      name: pan.jpg
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/document:
+    post:
+      tags:
+        - Registration
+      summary: Upload Single Document
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              type: aadhaar
+              name: aadhaar.jpg
+              dataUrl: data:image/jpeg;base64,...
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  uploaded: aadhaarDoc
+                  currentStep: 7
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                    - 5
+                    - 6
+                  completionPercentage: 86
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '400':
+          description: CONTENT_REQUIRED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Document content is required.
+                data: null
+                errors:
+                  - code: CONTENT_REQUIRED
+                    message: Document content is required.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/progress:
+    get:
+      tags:
+        - Registration
+      summary: Progress
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  currentStep: 5
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                  completionPercentage: 71
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/submit:
+    post:
+      tags:
+        - Registration
+      summary: Submit For Approval
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  approvalStatus: Pending Approval
+                  submittedAt: '2026-06-25T12:00:00.000Z'
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '400':
+          description: ALREADY_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Your profile is already approved.
+                data: null
+                errors:
+                  - code: ALREADY_APPROVED
+                    message: Your profile is already approved.
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '422':
+          description: VALIDATION_FAILED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Please complete all required fields and documents before submitting.
+                data: null
+                errors:
+                  - code: VALIDATION_FAILED
+                    message: Please complete all required fields and documents before submitting.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/status:
+    get:
+      tags:
+        - Registration
+      summary: Approval Status
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  approvalStatus: Pending Approval
+                  completionPercentage: 100
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile/update:
+    put:
+      tags:
+        - Registration
+      summary: Update Profile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              email: new@example.com
+              presentAddress: 12 MG Road, Ahmedabad
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  currentStep: 5
+                  completedSteps:
+                    - 1
+                    - 2
+                    - 3
+                    - 4
+                  completionPercentage: 71
+                  totalSteps: 7
+                  canSubmit: false
+                  approvalStatus: Draft
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/dashboard:
+    get:
+      tags:
+        - Dashboard
+      summary: Dashboard
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  employeeId: VE-AHM-001
+                  name: Om Patel
+                  designation: Developer
+                  department: IT
+                  company: Vision Enterprise
+                  branch: Ahmedabad
+                  todayAttendance:
+                    status: Present
+                    clockIn: '09:05'
+                    clockOut: '18:10'
+                  pendingLeaveRequests: 1
+                  latestPayrollNet: 42000
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/profile:
+    get:
+      tags:
+        - Dashboard
+      summary: Employee Profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  employeeId: VE-AHM-001
+                  name: Om Patel
+                  email: om@example.com
+                  mobile: '9876543210'
+                  department: IT
+                  designation: Developer
+                  company:
+                    id: 2
+                    name: Vision Enterprise
+                  branch:
+                    id: 5
+                    name: Ahmedabad
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/attendance:
+    get:
+      tags:
+        - Dashboard
+      summary: Attendance
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  summary:
+                    totalRecords: 22
+                    presentDays: 20
+                  records:
+                    - date: '2026-06-24'
+                      status: Present
+                      clockIn: '09:05'
+                      clockOut: '18:10'
+                      hoursWorked: 8.5
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/leave:
+    get:
+      tags:
+        - Dashboard
+      summary: Leave List
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  requests:
+                    - id: 12
+                      leaveType: Casual
+                      fromDate: '2026-06-20'
+                      toDate: '2026-06-21'
+                      days: 2
+                      reason: Personal
+                      status: Pending
+                      appliedOn: '2026-06-18'
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/leave/apply:
+    post:
+      tags:
+        - Dashboard
+      summary: Apply Leave
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              leaveType: Casual
+              fromDate: '2026-07-01'
+              toDate: '2026-07-02'
+              days: 2
+              reason: Family function
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  id: 31
+                  status: Pending
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '422':
+          description: VALIDATION_FAILED
+          content:
+            application/json:
+              example:
+                success: false
+                message: leaveType, fromDate and toDate are required.
+                data: null
+                errors:
+                  - code: VALIDATION_FAILED
+                    message: leaveType, fromDate and toDate are required.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/payroll:
+    get:
+      tags:
+        - Dashboard
+      summary: Payroll
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  payslips:
+                    - id: 5
+                      month: June
+                      year: 2026
+                      basicSalary: 21000
+                      allowances: 15000
+                      deductions: 4000
+                      netSalary: 42000
+                      paymentStatus: pending
+                      payslipGenerated: false
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/notifications:
+    get:
+      tags:
+        - Dashboard
+      summary: Notifications
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  notifications:
+                    - id: 9
+                      type: announcement
+                      title: Holiday
+                      message: Office closed on Friday
+                      read: false
+                      timestamp: 2026-06-24 10:00
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'
+  /api/app/holiday:
+    get:
+      tags:
+        - Dashboard
+      summary: Holidays
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              example:
+                success: true
+                message: Success
+                data:
+                  holidays: []
+                errors: []
+                timestamp: '2026-06-25T12:00:00.000Z'
+        '403':
+          description: NOT_APPROVED
+          content:
+            application/json:
+              example:
+                success: false
+                message: Dashboard is available only after HR approval.
+                data: null
+                errors:
+                  - code: NOT_APPROVED
+                    message: Dashboard is available only after HR approval.
+                timestamp: '2026-06-25T12:00:00.000Z'

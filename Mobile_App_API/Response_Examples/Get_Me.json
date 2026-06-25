@@ -1,0 +1,19 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "tempEmployeeId": "VE-TEMP-000002",
+    "name": "Om Patel",
+    "mobile": "9876543210",
+    "email": "om@example.com",
+    "branch": "Ahmedabad",
+    "approvalStatus": "Draft",
+    "registrationCompleted": false,
+    "currentStep": 4,
+    "completionPercentage": 62,
+    "employeeId": null,
+    "isApproved": false
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

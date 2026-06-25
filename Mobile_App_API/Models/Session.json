@@ -1,0 +1,7 @@
+{
+  "loggedIn": "boolean",
+  "registrationCompleted": "boolean",
+  "currentStep": "1..7",
+  "completionPercentage": "0..100",
+  "approvalStatus": "Draft|Pending Approval|Approved|Rejected|Changes Requested"
+}

@@ -1,0 +1,8 @@
+{
+  "currentStep": "1..7",
+  "completedSteps": "[int]",
+  "completionPercentage": "0..100",
+  "totalSteps": 7,
+  "canSubmit": "boolean",
+  "approvalStatus": "string"
+}

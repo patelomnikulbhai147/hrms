@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "uploaded": "aadhaarDoc",
+    "currentStep": 7,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "completionPercentage": 86,
+    "totalSteps": 7,
+    "canSubmit": false,
+    "approvalStatus": "Draft"
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

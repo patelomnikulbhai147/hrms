@@ -1,0 +1,17 @@
+{
+  "photo": "data:image/jpeg;base64,...",
+  "documents": {
+    "aadhaarDoc": {
+      "name": "aadhaar.jpg",
+      "dataUrl": "data:image/jpeg;base64,..."
+    },
+    "panDoc": {
+      "name": "pan.jpg",
+      "dataUrl": "..."
+    },
+    "bankProof": {
+      "name": "passbook.jpg",
+      "dataUrl": "..."
+    }
+  }
+}

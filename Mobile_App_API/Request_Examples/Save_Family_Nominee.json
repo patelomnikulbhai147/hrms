@@ -1,0 +1,11 @@
+{
+  "fatherSpouseName": "Ramesh Patel",
+  "emergencyContactName": "Ramesh Patel",
+  "emergencyContact": "9876500000",
+  "relationship": "Father",
+  "nominee": {
+    "name": "Ramesh Patel",
+    "relationship": "Father",
+    "share": 100
+  }
+}

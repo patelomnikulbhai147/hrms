@@ -1,0 +1,8 @@
+{
+  "leaveType": "string",
+  "fromDate": "YYYY-MM-DD",
+  "toDate": "YYYY-MM-DD",
+  "days": "number",
+  "reason": "string",
+  "status": "Pending|Approved|Rejected"
+}

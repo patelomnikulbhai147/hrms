@@ -1,0 +1,14 @@
+{
+  "present": {
+    "line1": "12 MG Road",
+    "line2": "",
+    "area": "Navrangpura",
+    "landmark": "Near Park",
+    "city": "Ahmedabad",
+    "district": "Ahmedabad",
+    "state": "Gujarat",
+    "country": "India",
+    "pincode": "380009"
+  },
+  "sameAsPresent": true
+}

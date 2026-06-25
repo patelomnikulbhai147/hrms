@@ -1,0 +1,20 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "requests": [
+      {
+        "id": 12,
+        "leaveType": "Casual",
+        "fromDate": "2026-06-20",
+        "toDate": "2026-06-21",
+        "days": 2,
+        "reason": "Personal",
+        "status": "Pending",
+        "appliedOn": "2026-06-18"
+      }
+    ]
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

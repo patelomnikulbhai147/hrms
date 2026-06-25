@@ -1,0 +1,8 @@
+{
+  "bankName": "string",
+  "accountNumber": "string",
+  "ifsc": "string",
+  "accountHolderName": "string?",
+  "bankBranch": "string?",
+  "accountType": "string?"
+}
