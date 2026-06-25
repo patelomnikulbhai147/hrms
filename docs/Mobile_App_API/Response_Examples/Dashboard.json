@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "employeeId": "VE-AHM-001",
+    "name": "Om Patel",
+    "designation": "Developer",
+    "department": "IT",
+    "company": "Vision Enterprise",
+    "branch": "Ahmedabad",
+    "todayAttendance": {
+      "status": "Present",
+      "clockIn": "09:05",
+      "clockOut": "18:10"
+    },
+    "pendingLeaveRequests": 1,
+    "latestPayrollNet": 42000
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

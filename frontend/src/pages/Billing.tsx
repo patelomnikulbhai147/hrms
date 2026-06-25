@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { ExportMenu } from '@/components/ui/ExportMenu';
 import { type ExportColumn } from '@/utils/exportUtils';
 import { calculateSubscriptionAnalytics, getSubscriptionAlertsList, getDaysRemaining, calculateBranchBilling } from '@/utils/subscriptionUtils';
+import { EmployeeSubscription } from '@/pages/EmployeeSubscription';
 
 const PAYMENT_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Invoice Number', key: 'invoiceNumber', width: 20 },
@@ -63,6 +64,9 @@ export const Billing: React.FC<BillingProps> = ({
   const canEdit = canEditModule('billing');
 
   const [activeTab, setActiveTab] = useState<'overview' | 'plans' | 'payments' | 'alerts'>('overview');
+  // NEW Employee-Based Subscription (Beta) — opens a fully separate page. The
+  // existing subscription page below is left completely untouched.
+  const [showNewSub, setShowNewSub] = useState(false);
 
   // Paywall, commercial pricing & alert state parameters
   const [paywallOpen, setPaywallOpen] = useState(false);
@@ -752,6 +756,12 @@ export const Billing: React.FC<BillingProps> = ({
     return matchSearch && matchPlan && matchStatus;
   });
 
+  // Beta route: render the new Employee-Based Subscription page in place. The
+  // current subscription system (everything below) stays exactly as it was.
+  if (showNewSub) {
+    return <EmployeeSubscription companies={companies} onBack={() => setShowNewSub(false)} />;
+  }
+
   return (
     <div className="relative min-h-screen">
       {/* Soft Frosted Background blobs exclusively for Billing section */}
@@ -767,6 +777,17 @@ export const Billing: React.FC<BillingProps> = ({
             <span className="font-semibold">{successMessage}</span>
           </div>
         )}
+
+        {/* ─── New Employee-Based Subscription entry (Beta) ─────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-5 py-3.5 shadow-sm">
+          <div>
+            <p className="text-sm font-extrabold text-slate-800">Trying the new billing model?</p>
+            <p className="text-[11px] text-slate-500">Peak-employee + branch-slot based subscription. Runs alongside this page — nothing here changes.</p>
+          </div>
+          <Button onClick={() => setShowNewSub(true)} className="bg-indigo-600 hover:bg-indigo-700 shrink-0">
+            <span className="flex items-center gap-1.5"><Rocket size={14} /> New Employee-Based Subscription (Beta)</span>
+          </Button>
+        </div>
 
         {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">

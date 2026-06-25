@@ -1,0 +1,18 @@
+{
+  "success": false,
+  "message": "Please complete all required fields and documents before submitting.",
+  "data": null,
+  "errors": [
+    {
+      "code": "MISSING_FIELD",
+      "field": "aadhaar",
+      "message": "Aadhaar Number is required."
+    },
+    {
+      "code": "MISSING_DOCUMENT",
+      "field": "panDoc",
+      "message": "PAN Document is required."
+    }
+  ],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

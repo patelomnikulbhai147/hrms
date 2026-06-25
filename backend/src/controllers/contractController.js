@@ -14,6 +14,27 @@ const isSuper = (req) => req.user?.role === 'Super Admin';
 // Commercial actions (values/terms): Company Head + Super Admin. HR is view-only.
 const canManageCommercial = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 
+// ── Enterprise helpers (additive) ────────────────────────────────────────────
+const actorOf = (req) => req.user?.name || req.user?.fullName || req.user?.email || 'User';
+const asObject = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+const asArray = (v) => (Array.isArray(v) ? v : null);
+
+// Generate a contract number when the user leaves it blank: CON-<year>-<seq>,
+// sequence scoped to the company so numbers stay tidy per workspace.
+async function nextContractNumber(companyId) {
+  const year = new Date().getFullYear();
+  const count = await prisma.contract.count({ where: { companyId } });
+  return `CON-${year}-${String(count + 1).padStart(4, '0')}`;
+}
+
+// One immutable timeline entry. Old/new are stringified for a uniform audit view.
+const logEntry = (by, action, field, oldV, newV) => ({
+  at: new Date().toISOString(), by, action,
+  ...(field ? { field } : {}),
+  ...(oldV !== undefined ? { old: oldV == null ? '' : String(oldV) } : {}),
+  ...(newV !== undefined ? { new: newV == null ? '' : String(newV) } : {}),
+});
+
 // Auto-derive a display status from the end date when the stored status is open.
 function deriveStatus(stored, endDate) {
   if (stored === 'Closed') return 'Closed';
@@ -40,12 +61,18 @@ exports.getAll = async (req, res) => {
         _count: { select: { sites: true, deployments: true } },
       },
     });
-    const withDerived = contracts.map((c) => ({
-      ...c,
-      derivedStatus: deriveStatus(c.status, c.endDate),
-      requiredHeadcount: c.sites.reduce((s, x) => s + (x.requiredHeadcount || 0), 0),
-      assignedHeadcount: c._count.deployments,
-    }));
+    const withDerived = contracts.map((c) => {
+      // Keep the list payload light: drop the (potentially large, base64) document
+      // blobs and the activity log — both are loaded on demand via getOne.
+      const { documents, activity, ...rest } = c;
+      return {
+        ...rest,
+        derivedStatus: deriveStatus(c.status, c.endDate),
+        requiredHeadcount: c.sites.reduce((s, x) => s + (x.requiredHeadcount || 0), 0),
+        assignedHeadcount: c._count.deployments,
+        documentsCount: Array.isArray(documents) ? documents.length : 0,
+      };
+    });
     res.json(withDerived);
   } catch (e) {
     console.error('contract.getAll', e);
@@ -86,9 +113,16 @@ exports.create = async (req, res) => {
       if (!companyId) companyId = req.user.companyId;
     }
     if (!companyId) return res.status(400).json({ error: 'A company/workspace is required.' });
+
+    const by = actorOf(req);
+    const contractNumber = (b.contractNumber && String(b.contractNumber).trim()) || await nextContractNumber(companyId);
+    const documents = asArray(b.documents) || [];
+    const activity = [logEntry(by, 'Contract created')];
+    if (documents.length) activity.push(logEntry(by, `Uploaded ${documents.length} document(s)`));
+
     const c = await prisma.contract.create({
       data: {
-        contractNumber: b.contractNumber || null,
+        contractNumber,
         contractName: String(b.contractName).trim(),
         clientName: b.clientName || null,
         companyId,
@@ -100,6 +134,10 @@ exports.create = async (req, res) => {
         status: b.status || 'Active',
         documentPath: b.documentPath || null,
         notes: b.notes || null,
+        // Enterprise sections (additive JSON columns).
+        details: asObject(b.details) || undefined,
+        documents: documents.length ? documents : undefined,
+        activity,
       },
     });
     res.status(201).json(c);
@@ -118,12 +156,38 @@ exports.update = async (req, res) => {
     if (!isSuper(req) && !allowedIdsFor(req).includes(existing.companyId)) return res.status(403).json({ error: 'This contract is outside your workspace.' });
 
     const b = req.body || {};
+    const by = actorOf(req);
     const data = {};
+    const entries = [];
+    const LABEL = { contractNumber: 'Contract Number', contractName: 'Contract Name', clientName: 'Client', startDate: 'Start Date', endDate: 'End Date', status: 'Status', notes: 'Notes' };
     for (const f of ['contractNumber', 'contractName', 'clientName', 'startDate', 'endDate', 'status', 'documentPath', 'notes']) {
-      if (b[f] !== undefined) data[f] = b[f];
+      if (b[f] !== undefined) {
+        data[f] = b[f];
+        if (LABEL[f] && String(existing[f] ?? '') !== String(b[f] ?? '')) {
+          entries.push(logEntry(by, f === 'status' ? 'Status changed' : `${LABEL[f]} edited`, LABEL[f], existing[f], b[f]));
+        }
+      }
     }
-    if (b.contractValue !== undefined) data.contractValue = Number(b.contractValue) || 0;
+    if (b.contractValue !== undefined) {
+      data.contractValue = Number(b.contractValue) || 0;
+      if (Number(existing.contractValue || 0) !== data.contractValue) entries.push(logEntry(by, 'Contract Value edited', 'Contract Value', existing.contractValue, data.contractValue));
+    }
     if (b.branchId !== undefined) data.branchId = b.branchId ? idParam(b.branchId) : null;
+
+    // Enterprise sections — replace the whole object/array when provided.
+    if (asObject(b.details)) { data.details = b.details; entries.push(logEntry(by, 'Contract details updated')); }
+    if (asArray(b.documents)) {
+      const prevN = Array.isArray(existing.documents) ? existing.documents.length : 0;
+      data.documents = b.documents;
+      if (b.documents.length !== prevN) entries.push(logEntry(by, `Documents updated (${prevN} → ${b.documents.length})`));
+    }
+
+    // Append-only activity timeline (preserve prior history).
+    if (entries.length) {
+      const prior = Array.isArray(existing.activity) ? existing.activity : [];
+      data.activity = [...prior, ...entries];
+    }
+
     const c = await prisma.contract.update({ where: { id }, data });
     res.json(c);
   } catch (e) {

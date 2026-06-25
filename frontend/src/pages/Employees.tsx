@@ -210,6 +210,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [tempBusy, setTempBusy] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickForm, setQuickForm] = useState({ name: '', mobile: '', branch: '', department: '' });
+  // Unique-mobile enforcement: live duplicate descriptor + in-flight flag for Quick Add.
+  const [mobileDup, setMobileDup] = useState<any | null>(null);
+  const [mobileChecking, setMobileChecking] = useState(false);
   const [editTemp, setEditTemp] = useState<any | null>(null);   // Complete-profile modal
   const [reviewTemp, setReviewTemp] = useState<any | null>(null); // Approval review modal
   // HR Employment Assignment screen (opened on approve — HR assigns official details).
@@ -254,8 +257,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     } catch (err: any) { ui.toast.error('Could not generate the template: ' + (err?.message || 'Unknown error')); }
   };
   const refreshTemps = async () => {
-    try { const list: any = await api.temporaryEmployees.getAll(); setTemps(Array.isArray(list) ? list : []); }
-    catch { /* leave as-is */ }
+    try { const list: any = await api.temporaryEmployees.getAll(); const arr = Array.isArray(list) ? list : []; setTemps(arr); return arr; }
+    catch { /* leave as-is */ return temps; }
   };
   useEffect(() => { if (isHR) refreshTemps(); /* eslint-disable-next-line */ }, [activeCompanyId]);
   // Temp employees scoped to the active workspace (company or branch), excluding converted/rejected from the live count.
@@ -274,7 +277,63 @@ export const Employees: React.FC<EmployeesProps> = ({
   // pre-assigned (and locked in the modal); at company scope it starts blank.
   const openQuickAdd = () => {
     setQuickForm({ name: '', mobile: '', branch: activeBranchName, department: '' });
+    setMobileDup(null);
     setQuickOpen(true);
+  };
+
+  // ── Unique mobile enforcement (one mobile = one employee identity) ──────────
+  // Open the existing record a duplicate mobile belongs to: a still-editable temp
+  // can be continued; a converted/real employee is shown in its status tab.
+  const openExistingForDuplicate = async (dup: any) => {
+    setQuickOpen(false);
+    if (dup.kind === 'temporary' && dup.editable && dup.inScope) {
+      const full = temps.find(t => t.id === dup.tempId) || (await refreshTemps()).find((t: any) => t.id === dup.tempId);
+      setActiveMainTab(TEMP_APPROVAL_STATUSES.includes(dup.status) ? 'approvals' : 'temporary');
+      if (full) setEditTemp(full);
+      else ui.toast.info(`Open the ${dup.code} record from the Temporary tab to continue its profile.`);
+    } else {
+      // Real / converted employee — surface where it lives.
+      setActiveMainTab(dup.kind === 'employee' && /previous|exit|archive|inactive/i.test(dup.status || '') ? 'previous' : 'active');
+      ui.toast.info(`${dup.code} (${dup.status || 'Active'}) already uses this mobile number.`);
+    }
+  };
+
+  // Present the "mobile already registered" dialog with the right call-to-action.
+  const presentDuplicateMobile = async (dup: any) => {
+    const noun = dup.kind === 'employee' ? 'employee' : 'temporary employee';
+    const canContinue = dup.kind === 'temporary' && dup.editable && dup.inScope;
+    const message = (
+      <div className="space-y-2 text-left text-sm">
+        <p>This mobile number is already linked to an existing {noun}.</p>
+        <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs space-y-0.5">
+          <div><span className="text-slate-500">Employee ID:</span> <strong className="text-slate-800">{dup.code || '—'}</strong></div>
+          {dup.name && <div><span className="text-slate-500">Name:</span> <strong className="text-slate-800">{dup.name}</strong></div>}
+          {dup.status && <div><span className="text-slate-500">Status:</span> <strong className="text-slate-800">{dup.status}</strong></div>}
+        </div>
+        <p className="font-medium text-rose-600">Duplicate employee creation is not allowed.</p>
+        {canContinue && <p className="text-[11px] text-slate-500">You can continue completing this pending profile instead of creating a new record.</p>}
+      </div>
+    );
+    const go = await ui.confirm({
+      title: 'Mobile number already registered',
+      message,
+      variant: canContinue ? 'warning' : 'error',
+      confirmText: canContinue ? 'Continue Profile Completion' : 'View Existing',
+      cancelText: 'Cancel',
+    });
+    if (go) await openExistingForDuplicate(dup);
+  };
+
+  // Live check on blur — gives immediate feedback before the user submits.
+  const checkMobileLive = async (mobileRaw: string) => {
+    const mobile = (mobileRaw || '').trim();
+    if (!mobile) { setMobileDup(null); return; }
+    setMobileChecking(true);
+    try {
+      const r: any = await api.temporaryEmployees.checkMobile(mobile);
+      setMobileDup(r?.exists ? r.duplicate : null);
+    } catch { /* non-blocking — the create call re-enforces server-side */ }
+    finally { setMobileChecking(false); }
   };
 
   // Resolve the active workspace's branch id (company-record id) for the quick form.
@@ -287,6 +346,9 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!effectiveBranch) { ui.toast.warning('Branch is required.'); return; }
     setTempBusy(true);
     try {
+      // One mobile = one identity — authoritative pre-check before creating.
+      const chk: any = await api.temporaryEmployees.checkMobile(quickForm.mobile.trim()).catch(() => null);
+      if (chk?.exists) { setMobileDup(chk.duplicate); setTempBusy(false); await presentDuplicateMobile(chk.duplicate); return; }
       const br = dynamicBranches.find(b => (b.branchName || b.name) === effectiveBranch);
       const created: any = await api.temporaryEmployees.create({
         name: quickForm.name.trim(), mobile: quickForm.mobile.trim(),
@@ -297,9 +359,14 @@ export const Employees: React.FC<EmployeesProps> = ({
       await refreshTemps();
       setQuickOpen(false);
       setQuickForm({ name: '', mobile: '', branch: '', department: '' });
+      setMobileDup(null);
       setActiveMainTab('temporary');
       ui.toast.success(`Temporary employee created — ${created?.tempEmployeeId}. Complete the profile & documents, then submit for approval.`);
-    } catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Could not create the temporary employee.')); }
+    } catch (e: any) {
+      // Backstop: the server also rejects duplicates (race / direct API call).
+      if (e?.status === 409 && e?.data?.duplicate) { setMobileDup(e.data.duplicate); await presentDuplicateMobile(e.data.duplicate); }
+      else ui.toast.error(getApiErrorMessage(e, 'Could not create the temporary employee.'));
+    }
     finally { setTempBusy(false); }
   };
 
@@ -1890,7 +1957,18 @@ export const Employees: React.FC<EmployeesProps> = ({
         <div className="space-y-3 text-left">
           <p className="text-[11px] text-slate-500">Create a temporary employee in seconds — only Name, Mobile &amp; Branch are required. Complete the rest later and convert to a permanent employee.</p>
           <Input label="Employee Name *" value={quickForm.name} onChange={e => setQuickForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" />
-          <Input label="Mobile Number *" value={quickForm.mobile} onChange={e => setQuickForm(f => ({ ...f, mobile: e.target.value.replace(/[^0-9+]/g, '') }))} placeholder="10-digit mobile" />
+          <div>
+            <Input label="Mobile Number *" value={quickForm.mobile}
+              onChange={e => { setMobileDup(null); setQuickForm(f => ({ ...f, mobile: e.target.value.replace(/[^0-9+]/g, '') })); }}
+              onBlur={e => checkMobileLive(e.target.value)}
+              placeholder="10-digit mobile" />
+            {mobileChecking && <p className="mt-1 text-[10px] text-slate-400">Checking mobile number…</p>}
+            {mobileDup && (
+              <p className="mt-1 text-[11px] font-medium text-rose-600">
+                Already linked to {mobileDup.code}{mobileDup.status ? ` (${mobileDup.status})` : ''} — duplicate creation is not allowed.
+              </p>
+            )}
+          </div>
           {isBranchWorkspace ? (
             // Branch scope — branch is fixed by the active workspace, shown read-only.
             <div>
@@ -1908,7 +1986,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           <Input label="Department (optional)" value={quickForm.department} onChange={e => setQuickForm(f => ({ ...f, department: e.target.value }))} placeholder="e.g. Operations" />
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" size="sm" onClick={() => setQuickOpen(false)}>Cancel</Button>
-            <Button size="sm" className="bg-amber-500 hover:bg-amber-600" loading={tempBusy} onClick={handleQuickCreate}>Create Temporary Employee</Button>
+            <Button size="sm" className="bg-amber-500 hover:bg-amber-600" loading={tempBusy} disabled={!!mobileDup || mobileChecking} onClick={handleQuickCreate}>Create Temporary Employee</Button>
           </div>
         </div>
       </Modal>

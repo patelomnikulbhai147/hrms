@@ -1135,7 +1135,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
-        <TaskTenderWidgets activeCompanyId={activeCompanyId} onNavigate={onNavigate} />
+        {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}
+        <TaskTenderWidgets activeCompanyId={activeCompanyId} onNavigate={onNavigate} canViewTenders />
 
         {/* Main Analytics Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">

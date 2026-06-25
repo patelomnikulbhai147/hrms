@@ -1,0 +1,22 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "employeeId": "VE-AHM-001",
+    "name": "Om Patel",
+    "email": "om@example.com",
+    "mobile": "9876543210",
+    "department": "IT",
+    "designation": "Developer",
+    "company": {
+      "id": 2,
+      "name": "Vision Enterprise"
+    },
+    "branch": {
+      "id": 5,
+      "name": "Ahmedabad"
+    }
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

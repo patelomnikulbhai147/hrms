@@ -29,6 +29,7 @@ const userRoutes = require('./src/routes/userRoutes');
 const overtimeRoutes = require('./src/routes/overtimeRoutes');
 const shiftRoutes = require('./src/routes/shiftRoutes');
 const subscriptionPlanRoutes = require('./src/routes/subscriptionPlanRoutes');
+const employeeSubscriptionRoutes = require('./src/routes/employeeSubscriptionRoutes');
 const statisticsRoutes = require('./src/routes/statisticsRoutes');
 
 const app = express();
@@ -79,9 +80,21 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Canonical website API alias (additive, non-breaking) ─────────────────────
+// The website API is served at /api/* and the frontend calls those paths directly
+// (unchanged). For the clean two-group architecture, the SAME website routes are
+// ALSO reachable under /api/web/* — a pure path alias mapped onto the existing
+// routers. No existing route is modified; the mobile group /api/app/* (which does
+// not start with /api/web/) is unaffected.
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/api/web/')) req.url = '/api/' + req.url.slice('/api/web/'.length);
+  next();
+});
+
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
+app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);
@@ -115,6 +128,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/overtime', overtimeRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
+app.use('/api/employee-subscription', employeeSubscriptionRoutes);
 app.use('/api/statistics', statisticsRoutes);
 
 // Health Check — also verifies the DATABASE is actually reachable, so a green

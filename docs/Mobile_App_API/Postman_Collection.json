@@ -1,0 +1,867 @@
+{
+  "info": {
+    "name": "HRMS Mobile App API (v1)",
+    "_postman_id": "hrms-mobile-app-v1",
+    "description": "Set {{baseUrl}}. Login + Verify auto-capture session and tokens.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000"
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "[Authentication] Login",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d=pm.response.json().data||{};",
+              "if(d.sessionId)pm.collectionVariables.set('sessionId',d.sessionId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "login"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"mobile\": \"9876543210\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Authentication] Verify OTP",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const d=pm.response.json().data||{};",
+              "if(d.accessToken)pm.collectionVariables.set('accessToken',d.accessToken);",
+              "if(d.refreshToken)pm.collectionVariables.set('refreshToken',d.refreshToken);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/verify-otp",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "verify-otp"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sessionId\": \"{{sessionId}}\",\n  \"otp\": \"1234\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Authentication] Refresh Token",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/refresh",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "refresh"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Authentication] Logout",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/logout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "logout"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Authentication] Session",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/session",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "session"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Authentication] Get Me",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/auth/me",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "auth",
+            "me"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Personal",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/personal",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "personal"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"firstName\": \"Om\",\n  \"middleName\": \"\",\n  \"lastName\": \"Patel\",\n  \"dob\": \"1998-05-10\",\n  \"gender\": \"Male\",\n  \"maritalStatus\": \"Single\",\n  \"nationality\": \"Indian\",\n  \"bloodGroup\": \"O+\",\n  \"email\": \"om@example.com\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Address",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/address",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "address"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"present\": {\n    \"line1\": \"12 MG Road\",\n    \"line2\": \"\",\n    \"area\": \"Navrangpura\",\n    \"landmark\": \"Near Park\",\n    \"city\": \"Ahmedabad\",\n    \"district\": \"Ahmedabad\",\n    \"state\": \"Gujarat\",\n    \"country\": \"India\",\n    \"pincode\": \"380009\"\n  },\n  \"sameAsPresent\": true\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Family / Nominee",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/family",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "family"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fatherSpouseName\": \"Ramesh Patel\",\n  \"emergencyContactName\": \"Ramesh Patel\",\n  \"emergencyContact\": \"9876500000\",\n  \"relationship\": \"Father\",\n  \"nominee\": {\n    \"name\": \"Ramesh Patel\",\n    \"relationship\": \"Father\",\n    \"share\": 100\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Bank",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/bank",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "bank"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"bankName\": \"HDFC Bank\",\n  \"accountNumber\": \"50100123456789\",\n  \"ifsc\": \"HDFC0001234\",\n  \"accountHolderName\": \"Om Patel\",\n  \"bankBranch\": \"Navrangpura\",\n  \"accountType\": \"Savings\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Education",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/education",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "education"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"education\": [\n    {\n      \"degree\": \"B.Tech\",\n      \"institution\": \"GTU\",\n      \"year\": \"2020\",\n      \"grade\": \"8.2 CGPA\"\n    }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Experience",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/experience",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "experience"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"experience\": [\n    {\n      \"company\": \"Acme Corp\",\n      \"role\": \"Developer\",\n      \"from\": \"2020-07\",\n      \"to\": \"2023-06\"\n    }\n  ]\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Save Documents (bulk)",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/documents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "documents"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"photo\": \"data:image/jpeg;base64,...\",\n  \"documents\": {\n    \"aadhaarDoc\": {\n      \"name\": \"aadhaar.jpg\",\n      \"dataUrl\": \"data:image/jpeg;base64,...\"\n    },\n    \"panDoc\": {\n      \"name\": \"pan.jpg\",\n      \"dataUrl\": \"...\"\n    },\n    \"bankProof\": {\n      \"name\": \"passbook.jpg\",\n      \"dataUrl\": \"...\"\n    }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Upload Single Document",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/document",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "document"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"aadhaar\",\n  \"name\": \"aadhaar.jpg\",\n  \"dataUrl\": \"data:image/jpeg;base64,...\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Registration] Progress",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/progress",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "progress"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Registration] Submit For Approval",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/submit",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "submit"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Registration] Approval Status",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "status"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Registration] Update Profile",
+      "event": [],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/update",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "update"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"new@example.com\",\n  \"presentAddress\": \"12 MG Road, Ahmedabad\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Dashboard",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/dashboard",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "dashboard"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Employee Profile",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Profile Documents",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/profile/documents",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "profile",
+            "documents"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Attendance",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/attendance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "attendance"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Leave List",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/leave",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "leave"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Apply Leave",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/leave/apply",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "leave",
+            "apply"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"leaveType\": \"Casual\",\n  \"fromDate\": \"2026-07-01\",\n  \"toDate\": \"2026-07-02\",\n  \"days\": 2,\n  \"reason\": \"Family function\"\n}"
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Payroll",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/payroll",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "payroll"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Notifications",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/notifications",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "notifications"
+          ]
+        }
+      }
+    },
+    {
+      "name": "[Dashboard] Holidays",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{accessToken}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/app/holiday",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "app",
+            "holiday"
+          ]
+        }
+      }
+    }
+  ]
+}

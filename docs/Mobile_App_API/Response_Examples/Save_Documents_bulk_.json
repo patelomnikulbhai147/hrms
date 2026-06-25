@@ -1,0 +1,23 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "saved": true,
+    "currentStep": 7,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "completionPercentage": 100,
+    "totalSteps": 7,
+    "canSubmit": true,
+    "approvalStatus": "Draft"
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

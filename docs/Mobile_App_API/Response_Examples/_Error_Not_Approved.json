@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "message": "Dashboard is available only after HR approval.",
+  "data": null,
+  "errors": [
+    {
+      "code": "NOT_APPROVED",
+      "message": "Dashboard is available only after HR approval."
+    }
+  ],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

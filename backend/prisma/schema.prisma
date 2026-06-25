@@ -624,7 +624,7 @@ model TemporaryEmployee {
   branchId              Int?
   branchLocation        String?
   name                  String
-  mobile                String
+  mobile                String    @unique          // one mobile = one employee identity
   department            String?
   designation           String?
   email                 String?
@@ -1053,6 +1053,52 @@ model SubscriptionPlan {
   updatedAt           DateTime @updatedAt
 }
 
+// ── NEW Employee-Based Subscription System (Beta) ────────────────────────────
+// FULLY ADDITIVE & ISOLATED. Runs ALONGSIDE the existing SubscriptionPlan /
+// Billing system and never reads or writes its tables. Billing model:
+//   monthly = peakEmployeeCount × employeePrice + purchasedBranchSlots × branchPrice
+// All three tables are standalone (scalar FKs only) so they cannot affect any
+// existing relationship, customer, or calculation.
+
+// One row per company that has been onboarded onto the new (beta) model.
+model EmployeeSubscription {
+  id                   Int       @id @default(autoincrement())
+  companyId            Int       @unique
+  employeePrice        Float?    // per-company override; null → use global default
+  branchPrice          Float?    // per-company override; null → use global default
+  peakEmployeeCount    Int       @default(0)   // high-water mark; never auto-decreases
+  purchasedBranchSlots Int       @default(1)   // every company starts with 1 slot
+  discountPercent      Float     @default(0)
+  status               String    @default("Active")   // Active / Suspended / Cancelled
+  paymentStatus        String    @default("Pending")  // Paid / Pending / Overdue
+  validUntil           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// Singleton global defaults (Super Admin editable).
+model EmployeeSubscriptionConfig {
+  id            Int      @id @default(autoincrement())
+  employeePrice Float    @default(100)
+  branchPrice   Float    @default(500)
+  updatedAt     DateTime @updatedAt
+}
+
+// Immutable audit of every billing-related change.
+model SubscriptionBillingAudit {
+  id          Int      @id @default(autoincrement())
+  companyId   Int?
+  companyName String?
+  field       String
+  oldValue    String?
+  newValue    String?
+  changedBy   String?
+  reason      String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
 // ── Task Manager ─────────────────────────────────────────────────────────────
 // Standalone tables (scalar foreign keys, no relations on existing models) so
 // adding this module cannot alter or break any existing relationship.
@@ -1143,6 +1189,15 @@ model Contract {
   status         String   @default("Active") // Active / Expiring Soon / Expired / Closed
   documentPath   String?
   notes          String?  @db.Text
+  // ── Enterprise contract data (additive — never replaces the columns above) ──
+  // All extended sections (contract info extras, client, timeline, financial,
+  // bank guarantee, security deposit, performance guarantee, tender snapshot,
+  // approval, renewal, compliance) live here as one structured object.
+  details        Json?
+  // Uploaded files: [{ id, category, name, dataUrl, size, type, uploadedAt, uploadedBy, version }]
+  documents      Json?
+  // Append-only audit/activity timeline: [{ at, by, action, field?, old?, new? }]
+  activity       Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

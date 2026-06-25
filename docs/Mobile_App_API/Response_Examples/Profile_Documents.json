@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "photo": "data:image/jpeg;base64,...",
+    "documents": {
+      "aadhaarDoc": {
+        "name": "aadhaar.jpg"
+      },
+      "panDoc": {
+        "name": "pan.jpg"
+      }
+    }
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

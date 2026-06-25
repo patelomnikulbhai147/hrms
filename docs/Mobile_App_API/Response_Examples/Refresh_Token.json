@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "accessToken": "eyJhbGciOi...",
+    "tokenType": "Bearer",
+    "expiresIn": 43200
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

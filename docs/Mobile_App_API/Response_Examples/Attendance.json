@@ -1,0 +1,21 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "summary": {
+      "totalRecords": 22,
+      "presentDays": 20
+    },
+    "records": [
+      {
+        "date": "2026-06-24",
+        "status": "Present",
+        "clockIn": "09:05",
+        "clockOut": "18:10",
+        "hoursWorked": 8.5
+      }
+    ]
+  },
+  "errors": [],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

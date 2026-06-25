@@ -1,0 +1,6 @@
+{
+  "accessToken": "JWT (Bearer, ~12h)",
+  "refreshToken": "JWT (~30d)",
+  "tokenType": "Bearer",
+  "expiresIn": "seconds"
+}

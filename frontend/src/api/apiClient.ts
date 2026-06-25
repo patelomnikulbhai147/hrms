@@ -67,8 +67,10 @@ async function apiFetch(url: string, options?: RequestInit) {
       // (duplicate email, validation, not-found, Error ID, etc.).
       let msg = '';
       let code: string | undefined;
+      let body: any;
       try {
         const errorData = await res.json();
+        body = errorData;
         msg = errorData.error || errorData.message || '';
         code = errorData.code;
       } catch (e) {
@@ -94,6 +96,7 @@ async function apiFetch(url: string, options?: RequestInit) {
       const err: any = new Error(msg);
       err.status = res.status;
       err.code = code;
+      err.data = body; // full parsed body (e.g. { duplicate: {...} } for 409s)
       throw err;
     }
     return await res.json();
@@ -226,6 +229,11 @@ export const api = {
     getAll: async () => apiFetch(`${BASE_URL}/temporary-employees`, { headers: getHeaders() }),
     get: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { headers: getHeaders() }),
     create: async (data: any) => apiFetch(`${BASE_URL}/temporary-employees`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    // Live "one mobile = one identity" check used by Quick Add before creating.
+    checkMobile: async (mobile: string, excludeTempId?: any) => apiFetch(
+      `${BASE_URL}/temporary-employees/check-mobile?mobile=${encodeURIComponent(mobile)}${excludeTempId ? `&excludeTempId=${encodeURIComponent(excludeTempId)}` : ''}`,
+      { headers: getHeaders() },
+    ),
     update: async (id: any, data: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
     submit: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}/submit`, { method: 'POST', headers: getHeaders(), body: '{}' }),
     approve: async (id: any, employment?: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}/approve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(employment || {}) }),
@@ -233,6 +241,17 @@ export const api = {
     reject: async (id: any, reason?: string) => apiFetch(`${BASE_URL}/temporary-employees/${id}/reject`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason: reason || '' }) }),
     requestChanges: async (id: any, note?: string) => apiFetch(`${BASE_URL}/temporary-employees/${id}/request-changes`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ note: note || '' }) }),
     remove: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { method: 'DELETE', headers: getHeaders() }),
+  },
+
+  // NEW Employee-Based Subscription (Beta) — separate from the existing billing API.
+  employeeSubscription: {
+    getConfig: async () => apiFetch(`${BASE_URL}/employee-subscription/config`, { headers: getHeaders() }),
+    updateConfig: async (data: any) => apiFetch(`${BASE_URL}/employee-subscription/config`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    getDashboard: async (companyId: any) => apiFetch(`${BASE_URL}/employee-subscription/dashboard/${companyId}`, { headers: getHeaders() }),
+    list: async () => apiFetch(`${BASE_URL}/employee-subscription`, { headers: getHeaders() }),
+    update: async (companyId: any, data: any) => apiFetch(`${BASE_URL}/employee-subscription/${companyId}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    getAudit: async (companyId?: any) => apiFetch(`${BASE_URL}/employee-subscription/audit${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`, { headers: getHeaders() }),
+    branchSlot: async (companyId: any) => apiFetch(`${BASE_URL}/employee-subscription/branch-slot/${companyId}`, { headers: getHeaders() }),
   },
 
   branches: {

@@ -1,0 +1,15 @@
+{
+  "present": {
+    "line1": "string",
+    "line2": "string?",
+    "area": "string?",
+    "landmark": "string?",
+    "city": "string",
+    "district": "string?",
+    "state": "string",
+    "country": "string?",
+    "pincode": "string"
+  },
+  "permanent": "{ same shape }",
+  "sameAsPresent": "boolean"
+}

@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "message": "Employee not found.",
+  "data": null,
+  "errors": [
+    {
+      "code": "EMPLOYEE_NOT_FOUND",
+      "message": "Employee not found."
+    }
+  ],
+  "timestamp": "2026-06-25T12:00:00.000Z"
+}

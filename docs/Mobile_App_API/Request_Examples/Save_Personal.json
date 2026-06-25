@@ -1,0 +1,11 @@
+{
+  "firstName": "Om",
+  "middleName": "",
+  "lastName": "Patel",
+  "dob": "1998-05-10",
+  "gender": "Male",
+  "maritalStatus": "Single",
+  "nationality": "Indian",
+  "bloodGroup": "O+",
+  "email": "om@example.com"
+}

@@ -21,6 +21,71 @@ const { generateTempCode, generateEmployeeCode } = require('../utils/employeeCod
 // Who performed an action (for the audit trail).
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
+// ── Unique mobile number enforcement (one mobile = one employee identity) ─────
+// A mobile number is a unique employee identity. The same number must never exist
+// across Temporary, Pending Approval, Active, Previous, or Archived records. This
+// is enforced at BOTH the application layer (here) and the database layer (a
+// unique index on TemporaryEmployee.mobile — see scripts/addUniqueMobileIndex.js).
+// Comparison is on digits only, so formatting differences (+91, spaces, dashes)
+// can never sneak a duplicate past the check.
+const digitsOf = (m) => String(m == null ? '' : m).replace(/\D/g, '');
+
+// Find any existing identity (real Employee first, then Temporary record) that
+// already owns this mobile number. `excludeTempId` skips the record being edited
+// so a temp can keep its own number. Returns a compact, UI-friendly descriptor or
+// null. The match is digit-normalised, hence the in-memory scan over a slim
+// projection (employee/temp tables are modest in size).
+async function findMobileIdentity(mobileRaw, { excludeTempId } = {}) {
+  const target = digitsOf(mobileRaw);
+  if (!target) return null;
+
+  // 1) Real Employee — covers Active / Previous / Archived / any status.
+  const emps = await prisma.employee.findMany({
+    where: { phone: { not: null } },
+    select: { id: true, employeeId: true, name: true, phone: true, status: true, companyId: true },
+  });
+  const emp = emps.find((e) => digitsOf(e.phone) === target);
+  if (emp) {
+    return {
+      kind: 'employee', employeeDbId: emp.id, code: emp.employeeId, name: emp.name,
+      status: emp.status || 'Active', companyId: emp.companyId, editable: false,
+    };
+  }
+
+  // 2) Temporary record — Pending Profile / Partially Completed / Pending Approval
+  //    / Changes Requested / Rejected / Converted.
+  const temps = await prisma.temporaryEmployee.findMany({
+    where: excludeTempId ? { NOT: { id: excludeTempId } } : {},
+    select: {
+      id: true, tempEmployeeId: true, name: true, mobile: true, status: true,
+      companyId: true, convertedEmployeeId: true, convertedEmployeeCode: true,
+    },
+  });
+  const temp = temps.find((t) => digitsOf(t.mobile) === target);
+  if (temp) {
+    return {
+      kind: 'temporary', tempId: temp.id, code: temp.tempEmployeeId, name: temp.name,
+      status: temp.status, companyId: temp.companyId,
+      convertedEmployeeId: temp.convertedEmployeeId, convertedEmployeeCode: temp.convertedEmployeeCode,
+      // A non-converted temp can still be opened and its profile completed.
+      editable: temp.status !== 'Converted',
+    };
+  }
+  return null;
+}
+
+// Build the standard 409 body for a duplicate mobile, tagging whether the caller
+// can act on the existing record (same company scope).
+function duplicateMobileResponse(req, dup) {
+  const noun = dup.kind === 'employee' ? 'employee' : 'temporary employee';
+  const statusBit = dup.status ? `, ${dup.status}` : '';
+  return {
+    error: `This mobile number is already linked to an existing ${noun} (${dup.code}${statusBit}). Duplicate employee creation is not allowed.`,
+    code: 'DUPLICATE_MOBILE',
+    duplicate: { ...dup, inScope: inScope(req, dup.companyId) },
+  };
+}
+
 // ── Profile completion ───────────────────────────────────────────────────────
 // Scalar onboarding fields + structured sections. Completion drives the % bar.
 const COMPLETION_FIELDS = [
@@ -129,6 +194,22 @@ exports.get = async (req, res) => {
   } catch (e) { return respondError(res, e); }
 };
 
+// GET /api/temporary-employees/check-mobile?mobile=...&excludeTempId=...
+// Live uniqueness check used by the Quick Add form (and re-enforced on create).
+// Reports whether a mobile is already an employee identity anywhere in the system
+// and, if so, a compact descriptor of the owning record so the UI can offer to
+// view it / continue its pending profile instead of duplicating.
+exports.checkMobile = async (req, res) => {
+  try {
+    const mobile = String(req.query.mobile || '').trim();
+    if (!mobile) return res.json({ exists: false });
+    const excludeTempId = req.query.excludeTempId ? idParam(req.query.excludeTempId) : null;
+    const dup = await findMobileIdentity(mobile, excludeTempId ? { excludeTempId } : {});
+    if (!dup) return res.json({ exists: false });
+    return res.json({ exists: true, duplicate: { ...dup, inScope: inScope(req, dup.companyId) } });
+  } catch (e) { return respondError(res, e); }
+};
+
 // POST /api/temporary-employees — Quick Registration (Name + Mobile + Branch).
 exports.create = async (req, res) => {
   try {
@@ -138,6 +219,10 @@ exports.create = async (req, res) => {
     if (!idParam(b.branchId) && !String(b.branchLocation || '').trim()) {
       return res.status(400).json({ error: 'Branch is required.' });
     }
+
+    // One mobile = one employee identity. Reject before generating any Temp ID.
+    const dup = await findMobileIdentity(b.mobile);
+    if (dup) return res.status(409).json(duplicateMobileResponse(req, dup));
 
     // Resolve the parent company from the branch / workspace / user.
     let companyId = idParam(b.companyId) || null;
@@ -200,6 +285,13 @@ exports.updateProfile = async (req, res) => {
     const data = {};
     for (const k of ALLOWED) if (k in b) data[k] = b[k] === '' ? null : b[k];
     if ('branchId' in data) data.branchId = idParam(data.branchId);
+
+    // Mobile is the unique employee identity — if it's being changed, it must not
+    // collide with any other Temporary record or real Employee.
+    if ('mobile' in data && data.mobile && digitsOf(data.mobile) !== digitsOf(existing.mobile)) {
+      const dup = await findMobileIdentity(data.mobile, { excludeTempId: id });
+      if (dup) return res.status(409).json(duplicateMobileResponse(req, dup));
+    }
 
     const merged = { ...existing, ...data };
     data.profileCompletion = computeCompletion(merged);
@@ -322,6 +414,14 @@ exports.approve = async (req, res) => {
     for (const k of META_KEYS) if (a[k] !== undefined && a[k] !== '' && a[k] !== null) employmentMeta[k] = a[k];
     employmentMeta.assignedBy = actorOf(req);
 
+    // One mobile = one identity, enforced at conversion too: never create a second
+    // real Employee that reuses a mobile already on the books. (The create/edit
+    // gates make this rare, but activation is the last line of defence.)
+    const phoneClash = await findMobileIdentity(t.mobile, { excludeTempId: id });
+    if (phoneClash && phoneClash.kind === 'employee') {
+      return res.status(409).json(duplicateMobileResponse(req, phoneClash));
+    }
+
     // Official employee code via the EXISTING generator (unchanged ID scheme),
     // using the temp's assigned branch so payroll/attendance/report branch
     // mapping is preserved on the new Active employee.
@@ -361,6 +461,12 @@ exports.approve = async (req, res) => {
         department, designation,
       },
     });
+
+    // NEW Employee-Based Subscription (Beta): a Temporary → Active activation may
+    // set a new maximum Active headcount. Raise the company's peak if so. Fully
+    // additive and best-effort — never blocks or fails the approval.
+    try { await require('./employeeSubscriptionController').bumpPeakForCompany(employee.companyId); } catch (_) { /* ignore */ }
+
     res.json({ temporaryEmployee: updated, employee });
   } catch (e) { return respondError(res, e); }
 };

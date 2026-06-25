@@ -1,0 +1,8 @@
+HRMS Mobile App API — Base URL
+==============================
+App base path: /api/app
+
+Development: http://localhost:5000
+Production:  http://<YOUR_SERVER_IP_OR_DOMAIN>   (nginx proxies /api to backend)
+
+Example: http://localhost:5000/api/app/auth/login

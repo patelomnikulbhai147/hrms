@@ -1,0 +1,16 @@
+{
+  "employeeId": "string",
+  "name": "string",
+  "email": "string",
+  "mobile": "string",
+  "department": "string",
+  "designation": "string",
+  "company": {
+    "id": "int",
+    "name": "string"
+  },
+  "branch": {
+    "id": "int",
+    "name": "string"
+  }
+}
