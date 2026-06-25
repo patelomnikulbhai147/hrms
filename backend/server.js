@@ -29,6 +29,7 @@ const userRoutes = require('./src/routes/userRoutes');
 const overtimeRoutes = require('./src/routes/overtimeRoutes');
 const shiftRoutes = require('./src/routes/shiftRoutes');
 const subscriptionPlanRoutes = require('./src/routes/subscriptionPlanRoutes');
+const employeeSubscriptionRoutes = require('./src/routes/employeeSubscriptionRoutes');
 const statisticsRoutes = require('./src/routes/statisticsRoutes');
 
 const app = express();
@@ -115,6 +116,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/overtime', overtimeRoutes);
 app.use('/api/shifts', shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
+app.use('/api/employee-subscription', employeeSubscriptionRoutes);
 app.use('/api/statistics', statisticsRoutes);
 
 // Health Check — also verifies the DATABASE is actually reachable, so a green

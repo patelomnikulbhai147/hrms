@@ -461,6 +461,12 @@ exports.approve = async (req, res) => {
         department, designation,
       },
     });
+
+    // NEW Employee-Based Subscription (Beta): a Temporary → Active activation may
+    // set a new maximum Active headcount. Raise the company's peak if so. Fully
+    // additive and best-effort — never blocks or fails the approval.
+    try { await require('./employeeSubscriptionController').bumpPeakForCompany(employee.companyId); } catch (_) { /* ignore */ }
+
     res.json({ temporaryEmployee: updated, employee });
   } catch (e) { return respondError(res, e); }
 };

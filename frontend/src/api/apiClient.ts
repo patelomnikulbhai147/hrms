@@ -243,6 +243,17 @@ export const api = {
     remove: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { method: 'DELETE', headers: getHeaders() }),
   },
 
+  // NEW Employee-Based Subscription (Beta) — separate from the existing billing API.
+  employeeSubscription: {
+    getConfig: async () => apiFetch(`${BASE_URL}/employee-subscription/config`, { headers: getHeaders() }),
+    updateConfig: async (data: any) => apiFetch(`${BASE_URL}/employee-subscription/config`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    getDashboard: async (companyId: any) => apiFetch(`${BASE_URL}/employee-subscription/dashboard/${companyId}`, { headers: getHeaders() }),
+    list: async () => apiFetch(`${BASE_URL}/employee-subscription`, { headers: getHeaders() }),
+    update: async (companyId: any, data: any) => apiFetch(`${BASE_URL}/employee-subscription/${companyId}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    getAudit: async (companyId?: any) => apiFetch(`${BASE_URL}/employee-subscription/audit${companyId ? `?companyId=${encodeURIComponent(companyId)}` : ''}`, { headers: getHeaders() }),
+    branchSlot: async (companyId: any) => apiFetch(`${BASE_URL}/employee-subscription/branch-slot/${companyId}`, { headers: getHeaders() }),
+  },
+
   branches: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/branches`, { headers: getHeaders() });

@@ -1053,6 +1053,52 @@ model SubscriptionPlan {
   updatedAt           DateTime @updatedAt
 }
 
+// ── NEW Employee-Based Subscription System (Beta) ────────────────────────────
+// FULLY ADDITIVE & ISOLATED. Runs ALONGSIDE the existing SubscriptionPlan /
+// Billing system and never reads or writes its tables. Billing model:
+//   monthly = peakEmployeeCount × employeePrice + purchasedBranchSlots × branchPrice
+// All three tables are standalone (scalar FKs only) so they cannot affect any
+// existing relationship, customer, or calculation.
+
+// One row per company that has been onboarded onto the new (beta) model.
+model EmployeeSubscription {
+  id                   Int       @id @default(autoincrement())
+  companyId            Int       @unique
+  employeePrice        Float?    // per-company override; null → use global default
+  branchPrice          Float?    // per-company override; null → use global default
+  peakEmployeeCount    Int       @default(0)   // high-water mark; never auto-decreases
+  purchasedBranchSlots Int       @default(1)   // every company starts with 1 slot
+  discountPercent      Float     @default(0)
+  status               String    @default("Active")   // Active / Suspended / Cancelled
+  paymentStatus        String    @default("Pending")  // Paid / Pending / Overdue
+  validUntil           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+// Singleton global defaults (Super Admin editable).
+model EmployeeSubscriptionConfig {
+  id            Int      @id @default(autoincrement())
+  employeePrice Float    @default(100)
+  branchPrice   Float    @default(500)
+  updatedAt     DateTime @updatedAt
+}
+
+// Immutable audit of every billing-related change.
+model SubscriptionBillingAudit {
+  id          Int      @id @default(autoincrement())
+  companyId   Int?
+  companyName String?
+  field       String
+  oldValue    String?
+  newValue    String?
+  changedBy   String?
+  reason      String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
 // ── Task Manager ─────────────────────────────────────────────────────────────
 // Standalone tables (scalar foreign keys, no relations on existing models) so
 // adding this module cannot alter or break any existing relationship.
