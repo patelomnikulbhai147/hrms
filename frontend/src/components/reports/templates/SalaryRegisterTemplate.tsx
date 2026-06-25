@@ -34,7 +34,7 @@ export const SalaryRegisterTemplate: React.FC<TemplateProps> = ({ data }) => {
         Salary Register &nbsp;—&nbsp; {period}
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <table data-recalc-scope="salary_register" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
             <th style={{ ...th, width: 34 }}>Sr</th>
@@ -58,12 +58,12 @@ export const SalaryRegisterTemplate: React.FC<TemplateProps> = ({ data }) => {
               <td style={cell}>{r.name}</td>
               <td style={cell}>{r.department || '—'}</td>
               <td style={{ ...cell, textAlign: 'center' }}>{r.month ? `${r.month} ${r.year || ''}`.trim() : (r.period || period)}</td>
-              <td style={num}>{inr(r.basic)}</td>
-              <td style={num}>{inr(r.allowances)}</td>
-              <td style={num}>{inr(r.bonus)}</td>
-              <td style={num}>{inr(r.deductions)}</td>
-              <td style={num}>{inr(r.tax)}</td>
-              <td style={{ ...num, fontWeight: 700 }}>{inr(r.net)}</td>
+              <td style={num} data-cell="basic">{inr(r.basic)}</td>
+              <td style={num} data-cell="allowances">{inr(r.allowances)}</td>
+              <td style={num} data-cell="bonus">{inr(r.bonus)}</td>
+              <td style={num} data-cell="deductions">{inr(r.deductions)}</td>
+              <td style={num} data-cell="tax">{inr(r.tax)}</td>
+              <td style={{ ...num, fontWeight: 700 }} data-cell="net">{inr(r.net)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
@@ -72,12 +72,12 @@ export const SalaryRegisterTemplate: React.FC<TemplateProps> = ({ data }) => {
           {rows.length > 0 && (
             <tr>
               <td style={{ ...th, textAlign: 'right' }} colSpan={5}>GRAND TOTAL ({rows.length} employees)</td>
-              <td style={{ ...num, ...th }}>{inr(sum('basic'))}</td>
-              <td style={{ ...num, ...th }}>{inr(sum('allowances'))}</td>
-              <td style={{ ...num, ...th }}>{inr(sum('bonus'))}</td>
-              <td style={{ ...num, ...th }}>{inr(sum('deductions'))}</td>
-              <td style={{ ...num, ...th }}>{inr(sum('tax'))}</td>
-              <td style={{ ...num, ...th }}>{inr(sum('net'))}</td>
+              <td style={{ ...num, ...th }} data-total="basic">{inr(sum('basic'))}</td>
+              <td style={{ ...num, ...th }} data-total="allowances">{inr(sum('allowances'))}</td>
+              <td style={{ ...num, ...th }} data-total="bonus">{inr(sum('bonus'))}</td>
+              <td style={{ ...num, ...th }} data-total="deductions">{inr(sum('deductions'))}</td>
+              <td style={{ ...num, ...th }} data-total="tax">{inr(sum('tax'))}</td>
+              <td style={{ ...num, ...th }} data-total="net">{inr(sum('net'))}</td>
             </tr>
           )}
         </tbody>

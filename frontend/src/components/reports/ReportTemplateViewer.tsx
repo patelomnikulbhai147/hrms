@@ -7,6 +7,7 @@ import { ui } from '@/components/ui/feedback';
 import { type TemplateDef } from './templateRegistry';
 import { type ReportData } from './templates/types';
 import { printNode, nodeToPdf, rowsToExcel } from './reportExport';
+import { recalcReport } from './reportRecalc';
 
 interface Props {
   def: TemplateDef;
@@ -116,6 +117,9 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
         el.removeAttribute('data-numeric');
       }
     });
+    // Re-foot all derived cells (grand totals, total earnings, …) from the values
+    // now in the DOM — keeps totals correct after re-applying any saved edits.
+    recalcReport(root);
     return () => { leaves.forEach(el => el.removeAttribute('contenteditable')); };
   }, [data, editMode, canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -124,6 +128,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
     const t = e.target as HTMLElement;
     if (!canEdit || !editMode || !t.getAttribute('data-editable')) return;
     setDirty(true);
+    recalcReport(printRef.current);   // live: totals/derived values update as you type
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => persistEdits(), 500);
   };
@@ -146,6 +151,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
     e.preventDefault();
     try { document.execCommand('insertText', false, clean); } catch { /* noop */ }
     setDirty(true);
+    recalcReport(printRef.current);   // live: re-foot totals after a paste
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => persistEdits(), 500);
   };

@@ -1189,6 +1189,15 @@ model Contract {
   status         String   @default("Active") // Active / Expiring Soon / Expired / Closed
   documentPath   String?
   notes          String?  @db.Text
+  // ── Enterprise contract data (additive — never replaces the columns above) ──
+  // All extended sections (contract info extras, client, timeline, financial,
+  // bank guarantee, security deposit, performance guarantee, tender snapshot,
+  // approval, renewal, compliance) live here as one structured object.
+  details        Json?
+  // Uploaded files: [{ id, category, name, dataUrl, size, type, uploadedAt, uploadedBy, version }]
+  documents      Json?
+  // Append-only audit/activity timeline: [{ at, by, action, field?, old?, new? }]
+  activity       Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

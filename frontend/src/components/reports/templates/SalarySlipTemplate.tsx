@@ -27,7 +27,7 @@ const Slip: React.FC<{ r: any; m: any }> = ({ r, m }) => {
   const totalEarnings = (Number(r.basic) || 0) + (Number(r.allowances) || 0) + (Number(r.bonus) || 0);
 
   return (
-    <div style={{ border: bd, width: '100%', fontFamily: 'Arial, Helvetica, sans-serif', color: '#111' }}>
+    <div data-recalc-scope="salary_slip" style={{ border: bd, width: '100%', fontFamily: 'Arial, Helvetica, sans-serif', color: '#111' }}>
       <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 12, paddingTop: 3, textDecoration: 'underline' }}>{m?.name || 'Company'}</div>
       {m?.branchName && <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 10 }}>{m.branchName}</div>}
       {m?.address && <div style={{ textAlign: 'center', fontSize: 8.5, padding: '0 6px 3px' }}>{m.address}</div>}
@@ -71,18 +71,18 @@ const Slip: React.FC<{ r: any; m: any }> = ({ r, m }) => {
         <tbody>
           <tr>
             <td style={td}>Present Day &nbsp;<b>{r.presentDays ?? 0}</b></td>
-            <td style={td}>Basic</td><td style={numC}>{inr(r.basic)}</td>
+            <td style={td}>Basic</td><td style={numC} data-cell="basic">{inr(r.basic)}</td>
             <td style={td}>PF</td>
             <td style={{ ...numC, fontWeight: 800, verticalAlign: 'middle' }} rowSpan={6}>{inr(r.net)}</td>
           </tr>
           <tr>
             <td style={td}>CL Taken &nbsp;<b>{r.clDays ?? 0}</b></td>
-            <td style={td}>Allowances</td><td style={numC}>{inr(r.allowances)}</td>
+            <td style={td}>Allowances</td><td style={numC} data-cell="allowances">{inr(r.allowances)}</td>
             <td style={td}>{inr(pf)}</td>
           </tr>
           <tr>
             <td style={td}>SL Taken &nbsp;<b>{r.slDays ?? 0}</b></td>
-            <td style={td}>Bonus</td><td style={numC}>{inr(r.bonus)}</td>
+            <td style={td}>Bonus</td><td style={numC} data-cell="bonus">{inr(r.bonus)}</td>
             <td style={td}>ESIC &nbsp; {inr(esic)}</td>
           </tr>
           <tr>
@@ -97,7 +97,7 @@ const Slip: React.FC<{ r: any; m: any }> = ({ r, m }) => {
           </tr>
           <tr>
             <td style={{ ...lbl }}>Total Day &nbsp;<b>{r.payableDays ?? 0}</b></td>
-            <td style={lbl}>Total Earnings</td><td style={{ ...numC, fontWeight: 700 }}>{inr(totalEarnings)}</td>
+            <td style={lbl}>Total Earnings</td><td style={{ ...numC, fontWeight: 700 }} data-sum-of="basic allowances bonus">{inr(totalEarnings)}</td>
             <td style={lbl}>Total Ded. &nbsp; <b>{inr(totalDeduction)}</b></td>
           </tr>
         </tbody>
