@@ -104,6 +104,30 @@ async function generateEmployeeCode(branchId, companyIdFallback) {
 }
 
 /**
+ * Generate the next unique TEMPORARY employee code for a company.
+ *   Format:  <COMPANY_PREFIX>-TEMP-<NNNNNN>   e.g.  VE-TEMP-000001
+ * Sequence is per-company (scanned from the TemporaryEmployee table), zero-padded
+ * to 6 digits, never duplicates. Fully isolated from the real employee sequence.
+ */
+const TEMP_PAD = 6;
+async function generateTempCode(companyId) {
+  const company = companyId ? await prisma.company.findUnique({ where: { id: companyId } }) : null;
+  const prefix = companyPrefix(company);
+  const rows = await prisma.temporaryEmployee.findMany({ where: { companyId }, select: { tempEmployeeId: true } });
+  const re = new RegExp(`^${prefix}-TEMP-(\\d+)$`, 'i');
+  let max = 0;
+  for (const r of rows) { const m = re.exec(String(r.tempEmployeeId || '')); if (m) { const n = parseInt(m[1], 10); if (n > max) max = n; } }
+  let seq = max + 1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const code = `${prefix}-TEMP-${String(seq).padStart(TEMP_PAD, '0')}`;
+    const exists = await prisma.temporaryEmployee.findUnique({ where: { tempEmployeeId: code } });
+    if (!exists) return code;
+    seq++;
+  }
+}
+
+/**
  * Validate a user-supplied custom code: non-empty, reasonable charset, unique.
  * Returns { ok, code, error }.
  */
@@ -129,5 +153,6 @@ module.exports = {
   resolveCodeParts,
   currentMaxSeq,
   generateEmployeeCode,
+  generateTempCode,
   validateCustomCode,
 };

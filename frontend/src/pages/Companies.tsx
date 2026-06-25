@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Building2, Plus, Search, Lock, Trash2,
   CheckCircle2, Mail, Phone, ChevronRight, Shield, Cloud, Link, Users, Archive, ShieldAlert,
-  FileSpreadsheet, Loader2, FileText
+  FileSpreadsheet, Loader2, FileText, UploadCloud, Image as ImageIcon, RefreshCw
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '@/data/mockData';
 import { Card } from '@/components/ui/Card';
@@ -344,11 +344,28 @@ export const Companies: React.FC<CompaniesProps> = ({
     pfRate: '12',
     esicRate: '3.25',
     logo: '',
+    logoImage: '',
     primaryColor: '#3b82f6',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [officerErrors, setOfficerErrors] = useState<Record<string, string>>({});
+
+  // ── Optional Company Logo upload (registration) ──────────────────────────────
+  // PNG/JPG/JPEG/SVG, configurable max size. Stored as base64 on `logoImage`; if
+  // left empty the company falls back to its initials emblem everywhere.
+  const LOGO_MAX_MB = 2; // configurable
+  const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml'];
+  const [logoDragOver, setLogoDragOver] = useState(false);
+  const acceptCompanyLogo = (file?: File | null) => {
+    if (!file) return;
+    const okType = LOGO_TYPES.includes(file.type) || /\.(png|jpe?g|svg)$/i.test(file.name);
+    if (!okType) { ui.toast.warning('Unsupported format. Use PNG, JPG, JPEG or SVG.'); return; }
+    if (file.size > LOGO_MAX_MB * 1024 * 1024) { ui.toast.warning(`Logo must be ${LOGO_MAX_MB} MB or smaller.`); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => setNewCompany(prev => ({ ...prev, logoImage: (ev.target?.result as string) || '' }));
+    reader.readAsDataURL(file);
+  };
 
   const handlePhoneChange = (val: string) => {
     const clean = val.replace(/[^\d]/g, '');
@@ -410,6 +427,8 @@ export const Companies: React.FC<CompaniesProps> = ({
       joinDate: new Date().toISOString().split('T')[0],
       plan: newCompany.plan === 'Professional' ? 'Professional' : (newCompany.plan === 'Enterprise' ? 'Enterprise' : 'Starter'),
       logo: generatedLogo,
+      // Optional uploaded brand logo — omitted when absent so the initials emblem is used.
+      logoImage: newCompany.logoImage || undefined,
       pfRate: parseFloat(newCompany.pfRate) || 12,
       esicRate: parseFloat(newCompany.esicRate) || 3.25,
       basicPercent: 50,
@@ -492,6 +511,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       pfRate: '12',
       esicRate: '3.25',
       logo: '',
+      logoImage: '',
       primaryColor: '#3b82f6',
     });
     setErrors({});
@@ -1614,6 +1634,43 @@ export const Companies: React.FC<CompaniesProps> = ({
               error={errors.esicRate}
               success={newCompany.esicRate !== '' && !errors.esicRate}
             />
+          </div>
+
+          {/* ── Company Branding (optional logo upload) ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-2 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Company Branding</h4>
+            <p className="text-[11px] text-slate-500">Upload a logo to brand this company's documents, reports & portal. <span className="font-semibold">Optional</span> — if skipped, the initials emblem ({newCompany.logo || (newCompany.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '—')}) is used automatically.</p>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Company Logo (Optional)</label>
+            {!newCompany.logoImage ? (
+              <label
+                onDragOver={e => { e.preventDefault(); setLogoDragOver(true); }}
+                onDragLeave={() => setLogoDragOver(false)}
+                onDrop={e => { e.preventDefault(); setLogoDragOver(false); acceptCompanyLogo(e.dataTransfer.files?.[0]); }}
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 cursor-pointer transition ${logoDragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`}
+              >
+                <UploadCloud size={22} className="text-slate-400" />
+                <span className="text-xs font-semibold text-blue-600">Upload Logo</span>
+                <span className="text-[10px] text-slate-400">or drag &amp; drop image here</span>
+                <span className="text-[9px] text-slate-400">Supported: PNG, JPG, JPEG, SVG · max {LOGO_MAX_MB} MB</span>
+                <input type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" className="hidden" onChange={e => acceptCompanyLogo(e.target.files?.[0])} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2.5">
+                <div className="h-14 w-14 shrink-0 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden">
+                  <img src={newCompany.logoImage} alt="Company logo" className="h-full w-full object-contain p-1" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1"><CheckCircle2 size={12} /> Logo Uploaded</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <a href={newCompany.logoImage} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-blue-600"><ImageIcon size={12} /> Preview</a>
+                    <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-blue-600 cursor-pointer"><RefreshCw size={12} /> Replace
+                      <input type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" className="hidden" onChange={e => acceptCompanyLogo(e.target.files?.[0])} />
+                    </label>
+                    <button type="button" onClick={() => setNewCompany(prev => ({ ...prev, logoImage: '' }))} className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700"><Trash2 size={12} /> Remove</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-gray-150 pt-3 space-y-3 text-left">

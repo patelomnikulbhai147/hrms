@@ -5,7 +5,8 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
-  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle
+  Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle, Trash2,
+  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -26,11 +27,12 @@ import {
 } from '@/utils/validation';
 import { type UserAccount } from '@/pages/Login';
 import { getUniqueEmployees } from '@/utils/deduplication';
-import { ExportMenu } from '@/components/ui/ExportMenu';
-import { type ExportColumn } from '@/utils/exportUtils';
+import { type ExportColumn, exportRowsToExcel, exportRowsToPDF } from '@/utils/exportUtils';
+import { useDismissable } from '@/hooks/useDismissable';
 import { BiometricImportModal } from '@/components/attendance/BiometricImportModal';
 import { CreatableSelect } from '@/components/ui/CreatableSelect';
 import { NomineesTab } from '@/components/employee/NomineesTab';
+import { TempEmployeeOnboarding } from '@/components/employee/TempEmployeeOnboarding';
 import { NomineeWizardStep } from '@/components/employee/NomineeWizardStep';
 import { INDIAN_STATES, citiesForState } from '@/data/indianStatesCities';
 import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '@/data/countries';
@@ -55,6 +57,59 @@ const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Salary', key: 'salary', width: 14 },
   { header: 'Status', key: 'status', width: 14 },
 ];
+
+// ── Temporary-employee approval gate (mirrors the backend; keep in sync) ──────
+// A temp cannot be submitted for approval — and thus cannot be activated — until
+// all of these are present. Used for the live checklist in the Complete Profile
+// modal and to enable the Submit-for-Approval button.
+// Employee self-onboarding gate — PERSONAL + verification only. Department,
+// Designation and other employment fields are assigned by HR at approval, so
+// they are deliberately NOT required from the employee here.
+const TEMP_MANDATORY_FIELDS: { key: string; label: string }[] = [
+  { key: 'name', label: 'Name' },
+  { key: 'mobile', label: 'Mobile' },
+  { key: 'presentAddress', label: 'Address' },
+  { key: 'aadhaar', label: 'Aadhaar' },
+  { key: 'pan', label: 'PAN' },
+  { key: 'accountNumber', label: 'Bank Account' },
+];
+const TEMP_MANDATORY_DOCS: { key: string; label: string }[] = [
+  { key: 'photo', label: 'Photo' },
+  { key: 'aadhaarDoc', label: 'Aadhaar Copy' },
+  { key: 'panDoc', label: 'PAN Copy' },
+  { key: 'bankProof', label: 'Bank Proof' },
+];
+const hasTempVal = (v: any) => v != null && String(v).trim() !== '';
+const tempDocPresent = (t: any, key: string) => {
+  if (key === 'photo') return hasTempVal(t?.photoUpload);
+  const d = t?.documents;
+  if (!d || typeof d !== 'object') return false;
+  const entry = d[key];
+  if (!entry) return false;
+  if (typeof entry === 'string') return entry.trim() !== '';
+  return !!(entry.dataUrl || entry.data || entry.url || entry.name);
+};
+function validateTempMandatory(t: any): { ok: boolean; missingFields: string[]; missingDocs: string[] } {
+  const missingFields = TEMP_MANDATORY_FIELDS.filter(f => !hasTempVal(t?.[f.key])).map(f => f.label);
+  if (!hasTempVal(t?.branchId) && !hasTempVal(t?.branchLocation)) missingFields.push('Branch');
+  const missingDocs = TEMP_MANDATORY_DOCS.filter(d => !tempDocPresent(t, d.key)).map(d => d.label);
+  return { ok: missingFields.length === 0 && missingDocs.length === 0, missingFields, missingDocs };
+}
+// Badge colour per temp lifecycle status.
+const tempStatusBadge = (status: string): string => {
+  switch (status) {
+    case 'Converted': return 'green';
+    case 'Rejected': return 'red';
+    case 'Pending Approval':
+    case 'Awaiting Approval': return 'blue';
+    case 'Changes Requested': return 'amber';
+    case 'Partially Completed': return 'amber';
+    default: return 'amber'; // Pending Profile
+  }
+};
+// Group temp statuses into the two live queues + history.
+const TEMP_APPROVAL_STATUSES = ['Pending Approval', 'Awaiting Approval'];
+const TEMP_INPROGRESS_STATUSES = ['Pending Profile', 'Partially Completed', 'Changes Requested'];
 
 
 
@@ -105,6 +160,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const parentCompanyId = isBranchWorkspace ? currentComp.parentCompanyId : activeCompanyId;
   const dynamicBranches = useMemo(() => companies.filter(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'), [companies, parentCompanyId]);
   const branchOptions = useMemo(() => dynamicBranches.map(b => b.branchName || b.name), [dynamicBranches]);
+  // When the top-right scope selector points at a branch, that branch is the
+  // single source of truth for any new temporary employee — auto-assigned and
+  // not user-changeable. At company scope this is blank and the user must pick.
+  const activeBranchName = isBranchWorkspace ? String(currentComp?.branchName || currentComp?.name || '').trim() : '';
 
   const { canEdit: canEditModule, canCreate: canCreateModule } = usePermissions();
   const canEdit = canEditModule('employees');
@@ -144,7 +203,205 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Dynamic Leave History filtering for the currently viewed employee
 
   // Enterprise Lifecycle & Export
-  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous'>('all');
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous' | 'temporary' | 'approvals'>('all');
+
+  // ── Temporary Employees (Quick Registration) — additive, separate dataset ──
+  const [temps, setTemps] = useState<any[]>([]);
+  const [tempBusy, setTempBusy] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickForm, setQuickForm] = useState({ name: '', mobile: '', branch: '', department: '' });
+  const [editTemp, setEditTemp] = useState<any | null>(null);   // Complete-profile modal
+  const [reviewTemp, setReviewTemp] = useState<any | null>(null); // Approval review modal
+  // HR Employment Assignment screen (opened on approve — HR assigns official details).
+  const [assignTemp, setAssignTemp] = useState<any | null>(null);
+  const EMPTY_ASSIGN = {
+    // Organization
+    department: '', designation: '', reportingManager: '',
+    // Employment
+    employmentType: 'Permanent', employeeCategory: '', joinDate: '', confirmationDate: '', probationPeriod: '', grade: '', level: '',
+    // Payroll
+    salary: '', basicSalary: '', grossSalary: '', ctc: '', wageCategory: '', skillCategory: '', pf: '', esi: '', professionalTax: '', bonusEligibility: '',
+    // Attendance
+    shift: '', weeklyOff: '', attendancePolicy: '', leavePolicy: '', holidayCalendar: '',
+  };
+  const [assignForm, setAssignForm] = useState<any>(EMPTY_ASSIGN);
+
+  // ── Toolbar dropdowns (Actions ▼ / Add Employee ▼) — declutter, no h-scroll ──
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  useDismissable(actionsMenuOpen, () => setActionsMenuOpen(false), actionsMenuRef);
+  useDismissable(addMenuOpen, () => setAddMenuOpen(false), addMenuRef);
+  // Export uses the SAME export utils as before (logic unchanged) on the current
+  // filtered, on-screen rows.
+  const runExport = (format: 'excel' | 'pdf') => {
+    setActionsMenuOpen(false);
+    try {
+      const data = filtered.map((e, i) => ({ ...e, srNo: i + 1 }));
+      if (!data.length) { ui.toast.info('There is no data to export for the current view.'); return; }
+      const stamp = new Date().toISOString().slice(0, 10);
+      if (format === 'excel') exportRowsToExcel(`Employees_${stamp}`, EMPLOYEE_EXPORT_COLUMNS, data, 'Employees');
+      else exportRowsToPDF(`Employees_${stamp}`, 'Employee Directory', EMPLOYEE_EXPORT_COLUMNS, data);
+    } catch (err: any) { ui.toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
+  };
+  // A blank header-only workbook the user fills in for Bulk Import.
+  const downloadImportTemplate = () => {
+    setActionsMenuOpen(false);
+    try {
+      exportRowsToExcel(`Employee_Import_Template_${new Date().toISOString().slice(0, 10)}`, EMPLOYEE_EXPORT_COLUMNS, [], 'Template');
+      ui.toast.success('Employee import template downloaded.');
+    } catch (err: any) { ui.toast.error('Could not generate the template: ' + (err?.message || 'Unknown error')); }
+  };
+  const refreshTemps = async () => {
+    try { const list: any = await api.temporaryEmployees.getAll(); setTemps(Array.isArray(list) ? list : []); }
+    catch { /* leave as-is */ }
+  };
+  useEffect(() => { if (isHR) refreshTemps(); /* eslint-disable-next-line */ }, [activeCompanyId]);
+  // Temp employees scoped to the active workspace (company or branch), excluding converted/rejected from the live count.
+  const scopedTemps = useMemo(() => temps.filter(t => isCompanyIdMatch(t.companyId, activeCompanyId, companies, t.branchLocation, t.branchId) || (t.branchLocation && branchOptions.some(b => b.toLowerCase() === String(t.branchLocation).toLowerCase()))), [temps, activeCompanyId, companies, branchOptions]);
+  // Two distinct queues: still-being-completed (Temporary tab) vs submitted &
+  // awaiting an HR/Head decision (Pending Approvals tab). Converted records have
+  // left to Active Employees and never appear in either count.
+  const pendingApprovals = useMemo(() => scopedTemps.filter(t => TEMP_APPROVAL_STATUSES.includes(t.status)), [scopedTemps]);
+  const inProgressTemps = useMemo(() => scopedTemps.filter(t => TEMP_INPROGRESS_STATUSES.includes(t.status)), [scopedTemps]);
+  // The Temporary table shows everything that is NOT awaiting approval (those
+  // live in the approvals queue) — i.e. in-progress, changes-requested, rejected
+  // and converted-history — so each record sits in exactly one active place.
+  const temporaryTableRows = useMemo(() => scopedTemps.filter(t => !TEMP_APPROVAL_STATUSES.includes(t.status)), [scopedTemps]);
+
+  // Open Quick Add honouring the active scope: at branch scope the branch is
+  // pre-assigned (and locked in the modal); at company scope it starts blank.
+  const openQuickAdd = () => {
+    setQuickForm({ name: '', mobile: '', branch: activeBranchName, department: '' });
+    setQuickOpen(true);
+  };
+
+  // Resolve the active workspace's branch id (company-record id) for the quick form.
+  const handleQuickCreate = async () => {
+    if (!quickForm.name.trim()) { ui.toast.warning('Employee Name is required.'); return; }
+    if (!quickForm.mobile.trim()) { ui.toast.warning('Mobile Number is required.'); return; }
+    // Branch scope: the active branch is authoritative — ignore any stale form value.
+    // Company scope: the user must have chosen a branch.
+    const effectiveBranch = isBranchWorkspace ? activeBranchName : quickForm.branch.trim();
+    if (!effectiveBranch) { ui.toast.warning('Branch is required.'); return; }
+    setTempBusy(true);
+    try {
+      const br = dynamicBranches.find(b => (b.branchName || b.name) === effectiveBranch);
+      const created: any = await api.temporaryEmployees.create({
+        name: quickForm.name.trim(), mobile: quickForm.mobile.trim(),
+        branchId: br?.id, branchLocation: effectiveBranch,
+        department: quickForm.department.trim() || undefined,
+        companyId: parentCompanyId,
+      });
+      await refreshTemps();
+      setQuickOpen(false);
+      setQuickForm({ name: '', mobile: '', branch: '', department: '' });
+      setActiveMainTab('temporary');
+      ui.toast.success(`Temporary employee created — ${created?.tempEmployeeId}. Complete the profile & documents, then submit for approval.`);
+    } catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Could not create the temporary employee.')); }
+    finally { setTempBusy(false); }
+  };
+
+  // Submit-for-approval: validate the mandatory gate (server is the authority).
+  // On success the record moves to the Pending Approvals queue.
+  const handleSubmitTemp = async (t: any) => {
+    const v = validateTempMandatory(t);
+    if (!v.ok) {
+      const miss = [...v.missingFields, ...v.missingDocs].join(', ');
+      ui.toast.warning(`Cannot submit — missing: ${miss}. Open Complete Profile to finish.`);
+      return;
+    }
+    setTempBusy(true);
+    try {
+      await api.temporaryEmployees.submit(t.id);
+      await refreshTemps();
+      setActiveMainTab('approvals');
+      ui.toast.success(`${t.name} submitted for approval — now in the Pending Approvals queue.`);
+    } catch (e: any) {
+      const data = e?.data || e?.response?.data;
+      const miss = [...(data?.missingFields || []), ...(data?.missingDocs || [])].join(', ');
+      ui.toast.error(miss ? `Cannot submit — missing: ${miss}.` : getApiErrorMessage(e, 'Could not submit for approval.'));
+    } finally { setTempBusy(false); }
+  };
+
+  // Approval is the ONLY path to activation (no direct conversion). Generates the
+  // official Employee ID and creates the Active employee.
+  // Approval opens the HR Employment Assignment screen (HR/Company Head/Super
+  // Admin assign the official employment details there — the employee never
+  // entered them). Activation happens on submit of that screen.
+  const openAssign = (t: any) => {
+    setReviewTemp(null);
+    setAssignForm({ ...EMPTY_ASSIGN, department: t.department || '', designation: t.designation || '', joinDate: new Date().toISOString().slice(0, 10) });
+    setAssignTemp(t);
+  };
+
+  const submitAssignment = async () => {
+    if (!assignTemp) return;
+    if (!assignForm.department.trim() || !assignForm.designation.trim()) {
+      ui.toast.warning('Department and Designation are required to approve.');
+      return;
+    }
+    setTempBusy(true);
+    try {
+      const f = assignForm;
+      const clean = (v: any) => (typeof v === 'string' ? (v.trim() || undefined) : (v ?? undefined));
+      const res: any = await api.temporaryEmployees.approve(assignTemp.id, {
+        // Organization
+        department: f.department.trim(), designation: f.designation.trim(), reportingManager: clean(f.reportingManager),
+        // Employment
+        employmentType: f.employmentType, employeeCategory: clean(f.employeeCategory), joinDate: clean(f.joinDate),
+        confirmationDate: clean(f.confirmationDate), probationPeriod: clean(f.probationPeriod), grade: clean(f.grade), level: clean(f.level),
+        // Payroll
+        salary: f.salary !== '' ? f.salary : undefined, basicSalary: clean(f.basicSalary), grossSalary: clean(f.grossSalary), ctc: clean(f.ctc),
+        wageCategory: clean(f.wageCategory), skillCategory: clean(f.skillCategory), pf: clean(f.pf), esi: clean(f.esi), professionalTax: clean(f.professionalTax), bonusEligibility: clean(f.bonusEligibility),
+        // Attendance
+        shift: clean(f.shift), weeklyOff: clean(f.weeklyOff), attendancePolicy: clean(f.attendancePolicy), leavePolicy: clean(f.leavePolicy), holidayCalendar: clean(f.holidayCalendar),
+      });
+      await refreshTemps();
+      await refreshAfterBiometric(); // reload the real employee roster so the new hire appears
+      setAssignTemp(null);
+      ui.toast.success(`Approved — ${res?.employee?.employeeId}. Now an Active Employee.`);
+    } catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Approval failed.')); }
+    finally { setTempBusy(false); }
+  };
+
+  const handleRequestChangesTemp = async (t: any) => {
+    const note = await ui.prompt({ message: `Request changes for "${t.name}" (${t.tempEmployeeId}). What needs to be corrected?`, defaultValue: '' });
+    if (note === null) return;
+    setTempBusy(true);
+    try {
+      await api.temporaryEmployees.requestChanges(t.id, note || '');
+      await refreshTemps();
+      setReviewTemp(null);
+      ui.toast.success('Sent back for changes. The record returns to the Temporary list for edits.');
+    } catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Could not request changes.')); }
+    finally { setTempBusy(false); }
+  };
+
+  const handleRejectTemp = async (t: any) => {
+    const reason = await ui.prompt({ message: `Reject "${t.name}" (${t.tempEmployeeId})? Add a reason (visible to HR & the employee):`, defaultValue: '' });
+    if (reason === null) return;
+    setTempBusy(true);
+    try { await api.temporaryEmployees.reject(t.id, reason || ''); await refreshTemps(); setReviewTemp(null); ui.toast.success('Temporary employee rejected.'); }
+    catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Could not reject.')); }
+    finally { setTempBusy(false); }
+  };
+
+  const handleDeleteTemp = async (t: any) => {
+    const ok = await ui.confirm({ message: `Delete temporary record "${t.name}" (${t.tempEmployeeId})? This cannot be undone.`, variant: 'danger', confirmText: 'Delete' });
+    if (!ok) return;
+    setTempBusy(true);
+    try { await api.temporaryEmployees.remove(t.id); await refreshTemps(); ui.toast.success('Temporary record deleted.'); }
+    catch (e: any) { ui.toast.error(getApiErrorMessage(e, 'Could not delete.')); }
+    finally { setTempBusy(false); }
+  };
+
+  // Completing a temp profile now happens in the dedicated full-screen
+  // TempEmployeeOnboarding wizard (no modal) — it owns its own draft state,
+  // save, document upload and submit-for-approval flow, calling back to refresh
+  // the list. The Temporary table's quick "Submit for Approval" action below
+  // remains for records that are already complete.
 
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -292,16 +549,16 @@ export const Employees: React.FC<EmployeesProps> = ({
     if (!st) return [];
     return uniqSort([...citiesForState(st), ...(customCitiesByState[st] || [])]);
   };
-  const rememberState = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomStates(p => uniqSort([...p, n])); api.locationMasters.add('state', n).catch(() => {}); };
+  const rememberState = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomStates(p => uniqSort([...p, n])); api.locationMasters.add('state', n).catch(() => { }); };
   // A custom city is always stored linked to its state, so it only resurfaces for
   // that state in future (req: "store custom cities for future use", per state).
   const rememberCity = (state: string, name: string) => {
     const st = (state || '').trim(); const n = (name || '').trim();
     if (!st || !n) return;
     setCustomCitiesByState(p => ({ ...p, [st]: uniqSort([...(p[st] || []), n]) }));
-    api.locationMasters.addCity(st, n).catch(() => {});
+    api.locationMasters.addCity(st, n).catch(() => { });
   };
-  const rememberCountry = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomCountries(p => uniqSort([...p, n])); api.locationMasters.addCountry(n).catch(() => {}); };
+  const rememberCountry = (name: string) => { const n = (name || '').trim(); if (!n) return; setCustomCountries(p => uniqSort([...p, n])); api.locationMasters.addCountry(n).catch(() => { }); };
 
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -601,6 +858,40 @@ export const Employees: React.FC<EmployeesProps> = ({
     const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
     return { total, active, verifiedPayroll, pendingExits };
   }, [companyEmployees]);
+
+  // ── Canonical workforce reconciliation (single source of truth) ──────────────
+  // ONE rule used by every counter so the totals always add up:
+  //   All Staff = Active + Previous + Temporary + Pending Approval
+  // Active/Previous come from the real Employee table; Temporary/Pending Approval
+  // from the isolated TemporaryEmployee table (Converted temps have already
+  // become real employees, so they are excluded there — never double counted).
+  // The audit independently re-derives each bucket and flags any integrity drift
+  // (a status that is BOTH active & offboarded, or NEITHER) instead of silently
+  // losing or double-counting a record.
+  const countAudit = useMemo(() => {
+    const total = companyEmployees.length;
+    const activeN = companyEmployees.filter(isActiveEmployee).length;
+    const both = companyEmployees.filter(e => isActiveEmployee(e) && isOffboarded(e.status)).length;
+    const neither = companyEmployees.filter(e => !isActiveEmployee(e) && !isOffboarded(e.status)).length;
+    const active = activeN;
+    const previous = total - activeN;            // every non-active record (no record lost)
+    const temporary = inProgressTemps.length;
+    const pendingApproval = pendingApprovals.length;
+    const allStaff = active + previous + temporary + pendingApproval;
+    // Reconciliation: the displayed All Staff must equal the sum of categories,
+    // and Active/Offboarded must be a clean partition of the real roster.
+    const reconciles = allStaff === (total + temporary + pendingApproval);
+    const partitionOk = both === 0 && neither === 0;
+    const ok = reconciles && partitionOk;
+    if (!ok) {
+      // eslint-disable-next-line no-console
+      console.error('[Employee Count Mismatch Detected]', {
+        scope: activeCompanyId, total, active, previous, temporary, pendingApproval, allStaff,
+        anomalies: { bothActiveAndOffboarded: both, neither }, reconciles, partitionOk,
+      });
+    }
+    return { ok, allStaff, active, previous, temporary, pendingApproval, both, neither };
+  }, [companyEmployees, inProgressTemps, pendingApprovals, activeCompanyId]);
 
   // Add Validation & Execution
   const handleAddSubmit = async () => {
@@ -1212,7 +1503,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
         <div className="shrink-0">
           <h2 className="text-base font-bold text-gray-900 leading-tight">Employee Management</h2>
-          <p className="text-[11px] text-gray-500 leading-tight">Manage employees and workforce records</p>
+
         </div>
         <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
           {/* Counters */}
@@ -1221,50 +1512,99 @@ export const Employees: React.FC<EmployeesProps> = ({
               onClick={() => setActiveMainTab('all')}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              All Staff ({companyEmployees.length})
+              All Staff ({countAudit.allStaff})
             </button>
             <button
               onClick={() => setActiveMainTab('active')}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Active ({stats.active})
+              Active ({countAudit.active})
             </button>
             <button
               onClick={() => setActiveMainTab('previous')}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'previous' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
-              Previous ({companyEmployees.length - stats.active})
+              Previous ({countAudit.previous})
             </button>
+            {isHR && (
+              <button
+                onClick={() => setActiveMainTab('temporary')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'temporary' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-amber-700'}`}
+              >
+                Temporary ({countAudit.temporary})
+              </button>
+            )}
+            {isHR && (
+              <button
+                onClick={() => setActiveMainTab('approvals')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'approvals' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-indigo-700'} ${countAudit.pendingApproval ? 'relative' : ''}`}
+              >
+                Pending Approvals ({countAudit.pendingApproval})
+              </button>
+            )}
           </div>
 
-          <ExportMenu
-            fileName="Employees"
-            title="Employee Directory"
-            sheetName="Employees"
-            columns={EMPLOYEE_EXPORT_COLUMNS}
-            rows={() => filtered.map((e, i) => ({ ...e, srNo: i + 1 }))}
-          />
+          {/* ── Actions ▼ (Export / Imports / Template) — consolidates the
+              former Export + Bulk Import + Import Biometric buttons so the
+              toolbar never overflows. ── */}
+          <div className="relative shrink-0" ref={actionsMenuRef}>
+            <Button size="sm" variant="outline" className="whitespace-nowrap" onClick={() => { setActionsMenuOpen(o => !o); setAddMenuOpen(false); }}>
+              <span className="flex items-center gap-1.5"><Download size={14} /> Actions <ChevronDown size={13} className={`transition-transform ${actionsMenuOpen ? 'rotate-180' : ''}`} /></span>
+            </Button>
+            {actionsMenuOpen && (
+              <div className="absolute right-0 z-50 mt-1.5 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+                <div className="px-3.5 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Export</div>
+                <button onClick={() => runExport('excel')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-emerald-50 hover:text-emerald-700"><FileSpreadsheet size={15} className="text-emerald-600" /> Export to Excel</button>
+                <button onClick={() => runExport('pdf')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-rose-50 hover:text-rose-700"><FileText size={15} className="text-rose-600" /> Export to PDF</button>
+                {isHR && canCreate && (
+                  <>
+                    <div className="h-px bg-slate-100" />
+                    <div className="px-3.5 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Import</div>
+                    <button onClick={() => { setActionsMenuOpen(false); setImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Upload size={15} className="text-slate-400" /> Bulk Import Employees</button>
+                    <button onClick={() => { setActionsMenuOpen(false); setBioImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Fingerprint size={15} className="text-slate-400" /> Import Biometric Codes</button>
+                    <button onClick={downloadImportTemplate} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><FileDown size={15} className="text-slate-400" /> Download Employee Import Template</button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
-          {isHR && canCreate && activeMainTab !== 'previous' && (
-            <>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" icon={<Upload size={14} />} onClick={() => setImportOpen(true)}>
-                Bulk Import
+          {/* ── Add Employee ▼ (Full / Quick-Temp) ── */}
+          {isHR && canCreate && (
+            <div className="relative shrink-0" ref={addMenuRef}>
+              <Button size="sm" className="whitespace-nowrap" onClick={() => { setAddMenuOpen(o => !o); setActionsMenuOpen(false); }}>
+                <span className="flex items-center gap-1.5"><Plus size={14} /> Add Employee <ChevronDown size={13} className={`transition-transform ${addMenuOpen ? 'rotate-180' : ''}`} /></span>
               </Button>
-              <Button size="sm" variant="outline" className="whitespace-nowrap" icon={<Upload size={14} />} onClick={() => setBioImportOpen(true)}>
-                Import Biometric
-              </Button>
-              <Button size="sm" className="whitespace-nowrap" icon={<Plus size={14} />} onClick={handleStartAdd}>
-                Add Employee
-              </Button>
-            </>
+              {addMenuOpen && (
+                <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+                  <button onClick={() => { setAddMenuOpen(false); handleStartAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-blue-50 hover:text-blue-700"><UserPlus size={15} className="text-blue-600" /> Add Full Employee</button>
+                  <div className="h-px bg-slate-100" />
+                  <button onClick={() => { setAddMenuOpen(false); openQuickAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
 
+      {/* Automated reconciliation alert — surfaces (and logs) any data-integrity
+          drift where All Staff ≠ Active + Previous + Temporary + Pending Approval. */}
+      {!countAudit.ok && (
+        <div className="flex items-start gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-rose-800">
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+          <div className="text-[11px] leading-snug">
+            <p className="font-bold">Employee Count Mismatch Detected</p>
+            <p>All Staff ({countAudit.allStaff}) ≠ Active ({countAudit.active}) + Previous ({countAudit.previous}) + Temporary ({countAudit.temporary}) + Pending Approval ({countAudit.pendingApproval}).
+            {countAudit.both > 0 && ` ${countAudit.both} record(s) are both Active & Offboarded.`}
+            {countAudit.neither > 0 && ` ${countAudit.neither} record(s) have an unrecognised status.`} Details logged to the console.</p>
+          </div>
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total Staff Strength" value={stats.total} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" />
-        <StatCard label="Active Personnel" value={stats.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
+        <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" />
+        <StatCard label="Active Personnel" value={countAudit.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
         <StatCard label="Verified Payroll " value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-cyan-600" />} color="bg-cyan-50" />
         <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
@@ -1288,132 +1628,464 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Card>
 
-      {/* Optional column toggle */}
-      <div className="flex items-center justify-end">
-        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
-          <input type="checkbox" checked={showBiometric} onChange={e => setShowBiometric(e.target.checked)} />
-          Show Biometric Code column
-        </label>
-      </div>
+      {/* ── Temporary Employees table (Quick Registration dataset) ── */}
+      {activeMainTab === 'temporary' && (
+        <Card padding={false}>
+          <div className="px-4 py-3 border-b border-amber-100 bg-amber-50/50 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-amber-800">Temporary Employees</p>
+              <p className="text-[11px] text-amber-600">Quick-registered staff completing their profile. They reach Active only after <strong>Submit&nbsp;for&nbsp;Approval</strong> → HR/Company&nbsp;Head approval.</p>
+            </div>
+            <span className="text-[11px] font-semibold text-amber-700 bg-white border border-amber-200 rounded-full px-2.5 py-1">{temporaryTableRows.length} record(s)</span>
+          </div>
+          <Table>
+            <Thead>
+              <tr>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Temp ID</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Employee Name</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Mobile</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Branch</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Created</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold w-[16%]">Profile</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Status</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold text-center">Actions</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {temporaryTableRows.length === 0 ? (
+                <tr><td colSpan={8} className="text-center py-10 text-xs text-gray-400">No temporary employees in progress. Use <strong>Quick Add (Temp)</strong> to register one in seconds.</td></tr>
+              ) : temporaryTableRows.map(t => {
+                const sb = tempStatusBadge(t.status);
+                const terminal = t.status === 'Converted' || t.status === 'Rejected';
+                const editable = TEMP_INPROGRESS_STATUSES.includes(t.status);
+                const mand = validateTempMandatory(t);
+                return (
+                  <Tr key={t.id} className="hover:bg-amber-50/30">
+                    <Td className="px-2 py-1.5"><span className="text-[11px] font-bold text-amber-700">{t.tempEmployeeId}</span></Td>
+                    <Td className="px-2 py-1.5"><span className="text-[11px] font-semibold text-slate-800">{t.name}</span>{t.convertedEmployeeCode && <span className="block text-[9px] text-emerald-600 font-semibold">→ {t.convertedEmployeeCode}</span>}{t.status === 'Rejected' && t.rejectedReason && <span className="block text-[9px] text-rose-500" title={t.rejectedReason}>Reason: {t.rejectedReason}</span>}{t.status === 'Changes Requested' && t.changeRequestNote && <span className="block text-[9px] text-orange-500" title={t.changeRequestNote}>Changes: {t.changeRequestNote}</span>}</Td>
+                    <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-600">{t.mobile}</span></Td>
+                    <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-600">{t.branchLocation || '—'}</span></Td>
+                    <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-500">{formatDate(t.createdAt)}</span></Td>
+                    <Td className="px-2 py-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden min-w-[48px]"><div className={`h-full rounded-full ${mand.ok ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${t.profileCompletion || 0}%` }} /></div>
+                        <span className="text-[10px] font-bold text-slate-600 w-8 text-right">{t.profileCompletion || 0}%</span>
+                      </div>
+                    </Td>
+                    <Td className="px-2 py-1.5"><Badge variant={sb as any} className="text-[9px] px-1.5 py-0">{t.status}</Badge></Td>
+                    <Td className="px-2 py-1.5">
+                      <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                        {editable && canEdit && (
+                          <button onClick={() => setEditTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition" title="Complete profile"><Edit2 size={13} /></button>
+                        )}
+                        {editable && canEdit && (
+                          <button onClick={() => handleSubmitTemp(t)} disabled={tempBusy || !mand.ok} className="p-1 hover:bg-indigo-50 rounded text-indigo-600 transition disabled:opacity-30" title={mand.ok ? 'Submit for approval' : 'Complete all mandatory fields & documents first'}><Send size={13} /></button>
+                        )}
+                        {!terminal && canEdit && (
+                          <button onClick={() => handleRejectTemp(t)} disabled={tempBusy} className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition disabled:opacity-40" title="Reject"><XCircle size={13} /></button>
+                        )}
+                        {canCreate && (
+                          <button onClick={() => handleDeleteTemp(t)} disabled={tempBusy} className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition disabled:opacity-40" title="Delete record"><Trash2 size={13} /></button>
+                        )}
+                      </div>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </Tbody>
+          </Table>
+        </Card>
+      )}
 
-      {/* Main Table */}
-      <Card padding={false}>
-        <Table>
-          <Thead>
-            <tr>
-              <Th className="px-2 py-1.5 text-[10px] w-[4%] tracking-wider font-bold text-center">Sr No</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[9%] tracking-wider font-bold">Emp Code</Th>
-              <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[27%]' : 'w-[32%]'}`}>Employee Full Name</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[12%] tracking-wider font-bold">Date of Joining</Th>
-              <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[22%]' : 'w-[27%]'}`}>Designation</Th>
-              <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Category</Th>
-              {/* Date of Exit is meaningless for active staff — hidden on the Active tab, kept on All/Previous. */}
-              {activeMainTab !== 'active' && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>}
-              {showBiometric && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Biometric Code</Th>}
-              <Th className="px-2 py-1.5 text-[10px] w-[6%] tracking-wider font-bold text-center">ACTIONS</Th>
-            </tr>
-          </Thead>
-          <Tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
-            ) : (
-              filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
-                <Tr key={emp.id} className="hover:bg-slate-50/50">
-                  <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * pageSize + idx + 1}</span></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
-                  <Td className="px-2 py-1">
-                    <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
-                      <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 ring-1 ring-slate-200 shrink-0">
-                        {emp.avatar || 'EM'}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-semibold text-slate-900 hover:text-blue-600 truncate">{emp.name}</p>
-                        <p className="text-[9px] text-gray-400 truncate">{emp.email}</p>
-                      </div>
+      {/* ── Pending Approvals queue (HR / Company Head / Super Admin) ── */}
+      {activeMainTab === 'approvals' && (
+        <Card padding={false}>
+          <div className="px-4 py-3 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-indigo-800">Pending Approvals</p>
+              <p className="text-[11px] text-indigo-600">Temporary employees who completed their profile &amp; documents and are awaiting activation. Approving generates the official Employee ID and creates the Active record.</p>
+            </div>
+            <span className="text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-full px-2.5 py-1">{pendingApprovals.length} awaiting</span>
+          </div>
+          <Table>
+            <Thead>
+              <tr>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Temp ID</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Employee Name</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Branch</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Department</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold">Submitted</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold w-[14%]">Profile</Th>
+                <Th className="px-2 py-1.5 text-[10px] tracking-wider font-bold text-center">Actions</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {pendingApprovals.length === 0 ? (
+                <tr><td colSpan={7} className="text-center py-10 text-xs text-gray-400">No employees awaiting approval. Completed temporary profiles appear here automatically.</td></tr>
+              ) : pendingApprovals.map(t => (
+                <Tr key={t.id} className="hover:bg-indigo-50/30">
+                  <Td className="px-2 py-1.5"><span className="text-[11px] font-bold text-amber-700">{t.tempEmployeeId}</span></Td>
+                  <Td className="px-2 py-1.5"><span className="text-[11px] font-semibold text-slate-800">{t.name}</span><span className="block text-[9px] text-slate-400">{t.mobile} · {t.designation || '—'}</span></Td>
+                  <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-600">{t.branchLocation || '—'}</span></Td>
+                  <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-600">{t.department || '—'}</span></Td>
+                  <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-500">{t.submittedAt ? formatDate(t.submittedAt) : '—'}</span>{t.submittedBy && <span className="block text-[9px] text-slate-400">by {t.submittedBy}</span>}</Td>
+                  <Td className="px-2 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden min-w-[40px]"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${t.profileCompletion || 0}%` }} /></div>
+                      <span className="text-[10px] font-bold text-slate-600 w-8 text-right">{t.profileCompletion || 0}%</span>
                     </div>
                   </Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{formatDate(emp.joinDate)}</span></Td>
-                  <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[160px]">{emp.designation}</span></Td>
-                  <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
-                  {activeMainTab !== 'active' && <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{emp.exitDate ? formatDate(emp.exitDate) : '—'}</span></Td>}
-                  {showBiometric && <Td className="px-2 py-1"><span className="text-[11px] text-slate-600 font-medium">{emp.biometricId || '—'}</span></Td>}
-                  <Td className="px-2 py-1 w-24">
+                  <Td className="px-2 py-1.5">
                     <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                      <button
-                        onClick={() => setViewEmp(emp)}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
-                        title="View Master File"
-                      >
-                        <Eye size={13} />
-                      </button>
-
-                      {/* Active employees: full management actions. */}
-                      {!isOffboarded(emp.status) && canEdit && (
-                        <>
-                          <button
-                            onClick={() => handleStartEdit(emp)}
-                            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
-                            title="Edit File"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
-                            className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
-                            title="Initiate Offboarding"
-                          >
-                            <LogOut size={13} />
-                          </button>
-                        </>
+                      <button onClick={() => setReviewTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-indigo-600 transition" title="Review profile & documents"><Eye size={13} /></button>
+                      {canCreate && (
+                        <button onClick={() => openAssign(t)} disabled={tempBusy} className="p-1 hover:bg-emerald-50 rounded text-emerald-600 transition disabled:opacity-40" title="Approve & activate"><ThumbsUp size={13} /></button>
                       )}
-                      {/* Archived / offboarded = historical record → View only.
-                          Restore/Edit is reserved for Super Admin. */}
-                      {isOffboarded(emp.status) && role === 'Super Admin' && (
-                        <button
-                          onClick={() => handleStartEdit(emp)}
-                          className="p-1 hover:bg-emerald-50 rounded text-slate-500 hover:text-emerald-600 transition"
-                          title="Edit / Restore (Super Admin)"
-                        >
-                          <Edit2 size={13} />
-                        </button>
+                      {canEdit && (
+                        <button onClick={() => handleRequestChangesTemp(t)} disabled={tempBusy} className="p-1 hover:bg-orange-50 rounded text-orange-500 transition disabled:opacity-40" title="Request changes"><RotateCcw size={13} /></button>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => handleRejectTemp(t)} disabled={tempBusy} className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition disabled:opacity-40" title="Reject"><XCircle size={13} /></button>
                       )}
                     </div>
                   </Td>
                 </Tr>
-              ))
-            )}
-          </Tbody>
-        </Table>
+              ))}
+            </Tbody>
+          </Table>
+        </Card>
+      )}
 
-        {/* Pagination Controls */}
-        {filtered.length > pageSize && (
-          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl">
-            <span className="text-xs text-slate-500 font-medium">
-              Showing <span className="font-bold text-slate-700">{(page - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-bold text-slate-700">{filtered.length}</span> entries
-            </span>
-            <div className="flex gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="text-xs py-1 px-3"
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))}
-                disabled={page >= Math.ceil(filtered.length / pageSize)}
-                className="text-xs py-1 px-3"
-              >
-                Next
-              </Button>
+      {/* Optional column toggle */}
+      {activeMainTab !== 'temporary' && activeMainTab !== 'approvals' && (<>
+        <div className="flex items-center justify-end">
+          <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+            <input type="checkbox" checked={showBiometric} onChange={e => setShowBiometric(e.target.checked)} />
+            Show Biometric Code column
+          </label>
+        </div>
+
+        {/* Main Table */}
+        <Card padding={false}>
+          <Table>
+            <Thead>
+              <tr>
+                <Th className="px-2 py-1.5 text-[10px] w-[4%] tracking-wider font-bold text-center">Sr No</Th>
+                <Th className="px-2 py-1.5 text-[10px] w-[9%] tracking-wider font-bold">Emp Code</Th>
+                <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[27%]' : 'w-[32%]'}`}>Employee Full Name</Th>
+                <Th className="px-2 py-1.5 text-[10px] w-[12%] tracking-wider font-bold">Date of Joining</Th>
+                <Th className={`px-2 py-1.5 text-[10px] tracking-wider font-bold ${activeMainTab !== 'active' ? 'w-[22%]' : 'w-[27%]'}`}>Designation</Th>
+                <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Category</Th>
+                {/* Date of Exit is meaningless for active staff — hidden on the Active tab, kept on All/Previous. */}
+                {activeMainTab !== 'active' && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Date of Exit</Th>}
+                {showBiometric && <Th className="px-2 py-1.5 text-[10px] w-[10%] tracking-wider font-bold">Biometric Code</Th>}
+                <Th className="px-2 py-1.5 text-[10px] w-[6%] tracking-wider font-bold text-center">ACTIONS</Th>
+              </tr>
+            </Thead>
+            <Tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
+              ) : (
+                filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
+                  <Tr key={emp.id} className="hover:bg-slate-50/50">
+                    <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * pageSize + idx + 1}</span></Td>
+                    <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
+                    <Td className="px-2 py-1">
+                      <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
+                        <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 ring-1 ring-slate-200 shrink-0">
+                          {emp.avatar || 'EM'}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-semibold text-slate-900 hover:text-blue-600 truncate">{emp.name}</p>
+                          <p className="text-[9px] text-gray-400 truncate">{emp.email}</p>
+                        </div>
+                      </div>
+                    </Td>
+                    <Td className="px-2 py-1"><span className="text-[11px] text-slate-600">{formatDate(emp.joinDate)}</span></Td>
+                    <Td className="px-2 py-1"><span className="text-[11px] font-medium text-slate-800 truncate block max-w-[160px]">{emp.designation}</span></Td>
+                    <Td className="px-2 py-1"><Badge variant="blue" className="text-[9px] px-1 py-0">{emp.category || 'SKILLED'}</Badge></Td>
+                    {activeMainTab !== 'active' && <Td className="px-2 py-1"><span className="text-[11px] text-slate-500 font-medium">{emp.exitDate ? formatDate(emp.exitDate) : '—'}</span></Td>}
+                    {showBiometric && <Td className="px-2 py-1"><span className="text-[11px] text-slate-600 font-medium">{emp.biometricId || '—'}</span></Td>}
+                    <Td className="px-2 py-1 w-24">
+                      <div className="flex items-center justify-center gap-1 whitespace-nowrap">
+                        <button
+                          onClick={() => setViewEmp(emp)}
+                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                          title="View Master File"
+                        >
+                          <Eye size={13} />
+                        </button>
+
+                        {/* Active employees: full management actions. */}
+                        {!isOffboarded(emp.status) && canEdit && (
+                          <>
+                            <button
+                              onClick={() => handleStartEdit(emp)}
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                              title="Edit File"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                            <button
+                              onClick={() => { setOffboardEmp(emp); setIsConfirmingOffboard(true); }}
+                              className="p-1 hover:bg-amber-50 rounded text-amber-500 hover:text-amber-600 transition"
+                              title="Initiate Offboarding"
+                            >
+                              <LogOut size={13} />
+                            </button>
+                          </>
+                        )}
+                        {/* Archived / offboarded = historical record → View only.
+                          Restore/Edit is reserved for Super Admin. */}
+                        {isOffboarded(emp.status) && role === 'Super Admin' && (
+                          <button
+                            onClick={() => handleStartEdit(emp)}
+                            className="p-1 hover:bg-emerald-50 rounded text-slate-500 hover:text-emerald-600 transition"
+                            title="Edit / Restore (Super Admin)"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </Td>
+                  </Tr>
+                ))
+              )}
+            </Tbody>
+          </Table>
+
+          {/* Pagination Controls */}
+          {filtered.length > pageSize && (
+            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl">
+              <span className="text-xs text-slate-500 font-medium">
+                Showing <span className="font-bold text-slate-700">{(page - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-bold text-slate-700">{filtered.length}</span> entries
+              </span>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="text-xs py-1 px-3"
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))}
+                  disabled={page >= Math.ceil(filtered.length / pageSize)}
+                  className="text-xs py-1 px-3"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </Card>
+      </>)}
+
+      {/* ── Quick (Temporary) Employee Registration ── */}
+      <Modal open={quickOpen} onClose={() => setQuickOpen(false)} title="Quick Employee Registration (Temporary)" size="sm">
+        <div className="space-y-3 text-left">
+          <p className="text-[11px] text-slate-500">Create a temporary employee in seconds — only Name, Mobile &amp; Branch are required. Complete the rest later and convert to a permanent employee.</p>
+          <Input label="Employee Name *" value={quickForm.name} onChange={e => setQuickForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+          <Input label="Mobile Number *" value={quickForm.mobile} onChange={e => setQuickForm(f => ({ ...f, mobile: e.target.value.replace(/[^0-9+]/g, '') }))} placeholder="10-digit mobile" />
+          {isBranchWorkspace ? (
+            // Branch scope — branch is fixed by the active workspace, shown read-only.
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Branch</label>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                <span className="text-sm font-semibold text-slate-800">{activeBranchName}</span>
+                <span className="text-[10px] font-medium uppercase tracking-wide text-emerald-600">Auto-assigned</span>
+              </div>
+              <p className="mt-1 text-[10px] text-slate-400">Set by the current workspace scope. Switch scope to assign a different branch.</p>
+            </div>
+          ) : (
+            <Select label="Branch *" value={quickForm.branch} onChange={e => setQuickForm(f => ({ ...f, branch: e.target.value }))}
+              options={[{ value: '', label: 'Select branch…' }, ...branchOptions.map(b => ({ value: b, label: b }))]} />
+          )}
+          <Input label="Department (optional)" value={quickForm.department} onChange={e => setQuickForm(f => ({ ...f, department: e.target.value }))} placeholder="e.g. Operations" />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => setQuickOpen(false)}>Cancel</Button>
+            <Button size="sm" className="bg-amber-500 hover:bg-amber-600" loading={tempBusy} onClick={handleQuickCreate}>Create Temporary Employee</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Complete Temporary Employee Profile — dedicated FULL-SCREEN onboarding ── */}
+      <TempEmployeeOnboarding
+        open={!!editTemp}
+        temp={editTemp}
+        branchName={editTemp?.branchLocation}
+        companyName={(companies.find(c => String(c.id) === String(parentCompanyId)) as any)?.name || (currentComp as any)?.parentCompanyName || (currentComp as any)?.name || ''}
+        canSubmit={canEdit}
+        onClose={() => setEditTemp(null)}
+        onSaved={() => { refreshTemps(); }}
+        onSubmitted={() => { setEditTemp(null); refreshTemps(); setActiveMainTab('approvals'); }}
+      />
+
+      {/* ── Approval Review (View Profile / Documents + Approve / Reject / Request Changes) ── */}
+      <Modal open={!!reviewTemp} onClose={() => setReviewTemp(null)} title={reviewTemp ? `Review for Approval — ${reviewTemp.tempEmployeeId}` : ''} size="md">
+        {reviewTemp && (
+          <div className="space-y-3 text-left text-xs">
+            <div className="flex items-center justify-between rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2">
+              <div>
+                <p className="text-[12px] font-bold text-indigo-900">{reviewTemp.name}</p>
+                <p className="text-[10px] text-indigo-600">{reviewTemp.designation || '—'} · {reviewTemp.department || '—'} · {reviewTemp.branchLocation || '—'}</p>
+              </div>
+              <Badge variant={tempStatusBadge(reviewTemp.status) as any} className="text-[9px] px-1.5 py-0">{reviewTemp.status}</Badge>
+            </div>
+
+            {/* Profile summary */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+              {[
+                ['Mobile', reviewTemp.mobile], ['Email', reviewTemp.email],
+                ['Date of Birth', reviewTemp.dob], ['Gender', reviewTemp.gender],
+                ['Father / Spouse', reviewTemp.fatherSpouseName], ['Aadhaar', reviewTemp.aadhaar],
+                ['PAN', reviewTemp.pan], ['Bank', reviewTemp.bankName],
+                ['Account No.', reviewTemp.accountNumber], ['IFSC', reviewTemp.ifsc],
+                ['Emergency', reviewTemp.emergencyContact],
+              ].map(([k, val]) => (
+                <div key={k as string} className="flex flex-col">
+                  <span className="text-[9px] uppercase tracking-wide text-slate-400">{k}</span>
+                  <span className="text-[11px] font-medium text-slate-700">{val || '—'}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase tracking-wide text-slate-400">Present Address</span>
+              <span className="text-[11px] font-medium text-slate-700">{reviewTemp.presentAddress || '—'}</span>
+            </div>
+
+            {/* Documents — view + download */}
+            <div>
+              <p className="text-[11px] font-bold text-slate-600 mb-1.5">Documents</p>
+              <div className="grid grid-cols-2 gap-2">
+                {TEMP_MANDATORY_DOCS.map(d => {
+                  const present = tempDocPresent(reviewTemp, d.key);
+                  const src = d.key === 'photo' ? reviewTemp.photoUpload : reviewTemp.documents?.[d.key]?.dataUrl;
+                  const fname = d.key === 'photo' ? `${reviewTemp.tempEmployeeId}-photo` : (reviewTemp.documents?.[d.key]?.name || `${reviewTemp.tempEmployeeId}-${d.key}`);
+                  return (
+                    <div key={d.key} className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 ${present ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50'}`}>
+                      <span className={`text-[11px] font-semibold flex items-center gap-1 ${present ? 'text-emerald-700' : 'text-slate-400'}`}>{present ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{d.label}</span>
+                      {present && src && (
+                        <span className="flex items-center gap-1.5">
+                          <a href={src} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline flex items-center gap-0.5"><Eye size={11} />View</a>
+                          <a href={src} download={fname} className="text-[10px] font-semibold text-slate-500 hover:underline flex items-center gap-0.5"><Download size={11} />Download</a>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Audit */}
+            <div className="rounded-lg bg-slate-50 border border-slate-100 px-3 py-2 text-[10px] text-slate-500 flex items-center gap-2 flex-wrap">
+              <Clock size={12} className="text-slate-400" />
+              {reviewTemp.submittedBy ? <span>Submitted by <strong className="text-slate-600">{reviewTemp.submittedBy}</strong> on {formatDate(reviewTemp.submittedAt)}</span> : <span>Awaiting submission details.</span>}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" size="sm" onClick={() => setReviewTemp(null)}>Close</Button>
+              {canEdit && <Button variant="outline" size="sm" className="text-orange-600 border-orange-200 hover:bg-orange-50" icon={<RotateCcw size={13} />} loading={tempBusy} onClick={() => handleRequestChangesTemp(reviewTemp)}>Request Changes</Button>}
+              {canEdit && <Button variant="outline" size="sm" className="text-rose-600 border-rose-200 hover:bg-rose-50" icon={<XCircle size={13} />} loading={tempBusy} onClick={() => handleRejectTemp(reviewTemp)}>Reject</Button>}
+              {canCreate && <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" icon={<ThumbsUp size={13} />} loading={tempBusy} onClick={() => openAssign(reviewTemp)}>Approve &amp; Assign</Button>}
             </div>
           </div>
         )}
-      </Card>
+      </Modal>
+
+      {/* ── HR Employment Assignment screen — official details assigned at approval ── */}
+      <Modal
+        open={!!assignTemp}
+        onClose={() => setAssignTemp(null)}
+        variant="page"
+        title={assignTemp ? `Employment Assignment — ${assignTemp.name}` : ''}
+        subtitle={assignTemp ? `${assignTemp.tempEmployeeId} · Assign official employment details, then approve to create the Active Employee` : ''}
+        breadcrumbs={[{ label: 'Employees', onClick: () => setAssignTemp(null) }, { label: 'Pending Approvals', onClick: () => setAssignTemp(null) }, { label: 'Assign Employment' }]}
+        context={assignTemp ? <span>{(companies.find(c => String(c.id) === String(parentCompanyId)) as any)?.name || (currentComp as any)?.name || '—'}{assignTemp.branchLocation ? <span className="text-slate-400"> · {assignTemp.branchLocation}</span> : null}</span> : null}
+        pageMaxWidth={1080}
+        footer={
+          <>
+            <span className="mr-auto text-[11px] font-semibold text-slate-400">Department &amp; Designation are required.</span>
+            <Button variant="outline" size="sm" onClick={() => setAssignTemp(null)}>Cancel</Button>
+            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" icon={<ThumbsUp size={14} />} loading={tempBusy} onClick={submitAssignment}>Approve &amp; Create Employee</Button>
+          </>
+        }
+      >
+        {assignTemp && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-[11px] text-indigo-800">
+              The employee completed their personal &amp; verification profile. As HR, assign the official employment details below — these are company-controlled and were not entered by the employee. Approving generates the permanent Employee ID and moves them to <strong>Active Employees</strong> (payroll, attendance &amp; leave then apply as for any active employee).
+            </div>
+
+            {/* Organization */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Building2 size={16} className="text-indigo-600" /> Organization</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Company</label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{(companies.find(c => String(c.id) === String(parentCompanyId)) as any)?.name || (currentComp as any)?.name || '—'}</div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Branch</label>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">{assignTemp.branchLocation || '—'}</div>
+                </div>
+                <Input label="Reporting Manager" value={assignForm.reportingManager} onChange={e => setAssignForm((f: any) => ({ ...f, reportingManager: e.target.value }))} placeholder="e.g. Priya Sharma" />
+                <Input label="Department *" value={assignForm.department} onChange={e => setAssignForm((f: any) => ({ ...f, department: e.target.value }))} placeholder="e.g. Operations" />
+                <Input label="Designation *" value={assignForm.designation} onChange={e => setAssignForm((f: any) => ({ ...f, designation: e.target.value }))} placeholder="e.g. Field Officer" />
+              </div>
+            </div>
+
+            {/* Employment */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-indigo-600" /> Employment</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Select label="Employment Type" value={assignForm.employmentType} onChange={e => setAssignForm((f: any) => ({ ...f, employmentType: e.target.value }))}
+                  options={['Permanent', 'Contract', 'Probation', 'Internship', 'Temporary'].map(s => ({ value: s, label: s }))} />
+                <Input label="Employee Category" value={assignForm.employeeCategory} onChange={e => setAssignForm((f: any) => ({ ...f, employeeCategory: e.target.value }))} placeholder="e.g. Skilled / Staff" />
+                <Input label="Joining Date *" type="date" value={assignForm.joinDate} onChange={e => setAssignForm((f: any) => ({ ...f, joinDate: e.target.value }))} />
+                <Input label="Confirmation Date" type="date" value={assignForm.confirmationDate} onChange={e => setAssignForm((f: any) => ({ ...f, confirmationDate: e.target.value }))} />
+                <Input label="Probation Period" value={assignForm.probationPeriod} onChange={e => setAssignForm((f: any) => ({ ...f, probationPeriod: e.target.value }))} placeholder="e.g. 6 months" />
+                <Input label="Grade" value={assignForm.grade} onChange={e => setAssignForm((f: any) => ({ ...f, grade: e.target.value }))} placeholder="e.g. G3" />
+                <Input label="Level" value={assignForm.level} onChange={e => setAssignForm((f: any) => ({ ...f, level: e.target.value }))} placeholder="e.g. L2" />
+              </div>
+            </div>
+
+            {/* Payroll */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><IndianRupee size={16} className="text-indigo-600" /> Payroll</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Input label="Monthly Salary (₹)" value={assignForm.salary} onChange={e => setAssignForm((f: any) => ({ ...f, salary: e.target.value.replace(/[^\d.]/g, '') }))} placeholder="e.g. 25000" />
+                <Input label="Basic Salary (₹)" value={assignForm.basicSalary} onChange={e => setAssignForm((f: any) => ({ ...f, basicSalary: e.target.value.replace(/[^\d.]/g, '') }))} />
+                <Input label="Gross Salary (₹)" value={assignForm.grossSalary} onChange={e => setAssignForm((f: any) => ({ ...f, grossSalary: e.target.value.replace(/[^\d.]/g, '') }))} />
+                <Input label="CTC (₹)" value={assignForm.ctc} onChange={e => setAssignForm((f: any) => ({ ...f, ctc: e.target.value.replace(/[^\d.]/g, '') }))} />
+                <Input label="Wage Category" value={assignForm.wageCategory} onChange={e => setAssignForm((f: any) => ({ ...f, wageCategory: e.target.value }))} placeholder="e.g. Unskilled / Semi-skilled" />
+                <Input label="Skill Category" value={assignForm.skillCategory} onChange={e => setAssignForm((f: any) => ({ ...f, skillCategory: e.target.value }))} />
+                <Select label="PF Applicable" value={assignForm.pf} onChange={e => setAssignForm((f: any) => ({ ...f, pf: e.target.value }))} options={[{ value: '', label: '—' }, { value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }]} />
+                <Select label="ESI Applicable" value={assignForm.esi} onChange={e => setAssignForm((f: any) => ({ ...f, esi: e.target.value }))} options={[{ value: '', label: '—' }, { value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }]} />
+                <Select label="Professional Tax" value={assignForm.professionalTax} onChange={e => setAssignForm((f: any) => ({ ...f, professionalTax: e.target.value }))} options={[{ value: '', label: '—' }, { value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }]} />
+                <Select label="Bonus Eligibility" value={assignForm.bonusEligibility} onChange={e => setAssignForm((f: any) => ({ ...f, bonusEligibility: e.target.value }))} options={[{ value: '', label: '—' }, { value: 'Eligible', label: 'Eligible' }, { value: 'Not Eligible', label: 'Not Eligible' }]} />
+              </div>
+            </div>
+
+            {/* Attendance */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Clock size={16} className="text-indigo-600" /> Attendance &amp; Leave</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Input label="Shift" value={assignForm.shift} onChange={e => setAssignForm((f: any) => ({ ...f, shift: e.target.value }))} placeholder="e.g. General (9–6)" />
+                <Input label="Weekly Off" value={assignForm.weeklyOff} onChange={e => setAssignForm((f: any) => ({ ...f, weeklyOff: e.target.value }))} placeholder="e.g. Sunday" />
+                <Input label="Attendance Policy" value={assignForm.attendancePolicy} onChange={e => setAssignForm((f: any) => ({ ...f, attendancePolicy: e.target.value }))} />
+                <Input label="Leave Policy" value={assignForm.leavePolicy} onChange={e => setAssignForm((f: any) => ({ ...f, leavePolicy: e.target.value }))} />
+                <Input label="Holiday Calendar" value={assignForm.holidayCalendar} onChange={e => setAssignForm((f: any) => ({ ...f, holidayCalendar: e.target.value }))} />
+              </div>
+              <p className="mt-3 text-[10px] text-slate-400">These choices are recorded with the employee. Detailed payroll-structure, shift rosters and leave/holiday rules continue to be managed in the Payroll, Attendance &amp; Leave modules — those engines are unchanged.</p>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* View Master Drawer/Modal */}
       <Modal open={!!viewEmp} onClose={() => setViewEmp(null)} title="Enterprise Master Employee Profile" size="md">

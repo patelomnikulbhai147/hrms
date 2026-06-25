@@ -37,8 +37,9 @@ const navItems: NavItem[] = [
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
-  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
-  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  // Governance modules — Super Admin + Company Head ONLY (HR/Employee hidden).
+  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head'] },
+  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Super Admin', 'Company Head'] },
   // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
   // — not a platform concern. It is intentionally hidden from the Super Admin
   // root menu; a Super Admin configures a company's settings by entering that
