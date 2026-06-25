@@ -9,6 +9,8 @@ router.use(protect);
 router.use(require('../middleware/readOnlyMiddleware'));
 
 router.get('/', requirePermission('employees', 'view'), ctrl.list);
+// Live unique-mobile check (must precede '/:id' so it isn't matched as an id).
+router.get('/check-mobile', requirePermission('employees', 'view'), ctrl.checkMobile);
 router.get('/:id', requirePermission('employees', 'view'), ctrl.get);
 router.post('/', requirePermission('employees', 'create'), ctrl.create);
 router.put('/:id', requirePermission('employees', 'edit'), ctrl.updateProfile);

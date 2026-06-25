@@ -624,7 +624,7 @@ model TemporaryEmployee {
   branchId              Int?
   branchLocation        String?
   name                  String
-  mobile                String
+  mobile                String    @unique          // one mobile = one employee identity
   department            String?
   designation           String?
   email                 String?
