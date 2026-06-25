@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 
 const authRoutes = require('./src/routes/authRoutes');
+const mobileAuthV1Routes = require('./src/auth/authRoutes'); // v1 mobile OTP auth (additive)
 const companyRoutes = require('./src/routes/companyRoutes');
 const branchRoutes = require('./src/routes/branchRoutes');
 const employeeRoutes = require('./src/routes/employeeRoutes');
@@ -83,6 +84,7 @@ app.use((req, res, next) => {
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
+app.use('/api/v1/auth', mobileAuthV1Routes); // Flutter mobile OTP auth — separate from web auth
 app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);

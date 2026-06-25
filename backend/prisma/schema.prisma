@@ -1099,6 +1099,26 @@ model SubscriptionBillingAudit {
   @@index([companyId])
 }
 
+// ── Mobile (v1) OTP authentication ───────────────────────────────────────────
+// Short-lived OTP login sessions for the Flutter app. Fully additive — the web
+// email+password login is unchanged. In OTP_MODE=development the otpHash is null
+// and any valid-length numeric OTP is accepted; in production the SMS OTP hash is
+// stored and verified. The resolved userId lets verify-otp mint the JWT.
+model MobileOtpSession {
+  id          Int       @id @default(autoincrement())
+  sessionId   String    @unique
+  identifier  String                  // what the user typed (mobile / employeeId / email)
+  channel     String    @default("mobile")
+  userId      Int                     // resolved User.id
+  otpHash     String?                 // null in development mode
+  expiresAt   DateTime
+  consumed    Boolean   @default(false)
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
 // ── Task Manager ─────────────────────────────────────────────────────────────
 // Standalone tables (scalar foreign keys, no relations on existing models) so
 // adding this module cannot alter or break any existing relationship.
