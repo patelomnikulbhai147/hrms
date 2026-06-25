@@ -221,6 +221,20 @@ export const api = {
     }
   },
 
+  // Temporary Employees (Quick Registration) — additive, isolated from employees.
+  temporaryEmployees: {
+    getAll: async () => apiFetch(`${BASE_URL}/temporary-employees`, { headers: getHeaders() }),
+    get: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { headers: getHeaders() }),
+    create: async (data: any) => apiFetch(`${BASE_URL}/temporary-employees`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    update: async (id: any, data: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    submit: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}/submit`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    approve: async (id: any, employment?: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}/approve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(employment || {}) }),
+    convert: async (id: any, employment?: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}/approve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(employment || {}) }),
+    reject: async (id: any, reason?: string) => apiFetch(`${BASE_URL}/temporary-employees/${id}/reject`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason: reason || '' }) }),
+    requestChanges: async (id: any, note?: string) => apiFetch(`${BASE_URL}/temporary-employees/${id}/request-changes`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ note: note || '' }) }),
+    remove: async (id: any) => apiFetch(`${BASE_URL}/temporary-employees/${id}`, { method: 'DELETE', headers: getHeaders() }),
+  },
+
   branches: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/branches`, { headers: getHeaders() });

@@ -583,6 +583,11 @@ model Employee {
   presentAddress    String?        @db.Text
   relationType      String?
   signatureUpload   String?        @db.LongText
+  // Extended HR employment assignment captured at temp-employee approval (grade,
+  // level, confirmation date, probation, wage/skill category, PF/ESI/PT, bonus
+  // eligibility, weekly-off, attendance/leave/holiday policy choices). A RECORD
+  // only — payroll/attendance/leave engines read their own config, untouched.
+  employmentMeta    Json?
   // ── Bonus configuration (per-employee, managed from Employee + Payroll) ──
   // Recurring bonus rule that flows into payroll. One-time bonuses (festival /
   // performance) live in the EmployeeBonus table instead.
@@ -604,6 +609,69 @@ model Employee {
   attendanceSummaries AttendanceSummary[]
   employeeBonuses   EmployeeBonus[]
   deployments       Deployment[]
+}
+
+// ── Temporary Employee (Quick Registration) ─────────────────────────────────
+// Fully ADDITIVE & ISOLATED: a temporary/onboarding employee created by HR with
+// only Name + Mobile + Branch. Lives in its own table (no relations to Employee/
+// payroll/attendance) so existing flows are never affected. On conversion a real
+// Employee row is created and this record is marked Converted (linked, preserved).
+// companyId/branchId are plain scalars (no FK) to keep Company/Branch untouched.
+model TemporaryEmployee {
+  id                    Int       @id @default(autoincrement())
+  tempEmployeeId        String    @unique          // e.g. VE-TEMP-000001
+  companyId             Int
+  branchId              Int?
+  branchLocation        String?
+  name                  String
+  mobile                String
+  department            String?
+  designation           String?
+  email                 String?
+  status                String    @default("Pending Profile") // Pending Profile | Partially Completed | Pending Approval | Changes Requested | Converted | Rejected
+  // Self-onboarding profile fields (completed later by HR or the employee)
+  dob                   String?
+  gender                String?
+  fatherSpouseName      String?
+  aadhaar               String?
+  pan                   String?
+  bankName              String?
+  accountNumber         String?
+  ifsc                  String?
+  presentAddress        String?   @db.Text
+  permanentAddress      String?   @db.Text
+  nominee               Json?
+  emergencyContact      String?
+  education             Json?
+  experience            Json?
+  photoUpload           String?   @db.LongText
+  documents             Json?
+  // Expanded EMPLOYEE-owned personal data with no dedicated scalar column
+  // (name parts, marital status, nationality, blood group, alternate mobile,
+  // structured present/permanent address, extra identity/banking fields).
+  selfProfile           Json?
+  profileCompletion     Int       @default(0)
+  convertedEmployeeId   Int?                        // real Employee.id after conversion
+  convertedEmployeeCode String?                     // official employeeId after conversion
+  convertedAt           DateTime?
+  rejectedReason        String?
+  // Approval-workflow audit trail (a temp can never be activated directly)
+  submittedBy           String?
+  submittedAt           DateTime?
+  approvedBy            String?
+  approvedAt            DateTime?
+  rejectedBy            String?
+  rejectedAt            DateTime?
+  changeRequestNote     String?   @db.Text
+  changeRequestBy       String?
+  changeRequestAt       DateTime?
+  createdBy             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([branchId])
+  @@index([status])
 }
 
 // ── Per-employee bonus ledger — the new bonus model ──────────────────────────

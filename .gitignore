@@ -14,6 +14,8 @@ backend/scratch/
 qa-proof/
 # One-off auth audit script (contains dev test passwords) — local only
 backend/scripts/authAudit.js
+# View-only test user seed (contains hardcoded dev test password) — local only
+backend/scripts/seedViewOnlyTestUser.js
 # Local DB dumps / scratch (never commit — contains employee data + password hashes)
 corehrms_dump.sql
 *.sql

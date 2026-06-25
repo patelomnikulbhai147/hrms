@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Plus, Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle, ChevronLeft, Save } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Plus, Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle, ChevronLeft, Save, ChevronDown, FileSpreadsheet, FileText, Upload, Archive } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
-import { ExportMenu } from '@/components/ui/ExportMenu';
+import { exportRowsToExcel, exportRowsToPDF } from '@/utils/exportUtils';
+import { useDismissable } from '@/hooks/useDismissable';
 import { api } from '@/api/apiClient';
 import { formatDate } from '@/utils/formatDate';
 import { ui } from '@/components/ui/feedback';
@@ -35,16 +36,16 @@ const CATEGORIES = ['Government', 'Private', 'HR Service', 'Recruitment', 'Vendo
 const statusVariant = (s: string): any =>
   s === 'Won' ? 'green' : s === 'Lost' || s === 'Cancelled' ? 'red' : s === 'Under Review' ? 'indigo' : s === 'Submitted' ? 'blue' : s === 'Live' ? 'sky' : 'amber';
 
-// Tab → which tender statuses it shows. "Upcoming" = still in Draft (not yet open
-// for bidding); "Archived" = Cancelled. Cards mirror these groupings.
-type TenderTab = 'live' | 'upcoming' | 'submitted' | 'won' | 'lost' | 'archived';
+// Operational tender buckets. The "Upcoming" tab/card was removed — draft tenders
+// now live under "Live" so no record is hidden. Each tab maps to existing status
+// data (statuses themselves are UNCHANGED).
+type TenderTab = 'live' | 'submitted' | 'awarded' | 'closed' | 'cancelled';
 const TENDER_TABS: { id: TenderTab; label: string; statuses: string[] }[] = [
-  { id: 'live', label: 'Live', statuses: ['Live'] },
-  { id: 'upcoming', label: 'Upcoming', statuses: ['Draft'] },
+  { id: 'live', label: 'Live Tenders', statuses: ['Draft', 'Live'] },
   { id: 'submitted', label: 'Submitted', statuses: ['Submitted', 'Under Review'] },
-  { id: 'won', label: 'Won', statuses: ['Won'] },
-  { id: 'lost', label: 'Lost', statuses: ['Lost'] },
-  { id: 'archived', label: 'Archived', statuses: ['Cancelled'] },
+  { id: 'awarded', label: 'Awarded', statuses: ['Won'] },
+  { id: 'closed', label: 'Closed', statuses: ['Lost'] },
+  { id: 'cancelled', label: 'Cancelled', statuses: ['Cancelled'] },
 ];
 
 interface Props {
@@ -62,19 +63,22 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<TenderTab>('live');
+  // Controlled "Actions ▼" menu (replaces the standalone Add Tender button).
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  useDismissable(actionsOpen, () => setActionsOpen(false), actionsRef);
 
   const load = useCallback(async () => { try { setTenders(await api.tenders.getAll() || []); } catch { /* ignore */ } }, []);
   useEffect(() => { load(); }, [load, activeCompanyId]);
 
-  // Dashboard card counts (independent of the active tab).
+  // Dashboard card counts (independent of the active tab). Mirror the tab buckets.
   const counts = useMemo(() => {
     const by = (statuses: string[]) => tenders.filter(t => statuses.includes(t.status)).length;
     return {
-      live: by(['Live']),
-      upcoming: by(['Draft']),
+      live: by(['Draft', 'Live']),
       submitted: by(['Submitted', 'Under Review']),
-      won: by(['Won']),
-      lost: by(['Lost']),
+      awarded: by(['Won']),
+      closed: by(['Lost']),
       cancelled: by(['Cancelled']),
     };
   }, [tenders]);
@@ -91,6 +95,20 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   const [form, setForm] = useState<any>(emptyForm);
 
   const openCreate = () => { setEditingId(null); setForm(emptyForm); setCreateOpen(true); };
+
+  // ── Actions ▼ menu handlers (creation no longer a standalone button) ──
+  const handleCreateNew = () => { setActionsOpen(false); openCreate(); };
+  const handleImport = () => { setActionsOpen(false); ui.toast.info('Tender import (Excel/bulk) is coming soon.'); };
+  const handleViewArchived = () => { setActionsOpen(false); setTab('cancelled'); };
+  const runExport = (format: 'excel' | 'pdf') => {
+    setActionsOpen(false);
+    try {
+      if (!rows.length) { ui.toast.info('There are no tenders to export for the current view.'); return; }
+      const stamp = new Date().toISOString().slice(0, 10);
+      if (format === 'excel') exportRowsToExcel(`Tender_Report_${stamp}`, TENDER_REPORT_COLS, rows, 'Tenders');
+      else exportRowsToPDF(`Tender_Report_${stamp}`, 'Tender Report', TENDER_REPORT_COLS, rows);
+    } catch (err: any) { ui.toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
+  };
   const openEdit = (t: any) => {
     setEditingId(t.id);
     setForm({
@@ -175,17 +193,16 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
 
   const CARDS: { label: string; value: number; tone: string }[] = [
     { label: 'Live Tenders', value: counts.live, tone: 'border-sky-200 bg-gradient-to-br from-sky-50 to-white text-sky-700' },
-    { label: 'Upcoming', value: counts.upcoming, tone: 'border-amber-200 bg-gradient-to-br from-amber-50 to-white text-amber-700' },
     { label: 'Submitted', value: counts.submitted, tone: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white text-blue-700' },
-    { label: 'Won', value: counts.won, tone: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-emerald-700' },
-    { label: 'Lost', value: counts.lost, tone: 'border-rose-200 bg-gradient-to-br from-rose-50 to-white text-rose-700' },
+    { label: 'Awarded', value: counts.awarded, tone: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-emerald-700' },
+    { label: 'Closed', value: counts.closed, tone: 'border-rose-200 bg-gradient-to-br from-rose-50 to-white text-rose-700' },
     { label: 'Cancelled', value: counts.cancelled, tone: 'border-slate-200 bg-gradient-to-br from-slate-50 to-white text-slate-600' },
   ];
 
   return (
     <div className="space-y-4">
       {/* Dashboard cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         {CARDS.map(c => (
           <div key={c.label} className={`rounded-xl border p-4 ${c.tone}`}>
             <p className="text-[10px] font-extrabold uppercase tracking-wider opacity-70">{c.label}</p>
@@ -207,15 +224,34 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
         <h3 className="text-sm font-bold text-slate-800">{TENDER_TABS.find(t => t.id === tab)?.label} Tenders</h3>
         <div className="flex items-center gap-2">
           <Input icon={<Search size={14} />} placeholder="Search tenders…" value={search} onChange={e => setSearch(e.target.value)} />
-          <ExportMenu fileName="Tender_Report" title="Tender Report" sheetName="Tenders" columns={TENDER_REPORT_COLS} rows={() => rows} />
-          {canManageCommercial && <Button icon={<Plus size={15} />} onClick={openCreate}>Add Tender</Button>}
+          {/* Controlled Actions ▼ menu — tender creation is no longer a standalone
+              button; all authorized actions live here. Available to Company Head /
+              Super Admin only (the whole module is leadership-gated). */}
+          {canManageCommercial && (
+            <div className="relative shrink-0" ref={actionsRef}>
+              <Button onClick={() => setActionsOpen(o => !o)}>
+                <span className="flex items-center gap-1.5">Actions <ChevronDown size={14} className={`transition-transform ${actionsOpen ? 'rotate-180' : ''}`} /></span>
+              </Button>
+              {actionsOpen && (
+                <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
+                  <button onClick={handleCreateNew} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-indigo-50 hover:text-indigo-700"><Plus size={15} className="text-indigo-600" /> Create New Tender</button>
+                  <button onClick={handleImport} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Upload size={15} className="text-slate-400" /> Import Tender</button>
+                  <div className="h-px bg-slate-100" />
+                  <button onClick={() => runExport('excel')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-emerald-50 hover:text-emerald-700"><FileSpreadsheet size={15} className="text-emerald-600" /> Export to Excel</button>
+                  <button onClick={() => runExport('pdf')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-rose-50 hover:text-rose-700"><FileText size={15} className="text-rose-600" /> Export to PDF</button>
+                  <div className="h-px bg-slate-100" />
+                  <button onClick={handleViewArchived} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Archive size={15} className="text-slate-400" /> Archived Tenders</button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3"><Inbox className="text-slate-300" size={28} /></div>
           <p className="text-sm font-semibold text-slate-500">No tenders yet</p>
-          <p className="text-xs text-slate-400 mt-1">{canManageCommercial ? 'Click "Add Tender" to create one.' : 'No tenders to show.'}</p>
+          <p className="text-xs text-slate-400 mt-1">{canManageCommercial ? 'Use Actions → Create New Tender to add one.' : 'No tenders to show.'}</p>
         </div>
       ) : (
         <div className="overflow-x-auto">

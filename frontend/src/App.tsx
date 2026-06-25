@@ -981,8 +981,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'attendance-devices' ? 'attendance'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage) as AppModules;
+    // Governance modules (Tender / Contract Management) are restricted to
+    // Super Admin + Company Head ONLY — enforced here independently of the
+    // permission matrix so HR/Employees can't reach them via direct navigation
+    // even if a stale matrix grant exists. Mirrors the backend leadership gate.
+    const LEADERSHIP_ONLY_PAGES = ['tenders', 'contracts'];
+    const isLeadership = permissionRole === 'Super Admin' || permissionRole === 'Company Head';
     // Secondary render-level check to completely block unauthorized rendering
-    if (permissionRole !== 'Super Admin' && !checkCanView(permPage, authProfile, permissionRole)) {
+    if (
+      (LEADERSHIP_ONLY_PAGES.includes(currentPage) && !isLeadership) ||
+      (permissionRole !== 'Super Admin' && !checkCanView(permPage, authProfile, permissionRole))
+    ) {
       return (
         <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50">
           <div className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center mb-6">

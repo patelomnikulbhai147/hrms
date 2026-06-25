@@ -1,4 +1,10 @@
 require('dotenv').config();
+process.on('uncaughtException', (err) => {
+  console.error('!!! UNCAUGHT EXCEPTION !!!', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('!!! UNHANDLED REJECTION !!!', reason);
+});
 const express = require('express');
 const cors = require('cors');
 
@@ -79,6 +85,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);
+app.use('/api/temporary-employees', require('./src/routes/temporaryEmployeeRoutes'));
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/leave-credit', leaveCreditRoutes);
 app.use('/api/leave-balances', leaveBalanceRoutes);

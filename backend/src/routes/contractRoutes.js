@@ -1,11 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
+const { requireLeadershipAccess } = require('../middleware/rbacMiddleware');
 const ctrl = require('../controllers/contractController');
 
-// Reads are workspace-scoped; commercial mutations are Company-Head/Super-Admin
-// only — enforced inside the controller.
+// Governance module — restricted to Super Admin + Company Head for ALL actions
+// (HR / Employees / Branch Managers blocked at the API, not just the UI). Reads
+// are further workspace-scoped in the controller.
 router.use(protect);
+router.use(requireLeadershipAccess('Contract Management'));
 router.use(require('../middleware/readOnlyMiddleware'));
 
 router.get('/', ctrl.getAll);

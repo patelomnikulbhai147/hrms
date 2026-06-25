@@ -23,6 +23,33 @@ exports.requireSuperAdmin = (req, res, next) => {
   return next();
 };
 
+/**
+ * requireLeadershipAccess
+ *
+ * Hard module gate for governance modules (Tender Management, Contract
+ * Management): only Super Admin and Company Head may access — for ANY action
+ * (view/create/edit/delete/approve/export/print). HR, Employees and Branch
+ * Managers are blocked at the API regardless of their stored permission matrix,
+ * so the modules cannot be reached via direct API/URL calls — not just hidden in
+ * the UI.
+ *
+ * FUTURE DELEGATION POINT: to let a Company Head grant access to another role,
+ * extend LEADERSHIP_ROLES or consult an explicit per-user grant here. The default
+ * — Super Admin + Company Head only — is intentional and must stay the baseline.
+ *
+ * Must run AFTER `protect` (which populates req.user).
+ */
+const LEADERSHIP_ROLES = ['Super Admin', 'Company Head'];
+exports.requireLeadershipAccess = (moduleLabel) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized: authentication required.' });
+  if (LEADERSHIP_ROLES.includes(req.user.role)) return next();
+  return res.status(403).json({
+    error: `Access Denied: ${moduleLabel} is restricted to Company Head and Super Admin.`,
+    requiredRole: 'Company Head',
+    yourRole: req.user.role || 'Unknown',
+  });
+};
+
 // Permission model is consolidated to exactly four actions: VIEW, CREATE, EDIT,
 // EXPORT. Legacy/compound actions map onto those four so older route guards keep
 // working without touching every route:

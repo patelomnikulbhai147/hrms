@@ -30,6 +30,8 @@ export interface DocumentCanvasProps {
   layout?: string;
   primary: string;
   logoText: string;
+  /** The company's own uploaded brand logo (base64/URL). Falls back to logoText. */
+  logoImage?: string;
   companyName: string;
   branchName?: string;
   address?: string;
@@ -60,6 +62,17 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
   const { primary, logoText, companyName, branchName, address, email, subject, dateStr, bodyHtml, employeeName, signatureText, footerText, watermark, isPayslip, payslipNode } = p;
   const layout = LAYOUT_IDS.includes(p.layout || '') ? p.layout : 'modern-corporate';
   const tint = (hex: string, a: string) => `${hex}${a}`; // hex + alpha suffix
+
+  // Brand mark: the company's uploaded logo image when available, else the
+  // initials emblem (unchanged appearance). For the image we drop the coloured
+  // fill / white text and show the logo on white, keeping the box's shape/size.
+  const logoMark = (boxClass: string, style?: React.CSSProperties) => p.logoImage
+    ? (
+      <div className={`${boxClass.replace(/bg-\S+/g, '').replace(/text-white/g, '')} overflow-hidden bg-white border border-black/5`} style={style ? { ...style, backgroundColor: '#fff' } : undefined}>
+        <img src={p.logoImage} alt={`${companyName} logo`} className="w-full h-full object-contain p-0.5" />
+      </div>
+    )
+    : <div className={boxClass} style={style}>{logoText}</div>;
 
   // Body slot — payslip keeps its computed node; letters get layout-specific type.
   // Professional letter typography: comfortable size, generous line-height, and
@@ -93,7 +106,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
               <p className="text-[9px] text-slate-500 mt-1">HQ Address: {address}</p>
               <p className="text-[9px] text-slate-400 mt-0.5">Corporate Email: {email}</p>
             </div>
-            <div className="w-10 h-10 rounded-xl text-white flex items-center justify-center font-extrabold text-sm uppercase" style={{ backgroundColor: primary, fontFamily: SANS }}>{logoText}</div>
+            {logoMark('w-10 h-10 rounded-xl text-white flex items-center justify-center font-extrabold text-sm uppercase', { backgroundColor: primary, fontFamily: SANS })}
           </div>
           <div className="flex justify-between items-baseline text-[10px] text-slate-500 mb-6" style={{ fontFamily: SANS }}>
             <span className="font-bold">Subject: {subject}</span><span>Date: {dateStr}</span>
@@ -123,7 +136,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           <div className="h-[3px] w-full mb-0.5" style={{ backgroundColor: primary }} />
           <div className="h-[1px] w-full mb-5" style={{ backgroundColor: primary }} />
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-14 h-14 rounded-full border-2 flex items-center justify-center font-extrabold text-lg mb-3" style={{ borderColor: primary, color: primary, fontFamily: SERIF }}>{logoText}</div>
+            {logoMark('w-14 h-14 rounded-full border-2 flex items-center justify-center font-extrabold text-lg mb-3', { borderColor: primary, color: primary, fontFamily: SERIF })}
             <h1 className="text-xl tracking-[0.2em] uppercase" style={{ color: primary, fontFamily: SERIF, fontWeight: 700 }}>{companyName}</h1>
             {branchName && <p className="text-[10px] tracking-widest uppercase text-slate-500 mt-1">{branchName} Branch</p>}
             <p className="text-[9px] text-slate-400 mt-1">{address} · {email}</p>
@@ -149,7 +162,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
       <div className="flex flex-1">
         <div className="flex flex-col justify-between text-white p-5" style={{ width: '52mm', backgroundColor: primary }}>
           <div>
-            <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center font-extrabold text-lg mb-4" style={{ fontFamily: SANS }}>{logoText}</div>
+            {logoMark('w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center font-extrabold text-lg mb-4', { fontFamily: SANS })}
             <h1 className="text-[15px] font-extrabold leading-tight" style={{ fontFamily: SANS }}>{companyName}</h1>
             {branchName && <p className="text-[10px] font-semibold text-white/80 mt-1">{branchName} Branch</p>}
           </div>
@@ -269,7 +282,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
         <div>
           <div className="flex items-start justify-between mb-3" style={{ fontFamily: SANS }}>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-lg text-white flex items-center justify-center font-extrabold" style={{ backgroundColor: primary }}>{logoText}</div>
+              {logoMark('w-11 h-11 rounded-lg text-white flex items-center justify-center font-extrabold', { backgroundColor: primary })}
               <div>
                 <h1 className="text-[15px] font-extrabold text-slate-900">{companyName}</h1>
                 {branchName && <p className="text-[10px] font-semibold text-slate-500">{branchName} Branch</p>}
@@ -304,7 +317,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           {branchName && <p className="text-[11px] font-semibold text-white/85">{branchName} Branch</p>}
           <p className="text-[8px] text-white/70 mt-0.5">{address} · {email}</p>
         </div>
-        <div className="w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center font-extrabold text-lg" style={{ fontFamily: SANS }}>{logoText}</div>
+        {logoMark('w-12 h-12 rounded-2xl bg-white/15 flex items-center justify-center font-extrabold text-lg', { fontFamily: SANS })}
       </div>
       <div className="flex-1 px-8 py-7 flex flex-col justify-between">
         <div>

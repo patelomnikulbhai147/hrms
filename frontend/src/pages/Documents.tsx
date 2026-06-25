@@ -821,10 +821,20 @@ export const Documents: React.FC<DocumentsProps> = ({
     if (!element || isPrinting) return;
     setIsPrinting(true);
 
-    // Neutralise the on-screen zoom transform so the capture is full A4
-    // resolution, then restore it afterwards.
-    const prevTransform = element.style.transform;
-    element.style.transform = 'none';
+    // The preview is shown SCALED (transform: scale(zoom)) inside a fixed-size,
+    // overflow:hidden wrapper. For a faithful A4 capture we must (a) drop the
+    // zoom transform AND (b) un-clip the wrapper — otherwise html2canvas captures
+    // the element at the scaled WIDTH (≈85%) while the height stays full, which
+    // skews the aspect ratio and overflows the letter onto a phantom 2nd page.
+    const wrap = element.parentElement as HTMLElement | null;
+    const prev = {
+      transform: element.style.transform,
+      wrapW: wrap?.style.width, wrapH: wrap?.style.height, wrapOverflow: wrap?.style.overflow,
+    };
+    const restore = () => {
+      element.style.transform = prev.transform;
+      if (wrap) { wrap.style.width = prev.wrapW || ''; wrap.style.height = prev.wrapH || ''; wrap.style.overflow = prev.wrapOverflow || ''; }
+    };
 
     try {
       console.log('[Payslip PDF] Step 1 — Template loaded:', currentCategory);
@@ -835,31 +845,56 @@ export const Documents: React.FC<DocumentsProps> = ({
         import('html2canvas-pro'),
         import('jspdf'),
       ]);
-      console.log('[Payslip PDF] Step 3 — Rendering HTML to canvas…');
+
+      // Apply the neutralisation AFTER the dynamic import (so React's re-render from
+      // setIsPrinting has already run and can't re-apply the scale), then let the
+      // browser lay out at full A4 size before capturing.
+      element.style.transform = 'none';
+      if (wrap) { wrap.style.width = 'auto'; wrap.style.height = 'auto'; wrap.style.overflow = 'visible'; }
+      await new Promise<void>(r => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      console.log('[Payslip PDF] Step 3 — Rendering HTML to canvas…', element.offsetWidth, 'x', element.offsetHeight);
 
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+        windowWidth: element.offsetWidth,
+        windowHeight: element.offsetHeight,
       });
       console.log('[Payslip PDF] Step 4 — Canvas rendered', canvas.width, 'x', canvas.height);
 
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageW = 210, pageH = 297;
-      const imgW = pageW;
-      const imgH = (canvas.height * imgW) / canvas.width;
+      const imgW = pageW;                                    // full A4 printable width
+      const imgH = (canvas.height * imgW) / canvas.width;    // proportional height (mm)
       const imgData = canvas.toDataURL('image/png');
 
-      let heightLeft = imgH;
-      let position = 0;
-      pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
-      heightLeft -= pageH;
-      while (heightLeft > 0) {
-        position -= pageH;
-        pdf.addPage();
+      // A standard one-page letter must stay on ONE A4 page. The captured sheet is
+      // A4-height (minHeight:297mm), so px→mm rounding makes imgH land a hair over
+      // 297mm — the old loop then spawned a near-empty 2nd page with the footer.
+      // Only paginate when the content GENUINELY overflows by more than a small
+      // tolerance; otherwise emit a single page (signature + footer stay attached).
+      const PAGE_TOLERANCE = 6; // mm — absorb rounding + a couple of trailing lines
+      if (imgH <= pageH + PAGE_TOLERANCE) {
+        // Single page: keep the document's aspect ratio, clamped to the page so a
+        // sub-tolerance overflow never bleeds onto a second sheet.
+        pdf.addImage(imgData, 'PNG', 0, 0, imgW, Math.min(imgH, pageH));
+      } else {
+        // Genuinely multi-page content — slice across pages as before.
+        let heightLeft = imgH;
+        let position = 0;
         pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
         heightLeft -= pageH;
+        while (heightLeft > PAGE_TOLERANCE) {
+          position -= pageH;
+          pdf.addPage();
+          pdf.addImage(imgData, 'PNG', 0, position, imgW, imgH);
+          heightLeft -= pageH;
+        }
       }
 
       const safeName = (docVariables.employee_name || 'Document').replace(/[^a-z0-9]+/gi, '_');
@@ -872,7 +907,7 @@ export const Documents: React.FC<DocumentsProps> = ({
       const reason = err?.message || String(err);
       await ui.alert({ title: 'Error', message: `PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`, variant: 'error' });
     } finally {
-      element.style.transform = prevTransform;
+      restore();
       setIsPrinting(false);
     }
   };
@@ -884,17 +919,25 @@ export const Documents: React.FC<DocumentsProps> = ({
   const printPayslip = () => {
     const element = document.getElementById('a4-sheet-preview');
     if (!element) return;
-    const prevTransform = element.style.transform;
+    // Drop the zoom transform AND un-clip the fixed-size wrapper so the printed
+    // page is full-width A4 (matching the PDF), not the scaled/clipped preview.
+    const wrap = element.parentElement as HTMLElement | null;
+    const prev = {
+      transform: element.style.transform,
+      wrapW: wrap?.style.width, wrapH: wrap?.style.height, wrapOverflow: wrap?.style.overflow,
+    };
     element.style.transform = 'none';
+    if (wrap) { wrap.style.width = 'auto'; wrap.style.height = 'auto'; wrap.style.overflow = 'visible'; }
     document.body.classList.add('printing-payslip');
     const cleanup = () => {
       document.body.classList.remove('printing-payslip');
-      element.style.transform = prevTransform;
+      element.style.transform = prev.transform;
+      if (wrap) { wrap.style.width = prev.wrapW || ''; wrap.style.height = prev.wrapH || ''; wrap.style.overflow = prev.wrapOverflow || ''; }
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
     // Defer so the layout reflows (transform reset) before the dialog opens.
-    setTimeout(() => { window.print(); }, 60);
+    setTimeout(() => { window.print(); }, 80);
   };
 
   // Open Edit Template Modal
@@ -1109,6 +1152,9 @@ export const Documents: React.FC<DocumentsProps> = ({
   const customLogo = activeTemplate?.branding?.logoText && activeTemplate.branding.logoText !== seededLogo
     ? activeTemplate.branding.logoText : '';
   const logoText = customLogo || companyInitials(headerCompanyName);
+  // The RESOLVED company's own uploaded logo (multi-tenant). When present it
+  // brands the document; otherwise the initials emblem above is used.
+  const headerLogoImage = (docHierarchy.companyEntity as any)?.logoImage || (currentCompany as any)?.logoImage || '';
 
   // Payslip content block — UNCHANGED computation (payslipVals + company rates).
   // Built only for the Payslip category (mirrors the original conditional render,
@@ -1866,6 +1912,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                       layout={activeTemplate?.layout}
                       primary={primaryColorHex}
                       logoText={logoText}
+                      logoImage={headerLogoImage}
                       companyName={headerCompanyName}
                       branchName={headerBranchName}
                       address={docVariables.company_address}
