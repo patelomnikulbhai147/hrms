@@ -1,0 +1,49 @@
+{
+  "success": true,
+  "user": {
+    "id": 1,
+    "userId": 1,
+    "employeeRecordId": 12,
+    "employeeId": "VE-AHM-001",
+    "employeeCode": "VE-AHM-001",
+    "firstName": "Om",
+    "lastName": "Patel",
+    "name": "Om Patel",
+    "email": "abc@gmail.com",
+    "mobile": "9876543210",
+    "company": {
+      "id": 2,
+      "name": "Vision Enterprise"
+    },
+    "branch": {
+      "id": 5,
+      "name": "Ahmedabad"
+    },
+    "department": "IT",
+    "designation": "Developer",
+    "role": "Employee",
+    "permissions": [
+      "attendance.view",
+      "attendance.mark",
+      "leave.create"
+    ],
+    "permissionMatrix": {
+      "attendance": {
+        "view": true,
+        "mark": true
+      },
+      "leave": {
+        "create": true
+      }
+    },
+    "moduleAccess": {
+      "attendance": true,
+      "leave": true
+    },
+    "profileImage": "",
+    "themePreference": null,
+    "languagePreference": null,
+    "isFirstLogin": false,
+    "isPasswordCreated": true
+  }
+}

@@ -1,0 +1,12 @@
+# Flutter app environment example (e.g. .env or Dart config)
+
+API_BASE_URL=http://localhost:5000
+AUTH_BASE_PATH=/api/v1/auth
+
+# OTP behaviour is controlled by the BACKEND, not the app:
+#   OTP_MODE=development  -> any 4-digit OTP works, no SMS is sent (current phase)
+#   OTP_MODE=production   -> real SMS OTP is required
+# The Flutter app code is identical in both modes.
+
+OTP_LENGTH=4              # informational; the login response also returns otpLength
+ACCESS_TOKEN_EXPIRY=3600  # seconds (informational; verify-otp returns expiresIn)

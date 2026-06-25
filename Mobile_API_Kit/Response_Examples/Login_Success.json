@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "message": "OTP Generated",
+  "otpRequired": true,
+  "otpLength": 4,
+  "sessionId": "a1b2c3d4e5f6",
+  "expiresInMinutes": 5,
+  "otpMode": "development",
+  "devOtp": "1111"
+}

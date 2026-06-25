@@ -1,0 +1,12 @@
+{
+  "successEnvelope": {
+    "success": true,
+    "...": "endpoint-specific fields"
+  },
+  "errorEnvelope": {
+    "success": false,
+    "code": "STRING_CODE",
+    "message": "Human readable message"
+  },
+  "note": "Some legacy/protected routes (existing web APIs) may return { error: '...' } instead of the success/code/message envelope; handle both."
+}
