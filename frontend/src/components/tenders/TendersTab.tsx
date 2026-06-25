@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Plus, Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle, ChevronLeft, Save, ChevronDown, FileSpreadsheet, FileText, Upload, Archive } from 'lucide-react';
+import { Trash2, Inbox, Eye, Edit2, Search, ExternalLink, Send, ArrowRightCircle, ChevronLeft, Save, ChevronDown, FileSpreadsheet, FileText, Archive } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
@@ -63,7 +63,8 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
   const [tab, setTab] = useState<TenderTab>('live');
-  // Controlled "Actions ▼" menu (replaces the standalone Add Tender button).
+  // Controlled "Actions ▼" menu — operational tools only (export + archived view).
+  // No tender creation or import is exposed anywhere in the UI by design.
   const [actionsOpen, setActionsOpen] = useState(false);
   const actionsRef = useRef<HTMLDivElement>(null);
   useDismissable(actionsOpen, () => setActionsOpen(false), actionsRef);
@@ -94,11 +95,12 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   const emptyForm = { tenderNumber: '', tenderName: '', clientName: '', serviceType: '', category: 'Government', tenderValue: '', startDate: '', endDate: '', closingDate: '', status: 'Draft', documentPath: '', remarks: '' };
   const [form, setForm] = useState<any>(emptyForm);
 
-  const openCreate = () => { setEditingId(null); setForm(emptyForm); setCreateOpen(true); };
-
-  // ── Actions ▼ menu handlers (creation no longer a standalone button) ──
-  const handleCreateNew = () => { setActionsOpen(false); openCreate(); };
-  const handleImport = () => { setActionsOpen(false); ui.toast.info('Tender import (Excel/bulk) is coming soon.'); };
+  // ── Actions ▼ menu handlers ──
+  // "Create New Tender" and "Import Tender" were removed from the UI by design.
+  // Tenders are managed via existing records only (view / edit / status / convert).
+  // Any future creation must come through a controlled internal workflow for
+  // authorized users — never a visible Create/Import button. The Actions menu now
+  // exposes only operational tools (export + archived view).
   const handleViewArchived = () => { setActionsOpen(false); setTab('cancelled'); };
   const runExport = (format: 'excel' | 'pdf') => {
     setActionsOpen(false);
@@ -234,10 +236,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
               </Button>
               {actionsOpen && (
                 <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-                  <button onClick={handleCreateNew} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-indigo-50 hover:text-indigo-700"><Plus size={15} className="text-indigo-600" /> Create New Tender</button>
-                  <button onClick={handleImport} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Upload size={15} className="text-slate-400" /> Import Tender</button>
-                  <div className="h-px bg-slate-100" />
-                  <button onClick={() => runExport('excel')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-emerald-50 hover:text-emerald-700"><FileSpreadsheet size={15} className="text-emerald-600" /> Export to Excel</button>
+                  <button onClick={() => runExport('excel')} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-emerald-50 hover:text-emerald-700"><FileSpreadsheet size={15} className="text-emerald-600" /> Export to Excel</button>
                   <button onClick={() => runExport('pdf')} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-rose-50 hover:text-rose-700"><FileText size={15} className="text-rose-600" /> Export to PDF</button>
                   <div className="h-px bg-slate-100" />
                   <button onClick={handleViewArchived} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Archive size={15} className="text-slate-400" /> Archived Tenders</button>
@@ -251,7 +250,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-3"><Inbox className="text-slate-300" size={28} /></div>
           <p className="text-sm font-semibold text-slate-500">No tenders yet</p>
-          <p className="text-xs text-slate-400 mt-1">{canManageCommercial ? 'Use Actions → Create New Tender to add one.' : 'No tenders to show.'}</p>
+          <p className="text-xs text-slate-400 mt-1">No tenders to show.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
