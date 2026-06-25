@@ -80,6 +80,17 @@ app.use((req, res, next) => {
   next();
 });
 
+// ── Canonical website API alias (additive, non-breaking) ─────────────────────
+// The website API is served at /api/* and the frontend calls those paths directly
+// (unchanged). For the clean two-group architecture, the SAME website routes are
+// ALSO reachable under /api/web/* — a pure path alias mapped onto the existing
+// routers. No existing route is modified; the mobile group /api/app/* (which does
+// not start with /api/web/) is unaffected.
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/api/web/')) req.url = '/api/' + req.url.slice('/api/web/'.length);
+  next();
+});
+
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
