@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import {
   Building2, Plus, Search, Lock, Trash2,
   CheckCircle2, Mail, Phone, ChevronRight, Shield, Cloud, Link, Users, Archive, ShieldAlert,
-  FileSpreadsheet, Loader2, FileText, UploadCloud, Image as ImageIcon, RefreshCw
+  FileSpreadsheet, Loader2, FileText, UploadCloud, Image as ImageIcon, RefreshCw,
+  Network, BadgeCheck, GitBranch
 } from 'lucide-react';
 import { type Company, type Role, type SubscriptionPlan, type Employee } from '@/data/mockData';
 import { Card } from '@/components/ui/Card';
@@ -26,8 +27,30 @@ import { usePermissions } from '@/context/PermissionContext';
 import { getCompanyInitials } from '@/utils/workspaceUtils';
 import { api, type SuperAdminStats } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
+import { safeSetJSON } from '@/utils/safeStorage';
 import { downloadCompanyExcel, downloadCompanyPDF } from '@/utils/companyExportUtils';
 import { ui } from '@/components/ui/feedback';
+
+// ── Standard KPI card ────────────────────────────────────────────────────────
+// One enterprise design system for EVERY dashboard KPI card: identical white/blue
+// theme, border, shadow, hover lift, icon container, decorative ring, typography,
+// spacing, padding and radius. Only the icon, title, value and subtitle change —
+// any future KPI card automatically inherits this look by reusing <KpiCard>.
+const KpiCard: React.FC<{ icon: React.ReactNode; title: string; value: React.ReactNode; subtitle: string }> = ({ icon, title, value, subtitle }) => (
+  <div className="relative overflow-hidden h-full bg-gradient-to-br from-[#EFF6FF] via-[#F0F7FF] to-white rounded-2xl p-5 flex items-start gap-4 border border-[#BFDBFE] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+    {/* Decorative ring — identical position, size & opacity on every card */}
+    <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-[#2563EB]/8 pointer-events-none" />
+    {/* Icon container — identical size, radius, background & shadow; glyph varies */}
+    <div className="w-11 h-11 rounded-xl bg-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-200">
+      {icon}
+    </div>
+    <div className="flex-1 min-w-0">
+      <p className="text-xs font-semibold text-[#2563EB] uppercase tracking-wide mb-0.5">{title}</p>
+      <p className="text-3xl font-extrabold text-slate-800 leading-none">{value}</p>
+      <p className="text-xs text-slate-500 mt-1.5">{subtitle}</p>
+    </div>
+  </div>
+);
 
 interface CompaniesProps {
   _role: Role;
@@ -612,7 +635,9 @@ export const Companies: React.FC<CompaniesProps> = ({
       const action = nextStatus === 'Active' ? 'Activated' : 'Suspended';
       const logEntry = `[${new Date().toISOString()}] ${action}: ${statusModalTarget.name} (ID: ${statusModalTarget.id}) by User/Admin.`;
       const existingLogs = JSON.parse(localStorage.getItem('hrms_audit_logs') || '[]');
-      localStorage.setItem('hrms_audit_logs', JSON.stringify([logEntry, ...existingLogs]));
+      // Cap the local audit log so it can never grow without bound (quota safety),
+      // and guard the write so a storage failure never crashes the UI.
+      safeSetJSON('hrms_audit_logs', [logEntry, ...existingLogs].slice(0, 200));
       
       setIsStatusUpdating(false);
       setStatusModalTarget(null);
@@ -1051,8 +1076,10 @@ export const Companies: React.FC<CompaniesProps> = ({
   // create / edit / suspend / activate / archive / delete action (see App.tsx).
   const kpiTotalCompanies    = superAdminStats?.totalCompanies      ?? 0;
   const kpiTotalBranches     = superAdminStats?.totalBranches        ?? 0;
-  const kpiDeactivatedCompanies = superAdminStats?.deactivatedCompanies ?? 0;
-  const kpiDeactivatedBranches  = superAdminStats?.deactivatedBranches  ?? 0;
+  // Active = status 'Active' only (backend excludes Archived/Suspended/Inactive/
+  // Offboarded). Replaces the former "Deactivated" KPIs as the primary metrics.
+  const kpiActiveCompanies   = superAdminStats?.activeCompanies      ?? 0;
+  const kpiActiveBranches    = superAdminStats?.activeBranches       ?? 0;
 
   // Determine if save button should be disabled
   console.log('Companies.tsx render. Total companies:', companies.length, 'Filtered:', filtered.length); const isSaveDisabled =
@@ -1150,58 +1177,31 @@ export const Companies: React.FC<CompaniesProps> = ({
       {/* ── KPI Cards ─────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-        {/* Card 1 — Total Companies */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-[#EFF6FF] via-[#F0F7FF] to-white rounded-2xl p-5 flex items-start gap-4 border border-[#BFDBFE] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-          {/* Decorative ring */}
-          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-[#2563EB]/8 pointer-events-none" />
-          <div className="w-11 h-11 rounded-xl bg-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-200">
-            <Building2 size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-[#2563EB] uppercase tracking-wide mb-0.5">Total Companies</p>
-            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiTotalCompanies}</p>
-            <p className="text-xs text-slate-500 mt-1.5">Registered organizations</p>
-          </div>
-        </div>
-
-        {/* Card 2 — Total Branches */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-indigo-50 via-indigo-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-indigo-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-indigo-400/10 pointer-events-none" />
-          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-indigo-200">
-            <Link size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-0.5">Total Branches</p>
-            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiTotalBranches}</p>
-            <p className="text-xs text-slate-500 mt-1.5">All company branches</p>
-          </div>
-        </div>
-
-        {/* Card 3 — Deactivated Companies */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-amber-50 via-orange-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-amber-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-amber-400/10 pointer-events-none" />
-          <div className="w-11 h-11 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-200">
-            <Lock size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wide mb-0.5">Deactivated Companies</p>
-            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiDeactivatedCompanies}</p>
-            <p className="text-xs text-slate-500 mt-1.5">Company access disabled</p>
-          </div>
-        </div>
-
-        {/* Card 4 — Deactivated Branches */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-rose-50 via-red-50/60 to-white rounded-2xl p-5 flex items-start gap-4 border border-rose-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
-          <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-rose-400/10 pointer-events-none" />
-          <div className="w-11 h-11 rounded-xl bg-rose-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-rose-200">
-            <Shield size={20} className="text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-rose-600 uppercase tracking-wide mb-0.5">Deactivated Branches</p>
-            <p className="text-3xl font-extrabold text-slate-800 leading-none">{kpiDeactivatedBranches}</p>
-            <p className="text-xs text-slate-500 mt-1.5">Branch access disabled</p>
-          </div>
-        </div>
+        {/* Every card uses the SAME <KpiCard> theme — only icon/title/value/subtitle differ. */}
+        <KpiCard
+          icon={<Building2 size={20} className="text-white" />}
+          title="Total Companies"
+          value={kpiTotalCompanies}
+          subtitle="Registered organizations"
+        />
+        <KpiCard
+          icon={<GitBranch size={20} className="text-white" />}
+          title="Total Branches"
+          value={kpiTotalBranches}
+          subtitle="All company branches"
+        />
+        <KpiCard
+          icon={<BadgeCheck size={20} className="text-white" />}
+          title="Active Companies"
+          value={kpiActiveCompanies}
+          subtitle="Currently Active Organizations"
+        />
+        <KpiCard
+          icon={<Network size={20} className="text-white" />}
+          title="Active Branches"
+          value={kpiActiveBranches}
+          subtitle="Currently Active Branches"
+        />
 
       </div>
 

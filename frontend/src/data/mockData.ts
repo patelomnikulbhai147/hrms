@@ -93,6 +93,78 @@ export interface Company {
   departmentTemplateType?: string;
   customDepartments?: string[];
   inheritParentDepartments?: boolean;
+
+  // ── Company Master (single source of truth) — extended optional fields ──────
+  // Identity
+  legalName?: string;
+  displayName?: string;
+  tradeName?: string;
+  shortName?: string;
+  companyCode?: string;
+  registrationNumber?: string;
+  tagline?: string;
+  motto?: string;
+  description?: string;
+  // Contact
+  contactEmail?: string;
+  contactNumber?: string;
+  website?: string;
+  country?: string;
+  landline?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  corporateAddress?: string;
+  // Statutory / registration
+  panNumber?: string;
+  cinNumber?: string;
+  tanNumber?: string;
+  pfCode?: string;
+  esiCode?: string;
+  ptaxRegistrationNumber?: string;
+  msmeNumber?: string;
+  shopEstablishmentNumber?: string;
+  labourLicenseNumber?: string;
+  factoryLicenseNumber?: string;
+  iecCode?: string;
+  isoCertNumber?: string;
+  fssaiNumber?: string;
+  // Management
+  founderName?: string;
+  coFounderName?: string;
+  ceoName?: string;
+  managingDirector?: string;
+  directors?: string;
+  hrHeadName?: string;
+  financeHeadName?: string;
+  authorizedSignatory?: string;
+  signatoryDesignation?: string;
+  // Banking
+  bankName?: string;
+  bankBranch?: string;
+  bankAccountNumber?: string;
+  ifscCode?: string;
+  swiftCode?: string;
+  accountHolderName?: string;
+  upiId?: string;
+  // Payroll & statutory cycle
+  salaryCycle?: string;
+  payrollStartDate?: string;
+  financialYearStart?: string;
+  leaveYearStart?: string;
+  defaultCurrency?: string;
+  defaultTimeZone?: string;
+  // Branding extras & digital assets
+  emailSignature?: string;
+  watermarkText?: string;
+  faviconImage?: string;
+  stampImage?: string;
+  digitalSignatureImage?: string;
+  letterheadImage?: string;
+  dscImage?: string;
+  gstCertificateImage?: string;
+  panCardImage?: string;
+  registrationCertImage?: string;
 }
 
 export interface Employee {

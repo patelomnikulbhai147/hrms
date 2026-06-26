@@ -522,7 +522,7 @@ export const api = {
 
   // Tender Information
   tenders: {
-    getAll: async () => { return await apiFetch(`${BASE_URL}/tenders`, { headers: getHeaders() }); },
+    getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/tenders${query}`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/tenders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'DELETE', headers: getHeaders() }); },

@@ -50,18 +50,38 @@ exports.requireLeadershipAccess = (moduleLabel) => (req, res, next) => {
   });
 };
 
-// Permission model is consolidated to exactly four actions: VIEW, CREATE, EDIT,
-// EXPORT. Legacy/compound actions map onto those four so older route guards keep
-// working without touching every route:
-//   • delete  → edit   (modifying/removing an existing record requires EDIT)
-//   • approve → edit   (approving an existing record requires EDIT)
-//   • manage  → edit
-//   • print   → export (producing output is an EXPORT-class action)
-const ACTION_ALIASES = { delete: 'edit', approve: 'edit', manage: 'edit', print: 'export' };
-const normalizeAction = (action) => ACTION_ALIASES[action] || action;
+// ── Canonical 3-action permission model: VIEW, EDIT, EXPORT ──────────────────
+// Any requested action is normalized to one of these. Legacy actions fold:
+//   create / delete / approve / import / manage  → edit
+//   print                                        → export
+//   read                                         → view
+// This keeps existing route guards (requirePermission('x','create')) working
+// while the stored matrix only needs view/edit/export, AND keeps OLD permission
+// records (with create/delete/approve/import flags) valid without a migration.
+const ACTION_ALIASES = {
+  create: 'edit', delete: 'edit', approve: 'edit', import: 'edit', manage: 'edit',
+  print: 'export', read: 'view',
+};
+
+function hasModulePermission(modulePerms, action) {
+  const p = modulePerms || {};
+  // Effective EDIT = edit OR any folded legacy write action.
+  const effEdit = p.edit === true || p.create === true || p.delete === true
+    || p.approve === true || p.import === true || p.manage === true;
+  // Effective EXPORT = export OR print.
+  const effExport = p.export === true || p.print === true;
+  // Effective VIEW = explicit view/read OR any other granted action.
+  const effAny = p.view === true || p.read === true || effEdit || effExport;
+
+  const canonical = ACTION_ALIASES[action] || action;
+  if (canonical === 'view') return effAny;
+  if (canonical === 'edit') return effEdit;
+  if (canonical === 'export') return effExport;
+  // Unknown action — fall back to a direct, conservative check.
+  return p[canonical] === true;
+}
 
 exports.requirePermission = (moduleName, action) => {
-  const effectiveAction = normalizeAction(action);
   return async (req, res, next) => {
     try {
       // req.user is populated by protect middleware
@@ -73,24 +93,16 @@ exports.requirePermission = (moduleName, action) => {
         return next();
       }
 
-      // Re-fetch user to get latest permissions just in case?
-      // protect middleware already fetches user. Let's use req.user.
       const rawPermissions = req.user.permissions || {};
       const parsedPerms = rawPermissions.permissions || {};
-      // Authorization is action-based only (view / create / edit / export). The
-      // legacy "Access" (moduleAccess) gate and the "Manage" permission have been
-      // removed; delete/approve/print are folded into edit/export above.
+      const modulePerms = parsedPerms[moduleName] || {};
 
-      // Check granular action permission
-      if (parsedPerms[moduleName] !== undefined) {
-        if (parsedPerms[moduleName][effectiveAction] === true) {
-          return next();
-        } else {
-          return res.status(403).json({ error: `Access denied. You do not have permission to ${action} in ${moduleName}.` });
-        }
+      const hasPermission = hasModulePermission(modulePerms, action);
+
+      if (hasPermission) {
+        return next();
       }
 
-      // Default fallback if permissions object is empty or missing
       return res.status(403).json({ error: `Access denied. You do not have permission to ${action} in ${moduleName}.` });
 
     } catch (error) {
@@ -99,3 +111,4 @@ exports.requirePermission = (moduleName, action) => {
     }
   };
 };
+

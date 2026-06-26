@@ -6,6 +6,7 @@ import { Input, Select } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { api } from '@/api/apiClient';
 import { type AppModules } from '@/pages/Login';
+import { foldPermissions } from '@/utils/permissionFold';
 
 // Modules shown in the matrix (label → AppModules key). Mirrors the spec list,
 // limited to modules that exist in the permission system.
@@ -24,26 +25,24 @@ const MODULES: { key: AppModules; label: string }[] = [
   { key: 'users', label: 'User Management' },
 ];
 
-// The matrix controls ONLY these four permissions. The model is intentionally
-// simple: VIEW (read/search/open), CREATE (add new records), EDIT (modify/delete/
-// approve existing records), EXPORT (download/print data). "Access", "Manage",
-// standalone "Delete", "Approve" and "Print" have been removed — delete/approve
-// are covered by EDIT and print is covered by EXPORT, everywhere in the app.
-const ACTIONS = ['view', 'create', 'edit', 'export'] as const;
+// The matrix controls ONLY these three permissions: VIEW (read/search/open/view
+// reports), EDIT (edit/save/update/modify — folds create/delete/approve/import),
+// EXPORT (PDF/Excel/CSV/Print/report export). Edit & Export auto-include View.
+const ACTIONS = ['view', 'edit', 'export'] as const;
 type Action = typeof ACTIONS[number];
 
-const blankPerm = () => ({ view: false, create: false, edit: false, export: false });
+const blankPerm = () => ({ view: false, edit: false, export: false });
 
-// Role templates — quick presets applied across all modules.
+// Role templates — quick presets applied across all modules (3-action model).
 const TEMPLATES: Record<string, (m: AppModules) => any> = {
-  'View Only': () => ({ ...blankPerm(), view: true, export: true }),
+  'View Only': () => ({ view: true, edit: false, export: true }),
   'HR Admin': (m) => ['employees', 'attendance', 'leaves', 'payroll', 'documents', 'reports', 'tasks', 'dashboard', 'settings'].includes(m)
-    ? { view: true, create: true, edit: true, export: true }
-    : { ...blankPerm(), view: m === 'tenders', export: m === 'tenders' },
+    ? { view: true, edit: true, export: true }
+    : { view: m === 'tenders', edit: false, export: m === 'tenders' },
   'Finance': (m) => ['payroll', 'reports', 'dashboard'].includes(m)
-    ? { ...blankPerm(), view: true, edit: true, export: true }
+    ? { view: true, edit: true, export: true }
     : blankPerm(),
-  'Full (Company)': () => ({ view: true, create: true, edit: true, export: true }),
+  'Full (Company)': () => ({ view: true, edit: true, export: true }),
 };
 
 interface Props { role: string; }
@@ -76,19 +75,26 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const selectUser = (u: any) => {
     setSelectedId(u.id);
     const p: Record<string, any> = {};
-    MODULES.forEach(m => { p[m.key] = { ...blankPerm(), ...(u.permissions?.[m.key] || {}) }; });
+    // Fold any legacy (create/delete/approve/import/print) grants into the 3-action
+    // model so the matrix shows the converted state and saves it cleanly.
+    MODULES.forEach(m => { p[m.key] = foldPermissions(u.permissions?.[m.key]); });
     setPerms(p);
   };
 
+  // Toggle one action, enforcing the dependency rules: enabling Edit/Export
+  // auto-enables View; disabling View disables Edit and Export.
   const toggle = (mod: AppModules, action: Action) => {
-    setPerms(prev => ({ ...prev, [mod]: { ...prev[mod], [action]: !prev[mod]?.[action] } }));
+    setPerms(prev => {
+      const row = { ...blankPerm(), ...(prev[mod] || {}) };
+      const turningOn = !row[action];
+      row[action] = turningOn;
+      if ((action === 'edit' || action === 'export') && turningOn) row.view = true;
+      if (action === 'view' && !turningOn) { row.edit = false; row.export = false; }
+      return { ...prev, [mod]: row };
+    });
   };
 
-  // "ALL" is a UI helper (not persisted). It maps to the four granular actions:
-  //   • checking ALL selects view/edit/create/delete; unchecking clears them.
-  //   • ALL reflects as checked only when all four are already on (so manually
-  //     checking every action auto-enables ALL).
-  // export/approve/print (set by templates) are left untouched.
+  // "ALL" is a UI helper (not persisted). It maps to the granular actions.
   const allChecked = (mod: AppModules) => ACTIONS.every(a => !!perms[mod]?.[a]);
   const toggleAll = (mod: AppModules) => {
     const next = !allChecked(mod);
@@ -110,7 +116,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const cloneFrom = (sourceId: any) => {
     const src = users.find(u => String(u.id) === String(sourceId)); if (!src) return;
     const p: Record<string, any> = {};
-    MODULES.forEach(m => { p[m.key] = { ...blankPerm(), ...(src.permissions?.[m.key] || {}) }; });
+    MODULES.forEach(m => { p[m.key] = foldPermissions(src.permissions?.[m.key]); });
     setPerms(p);
     flash('ok', `Cloned permissions from ${src.name} — review and Save.`);
   };
@@ -119,9 +125,6 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
     if (!selected) return;
     setBusy(true);
     try {
-      // "Access" (moduleAccess) is removed — send every module as accessible so
-      // any legacy stored kill-switch is neutralised. Authorization now relies
-      // solely on the granular view/edit/create/delete flags.
       const moduleAccess = Object.fromEntries(MODULES.map(m => [m.key, true]));
       await api.users.updatePermissions(selected.id, { permissions: perms, moduleAccess });
       flash('ok', `Permissions updated for ${selected.name}.`);
@@ -180,27 +183,33 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                 <table className="w-full text-left border-collapse table-fixed">
                   <thead>
                     <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                      <th className="py-2 pr-2 w-[28%]">Module</th>
-                      <th className="py-2 px-2 text-center w-[14%] text-indigo-500">All</th>
-                      {ACTIONS.map(a => <th key={a} className="py-2 px-2 text-center w-[14.5%]">{a}</th>)}
+                      <th className="py-2.5 pr-2 w-[34%]">Module</th>
+                      <th className="py-2.5 px-2 text-center w-[12%] text-indigo-500">All</th>
+                      {ACTIONS.map(a => <th key={a} className="py-2.5 px-2 text-center w-[18%]">{a}</th>)}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {MODULES.map(m => (
                       <tr key={m.key} className="hover:bg-slate-50/60">
-                        <td className="py-2 pr-2 text-xs font-semibold text-slate-700">{m.label}</td>
-                        <td className="py-2 px-2 text-center">
+                        <td className="py-2.5 pr-2 text-xs font-semibold text-slate-700">{m.label}</td>
+                        <td className="py-2.5 px-2 text-center">
                           <input
                             type="checkbox"
-                            className="accent-indigo-600 h-4 w-4 align-middle"
+                            className="accent-indigo-600 h-5 w-5 align-middle cursor-pointer"
                             checked={allChecked(m.key)}
                             onChange={() => toggleAll(m.key)}
-                            title="Select every permission for this module"
+                            title="Select View, Edit and Export for this module"
                           />
                         </td>
                         {ACTIONS.map(a => (
-                          <td key={a} className="py-2 px-2 text-center">
-                            <input type="checkbox" className="h-4 w-4 align-middle" checked={!!perms[m.key]?.[a]} onChange={() => toggle(m.key, a)} />
+                          <td key={a} className="py-2.5 px-2 text-center">
+                            <input
+                              type="checkbox"
+                              className="accent-indigo-600 h-5 w-5 align-middle cursor-pointer"
+                              checked={!!perms[m.key]?.[a]}
+                              onChange={() => toggle(m.key, a)}
+                              title={`${a.charAt(0).toUpperCase() + a.slice(1)} — ${m.label}`}
+                            />
                           </td>
                         ))}
                       </tr>

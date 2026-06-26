@@ -46,6 +46,7 @@ interface PermissionContextType {
   canExport: (module: AppModules) => boolean;
   canApprove: (module: AppModules) => boolean;
   canPrint: (module: AppModules) => boolean;
+  canImport: (module: AppModules) => boolean;
   hasBranchAccess: (companyId: string) => boolean;
   getInheritedBranches: (companyId: string) => string[];
   /** True when the active company is archived and the user is not a Super Admin. */
@@ -60,6 +61,7 @@ const PermissionContext = createContext<PermissionContextType>({
   canExport: () => false,
   canApprove: () => false,
   canPrint: () => false,
+  canImport: () => false,
   hasBranchAccess: () => false,
   getInheritedBranches: () => [],
   companyReadOnly: false,
@@ -79,23 +81,26 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
 
-  // NOTE: the legacy "Access" (moduleAccess) kill-switch has been removed.
-  // Visibility is driven purely by the granular `view` permission below.
-
   // Dashboard is the landing page and only ever renders the user's OWN scoped
   // workspace summary (no cross-tenant data), so it is viewable by any
-  // authenticated user unless explicitly disabled by the kill-switch above.
-  // This removes the false "Access Denied – dashboard" that hit users who were
-  // enabled at the module level but never had a granular `view` row written,
-  // and keeps the sidebar menu and the route guard (both call this function) in
-  // lock-step. Other modules keep their stricter behaviour below.
+  // authenticated user.
   if (module === 'dashboard') {
     return true;
   }
 
-  // Then check granular action permissions if they exist
+  // Then check granular action permissions if they exist.
+  // A user can view a module if they have explicit view, OR if they have any other action permission (like edit, create, delete...)
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].view === true;
+    const row = authProfile.permissions[module];
+    return (
+      row.view === true ||
+      row.create === true ||
+      row.edit === true ||
+      row.delete === true ||
+      row.approve === true ||
+      row.import === true ||
+      row.export === true
+    );
   }
 
   // Default fallback: deny-by-default for existing modules; role-default for the
@@ -104,22 +109,6 @@ export const checkCanView = (module: AppModules, authProfile: UserAccount | null
 };
 
 
-export const checkCanCreate = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
-  if (role === 'Super Admin') return true;
-  if (!authProfile) return false;
-  // CREATE is INDEPENDENT of EDIT — a user may add new records without being able
-  // to modify existing ones. It still requires VIEW (you must see a module to use it).
-  if (!checkCanView(module, authProfile, role)) return false;
-  if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].create === true;
-  }
-  return roleDefault(module, 'create', role);
-};
-
-// DELETE is not a separate permission — removing an existing record requires EDIT.
-export const checkCanDelete = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
-  checkCanEdit(module, authProfile, role);
-
 export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null, role: string): boolean => {
   if (role === 'Super Admin') return true;
   if (!authProfile) return false;
@@ -127,9 +116,13 @@ export const checkCanEdit = (module: AppModules, authProfile: UserAccount | null
   // If they can't even view, they can't edit
   if (!checkCanView(module, authProfile, role)) return false;
 
-  // Check granular action permissions
+  // Check granular action permissions. EDIT is the single "write" action: legacy
+  // create / delete / approve / import / manage grants all FOLD into it so older
+  // records keep working without a data migration.
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].edit === true;
+    const row = authProfile.permissions[module] as any;
+    return row.edit === true || row.create === true || row.delete === true
+      || row.approve === true || row.import === true || row.manage === true;
   }
 
   // Fallback defaults if permissions matrix is completely missing
@@ -141,18 +134,20 @@ export const checkCanExport = (module: AppModules, authProfile: UserAccount | nu
   if (!authProfile) return false;
   if (!checkCanView(module, authProfile, role)) return false;
   if (authProfile.permissions && authProfile.permissions[module] !== undefined) {
-    return authProfile.permissions[module].export === true;
+    const row = authProfile.permissions[module] as any;
+    return row.export === true || row.print === true; // print folds into export
   }
   return roleDefault(module, 'export', role);
 };
 
-// APPROVE is not a separate permission — approving an existing record requires EDIT.
-export const checkCanApprove = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
-  checkCanEdit(module, authProfile, role);
-
-// PRINT is not a separate permission — producing output is folded into EXPORT.
-export const checkCanPrint = (module: AppModules, authProfile: UserAccount | null, role: string): boolean =>
-  checkCanExport(module, authProfile, role);
+// ── Legacy action helpers — all fold into the 3-action model ────────────────
+// create / delete / approve / import → EDIT, print → EXPORT. Kept so existing
+// call sites (canCreate/canDelete/canApprove/canImport/canPrint) keep working.
+export const checkCanCreate = checkCanEdit;
+export const checkCanDelete = checkCanEdit;
+export const checkCanApprove = checkCanEdit;
+export const checkCanImport = checkCanEdit;
+export const checkCanPrint = checkCanExport;
 
 export const PermissionProvider: React.FC<PermissionProviderProps> = ({
   children,
@@ -215,6 +210,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
     const canExport = (module: AppModules): boolean => checkCanExport(module, authProfile, role);
     const canApprove = (module: AppModules): boolean => !companyReadOnly && checkCanApprove(module, authProfile, role);
     const canPrint = (module: AppModules): boolean => checkCanPrint(module, authProfile, role);
+    const canImport = (module: AppModules): boolean => !companyReadOnly && checkCanImport(module, authProfile, role);
 
     return {
       canView,
@@ -224,6 +220,7 @@ export const PermissionProvider: React.FC<PermissionProviderProps> = ({
       canExport,
       canApprove,
       canPrint,
+      canImport,
       hasBranchAccess,
       getInheritedBranches,
       companyReadOnly,

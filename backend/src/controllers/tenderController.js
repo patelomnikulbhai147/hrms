@@ -18,7 +18,7 @@ const canManageTenders = (req) => ['Super Admin', 'Company Head'].includes(req.u
 
 exports.getAll = async (req, res) => {
   try {
-    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
+    const companyId = req.query.all === 'true' ? null : idParam(req.query.companyId || req.headers['x-workspace-id']);
     let where = {};
     if (req.user && req.user.role !== 'Super Admin') {
       const allowed = allowedIdsFor(req);

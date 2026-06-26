@@ -18,11 +18,11 @@ const PERMISSION_MODULES = [
 ];
 function defaultPermissionsForRole(role) {
   if (role === 'Super Admin') return { permissions: {}, moduleAccess: {} };
-  // Consolidated 4-action model: view / create / edit / export.
-  // (delete & approve are covered by edit; print is covered by export.)
-  const full = () => ({ view: true, create: true, edit: true, export: true });
-  const view = () => ({ view: true, create: false, edit: false, export: true });
-  const none = () => ({ view: false, create: false, edit: false, export: false });
+  // Enterprise 3-action model: view / edit / export.
+  // (create/delete/approve/import are covered by edit; print is covered by export.)
+  const full = () => ({ view: true, edit: true, export: true });
+  const view = () => ({ view: true, edit: false, export: true });
+  const none = () => ({ view: false, edit: false, export: false });
   const FULL = {
     'Company Head': PERMISSION_MODULES,
     // HR manages contract deployment (full) but is VIEW-only on tenders — they
@@ -151,18 +151,31 @@ exports.updateUser = async (req, res) => {
       data: dataToUpdate
     });
 
-    if (accessibleCompanyIds || permissions || moduleAccess) {
+    if (accessibleCompanyIds || permissions || moduleAccess || role || status) {
+      const now = new Date();
+      const auditDetails = {
+        targetUser: { id: user.id, name: user.name, email: user.email },
+        changedBy: { id: req.user.id, name: req.user.name, email: req.user.email },
+        company: user.companyId,
+        branch: user.branchId,
+        oldPermissions: user.permissions?.permissions || {},
+        newPermissions: combinedPermissions.permissions || {},
+        oldModuleAccess: user.permissions?.moduleAccess || {},
+        newModuleAccess: combinedPermissions.moduleAccess || {},
+        oldAccessibleCompanyIds: user.accessibleCompanyIds || [],
+        newAccessibleCompanyIds: accessibleCompanyIds !== undefined ? accessibleCompanyIds : user.accessibleCompanyIds,
+        roleChange: role !== undefined && role !== user.role ? { from: user.role, to: role } : undefined,
+        statusChange: status !== undefined && status !== user.status ? { from: user.status, to: status } : undefined,
+        date: now.toISOString().split('T')[0],
+        time: now.toTimeString().split(' ')[0]
+      };
       await prisma.auditLog.create({
         data: {
           userId: req.user ? req.user.id : user.id,
           action: 'UPDATE_PERMISSIONS',
           module: 'Users',
           targetId: String(user.id),
-          details: JSON.stringify({
-            workspaces: accessibleCompanyIds,
-            permissionsUpdated: !!permissions,
-            moduleAccessUpdated: !!moduleAccess
-          })
+          details: JSON.stringify(auditDetails)
         }
       }).catch(err => console.error('Failed to write audit log:', err));
     }
@@ -533,21 +546,31 @@ exports.updatePermissions = async (req, res) => {
 
     const updated = await prisma.user.update({ where: { id: targetId }, data });
 
+    const now = new Date();
+    const auditDetails = {
+      targetUser: { id: target.id, name: target.name, email: target.email },
+      changedBy: { id: req.user.id, name: req.user.name, email: req.user.email },
+      company: target.companyId,
+      branch: target.branchId,
+      oldPermissions: before.permissions || {},
+      newPermissions: combined.permissions || {},
+      oldModuleAccess: before.moduleAccess || {},
+      newModuleAccess: combined.moduleAccess || {},
+      oldAccessibleCompanyIds: target.accessibleCompanyIds || [],
+      newAccessibleCompanyIds: accessibleCompanyIds !== undefined ? accessibleCompanyIds : target.accessibleCompanyIds,
+      roleChange: role !== undefined && role !== target.role ? { from: target.role, to: role } : undefined,
+      statusChange: status !== undefined && status !== target.status ? { from: target.status, to: status } : undefined,
+      date: now.toISOString().split('T')[0],
+      time: now.toTimeString().split(' ')[0]
+    };
+
     await prisma.auditLog.create({
       data: {
         userId: req.user.id,
         action: 'UPDATE_PERMISSIONS',
         module: 'Users',
         targetId: String(targetId),
-        details: JSON.stringify({
-          target: target.name,
-          oldPermissions: before.permissions || {},
-          newPermissions: combined.permissions || {},
-          oldModuleAccess: before.moduleAccess || {},
-          newModuleAccess: combined.moduleAccess || {},
-          roleChange: role !== undefined && role !== target.role ? { from: target.role, to: role } : undefined,
-          by: req.user.name || req.user.email,
-        }),
+        details: JSON.stringify(auditDetails),
       },
     }).catch(e => console.error('audit failed', e));
 

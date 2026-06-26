@@ -1,4 +1,4 @@
-import { type React } from 'react';
+import React from 'react';
 import { Form16Template } from './templates/Form16Template';
 import { SalaryRegisterTemplate } from './templates/SalaryRegisterTemplate';
 import { SalarySlipTemplate } from './templates/SalarySlipTemplate';

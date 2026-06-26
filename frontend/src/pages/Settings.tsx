@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { PhoneInput } from '@/components/ui/PhoneInput';
-import { Building2, Palette, BadgeCent, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud, ShieldCheck } from 'lucide-react';
+import { Building2, Palette, BadgeCent, Plus, Trash2, Edit3, ArrowUp, ArrowDown, Briefcase, AlertCircle, UploadCloud, ShieldCheck, Landmark, Users, CalendarClock } from 'lucide-react';
 import { PermissionManager } from '@/components/settings/PermissionManager';
 import { type Company, type Role } from '@/data/mockData';
 import { getCompanyDepartments } from '@/data/mockData';
@@ -14,7 +14,17 @@ import {
   validatePhone,
   validateEmail,
   validateCompanyName,
-  validatePercentage
+  validatePercentage,
+  validateGST,
+  validatePAN,
+  validateCIN,
+  validateTAN,
+  validateIFSC,
+  validatePFCode,
+  validateESICode,
+  validateWebsite,
+  validatePincode,
+  type ValidationResult,
 } from '@/utils/validation';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
@@ -110,6 +120,53 @@ export const Settings: React.FC<SettingsProps> = ({
     faviconImage: co.faviconImage || '',
     stampImage: co.stampImage || '',
     digitalSignatureImage: co.digitalSignatureImage || '',
+    // ── Company Master: extended single-source-of-truth fields ──
+    legalName: co.legalName || '',
+    displayName: co.displayName || '',
+    tradeName: co.tradeName || '',
+    country: co.country || '',
+    landline: co.landline || '',
+    corporateAddress: co.corporateAddress || '',
+    tanNumber: co.tanNumber || '',
+    pfCode: co.pfCode || '',
+    esiCode: co.esiCode || '',
+    ptaxRegistrationNumber: co.ptaxRegistrationNumber || '',
+    msmeNumber: co.msmeNumber || '',
+    shopEstablishmentNumber: co.shopEstablishmentNumber || '',
+    labourLicenseNumber: co.labourLicenseNumber || '',
+    factoryLicenseNumber: co.factoryLicenseNumber || '',
+    iecCode: co.iecCode || '',
+    isoCertNumber: co.isoCertNumber || '',
+    fssaiNumber: co.fssaiNumber || '',
+    founderName: co.founderName || '',
+    coFounderName: co.coFounderName || '',
+    ceoName: co.ceoName || '',
+    managingDirector: co.managingDirector || '',
+    directors: co.directors || '',
+    hrHeadName: co.hrHeadName || '',
+    financeHeadName: co.financeHeadName || '',
+    authorizedSignatory: co.authorizedSignatory || '',
+    signatoryDesignation: co.signatoryDesignation || '',
+    bankName: co.bankName || '',
+    bankBranch: co.bankBranch || '',
+    bankAccountNumber: co.bankAccountNumber || '',
+    ifscCode: co.ifscCode || '',
+    swiftCode: co.swiftCode || '',
+    accountHolderName: co.accountHolderName || '',
+    upiId: co.upiId || '',
+    salaryCycle: co.salaryCycle || '',
+    payrollStartDate: co.payrollStartDate || '',
+    financialYearStart: co.financialYearStart || '',
+    leaveYearStart: co.leaveYearStart || '',
+    defaultCurrency: co.defaultCurrency || 'INR',
+    defaultTimeZone: co.defaultTimeZone || 'Asia/Kolkata',
+    motto: co.motto || '',
+    watermarkText: co.watermarkText || '',
+    letterheadImage: co.letterheadImage || '',
+    dscImage: co.dscImage || '',
+    gstCertificateImage: co.gstCertificateImage || '',
+    panCardImage: co.panCardImage || '',
+    registrationCertImage: co.registrationCertImage || '',
   });
   const [brandingForm, setBrandingForm] = useState(() => brandingFromCompany(currentCompany));
 
@@ -151,7 +208,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   // Generic image uploader for any branding asset (logo / favicon / stamp /
   // digital signature). Stores the file as a base64 data URL on brandingForm.
-  const handleImageUpload = (field: 'logoImage' | 'faviconImage' | 'stampImage' | 'digitalSignatureImage') =>
+  const handleImageUpload = (field: 'logoImage' | 'faviconImage' | 'stampImage' | 'digitalSignatureImage' | 'letterheadImage' | 'dscImage' | 'gstCertificateImage' | 'panCardImage' | 'registrationCertImage') =>
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -317,6 +374,23 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const handleSaveBranding = async () => {
     if (!canEditBranding) return;
+    // ── Format validation (only non-empty values are checked; optional fields
+    //    stay backward-compatible). First failure stops the save with a message. ──
+    const checks: [string, ValidationResult][] = [
+      ['GST Number', validateGST(brandingForm.gstNumber)],
+      ['PAN Number', validatePAN(brandingForm.panNumber)],
+      ['CIN Number', validateCIN(brandingForm.cinNumber)],
+      ['TAN Number', validateTAN(brandingForm.tanNumber)],
+      ['Email', validateEmail(brandingForm.contactEmail)],
+      ['Website', validateWebsite(brandingForm.website)],
+      ['PIN Code', validatePincode(brandingForm.pincode)],
+      ['IFSC Code', validateIFSC(brandingForm.ifscCode)],
+      ['PF Establishment Code', validatePFCode(brandingForm.pfCode)],
+      ['ESI Employer Code', validateESICode(brandingForm.esiCode)],
+    ];
+    const firstError = checks.find(([, r]) => !r.isValid);
+    if (firstError) { ui.toast.error(`${firstError[0]}: ${firstError[1].error}`); return; }
+
     setSavingBranding(true);
     try {
       const payload = {
@@ -348,6 +422,53 @@ export const Settings: React.FC<SettingsProps> = ({
         faviconImage: brandingForm.faviconImage,
         stampImage: brandingForm.stampImage,
         digitalSignatureImage: brandingForm.digitalSignatureImage,
+        // ── Company Master: extended single-source-of-truth fields ──
+        legalName: brandingForm.legalName,
+        displayName: brandingForm.displayName,
+        tradeName: brandingForm.tradeName,
+        country: brandingForm.country,
+        landline: brandingForm.landline,
+        corporateAddress: brandingForm.corporateAddress,
+        tanNumber: brandingForm.tanNumber,
+        pfCode: brandingForm.pfCode,
+        esiCode: brandingForm.esiCode,
+        ptaxRegistrationNumber: brandingForm.ptaxRegistrationNumber,
+        msmeNumber: brandingForm.msmeNumber,
+        shopEstablishmentNumber: brandingForm.shopEstablishmentNumber,
+        labourLicenseNumber: brandingForm.labourLicenseNumber,
+        factoryLicenseNumber: brandingForm.factoryLicenseNumber,
+        iecCode: brandingForm.iecCode,
+        isoCertNumber: brandingForm.isoCertNumber,
+        fssaiNumber: brandingForm.fssaiNumber,
+        founderName: brandingForm.founderName,
+        coFounderName: brandingForm.coFounderName,
+        ceoName: brandingForm.ceoName,
+        managingDirector: brandingForm.managingDirector,
+        directors: brandingForm.directors,
+        hrHeadName: brandingForm.hrHeadName,
+        financeHeadName: brandingForm.financeHeadName,
+        authorizedSignatory: brandingForm.authorizedSignatory,
+        signatoryDesignation: brandingForm.signatoryDesignation,
+        bankName: brandingForm.bankName,
+        bankBranch: brandingForm.bankBranch,
+        bankAccountNumber: brandingForm.bankAccountNumber,
+        ifscCode: brandingForm.ifscCode,
+        swiftCode: brandingForm.swiftCode,
+        accountHolderName: brandingForm.accountHolderName,
+        upiId: brandingForm.upiId,
+        salaryCycle: brandingForm.salaryCycle,
+        payrollStartDate: brandingForm.payrollStartDate,
+        financialYearStart: brandingForm.financialYearStart,
+        leaveYearStart: brandingForm.leaveYearStart,
+        defaultCurrency: brandingForm.defaultCurrency,
+        defaultTimeZone: brandingForm.defaultTimeZone,
+        motto: brandingForm.motto,
+        watermarkText: brandingForm.watermarkText,
+        letterheadImage: brandingForm.letterheadImage,
+        dscImage: brandingForm.dscImage,
+        gstCertificateImage: brandingForm.gstCertificateImage,
+        panCardImage: brandingForm.panCardImage,
+        registrationCertImage: brandingForm.registrationCertImage,
       };
       await api.companies.updateBranding(String(brandableCompanyId), payload);
       if (onRefresh) onRefresh();
@@ -674,6 +795,121 @@ export const Settings: React.FC<SettingsProps> = ({
                   <div className="md:col-span-2">
                     <Textarea label="Company Description" disabled={!canEditBranding} value={brandingForm.description} onChange={e => setBrandingForm({ ...brandingForm, description: e.target.value })} placeholder="Short description of the company…" />
                   </div>
+                </div>
+              </div>
+
+              {/* ── SECTION 1B · Extended Identity & Contact ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Building2 size={13} /> Extended Identity &amp; Contact</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input label="Legal Name" disabled={!canEditBranding} value={brandingForm.legalName} onChange={e => setBrandingForm({ ...brandingForm, legalName: e.target.value })} placeholder="Registered legal entity name" />
+                  <Input label="Display Name" disabled={!canEditBranding} value={brandingForm.displayName} onChange={e => setBrandingForm({ ...brandingForm, displayName: e.target.value })} placeholder="Name shown on screens" />
+                  <Input label="Trade Name / Brand" disabled={!canEditBranding} value={brandingForm.tradeName} onChange={e => setBrandingForm({ ...brandingForm, tradeName: e.target.value })} placeholder="Doing-business-as name" />
+                  <Input label="Country" disabled={!canEditBranding} value={brandingForm.country} onChange={e => setBrandingForm({ ...brandingForm, country: e.target.value })} placeholder="e.g. India" />
+                  <Input label="Landline" disabled={!canEditBranding} value={brandingForm.landline} onChange={e => setBrandingForm({ ...brandingForm, landline: e.target.value })} placeholder="e.g. 079-12345678" />
+                  <Input label="Company Motto" disabled={!canEditBranding} value={brandingForm.motto} onChange={e => setBrandingForm({ ...brandingForm, motto: e.target.value })} placeholder="e.g. Building the future" />
+                  <div className="md:col-span-2">
+                    <Input label="Corporate Office Address" disabled={!canEditBranding} value={brandingForm.corporateAddress} onChange={e => setBrandingForm({ ...brandingForm, corporateAddress: e.target.value })} placeholder="Head-office / corporate address" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── SECTION 1C · Statutory & Registration ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><ShieldCheck size={13} /> Statutory &amp; Registration</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input label="TAN Number" disabled={!canEditBranding} value={brandingForm.tanNumber} onChange={e => setBrandingForm({ ...brandingForm, tanNumber: e.target.value.toUpperCase() })} placeholder="e.g. ABCD12345E" />
+                  <Input label="PF Establishment Code" disabled={!canEditBranding} value={brandingForm.pfCode} onChange={e => setBrandingForm({ ...brandingForm, pfCode: e.target.value.toUpperCase() })} placeholder="e.g. GJ/AHD/1234567/000" />
+                  <Input label="ESI Employer Code" disabled={!canEditBranding} value={brandingForm.esiCode} onChange={e => setBrandingForm({ ...brandingForm, esiCode: e.target.value })} placeholder="17-digit ESI code" />
+                  <Input label="Professional Tax Reg. No." disabled={!canEditBranding} value={brandingForm.ptaxRegistrationNumber} onChange={e => setBrandingForm({ ...brandingForm, ptaxRegistrationNumber: e.target.value })} placeholder="PT registration number" />
+                  <Input label="MSME / Udyam Number" disabled={!canEditBranding} value={brandingForm.msmeNumber} onChange={e => setBrandingForm({ ...brandingForm, msmeNumber: e.target.value.toUpperCase() })} placeholder="e.g. UDYAM-GJ-00-0000000" />
+                  <Input label="Shop & Establishment Reg." disabled={!canEditBranding} value={brandingForm.shopEstablishmentNumber} onChange={e => setBrandingForm({ ...brandingForm, shopEstablishmentNumber: e.target.value })} placeholder="Registration number" />
+                  <Input label="Labour License Number" disabled={!canEditBranding} value={brandingForm.labourLicenseNumber} onChange={e => setBrandingForm({ ...brandingForm, labourLicenseNumber: e.target.value })} placeholder="Labour license number" />
+                  <Input label="Factory License Number" disabled={!canEditBranding} value={brandingForm.factoryLicenseNumber} onChange={e => setBrandingForm({ ...brandingForm, factoryLicenseNumber: e.target.value })} placeholder="Factory license number" />
+                  <Input label="IEC Code (Import/Export)" disabled={!canEditBranding} value={brandingForm.iecCode} onChange={e => setBrandingForm({ ...brandingForm, iecCode: e.target.value.toUpperCase() })} placeholder="10-char IEC" />
+                  <Input label="ISO Certification Number" disabled={!canEditBranding} value={brandingForm.isoCertNumber} onChange={e => setBrandingForm({ ...brandingForm, isoCertNumber: e.target.value })} placeholder="e.g. ISO 9001:2015 — cert no." />
+                  <Input label="FSSAI License" disabled={!canEditBranding} value={brandingForm.fssaiNumber} onChange={e => setBrandingForm({ ...brandingForm, fssaiNumber: e.target.value })} placeholder="14-digit FSSAI (if applicable)" />
+                </div>
+              </div>
+
+              {/* ── SECTION 1D · Management ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Users size={13} /> Management &amp; Signatory</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input label="Founder Name" disabled={!canEditBranding} value={brandingForm.founderName} onChange={e => setBrandingForm({ ...brandingForm, founderName: e.target.value })} placeholder="Founder full name" />
+                  <Input label="Co-Founder Name" disabled={!canEditBranding} value={brandingForm.coFounderName} onChange={e => setBrandingForm({ ...brandingForm, coFounderName: e.target.value })} placeholder="Co-founder full name" />
+                  <Input label="CEO Name" disabled={!canEditBranding} value={brandingForm.ceoName} onChange={e => setBrandingForm({ ...brandingForm, ceoName: e.target.value })} placeholder="Chief Executive Officer" />
+                  <Input label="Managing Director" disabled={!canEditBranding} value={brandingForm.managingDirector} onChange={e => setBrandingForm({ ...brandingForm, managingDirector: e.target.value })} placeholder="Managing Director" />
+                  <Input label="HR Head" disabled={!canEditBranding} value={brandingForm.hrHeadName} onChange={e => setBrandingForm({ ...brandingForm, hrHeadName: e.target.value })} placeholder="Head of HR" />
+                  <Input label="Finance Head" disabled={!canEditBranding} value={brandingForm.financeHeadName} onChange={e => setBrandingForm({ ...brandingForm, financeHeadName: e.target.value })} placeholder="Head of Finance" />
+                  <Input label="Authorized Signatory" disabled={!canEditBranding} value={brandingForm.authorizedSignatory} onChange={e => setBrandingForm({ ...brandingForm, authorizedSignatory: e.target.value })} placeholder="Name on documents" />
+                  <Input label="Designation of Signatory" disabled={!canEditBranding} value={brandingForm.signatoryDesignation} onChange={e => setBrandingForm({ ...brandingForm, signatoryDesignation: e.target.value })} placeholder="e.g. Director" />
+                  <div className="md:col-span-2">
+                    <Input label="Director Name(s)" disabled={!canEditBranding} value={brandingForm.directors} onChange={e => setBrandingForm({ ...brandingForm, directors: e.target.value })} placeholder="Comma-separated director names" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── SECTION 1E · Banking ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><Landmark size={13} /> Banking Details</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input label="Bank Name" disabled={!canEditBranding} value={brandingForm.bankName} onChange={e => setBrandingForm({ ...brandingForm, bankName: e.target.value })} placeholder="e.g. HDFC Bank" />
+                  <Input label="Bank Branch" disabled={!canEditBranding} value={brandingForm.bankBranch} onChange={e => setBrandingForm({ ...brandingForm, bankBranch: e.target.value })} placeholder="Branch name" />
+                  <Input label="Account Number" disabled={!canEditBranding} value={brandingForm.bankAccountNumber} onChange={e => setBrandingForm({ ...brandingForm, bankAccountNumber: e.target.value.replace(/[^0-9]/g, '') })} placeholder="Bank account number" />
+                  <Input label="IFSC Code" disabled={!canEditBranding} value={brandingForm.ifscCode} onChange={e => setBrandingForm({ ...brandingForm, ifscCode: e.target.value.toUpperCase() })} placeholder="e.g. HDFC0001234" />
+                  <Input label="SWIFT Code" disabled={!canEditBranding} value={brandingForm.swiftCode} onChange={e => setBrandingForm({ ...brandingForm, swiftCode: e.target.value.toUpperCase() })} placeholder="For international transfers" />
+                  <Input label="Account Holder Name" disabled={!canEditBranding} value={brandingForm.accountHolderName} onChange={e => setBrandingForm({ ...brandingForm, accountHolderName: e.target.value })} placeholder="As per bank records" />
+                  <Input label="UPI ID (optional)" disabled={!canEditBranding} value={brandingForm.upiId} onChange={e => setBrandingForm({ ...brandingForm, upiId: e.target.value })} placeholder="e.g. company@okhdfcbank" />
+                </div>
+              </div>
+
+              {/* ── SECTION 1F · Payroll & Statutory Cycle ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><CalendarClock size={13} /> Payroll &amp; Statutory Cycle</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Select label="Salary Cycle" disabled={!canEditBranding} value={brandingForm.salaryCycle || ''} onChange={e => setBrandingForm({ ...brandingForm, salaryCycle: e.target.value })}
+                    options={[{ value: '', label: 'Select…' }, { value: 'Monthly', label: 'Monthly' }, { value: 'Bi-Weekly', label: 'Bi-Weekly' }, { value: 'Weekly', label: 'Weekly' }]} />
+                  <Input label="Payroll Start Date" disabled={!canEditBranding} value={brandingForm.payrollStartDate} onChange={e => setBrandingForm({ ...brandingForm, payrollStartDate: e.target.value })} placeholder="e.g. 1 (day of month)" />
+                  <Input label="Financial Year Start" disabled={!canEditBranding} value={brandingForm.financialYearStart} onChange={e => setBrandingForm({ ...brandingForm, financialYearStart: e.target.value })} placeholder="e.g. April" />
+                  <Input label="Leave Year Start" disabled={!canEditBranding} value={brandingForm.leaveYearStart} onChange={e => setBrandingForm({ ...brandingForm, leaveYearStart: e.target.value })} placeholder="e.g. January" />
+                  <Select label="Default Currency" disabled={!canEditBranding} value={brandingForm.defaultCurrency || 'INR'} onChange={e => setBrandingForm({ ...brandingForm, defaultCurrency: e.target.value })}
+                    options={[{ value: 'INR', label: 'INR (₹)' }, { value: 'USD', label: 'USD ($)' }, { value: 'EUR', label: 'EUR (€)' }, { value: 'GBP', label: 'GBP (£)' }, { value: 'AED', label: 'AED (د.إ)' }]} />
+                  <Input label="Default Time Zone" disabled={!canEditBranding} value={brandingForm.defaultTimeZone} onChange={e => setBrandingForm({ ...brandingForm, defaultTimeZone: e.target.value })} placeholder="e.g. Asia/Kolkata" />
+                  <div className="md:col-span-2">
+                    <Input label="Document Watermark Text" disabled={!canEditBranding} value={brandingForm.watermarkText} onChange={e => setBrandingForm({ ...brandingForm, watermarkText: e.target.value })} placeholder="e.g. CONFIDENTIAL (shown faint on documents)" />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── SECTION 1G · Statutory Documents & Digital Assets ── */}
+              <div className="mb-5">
+                <label className="block text-[11px] font-extrabold text-blue-600 uppercase tracking-wider mb-2 flex items-center gap-1.5"><UploadCloud size={13} /> Statutory Documents &amp; Digital Assets</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {([
+                    { field: 'letterheadImage', label: 'Letterhead' },
+                    { field: 'dscImage', label: 'Digital Signature Cert.' },
+                    { field: 'gstCertificateImage', label: 'GST Certificate' },
+                    { field: 'panCardImage', label: 'PAN Copy' },
+                    { field: 'registrationCertImage', label: 'Registration Cert.' },
+                    { field: 'stampImage', label: 'Company Seal / Stamp' },
+                  ] as const).map(({ field, label }) => (
+                    <div key={field} className="border border-slate-200 rounded-xl p-2.5 flex flex-col items-center gap-1.5 bg-slate-50/60">
+                      <div className="w-14 h-14 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center bg-white overflow-hidden">
+                        {brandingForm[field] ? <img src={brandingForm[field]} alt={label} className="w-full h-full object-contain p-1" /> : <UploadCloud size={15} className="text-slate-400" />}
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-600 text-center leading-tight">{label}</span>
+                      {canEditBranding && (
+                        <label className="cursor-pointer text-[10px] font-bold text-blue-600 hover:underline">
+                          {brandingForm[field] ? 'Replace' : 'Upload'}
+                          <input type="file" accept=".png,.jpg,.jpeg,.svg" className="hidden" onChange={handleImageUpload(field)} />
+                        </label>
+                      )}
+                      {canEditBranding && brandingForm[field] && (
+                        <button type="button" onClick={() => setBrandingForm(p => ({ ...p, [field]: '' }))} className="text-[9px] text-rose-600 font-bold hover:underline">Remove</button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
 
