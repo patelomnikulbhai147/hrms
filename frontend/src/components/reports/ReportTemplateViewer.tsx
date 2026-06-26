@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, Printer, FileDown, FileSpreadsheet, RefreshCw, AlertTriangle, Pencil, Save, Lock, RotateCcw } from 'lucide-react';
+import { ChevronLeft, Printer, FileDown, FileSpreadsheet, RefreshCw, AlertTriangle, Pencil, Save, Lock, RotateCcw, Languages } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { api } from '@/api/apiClient';
@@ -7,7 +7,8 @@ import { ui } from '@/components/ui/feedback';
 import { type TemplateDef } from './templateRegistry';
 import { type ReportData } from './templates/types';
 import { printNode, nodeToPdf, rowsToExcel } from './reportExport';
-import { recalcReport } from './reportRecalc';
+import { recalcReport, recalcFrom, initBaselines, clearBaselines, type RecalcIssue } from './reportRecalc';
+import { REPORT_LANGUAGES, REPORT_LANG_STORAGE_KEY } from '@/utils/reportTranslations';
 
 interface Props {
   def: TemplateDef;
@@ -49,6 +50,9 @@ const isEditableLeaf = (el: Element): boolean => {
   if (el.closest('svg')) return false;
   if (el.querySelector('*')) return false;            // has child elements → container, skip
   if (el.closest('[data-noedit]')) return false;      // the Remarks block manages itself
+  // Derived cells (net, totals, PF/ESI splits …) are computed live and read-only —
+  // the user edits their SOURCE inputs and these recalculate automatically.
+  if (el.hasAttribute('data-formula') || el.hasAttribute('data-sum-of') || el.hasAttribute('data-total') || el.hasAttribute('data-total-formula')) return false;
   return (el.textContent || '').trim().length > 0;
 };
 
@@ -60,6 +64,15 @@ const YEARS = [CUR_YEAR, CUR_YEAR - 1, CUR_YEAR - 2, CUR_YEAR - 3];
 // Excel of the underlying rows. Preview === PDF === Print by construction.
 export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, companyId, onClose, autoAction, canEdit = false, userName = '' }) => {
   const [year, setYear] = useState<number>(CUR_YEAR);
+  // Report language for labels/headers/static text. Defaults to the user's last
+  // choice (remembered across reports), else English. Calculations are unaffected.
+  const [lang, setLang] = useState<string>(() => {
+    try { return localStorage.getItem(REPORT_LANG_STORAGE_KEY) || 'en'; } catch { return 'en'; }
+  });
+  const changeLang = (code: string) => {
+    setLang(code);
+    try { localStorage.setItem(REPORT_LANG_STORAGE_KEY, code); } catch { /* storage off */ }
+  };
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ReportData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +91,21 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
   const readEdits = (): Record<string, { o: string; v: string }> => { try { return JSON.parse(localStorage.getItem(editsKey) || '{}') || {}; } catch { return {}; } };
   const saveTimer = useRef<number | null>(null);
 
+  // Surface live recalculation problems (circular / overflow / negative) without
+  // spamming — at most one message every couple of seconds as the user types.
+  const issueTimer = useRef<number | null>(null);
+  const flagIssues = (issues: RecalcIssue[]) => {
+    if (!issues.length || issueTimer.current) return;
+    const cyc = issues.find(i => i.type === 'circular');
+    const ovf = issues.find(i => i.type === 'overflow');
+    const neg = issues.find(i => i.type === 'negative');
+    if (cyc) ui.toast.error(`Circular reference in "${cyc.field}" — recalculation skipped for that cell.`);
+    else if (ovf) ui.toast.error(`The value in "${ovf.field}" is too large to calculate.`);
+    else if (neg) ui.toast.info(`"${neg.field}" became negative — please check the entered values.`);
+    else return;
+    issueTimer.current = window.setTimeout(() => { issueTimer.current = null; }, 2500);
+  };
+
   // Collect the current editable leaves in document order.
   const editableLeaves = (): HTMLElement[] => {
     const root = printRef.current; if (!root) return [];
@@ -94,7 +122,16 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
   // still matches, so regenerated data is never clobbered by a stale edit).
   useEffect(() => {
     const root = printRef.current; if (!root || !data) return;
-    if (lastDataRef.current !== data) { originalsRef.current = {}; lastDataRef.current = data; } // fresh data → reset originals
+    const dataChanged = lastDataRef.current !== data;
+    if (dataChanged) {
+      originalsRef.current = {}; lastDataRef.current = data;   // fresh data → reset originals
+      // Capture each derived cell's baseline offset from the PURE backend values
+      // (must happen before any saved edit mutates a source cell) so the loaded
+      // report is shown exactly as generated and edits move values by true deltas.
+      clearBaselines(root); initBaselines(root);
+    }
+    // Mark auto-calculated cells with a hint so users know they update on their own.
+    root.querySelectorAll('[data-derived]').forEach(el => el.setAttribute('title', 'Auto-calculated — edit its source values and this updates automatically'));
     const edits = readEdits();
     const leaves = editableLeaves();
     leaves.forEach(el => {
@@ -121,14 +158,16 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
     // now in the DOM — keeps totals correct after re-applying any saved edits.
     recalcReport(root);
     return () => { leaves.forEach(el => el.removeAttribute('contenteditable')); };
-  }, [data, editMode, canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data, editMode, canEdit, lang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist edits (debounced) as the user types directly in the report.
   const onReportInput = (e: React.FormEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
     if (!canEdit || !editMode || !t.getAttribute('data-editable')) return;
     setDirty(true);
-    recalcReport(printRef.current);   // live: totals/derived values update as you type
+    // Fast path: only the edited row's dependent cells + the enclosing totals are
+    // recomputed (not the whole report) — stays smooth on thousand-row registers.
+    flagIssues(recalcFrom(t, printRef.current));
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => persistEdits(), 500);
   };
@@ -151,7 +190,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
     e.preventDefault();
     try { document.execCommand('insertText', false, clean); } catch { /* noop */ }
     setDirty(true);
-    recalcReport(printRef.current);   // live: re-foot totals after a paste
+    flagIssues(recalcFrom(t, printRef.current));   // live: re-derive & re-foot after a paste
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => persistEdits(), 500);
   };
@@ -263,7 +302,11 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <style>{`.report-notes-editable:empty:before{content:attr(data-ph);color:#cbd5e1;} .report-notes-editable:focus{background:rgba(99,102,241,0.06);border-radius:4px;}`}</style>
+      <style>{`.report-notes-editable:empty:before{content:attr(data-ph);color:#cbd5e1;} .report-notes-editable:focus{background:rgba(99,102,241,0.06);border-radius:4px;}
+        .report-editing [data-editable]{outline:1px dashed rgba(79,70,229,0.35);outline-offset:-1px;}
+        .report-editing [data-editable]:hover{background:rgba(79,70,229,0.04);}
+        .report-editing [data-editable]:focus{outline:2px solid rgba(79,70,229,0.65);background:rgba(79,70,229,0.07);}
+        .report-editing [data-derived="1"]{background:rgba(16,185,129,0.08);}`}</style>
       {/* Toolbar */}
       <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -275,6 +318,12 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="w-28"><Select value={String(year)} onChange={e => setYear(Number(e.target.value))} options={YEARS.map(y => ({ value: String(y), label: `Year ${y}` }))} /></div>
+          {/* Report language — applies to preview, print, PDF and Excel/CSV (labels,
+              headers and static text only; calculations are never changed). */}
+          <div className="flex items-center gap-1.5" title="Report language — applied to preview, print, PDF and Excel">
+            <Languages size={15} className="text-slate-400 shrink-0" />
+            <div className="w-40"><Select value={lang} onChange={e => changeLang(e.target.value)} options={REPORT_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} /></div>
+          </div>
           <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={load}>Generate</Button>
           {canEdit ? (
             <>
@@ -300,7 +349,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
       {/* Editing hint */}
       {canEdit && editMode && hasRows && (
         <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 flex items-center gap-2 text-[11px] text-indigo-700">
-          <Pencil size={13} className="shrink-0" /> Click any value, header or footer to edit it directly — layout and totals stay intact. <strong>Save Changes</strong> so Print, PDF and Excel use the edited version.
+          <Pencil size={13} className="shrink-0" /> Edit any value (dashed cells). Dependent fields — Net Pay, PF/ESI, deductions, totals & grand totals (green) — recalculate instantly, like a spreadsheet. <strong>Save Changes</strong> so Print, PDF and Excel use the edited version.
         </div>
       )}
 
@@ -322,8 +371,8 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
           <div className="shadow-lg" style={{ width: 'fit-content', margin: '0 auto' }}>
             {/* The single source of truth for preview, print and PDF. In-place edits
                 bubble here (onInput) and are captured by every export. */}
-            <div ref={printRef} onInput={onReportInput} onKeyDown={onReportKeyDown} onPaste={onReportPaste}>
-              {data && <Template data={data} />}
+            <div ref={printRef} className={canEdit && editMode ? 'report-editing' : ''} onInput={onReportInput} onKeyDown={onReportKeyDown} onPaste={onReportPaste}>
+              {data && <Template data={data} lang={lang} />}
               {/* Editable Remarks / Notes — appended below the prescribed form (does
                   NOT alter the statutory layout) and captured in the PDF / Print. */}
               {data && (

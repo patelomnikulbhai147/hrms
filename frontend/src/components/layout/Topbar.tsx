@@ -120,6 +120,15 @@ export const Topbar: React.FC<TopbarProps> = ({
   const isBranchWorkspace = !!(currentCompany as any)?.parentCompanyId;
   const branchLabel = (currentCompany as any)?.branchName || currentCompany?.name;
 
+  // Resolved, branch-aware set of workspace ids this user may ENTER (App.tsx
+  // computes it via getAccessibleWorkspaceIds). It contains a COMPANY id only when
+  // the user has company-level access — so the company row is a selectable
+  // workspace for those users, and a non-selectable group label for branch-only
+  // users. Never includes the raw primary companyId, so branch-only users can't
+  // pick the company. (Super Admin uses the separate masquerade switcher.)
+  const accessibleIds = (authProfile?.accessibleCompanyIds || []).map(String);
+  const hasCompanyLevelAccess = (companyId: string | number) => accessibleIds.includes(String(companyId));
+
   // Filter notifications by company if not Super Admin
   const companyNotifs = activeRole === 'Super Admin'
     ? notifications
@@ -327,6 +336,15 @@ export const Topbar: React.FC<TopbarProps> = ({
                           const groupName = group.companyName;
                           const isExpanded = expandedGroups[groupName] !== false; // Default true
 
+                          // Company-level access → the company itself is a selectable
+                          // workspace (consolidated, all-branches view). Branch-only
+                          // access → the company is just an expandable group label.
+                          // (A childless company, isCompanyOnly, is its own branch card.)
+                          const companyAccess = !group.isCompanyOnly && hasCompanyLevelAccess(group.companyId);
+                          const companyIsCurrent = companyAccess
+                            && String(group.companyId) === String(activeCompanyId)
+                            && !isBranchWorkspace;
+
                           // Sort branches: primary first, then alphabetically
                           const sortedBranches = [...group.cards].sort((a, b) => {
                             const isAPrimary = authProfile?.companyId === a.id;
@@ -338,18 +356,63 @@ export const Topbar: React.FC<TopbarProps> = ({
                           });
                           return (
                             <div key={group.companyId} className="mb-1">
-                              <button
-                                onClick={() => toggleGroup(groupName)}
-                                className="w-full text-left px-3 py-2 flex items-center justify-between hover:bg-[#F1F5F9] transition-colors group border-b border-[#F1F5F9] last:border-0"
-                              >
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                  <span className="text-[14px]">🏢</span>
-                                  <span className="text-[12px] font-bold text-[#334155] truncate tracking-wide">{groupName} ({group.cards.length})</span>
+                              {companyAccess ? (
+                                // Company-level access → the company row is a selectable
+                                // workspace, just like a branch: pointer cursor, row
+                                // highlight on hover, active highlight when it is the
+                                // active workspace. A SEPARATE chevron expands/collapses
+                                // its branches so selecting never collapses the group.
+                                <div className={cn(
+                                  "w-full flex items-center justify-between border-b border-[#F1F5F9] last:border-0 transition-colors",
+                                  companyIsCurrent ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]"
+                                )}>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (onCompanyChange && !companyIsCurrent) onCompanyChange(group.companyId, 'company');
+                                      setWorkspaceOpen(false);
+                                      setWsSearchTerm('');
+                                    }}
+                                    title="Switch to the company workspace (consolidated, all branches)"
+                                    className={cn(
+                                      "flex-1 min-w-0 text-left px-3 py-2 flex items-center gap-2 cursor-pointer",
+                                      companyIsCurrent ? "text-[#2563EB] font-bold" : "text-[#334155] font-bold hover:text-[#0F172A]"
+                                    )}
+                                  >
+                                    <span className="text-[14px]">🏢</span>
+                                    <span className="text-[12px] truncate tracking-wide">{groupName} ({group.cards.length})</span>
+                                    {companyIsCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); toggleGroup(groupName); }}
+                                    title={isExpanded ? 'Collapse branches' : 'Expand branches'}
+                                    aria-expanded={isExpanded}
+                                    className="px-2.5 py-2 flex items-center flex-shrink-0 text-[#94A3B8] hover:text-[#475569] transition-colors cursor-pointer"
+                                  >
+                                    <ChevronRight size={14} className={cn("transition-transform duration-200", isExpanded && "rotate-90")} />
+                                  </button>
                                 </div>
-                                <div className="flex items-center flex-shrink-0">
-                                  <ChevronRight size={14} className={cn("text-[#94A3B8] transition-transform duration-200", isExpanded && "rotate-90")} />
-                                </div>
-                              </button>
+                              ) : (
+                                // Branch-only access → the company is NOT a selectable
+                                // workspace. Clicking anywhere on the row only
+                                // expands/collapses its branches. No pointer cursor, no
+                                // active/blue highlight, so it never looks selectable.
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroup(groupName)}
+                                  title={isExpanded ? 'Collapse branches' : 'Expand branches'}
+                                  aria-expanded={isExpanded}
+                                  className="w-full text-left flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors cursor-default select-none"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[14px]">🏢</span>
+                                    <span className="text-[11px] font-extrabold text-[#64748B] uppercase tracking-wider truncate">{groupName}</span>
+                                    <span className="text-[9px] font-bold text-[#94A3B8] tracking-wide flex-shrink-0">{group.cards.length} branch{group.cards.length === 1 ? '' : 'es'}</span>
+                                  </div>
+                                  <ChevronRight size={14} className={cn("text-[#94A3B8] transition-transform duration-200 flex-shrink-0", isExpanded && "rotate-90")} />
+                                </button>
+                              )}
                               
                               <AnimatePresence>
                                 {isExpanded && (

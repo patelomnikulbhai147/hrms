@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import {
   ShieldCheck, Search, ShieldAlert, Key, CheckCircle2, XCircle, Power,
-  Building2, Users as UsersIcon, UserPlus, Upload, Download, SlidersHorizontal,
+  Building2, Users as UsersIcon, UserPlus, Upload, Download,
   ChevronDown, ChevronRight, Minus, GitBranch, Settings, MoreVertical, Edit2, Shield, Trash2, UserCheck, RotateCw, ClipboardList, Activity
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type UserAccount, type AppModules, type ModulePermissions } from '@/pages/Login';
+import { foldPermissions } from '@/utils/permissionFold';
 import { type Company } from '@/data/mockData';
 import { buildCompanyBranchGroups, type CompanyBranchGroup } from '@/utils/workspaceUtils';
 import { Badge } from '@/components/ui/Badge';
@@ -48,18 +49,12 @@ const MODULES_LIST: { id: AppModules; name: string }[] = [
 const DEFAULT_PERMISSIONS: ModulePermissions = {
   view: true,
   edit: false,
-  create: false,
-  delete: false,
   export: false,
-  approve: false,
-  print: false,
-  manage: false
 };
 
-// Consolidated permission model — exactly four actions. VIEW (read/search/open),
-// CREATE (add new), EDIT (modify existing — also covers delete & approve),
-// EXPORT (download/print). Standalone delete/approve/print/manage are removed.
-const ALL_ACTIONS: Array<keyof ModulePermissions> = ['view', 'create', 'edit', 'export'];
+// Enterprise 3-action model: VIEW, EDIT, EXPORT. (create/delete/approve/import
+// fold into edit, print into export — see utils/permissionFold.)
+const ALL_ACTIONS: Array<keyof ModulePermissions> = ['view', 'edit', 'export'];
 const fullPerms = (val: boolean): ModulePermissions =>
   ALL_ACTIONS.reduce((o, a) => { (o as any)[a] = val; return o; }, {} as ModulePermissions);
 
@@ -76,14 +71,14 @@ const ROLE_TEMPLATES: { id: string; label: string; build: (modules: AppModules[]
     id: 'readOnly', label: 'View Only',
     build: (mods) => ({
       access: Object.fromEntries(mods.map(m => [m, true])),
-      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, export: true }])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true }])),
     }),
   },
   {
-    id: 'createOnly', label: 'Create + View',
+    id: 'editAccess', label: 'View + Edit',
     build: (mods) => ({
       access: Object.fromEntries(mods.map(m => [m, true])),
-      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, create: true, export: true }])),
+      perms: Object.fromEntries(mods.map(m => [m, { ...fullPerms(false), view: true, edit: true }])),
     }),
   },
   {
@@ -234,7 +229,15 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
   };
 
   const handleOpenPermissions = (user: UserAccount) => {
-    setSelectedUser(user);
+    // Fold any legacy (create/delete/approve/import/print) grants on existing
+    // module entries into the 3-action model so the matrix shows — and later
+    // saves — the converted permissions. Modules with no entry are left untouched
+    // so their role-default fallback still applies.
+    const src = (user.permissions || {}) as Record<string, ModulePermissions>;
+    const foldedEntries = Object.fromEntries(
+      Object.keys(src).map(k => [k, foldPermissions(src[k])]),
+    ) as Record<AppModules, ModulePermissions>;
+    setSelectedUser({ ...user, permissions: foldedEntries });
   };
 
   const handleCloseModal = () => {
@@ -263,9 +266,10 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     const turningOn = !perms[action];
     perms[action] = turningOn;
 
-    // EDIT covers delete & approve; turning EDIT off must not leave those legacy
-    // flags dangling on older records.
-    if (action === 'edit' && !turningOn) { (perms as any).delete = false; (perms as any).approve = false; }
+    // Dependency rules: enabling Edit/Export auto-enables View; disabling View
+    // disables Edit and Export (no write/export without view).
+    if ((action === 'edit' || action === 'export') && turningOn) perms.view = true;
+    if (action === 'view' && !turningOn) { perms.edit = false; perms.export = false; }
 
     // ACCESS reflects whether ANY action is granted (no "permission without access").
     updatedUser.permissions[moduleId] = perms;
@@ -301,8 +305,26 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
   // The user's primary base (companyId) is always granted and can never be
   // removed; everything else lives in accessibleCompanyIds.
   const isWorkspaceLocked = (id: string) => !!selectedUser && selectedUser.companyId === id;
-  const isWorkspaceSelected = (id: string) =>
-    !!selectedUser && (isWorkspaceLocked(id) || (selectedUser.accessibleCompanyIds || []).includes(id));
+  
+  const isWorkspaceSelected = (id: string) => {
+    if (!selectedUser) return false;
+    if (isWorkspaceLocked(id)) return true;
+    const accessible = (selectedUser.accessibleCompanyIds || []).map(String);
+    if (accessible.includes(String(id))) return true;
+
+    // Check if it's a branch and its parent company is in accessible
+    const rec = companies.find(c => String(c.id) === String(id));
+    if (rec && rec.parentCompanyId) {
+      if (accessible.includes(String(rec.parentCompanyId))) return true;
+      // Also check if parent company is primary, and no specific branches are checked
+      if (String(selectedUser.companyId) === String(rec.parentCompanyId)) {
+        const childBranches = companies.filter(c => String(c.parentCompanyId) === String(rec.parentCompanyId));
+        const hasSpecificBranchChecked = childBranches.some(b => accessible.includes(String(b.id)));
+        if (!hasSpecificBranchChecked) return true;
+      }
+    }
+    return false;
+  };
 
   const commitAccessibleIds = (ids: Set<string>) => {
     if (!selectedUser) return;
@@ -311,41 +333,98 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     setSelectedUser({ ...selectedUser, accessibleCompanyIds: Array.from(ids) });
   };
 
-  const handleToggleWorkspace = (companyId: string) => {
-    if (!selectedUser || isWorkspaceLocked(companyId)) return;
-    const next = new Set(selectedUser.accessibleCompanyIds || []);
-    next.has(companyId) ? next.delete(companyId) : next.add(companyId);
-    commitAccessibleIds(next);
-  };
-
   // Tri-state for a company group, derived from its branches (or the company
   // itself when it has no branches): 'all' | 'partial' | 'none'.
   const getGroupState = (group: CompanyBranchGroup): 'all' | 'partial' | 'none' => {
-    const ids = group.branches.length > 0
-      ? group.branches.map(b => b.id)
-      : [group.companyId];
-    const selected = ids.filter(isWorkspaceSelected).length;
-    if (selected === 0) return 'none';
-    if (selected === ids.length) return 'all';
-    return 'partial';
+    if (!selectedUser) return 'none';
+    const accessible = (selectedUser.accessibleCompanyIds || []).map(String);
+    
+    // Is the parent company itself explicitly granted?
+    const companyIdStr = String(group.companyId);
+    const hasCompanyGrant = accessible.includes(companyIdStr) || (String(selectedUser.companyId) === companyIdStr && !group.branches.some(b => accessible.includes(String(b.id))));
+    
+    if (hasCompanyGrant) {
+      return 'all';
+    }
+
+    if (group.branches.length > 0) {
+      const selectedBranchesCount = group.branches.filter(b => accessible.includes(String(b.id)) || String(selectedUser.companyId) === String(b.id)).length;
+      if (selectedBranchesCount === 0) return 'none';
+      if (selectedBranchesCount === group.branches.length) return 'all'; // all branches selected => all
+      return 'partial';
+    }
+
+    return 'none';
   };
 
   // AUTO-SELECT / AUTO-DESELECT: toggling the company header selects ALL of its
   // branches (plus the company node), or clears them — never partially.
   const handleToggleCompanyGroup = (group: CompanyBranchGroup) => {
     if (!selectedUser) return;
-    const branchIds = group.branches.map(b => b.id);
-    // Include the company node itself only when it's a real, loaded workspace.
-    const targets = group.company
-      ? [group.companyId, ...branchIds]
-      : (branchIds.length > 0 ? branchIds : [group.companyId]);
-    const next = new Set(selectedUser.accessibleCompanyIds || []);
-    if (getGroupState(group) === 'all') {
-      targets.forEach(id => { if (!isWorkspaceLocked(id)) next.delete(id); });
+    const current = getGroupState(group);
+    const next = new Set((selectedUser.accessibleCompanyIds || []).map(String));
+    const companyIdStr = String(group.companyId);
+    const branchIdsStr = group.branches.map(b => String(b.id));
+
+    if (current === 'all') {
+      // Turn off: remove company and all branch IDs (except if locked primary)
+      if (!isWorkspaceLocked(companyIdStr)) next.delete(companyIdStr);
+      branchIdsStr.forEach(bid => {
+        if (!isWorkspaceLocked(bid)) next.delete(bid);
+      });
     } else {
-      targets.forEach(id => next.add(id));
+      // Turn on full access: add company, remove branch IDs (except if locked primary)
+      next.add(companyIdStr);
+      branchIdsStr.forEach(bid => {
+        if (!isWorkspaceLocked(bid)) next.delete(bid);
+      });
     }
-    commitAccessibleIds(next);
+    commitAccessibleIds(new Set(Array.from(next)));
+  };
+
+  const handleToggleWorkspace = (branchId: string) => {
+    if (!selectedUser || isWorkspaceLocked(branchId)) return;
+    
+    const rec = companies.find(c => String(c.id) === String(branchId));
+    if (!rec || !rec.parentCompanyId) return; // not a branch
+    
+    const parentIdStr = String(rec.parentCompanyId);
+    const companyGroup = accessGroups.find(g => String(g.companyId) === parentIdStr);
+    if (!companyGroup) return;
+
+    const branchIdStr = String(branchId);
+    const otherBranches = companyGroup.branches.filter(b => String(b.id) !== branchIdStr);
+    const next = new Set((selectedUser.accessibleCompanyIds || []).map(String));
+    const groupState = getGroupState(companyGroup);
+
+    if (groupState === 'all') {
+      // Move from FULL to PARTIAL: remove company, add all other branches
+      if (!isWorkspaceLocked(parentIdStr)) next.delete(parentIdStr);
+      otherBranches.forEach(b => next.add(String(b.id)));
+      if (!isWorkspaceLocked(branchIdStr)) next.delete(branchIdStr);
+    } else {
+      // Move from PARTIAL/NONE: toggle this branch
+      if (next.has(branchIdStr)) {
+        if (!isWorkspaceLocked(branchIdStr)) next.delete(branchIdStr);
+      } else {
+        next.add(branchIdStr);
+      }
+
+      // Check if all branches are now selected: if yes, upgrade to Company-level access
+      const allBranchesChecked = companyGroup.branches.every(b => {
+        const bid = String(b.id);
+        return bid === branchIdStr || next.has(bid) || isWorkspaceLocked(bid);
+      });
+
+      if (allBranchesChecked) {
+        next.add(parentIdStr);
+        companyGroup.branches.forEach(b => {
+          if (!isWorkspaceLocked(String(b.id))) next.delete(String(b.id));
+        });
+      }
+    }
+
+    commitAccessibleIds(new Set(Array.from(next)));
   };
 
   const toggleGroupCollapsed = (companyId: string) => {
@@ -616,9 +695,6 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
             <button onClick={fetchAuditLogs} className="h-10 px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-[13px] font-bold transition-all shadow-sm flex items-center gap-2">
               <ClipboardList size={16} className="text-purple-600" />
               Audit Logs
-            </button>
-            <button onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'settings' }))} className="h-10 w-10 bg-white border border-slate-200 hover:bg-slate-50 text-slate-500 rounded-xl flex items-center justify-center transition-all shadow-sm">
-              <SlidersHorizontal size={16} />
             </button>
           </div>
         </div>
@@ -1018,53 +1094,54 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
         </div>
       </div>
 
-      {/* RBAC Permissions Modal */}
+            {/* RBAC Permissions Modal */}
       <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
             <motion.div 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
               onClick={handleCloseModal}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative w-full max-w-4xl max-h-[90vh] bg-[#0B1120] border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              className="relative w-full max-w-4xl max-h-[90vh] bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden flex flex-col text-slate-800"
             >
               {/* Modal Header */}
-              <div className="px-6 py-5 border-b border-slate-800/60 bg-slate-900/40 flex items-center justify-between sticky top-0 z-10">
+              <div className="px-6 py-5 border-b border-slate-150 bg-slate-50 flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-slate-800 to-slate-700 flex items-center justify-center font-bold text-white shadow-md border border-slate-600/50 text-lg">
+                  <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center font-bold text-indigo-600 text-lg shadow-sm">
                     {selectedUser.avatar || selectedUser.name.charAt(0)}
                   </div>
                   <div>
-                    <h2 className="text-lg font-black text-white tracking-tight">{selectedUser.name}</h2>
-                    <p className="text-xs font-medium text-blue-400 mt-0.5 flex items-center gap-1.5">
+                    <h2 className="text-base font-bold text-slate-900 leading-tight">{selectedUser.name}</h2>
+                    <p className="text-xs font-semibold text-indigo-600 mt-1 flex items-center gap-1.5">
                       <Key size={12} /> Permission Matrix Configuration
                     </p>
                   </div>
                 </div>
                 <button 
                   onClick={handleCloseModal}
-                  className="p-2 text-slate-400 hover:text-white hover:bg-slate-800/60 rounded-xl transition-colors"
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+                  aria-label="Close modal"
                 >
                   <XCircle size={20} />
                 </button>
               </div>
 
               {/* Modal Body - Scrollable */}
-              <div className="p-6 overflow-y-auto flex-1 bg-slate-950/50">
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-50/30">
                 
                 {selectedUser.role === 'Super Admin' ? (
-                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-                    <div className="w-20 h-20 bg-gradient-to-tr from-amber-500/20 to-rose-500/20 border border-amber-500/30 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(245,158,11,0.1)]">
-                      <ShieldCheck className="text-amber-400" size={40} />
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-white border border-slate-250 rounded-2xl shadow-sm">
+                    <div className="w-20 h-20 bg-amber-50 border border-amber-100 rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+                      <ShieldCheck className="text-amber-500" size={40} />
                     </div>
-                    <h3 className="text-xl font-black text-white tracking-tight mb-2">Protected System Role</h3>
-                    <p className="text-slate-400 max-w-sm mx-auto leading-relaxed text-sm">
-                      <strong className="text-amber-400 font-bold">Super Admin</strong> has permanent full system access. Permission controls and workspace limits are securely locked to prevent accidental lockouts.
+                    <h3 className="text-lg font-bold text-slate-900 mb-2">Protected System Role</h3>
+                    <p className="text-slate-600 max-w-sm mx-auto leading-relaxed text-sm">
+                      <strong className="text-amber-600 font-bold">Super Admin</strong> has permanent full system access. Permission controls and workspace limits are securely locked to prevent accidental lockouts.
                     </p>
                   </div>
                 ) : (
@@ -1073,98 +1150,96 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                     {/* Workspace Access — Company → Branch hierarchy */}
                     <div>
                       <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2">
-                          <Building2 size={16} className="text-blue-400" />
+                        <h3 className="text-xs font-bold text-slate-800 tracking-wide uppercase flex items-center gap-2">
+                          <Building2 size={16} className="text-indigo-600" />
                           Workspace Access
                         </h3>
-                        <Badge variant="blue">
+                        <Badge variant="gray" className="bg-slate-100 text-slate-600 border border-slate-200">
                           {accessGroups.length} {accessGroups.length === 1 ? 'Company' : 'Companies'}
                           {totalBranchCount > 0 && ` • ${totalBranchCount} ${totalBranchCount === 1 ? 'Branch' : 'Branches'}`}
                         </Badge>
                       </div>
 
-                      <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {accessGroups.map(group => {
                           const state = getGroupState(group);
                           const isCollapsed = collapsedGroups.has(group.companyId);
                           const hasBranches = group.branches.length > 0;
-                          // The header is "locked" when the company itself is the user's
-                          // primary base AND it has no branches to toggle independently.
                           const companyLocked = !hasBranches && isWorkspaceLocked(group.companyId);
 
                           return (
                             <div
                               key={group.companyId}
                               className={cn(
-                                "rounded-xl border overflow-hidden transition-colors",
+                                "rounded-xl border overflow-hidden transition-all duration-200 shadow-sm flex flex-col bg-white",
                                 state === 'all'
-                                  ? "bg-blue-600/10 border-blue-500/40"
+                                  ? "border-indigo-200 bg-indigo-50/10"
                                   : state === 'partial'
-                                    ? "bg-blue-600/[0.06] border-blue-500/25"
-                                    : "bg-slate-900/40 border-slate-800/60"
+                                    ? "border-indigo-100 bg-indigo-50/[0.05]"
+                                    : "border-slate-200"
                               )}
                             >
                               {/* Company header row */}
-                              <div className="flex items-center gap-2.5 p-3">
+                              <div className="flex items-center gap-2.5 p-3 border-b border-slate-100 bg-slate-55/40">
                                 {/* Expand / collapse */}
                                 {hasBranches ? (
                                   <button
                                     type="button"
                                     onClick={() => toggleGroupCollapsed(group.companyId)}
-                                    className="p-0.5 text-slate-500 hover:text-slate-200 transition-colors shrink-0"
+                                    className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors shrink-0"
                                     aria-label={isCollapsed ? 'Expand branches' : 'Collapse branches'}
                                   >
-                                    {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
+                                    {isCollapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
                                   </button>
                                 ) : (
-                                  <span className="w-[22px] shrink-0" />
+                                  <span className="w-[24px] shrink-0" />
                                 )}
 
-                                {/* Tri-state company checkbox (auto-select / auto-deselect all branches) */}
+                                {/* Tri-state company checkbox */}
                                 <button
                                   type="button"
                                   disabled={companyLocked}
                                   onClick={() => handleToggleCompanyGroup(group)}
                                   className={cn(
-                                    "w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors shadow-sm",
+                                    "w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors shadow-inner cursor-pointer",
                                     state === 'all'
-                                      ? "bg-blue-500 border-blue-500 text-white"
+                                      ? "bg-indigo-600 border-indigo-600 text-white"
                                       : state === 'partial'
-                                        ? "bg-blue-500/30 border-blue-500 text-blue-200"
-                                        : "bg-slate-800 border-slate-600 text-transparent hover:border-slate-500",
-                                    companyLocked && "opacity-90 cursor-default"
+                                        ? "bg-indigo-100 border-indigo-400 text-indigo-700"
+                                        : "bg-white border-slate-300 text-transparent hover:border-slate-400",
+                                    companyLocked && "opacity-60 cursor-default"
                                   )}
                                   aria-label={`Select all branches of ${group.companyName}`}
                                 >
-                                  {state === 'all' && <CheckCircle2 size={13} strokeWidth={3} />}
-                                  {state === 'partial' && <Minus size={13} strokeWidth={3.5} />}
+                                  {state === 'all' && <CheckCircle2 size={12} strokeWidth={3} />}
+                                  {state === 'partial' && <Minus size={12} strokeWidth={3.5} />}
                                 </button>
 
-                                {/* Name + count — clicking the label also expands/collapses */}
+                                {/* Name + count */}
                                 <button
                                   type="button"
                                   onClick={() => hasBranches && toggleGroupCollapsed(group.companyId)}
-                                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                                  className="flex items-center gap-2.5 min-w-0 flex-1 text-left cursor-pointer"
                                 >
                                   <div className={cn(
-                                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                                    state === 'none' ? "bg-slate-800 text-slate-400" : "bg-blue-500/20 text-blue-300"
+                                    "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors",
+                                    state === 'none' ? "bg-slate-100 text-slate-400" : "bg-indigo-100 text-indigo-600"
                                   )}>
-                                    <Building2 size={16} />
+                                    <Building2 size={15} />
                                   </div>
                                   <div className="min-w-0">
                                     <p className={cn(
-                                      "text-sm font-bold truncate",
-                                      state === 'none' ? "text-slate-300" : "text-blue-200"
+                                      "text-xs font-bold truncate transition-colors",
+                                      state === 'none' ? "text-slate-700" : "text-indigo-950"
                                     )}>
                                       {group.companyName}
                                       {hasBranches && (
-                                        <span className="text-slate-500 font-semibold ml-1.5">
+                                        <span className="text-slate-400 font-semibold ml-1.5 text-[11px]">
                                           ({group.branches.length} {group.branches.length === 1 ? 'Branch' : 'Branches'})
                                         </span>
                                       )}
                                     </p>
-                                    <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                                    <p className="text-[10px] text-slate-450 truncate mt-0.5 font-medium">
                                       {group.company?.domain || (hasBranches ? 'Parent Company' : 'Standalone Workspace')}
                                     </p>
                                   </div>
@@ -1172,17 +1247,17 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
                                 {/* State pill */}
                                 {isWorkspaceLocked(group.companyId) && !hasBranches ? (
-                                  <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400 shrink-0">Primary</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 shrink-0">Primary</span>
                                 ) : state === 'all' ? (
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 shrink-0">Full</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 shrink-0">Full</span>
                                 ) : state === 'partial' ? (
-                                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-300/80 shrink-0">Partial</span>
+                                  <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 shrink-0">Partial</span>
                                 ) : null}
                               </div>
 
                               {/* Branch children */}
                               {hasBranches && !isCollapsed && (
-                                <div className="border-t border-slate-800/60 bg-slate-950/30 py-1.5 pl-[34px] pr-3">
+                                <div className="py-2 px-3 space-y-1 bg-slate-50/30 flex-1 border-t border-slate-100">
                                   {group.branches.map((branch, idx) => {
                                     const last = idx === group.branches.length - 1;
                                     const selected = isWorkspaceSelected(branch.id);
@@ -1190,7 +1265,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                                     return (
                                       <div key={branch.id} className="flex items-center gap-2">
                                         {/* Tree connector */}
-                                        <span className="text-slate-600 font-mono text-sm leading-none select-none shrink-0 -mt-1">
+                                        <span className="text-slate-300 font-mono text-[11px] leading-none select-none shrink-0 w-3 text-center">
                                           {last ? '└' : '├'}
                                         </span>
                                         <button
@@ -1198,28 +1273,30 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                                           disabled={locked}
                                           onClick={() => handleToggleWorkspace(branch.id)}
                                           className={cn(
-                                            "flex items-center gap-2.5 flex-1 min-w-0 py-1.5 px-2 my-0.5 rounded-lg transition-colors text-left",
-                                            selected ? "hover:bg-blue-500/10" : "hover:bg-slate-800/50",
-                                            locked && "cursor-default"
+                                            "flex items-center gap-2.5 flex-1 min-w-0 py-1.5 px-2.5 rounded-lg transition-all text-left border cursor-pointer",
+                                            selected 
+                                              ? "bg-indigo-50/40 border-indigo-100/60 text-indigo-900 shadow-sm" 
+                                              : "bg-white border-slate-200 text-slate-650 hover:bg-slate-50 hover:text-slate-800",
+                                            locked && "cursor-default opacity-80"
                                           )}
                                         >
                                           <span className={cn(
-                                            "w-[18px] h-[18px] rounded-md border flex items-center justify-center shrink-0 transition-colors",
+                                            "w-4.5 h-4.5 rounded border flex items-center justify-center shrink-0 transition-colors shadow-inner",
                                             selected
-                                              ? "bg-blue-500 border-blue-500 text-white"
-                                              : "bg-slate-800 border-slate-600 text-transparent"
+                                              ? "bg-indigo-600 border-indigo-600 text-white"
+                                              : "bg-white border-slate-300 text-transparent"
                                           )}>
-                                            {selected && <CheckCircle2 size={12} strokeWidth={3} />}
+                                            {selected && <CheckCircle2 size={10} strokeWidth={3} />}
                                           </span>
-                                          <GitBranch size={13} className={cn("shrink-0", selected ? "text-blue-300/70" : "text-slate-500")} />
+                                          <GitBranch size={13} className={cn("shrink-0", selected ? "text-indigo-500" : "text-slate-400")} />
                                           <span className={cn(
-                                            "text-sm font-semibold truncate",
-                                            selected ? "text-blue-100" : "text-slate-300"
+                                            "text-xs font-semibold truncate",
+                                            selected ? "text-indigo-950" : "text-slate-650"
                                           )}>
                                             {branch.branchName || branch.name}
                                           </span>
                                           {locked && (
-                                            <span className="text-[9px] font-bold uppercase tracking-widest text-blue-400 ml-auto shrink-0">Primary</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-600 ml-auto shrink-0">Primary</span>
                                           )}
                                         </button>
                                       </div>
@@ -1232,37 +1309,37 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                         })}
 
                         {accessGroups.length === 0 && (
-                          <div className="text-center text-slate-500 text-sm py-8 border border-dashed border-slate-800 rounded-xl">
+                          <div className="col-span-full text-center text-slate-400 text-sm py-12 border border-dashed border-slate-200 rounded-xl bg-white">
                             No companies or branches available to assign.
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="h-px w-full bg-gradient-to-r from-transparent via-slate-800 to-transparent" />
+                    <div className="h-px w-full bg-slate-200" />
 
                     {/* RBAC Modules */}
                     <div>
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                        <h3 className="text-sm font-extrabold text-white tracking-wide uppercase flex items-center gap-2">
-                          <Key size={16} className="text-emerald-400" />
+                        <h3 className="text-xs font-bold text-slate-800 tracking-wide uppercase flex items-center gap-2">
+                          <Key size={16} className="text-indigo-600" />
                           Module Permissions
                         </h3>
                         <div className="flex items-center gap-2 flex-wrap">
                           <button type="button" onClick={handleSelectAllPermissions}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30 hover:bg-emerald-500/25 transition-colors">
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100/80 transition-colors cursor-pointer">
                             Select All
                           </button>
                           <button type="button" onClick={handleClearAllPermissions}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30 hover:bg-rose-500/25 transition-colors">
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-50 text-rose-600 border border-rose-250 hover:bg-rose-100/80 transition-colors cursor-pointer">
                             Clear All
                           </button>
                           <select
                             defaultValue=""
                             onChange={e => { if (e.target.value) { handleApplyTemplate(e.target.value); e.target.value = ''; } }}
-                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-800 text-slate-200 ring-1 ring-slate-700 hover:bg-slate-700 transition-colors focus:outline-none cursor-pointer">
-                            <option value="" disabled className="bg-slate-900">Apply role template…</option>
-                            {ROLE_TEMPLATES.map(t => <option key={t.id} value={t.id} className="bg-slate-900">{t.label}</option>)}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 transition-colors focus:outline-none cursor-pointer">
+                            <option value="" disabled>Apply role template…</option>
+                            {ROLE_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                           </select>
                         </div>
                       </div>
@@ -1273,19 +1350,19 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                           
                           return (
                             <div key={module.id} className={cn(
-                              "rounded-xl border transition-all duration-300 flex flex-col",
-                              isEnabled ? "bg-slate-900/40 border-slate-700/50" : "bg-slate-900/20 border-slate-800/40 opacity-60"
+                              "rounded-xl border transition-all duration-200 flex flex-col bg-white",
+                              isEnabled ? "border-slate-200 shadow-sm" : "border-slate-200 bg-slate-50/60 opacity-60"
                             )}>
                               {/* Module Header Row */}
-                              <div className="p-3.5 flex items-center justify-between border-b border-slate-800/40 bg-slate-800/20">
-                                <span className={cn("font-bold text-sm tracking-tight", isEnabled ? "text-white" : "text-slate-500 line-through decoration-slate-600/50")}>
+                              <div className="p-3.5 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+                                <span className={cn("font-bold text-xs tracking-tight", isEnabled ? "text-slate-800" : "text-slate-450 line-through decoration-slate-450")}>
                                   {module.name}
                                 </span>
                                 <button
                                   onClick={() => handleToggleModuleAccess(module.id)}
                                   className={cn(
                                     "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
-                                    isEnabled ? "bg-emerald-500" : "bg-slate-700"
+                                    isEnabled ? "bg-indigo-600" : "bg-slate-300"
                                   )}
                                 >
                                   <span className={cn(
@@ -1297,26 +1374,25 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
                               {/* Granular Permissions */}
                               {isEnabled && (
-                                <div className="p-3.5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                <div className="p-3.5 grid grid-cols-3 gap-2.5">
                                   {ALL_ACTIONS.map(action => {
                                     const hasAction = perms[action];
-                                    const displayAction = action === 'view' ? 'read' : action;
                                     return (
                                       <button
-                                        key={action} 
+                                        key={action}
                                         onClick={() => handleToggleActionPermission(module.id, action)}
                                         className={cn(
-                                          "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border",
-                                          hasAction 
-                                            ? "bg-slate-800/80 text-white border-slate-600/50 shadow-sm" 
-                                            : "bg-slate-900/50 text-slate-500 border-slate-800/50 hover:bg-slate-800/50 hover:text-slate-400"
+                                          "flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border cursor-pointer",
+                                          hasAction
+                                            ? "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100/70 shadow-sm"
+                                            : "bg-slate-50 border-slate-200 text-slate-400 hover:bg-slate-100"
                                         )}
                                       >
                                         <div className={cn(
                                           "w-1.5 h-1.5 rounded-full",
-                                          hasAction ? (action === 'view' ? 'bg-blue-400' : 'bg-emerald-400') : 'bg-slate-600'
+                                          hasAction ? "bg-indigo-600" : "bg-slate-350"
                                         )} />
-                                        {displayAction}
+                                        {action}
                                       </button>
                                     );
                                   })}
@@ -1332,16 +1408,16 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
               </div>
 
               {/* Modal Footer */}
-              <div className="px-6 py-4 border-t border-slate-800/60 bg-slate-900/80 flex items-center justify-end gap-3 sticky bottom-0">
+              <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-3 sticky bottom-0 z-10">
                 <button
                   onClick={handleCloseModal}
-                  className="px-4 py-2 rounded-xl text-sm font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="px-4 py-2 rounded-xl text-sm font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 bg-white transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSavePermissions}
-                  className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/20 flex items-center gap-2"
+                  className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 active:scale-[0.98]"
                 >
                   <ShieldCheck size={16} />
                   Save Permission Matrix

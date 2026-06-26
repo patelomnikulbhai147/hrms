@@ -133,6 +133,75 @@ export const validatePercentage = (val: string | number, fieldName?: string): Va
   return { isValid: true, error: '' };
 };
 
+// ── Company statutory / banking format validators ───────────────────────────
+// All are LENIENT on empty (optional fields) and only reject a malformed value,
+// so existing companies with blank fields keep saving (backward compatible).
+const optional = (v: string | number | undefined | null) => String(v ?? '').trim() === '';
+
+/** GSTIN — 15 chars: 2 state digits, 10-char PAN, entity digit, 'Z', checksum. */
+export const validateGST = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid GST number (e.g. 24ABCDE1234F1Z5)' };
+};
+
+/** PAN — 5 letters, 4 digits, 1 letter. */
+export const validatePAN = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid PAN (e.g. ABCDE1234F)' };
+};
+
+/** CIN — 21 chars (U/L + 5 digits + 2-letter state + 4-digit year + 3-letter type + 6-digit reg). */
+export const validateCIN = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid CIN (21 chars, e.g. U72200GJ2020PTC000000)' };
+};
+
+/** TAN — 4 letters, 5 digits, 1 letter. */
+export const validateTAN = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[A-Z]{4}[0-9]{5}[A-Z]{1}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid TAN (e.g. ABCD12345E)' };
+};
+
+/** IFSC — 4 letters, '0', 6 alphanumerics. */
+export const validateIFSC = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[A-Z]{4}0[A-Z0-9]{6}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid IFSC (e.g. HDFC0001234)' };
+};
+
+/** PF establishment code — letters/digits/slashes (e.g. GJ/AHD/1234567/000). Lenient. */
+export const validatePFCode = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[A-Z0-9/-]{5,30}$/.test(String(val).trim().toUpperCase());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid PF code (letters, digits, / and - only)' };
+};
+
+/** ESI employer code — 17 digits, often dash-separated. Lenient on separators. */
+export const validateESICode = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const digits = String(val).replace(/[^0-9]/g, '');
+  const ok = digits.length === 17;
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid ESI code (17 digits)' };
+};
+
+/** Website / URL — optional protocol, domain with a dot. */
+export const validateWebsite = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/\S*)?$/.test(String(val).trim());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid website (e.g. www.company.com)' };
+};
+
+/** Indian PIN code — exactly 6 digits, not starting with 0. */
+export const validatePincode = (val: string): ValidationResult => {
+  if (optional(val)) return { isValid: true, error: '' };
+  const ok = /^[1-9][0-9]{5}$/.test(String(val).trim());
+  return ok ? { isValid: true, error: '' } : { isValid: false, error: 'Invalid PIN code (6 digits)' };
+};
+
 /**
  * Validates Employee ID.
  * Enforces: No blank IDs, no duplicates in the company roster, only alphanumeric & hyphens.

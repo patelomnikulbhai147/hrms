@@ -55,8 +55,13 @@ export const authStorage = {
   set(key: string, value: string) {
     // Always persist to localStorage so refresh/navigation never lose the
     // session. Clear any stale copy left in sessionStorage by older builds.
-    sessionStorage.removeItem(key);
-    localStorage.setItem(key, value);
+    // Guarded so a storage failure (quota/private mode) can never crash the app.
+    try { sessionStorage.removeItem(key); } catch (_) { /* ignore */ }
+    try {
+      localStorage.setItem(key, value);
+    } catch (err) {
+      console.warn(`[authStorage] Could not persist "${key}" (${(err as any)?.name || 'error'}).`);
+    }
   },
 
   get(key: string): string | null {

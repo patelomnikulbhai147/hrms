@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, type SuperAdminStats } from '@/api/apiClient';
-import { getAccessibleWorkspaceIds } from '@/utils/workspaceUtils';
+import { getAccessibleWorkspaceIds, buildWorkspaceHierarchy } from '@/utils/workspaceUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
@@ -26,6 +26,7 @@ const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ defa
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { authStorage } from '@/utils/authStorage';
+import { safeSetJSON, pruneLargeLegacyCaches } from '@/utils/safeStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from '@/context/PermissionContext';
 import { isCompanyArchived } from '@/utils/companyStatus';
 import { ShieldAlert } from 'lucide-react';
@@ -149,6 +150,15 @@ export default function App() {
       localStorage.setItem('hrms_real_migration_v6', 'true');
       window.location.reload();
     }
+    // One-time purge of legacy large datasets older builds cached in localStorage
+    // (employees / payroll / leaves / documents / attendance). They are never read
+    // back — all such state is hydrated from the backend — so a stale multi-MB blob
+    // here only wastes the storage quota and was the cause of the QuotaExceededError
+    // seen right after offboarding. Pruning frees that space for essential keys.
+    if (!localStorage.getItem('hrms_storage_cleanup_v1')) {
+      pruneLargeLegacyCaches();
+      try { localStorage.setItem('hrms_storage_cleanup_v1', 'true'); } catch { /* ignore */ }
+    }
   }
 
 
@@ -208,17 +218,17 @@ export default function App() {
             const existing = sanitized.find(p => p.name === dp.name);
             return existing ? { ...existing, employeeLimit: PLAN_LIMITS[existing.name as keyof typeof PLAN_LIMITS].employees, hrLimit: PLAN_LIMITS[existing.name as keyof typeof PLAN_LIMITS].hrAdmins } : dp;
           });
-          localStorage.setItem('hrms_plans', JSON.stringify(merged));
+          safeSetJSON('hrms_plans', merged);
           return merged;
         }
 
         return sanitized;
       } catch (e) {
-        localStorage.setItem('hrms_plans', JSON.stringify(defaultPlans));
+        safeSetJSON('hrms_plans', defaultPlans);
         return defaultPlans;
       }
     }
-    localStorage.setItem('hrms_plans', JSON.stringify(defaultPlans));
+    safeSetJSON('hrms_plans', defaultPlans);
     return defaultPlans;
   });
 
@@ -226,7 +236,7 @@ export default function App() {
   const [payments, setPayments] = useState<PaymentRecord[]>(() => {
     const raw = localStorage.getItem('hrms_payments');
     if (raw) return JSON.parse(raw);
-    localStorage.setItem('hrms_payments', JSON.stringify(defaultPayments));
+    safeSetJSON('hrms_payments', defaultPayments);
     return defaultPayments;
   });
 
@@ -237,7 +247,7 @@ export default function App() {
     }
     const next = typeof updater === 'function' ? updater(plans) : updater;
     setPlans(next);
-    localStorage.setItem('hrms_plans', JSON.stringify(next));
+    safeSetJSON('hrms_plans', next);
   };
 
   const handleUpdatePayments = (updater: PaymentRecord[] | ((prev: PaymentRecord[]) => PaymentRecord[])) => {
@@ -247,7 +257,7 @@ export default function App() {
     }
     const next = typeof updater === 'function' ? updater(payments) : updater;
     setPayments(next);
-    localStorage.setItem('hrms_payments', JSON.stringify(next));
+    safeSetJSON('hrms_payments', next);
   };
 
   // Persistent notifications state
@@ -257,14 +267,14 @@ export default function App() {
     const initialList: Notification[] = [
       { id: 'n1', companyId: 'c-ahmedabad', type: 'system', message: 'Welcome to GCRI Ahmedabad Enterprise HRMS Platform!', timestamp: '2026-05-22 09:00', read: false, priority: 'medium' }
     ];
-    localStorage.setItem('hrms_notifications', JSON.stringify(initialList));
+    safeSetJSON('hrms_notifications', initialList);
     return initialList;
   });
 
   const handleUpdateNotifications = (updater: Notification[] | ((prev: Notification[]) => Notification[])) => {
     const next = typeof updater === 'function' ? updater(notifications) : updater;
     setNotifications(next);
-    localStorage.setItem('hrms_notifications', JSON.stringify(next));
+    safeSetJSON('hrms_notifications', next);
   };
 
   const handleUpdateAccounts = (updater: UserAccount[] | ((prev: UserAccount[]) => UserAccount[])) => {
@@ -297,7 +307,9 @@ export default function App() {
     const next = typeof updater === 'function' ? updater(companies) : updater;
     const billingResult = calculateBranchBilling(next, 'c-gcri', plans);
     setCompanies(billingResult.updatedCompanies);
-    localStorage.setItem('hrms_companies', JSON.stringify(billingResult.updatedCompanies));
+    // Companies/branches are small master data still read back by isCompanyIdMatch's
+    // fallback (workspace scoping). Persist it guarded so it can never crash the UI.
+    safeSetJSON('hrms_companies', billingResult.updatedCompanies);
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
@@ -307,7 +319,9 @@ export default function App() {
     }
     const nextEmployees = typeof updater === 'function' ? updater(employees) : updater;
     setEmployees(nextEmployees);
-    localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
+    // NOTE: the employee dataset is NOT persisted to localStorage (it can be many
+    // MB and overflows the quota). It is the source-of-truth in memory and is
+    // reloaded from the backend via hydrateAll() on login / workspace change.
 
     // Reactive sync to Payroll: If employee salary changed, recalculate
     setPayroll(prevPayroll => {
@@ -357,9 +371,9 @@ export default function App() {
         }
         return p;
       });
-      if (changed) {
-        localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
-      }
+      // Recalculated payroll is kept in memory only (not persisted — datasets are
+      // reloaded from the backend; persisting them overflowed the storage quota).
+      void changed;
       return nextPayroll;
     });
   };
@@ -385,7 +399,7 @@ export default function App() {
     }
     const nextLeaves = typeof updater === 'function' ? updater(leaves) : updater;
     setLeaves(nextLeaves);
-    localStorage.setItem('hrms_leaves', JSON.stringify(nextLeaves));
+    // Not persisted to localStorage — reloaded from the backend (avoids quota bloat).
 
     // Reactive sync to Payroll: If leaves updated, recalculate unpaid leave deductions
     setPayroll(prevPayroll => {
@@ -433,9 +447,9 @@ export default function App() {
         }
         return p;
       });
-      if (changed) {
-        localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
-      }
+      // Recalculated payroll is kept in memory only (not persisted — datasets are
+      // reloaded from the backend; persisting them overflowed the storage quota).
+      void changed;
       return nextPayroll;
     });
   };
@@ -447,7 +461,8 @@ export default function App() {
     }
     const nextPayroll = typeof updater === 'function' ? updater(payroll) : updater;
     setPayroll(nextPayroll);
-    localStorage.setItem('hrms_payroll', JSON.stringify(nextPayroll));
+    // Not persisted to localStorage — payroll can be many MB and overflowed the
+    // quota; it is reloaded from the backend via hydrateAll().
 
     // Reactive sync to Employees: Update employee profiles with new derived salary
     setEmployees(prevEmployees => {
@@ -466,9 +481,9 @@ export default function App() {
         }
         return emp;
       });
-      if (changed) {
-        localStorage.setItem('hrms_employees', JSON.stringify(nextEmployees));
-      }
+      // Synced employee salaries kept in memory only (not persisted — reloaded
+      // from the backend; persisting the full list overflowed the storage quota).
+      void changed;
       return nextEmployees;
     });
   };
@@ -480,7 +495,7 @@ export default function App() {
     }
     const next = typeof updater === 'function' ? updater(documents) : updater;
     setDocuments(next);
-    localStorage.setItem('hrms_documents', JSON.stringify(next));
+    // Not persisted to localStorage — reloaded from the backend (avoids quota bloat).
   };
 
   // Authentication states
@@ -644,7 +659,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       api.notifications.getAll().then((rows: any) => {
         if (alive && Array.isArray(rows)) {
           setNotifications(rows as any);
-          localStorage.setItem('hrms_notifications', JSON.stringify(rows));
+          safeSetJSON('hrms_notifications', rows);
         }
       }).catch(() => {});
     };
@@ -881,7 +896,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
-  const handleStartMasquerade = (companyId: string, kind?: 'company' | 'branch') => {
+  const handleStartMasquerade = (companyId: string, kind?: 'company' | 'branch', targetPage: PageId = 'dashboard') => {
     // Normalize to a string so the active workspace id matches the value that is
     // rehydrated from localStorage on reload (avoids number-vs-string `===`
     // drift that would otherwise drop the selected branch context). The id may
@@ -895,8 +910,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     setIsMasquerading(true);
     localStorage.setItem('hrms_is_masquerading', 'true');
     setRole('Company Head');
-    setCurrentPage('dashboard');
-    localStorage.setItem('hrms_current_page', 'dashboard');
+    setCurrentPage(targetPage);
+    localStorage.setItem('hrms_current_page', targetPage);
   };
 
   const handleExitMasquerade = () => {
@@ -920,6 +935,38 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   // access even while masquerading, so tenant/branch/module restrictions are
   // bypassed and no "Access Denied" page can appear in masquerade mode.
   const permissionRole = authProfile?.role === 'Super Admin' ? 'Super Admin' : resolvedRole;
+
+  const userAccessibleCompanies = React.useMemo(() => {
+    if (!authProfile) return [];
+    if (permissionRole === 'Super Admin' || isMasquerading) return companies;
+    const accessibleIds = (authProfile.accessibleCompanyIds || []).map(String);
+    return companies.filter(c => accessibleIds.includes(String(c.id)));
+  }, [companies, authProfile, permissionRole, isMasquerading]);
+
+  const userHierarchy = React.useMemo(() => buildWorkspaceHierarchy(userAccessibleCompanies), [userAccessibleCompanies]);
+
+  // Auto-redirect on login/refresh if only one logical workspace scope exists
+  useEffect(() => {
+    if (!isAuthenticated || !authProfile || activeCompanyId || isHydrating) return;
+    if (permissionRole === 'Super Admin') return;
+
+    const accessibleIds = (authProfile.accessibleCompanyIds || []).map(String);
+    if (accessibleIds.length === 0) return;
+
+    if (userHierarchy.length === 1) {
+      const group = userHierarchy[0];
+      const companyLevelAccess = accessibleIds.includes(String(group.companyId));
+      if (companyLevelAccess) {
+        // Company-level access → open the consolidated company workspace by default.
+        handleCompanyChange(group.companyId, 'company').catch(err => console.error(err));
+      } else if (group.cards.length === 1) {
+        // Branch-only access with exactly one authorized branch → open it directly.
+        handleCompanyChange(group.cards[0].id, 'branch').catch(err => console.error(err));
+      }
+      // Branch-only with multiple branches → fall through to the SelectWorkspace
+      // picker so the user chooses one of their authorized branches.
+    }
+  }, [isAuthenticated, authProfile, activeCompanyId, isHydrating, permissionRole, userHierarchy]);
 
   const resolvedCompanyId = activeCompanyId;
   // Archived-company read-only banner: shown to company users (not Super Admin)
@@ -969,7 +1016,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   if (!activeCompanyId && authProfile.role !== 'Super Admin') {
     return (
       <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
-        <SelectWorkspace companies={companies} user={authProfile} onSelect={handleCompanyChange} isLoading={isHydrating} />
+        <SelectWorkspace companies={userAccessibleCompanies} user={authProfile} onSelect={handleCompanyChange} isLoading={isHydrating} />
       </React.Suspense>
     );
   }
@@ -1128,6 +1175,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             authProfile={authProfile}
+            companies={companies}
+            onStartMasquerade={handleStartMasquerade}
           />
         );
       case 'contracts':
@@ -1136,6 +1185,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             authProfile={authProfile}
+            companies={companies}
+            onStartMasquerade={handleStartMasquerade}
           />
         );
       case 'attendance':
@@ -1303,8 +1354,12 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           onExitMasquerade={handleExitMasquerade}
           userName={authProfile.name}
           userAvatar={authProfile.avatar}
-          pageTitle={pageTitles[currentPage] || 'HRMS'}
-          companies={companies}
+          pageTitle={
+            currentPage === 'tenders' && resolvedRole === 'Super Admin' ? 'Tender Overview'
+              : currentPage === 'contracts' && resolvedRole === 'Super Admin' ? 'Contract Overview'
+                : pageTitles[currentPage] || 'HRMS'
+          }
+          companies={userAccessibleCompanies}
           notifications={notifications}
           onUpdateNotifications={handleUpdateNotifications}
           theme={theme}

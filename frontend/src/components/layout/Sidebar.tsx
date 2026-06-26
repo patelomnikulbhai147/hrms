@@ -75,6 +75,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { canView } = usePermissions();
 
   const visibleItems = navItems.filter(item => {
+    // Hide specific modules from Super Admin navigation only
+    if (role === 'Super Admin') {
+      const excludedIds: string[] = ['tasks', 'attendance-devices', 'audit', 'gallery'];
+      if (excludedIds.includes(item.id)) {
+        return false;
+      }
+    }
+
     // Rely completely on our central permission context for view access
     // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices.
     // Employee Cards is a sub-feature of the Employees module — gate it on the
@@ -189,7 +197,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}>{item.icon}</span>
             {!collapsed && (
               <span className="flex-1 text-left">
-                {item.id === 'payroll' && role === 'Employee' ? 'My Payslips' : item.label}
+                {item.id === 'payroll' && role === 'Employee' ? 'My Payslips'
+                  : item.id === 'tenders' && role === 'Super Admin' ? 'Tender Overview'
+                  : item.id === 'contracts' && role === 'Super Admin' ? 'Contract Overview'
+                  : item.label}
               </span>
             )}
             {!collapsed && currentPage === item.id && <ChevronRight size={14} className="text-[#4F7CFF]/80" />}

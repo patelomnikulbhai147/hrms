@@ -40,6 +40,15 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
   // Flat list of all selectable workspace cards (for default-selection logic).
   const accessibleWorkspaces = useMemo(() => hierarchy.flatMap(g => g.cards), [hierarchy]);
 
+  // Resolved, branch-aware set of workspace ids the user may enter. Contains a
+  // COMPANY id only for company-level access — so a branch-only user can never
+  // enter the company (its header stays a plain, non-clickable label).
+  const accessibleIds = useMemo(
+    () => ((user.accessibleCompanyIds as string[]) || []).map(String),
+    [user],
+  );
+  const canEnterCompany = (companyId: string | number) => accessibleIds.includes(String(companyId));
+
   const wsName = (w: any) => w?.branchName || w?.name || '';
 
   const handleEnterWorkspace = async (companyId: string) => {
@@ -166,16 +175,42 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                 return wsName(a).toLowerCase().localeCompare(wsName(b).toLowerCase());
               });
 
+              // Company-level access → the company itself is enterable (a childless
+              // company, isCompanyOnly, is already its own selectable card below).
+              const companyAccess = !group.isCompanyOnly && canEnterCompany(group.companyId);
+
               return (
                 <section key={group.companyId}>
-                  {/* Group header */}
+                  {/* Group header — a selectable company workspace for company-level
+                      access, or a plain non-clickable label for branch-only access. */}
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center">
-                      <Building2 size={16} className="text-slate-600" />
-                    </div>
-                    <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700">
-                      {group.companyName}
-                    </h2>
+                    {companyAccess ? (
+                      <button
+                        type="button"
+                        onClick={() => handleEnterWorkspace(group.companyId)}
+                        title="Open the company workspace (consolidated, all branches)"
+                        className="group/comp flex items-center gap-3 -ml-1 pl-1 pr-2.5 py-1 rounded-lg hover:bg-indigo-50/70 transition-colors cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center group-hover/comp:ring-indigo-300 transition-colors">
+                          <Building2 size={16} className="text-slate-600 group-hover/comp:text-indigo-600 transition-colors" />
+                        </div>
+                        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700 group-hover/comp:text-indigo-700 transition-colors">
+                          {group.companyName}
+                        </h2>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 opacity-0 group-hover/comp:opacity-100 transition-opacity">
+                          Open <ArrowRight size={11} />
+                        </span>
+                      </button>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center">
+                          <Building2 size={16} className="text-slate-600" />
+                        </div>
+                        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700">
+                          {group.companyName}
+                        </h2>
+                      </>
+                    )}
                     <span className="text-[11px] font-medium text-slate-500 bg-slate-100 rounded-full px-2 py-0.5 ring-1 ring-slate-200">
                       {group.cards.length} {group.cards.length === 1 ? 'workspace' : 'workspaces'}
                     </span>

@@ -50,10 +50,43 @@ async function companyMeta(companyId) {
   let brandSrc = c;
   if (c.parentCompanyId) { const p = await prisma.company.findUnique({ where: { id: c.parentCompanyId } }); if (p) brandSrc = { ...p, ...c, logoImage: c.logoImage || p.logoImage, primaryColor: c.primaryColor || p.primaryColor }; }
   const addr = [c.address || c.billingAddress, c.city, c.state, c.pincode].filter(Boolean).join(', ');
+  // Branch-resolved fallback: a branch inherits the parent's master data (founder,
+  // bank, registrations …) unless it overrides — so every report fills completely.
+  const v = (k) => c[k] || brandSrc[k] || null;
   return {
-    name: c.name, address: addr, gstNumber: c.gstNumber || null, panNumber: c.panNumber || null, cinNumber: c.cinNumber || null,
+    // Identity
+    name: c.name, legalName: c.legalName || c.name, displayName: c.displayName || c.shortName || c.name,
+    tradeName: c.tradeName || null, shortName: c.shortName || null, companyCode: c.companyCode || null,
+    tagline: c.tagline || null, motto: c.motto || c.tagline || null, description: c.description || null,
+    // Contact
+    address: addr, registeredAddress: c.address || c.billingAddress || null, corporateAddress: c.corporateAddress || null,
+    city: c.city || null, state: c.state || null, country: c.country || null, pincode: c.pincode || null,
+    phone: c.contactNumber || c.phone || null, landline: c.landline || null,
+    email: c.contactEmail || c.adminEmail || null, website: c.website || c.domain || null,
+    // Statutory / registration
+    gstNumber: c.gstNumber || null, panNumber: c.panNumber || null, cinNumber: c.cinNumber || null,
+    tanNumber: c.tanNumber || null, registrationNumber: c.registrationNumber || null,
+    pfCode: c.pfCode || null, esiCode: c.esiCode || null, ptaxRegistrationNumber: c.ptaxRegistrationNumber || null,
+    msmeNumber: c.msmeNumber || null, shopEstablishmentNumber: c.shopEstablishmentNumber || null,
+    labourLicenseNumber: c.labourLicenseNumber || null, factoryLicenseNumber: c.factoryLicenseNumber || null,
+    iecCode: c.iecCode || null, isoCertNumber: c.isoCertNumber || null, fssaiNumber: c.fssaiNumber || null,
+    // Management
+    founderName: v('founderName'), coFounderName: v('coFounderName'), ceoName: v('ceoName'),
+    managingDirector: v('managingDirector'), directors: v('directors'), hrHeadName: v('hrHeadName'),
+    financeHeadName: v('financeHeadName'),
+    authorizedSignatory: c.authorizedSignatory || c.signatureText || null,
+    signatoryDesignation: c.signatoryDesignation || null, signatureText: c.signatureText || null,
+    // Banking
+    bankName: v('bankName'), bankBranch: v('bankBranch'), bankAccountNumber: v('bankAccountNumber'),
+    ifscCode: v('ifscCode'), swiftCode: v('swiftCode'), accountHolderName: v('accountHolderName') || c.name, upiId: v('upiId'),
+    // Payroll & statutory cycle
+    salaryCycle: v('salaryCycle'), payrollStartDate: v('payrollStartDate'), financialYearStart: v('financialYearStart'),
+    leaveYearStart: v('leaveYearStart'), defaultCurrency: c.defaultCurrency || 'INR', defaultTimeZone: c.defaultTimeZone || 'Asia/Kolkata',
+    // Branding / assets
     logoImage: c.logoImage || brandSrc.logoImage || null, primaryColor: c.primaryColor || brandSrc.primaryColor || '#4F46E5',
-    signatureText: c.signatureText || null,
+    stampImage: v('stampImage'), digitalSignatureImage: v('digitalSignatureImage'), letterheadImage: v('letterheadImage'),
+    headerText: c.headerText || null, footerText: c.footerText || null, emailSignature: c.emailSignature || null,
+    watermarkText: c.watermarkText || null,
     rates: { pfRate: c.pfRate ?? 12, esicRate: c.esicRate ?? 3.25, profTaxRate: c.profTaxRate ?? 200 },
   };
 }
@@ -1223,6 +1256,61 @@ exports.catalog = (req, res) => {
 // Preview a report using the VISHV ENTERPRISE demo company — sample layout + demo
 // data only. NEVER touches the user's real company and is NOT audit-logged as a
 // real generation.
+// Centralized post-processing helper to map internal database IDs to official Employee Codes
+// and sort rows naturally by Employee Code.
+async function postProcessReportRows(companyIds, rows) {
+  if (!rows || rows.length === 0) return rows;
+
+  try {
+    // 1. Fetch all employees in the company scope to build the ID-to-Code mapping
+    const employees = await prisma.employee.findMany({
+      where: { companyId: { in: companyIds } },
+      select: { id: true, employeeId: true }
+    });
+
+    const idToCodeMap = new Map();
+    employees.forEach(e => {
+      idToCodeMap.set(e.id, e.employeeId);
+      idToCodeMap.set(String(e.id), e.employeeId);
+    });
+
+    // 2. Map the 'code' property in each row to the official Employee Code
+    const mappedRows = rows.map(row => {
+      if (row && row.code !== undefined && row.code !== null && row.code !== '') {
+        const currentCode = row.code;
+        // If the current code is a database ID (matches a key in our map), replace it.
+        if (idToCodeMap.has(currentCode)) {
+          return { ...row, code: idToCodeMap.get(currentCode) };
+        }
+      }
+      return row;
+    });
+
+    // 3. Sort the rows by the official Employee Code (natural sorting)
+    const hasCode = mappedRows.some(r => r && r.code !== undefined && r.code !== null && r.code !== '');
+    if (hasCode) {
+      mappedRows.sort((a, b) => {
+        const codeA = String(a && a.code !== undefined && a.code !== null ? a.code : '');
+        const codeB = String(b && b.code !== undefined && b.code !== null ? b.code : '');
+        return codeA.localeCompare(codeB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    // 4. Update the serial number ('sr') property if it exists in the row,
+    // to ensure they are sequential (1, 2, 3...) after sorting.
+    mappedRows.forEach((row, idx) => {
+      if (row && row.sr !== undefined && typeof row.sr === 'number') {
+        row.sr = idx + 1;
+      }
+    });
+
+    return mappedRows;
+  } catch (err) {
+    console.error('Failed to post-process report rows:', err);
+    return rows;
+  }
+}
+
 exports.preview = async (req, res) => {
   try {
     if (!canAccess(req)) return res.status(403).json({ error: 'You do not have access to reports.' });
@@ -1235,12 +1323,14 @@ exports.preview = async (req, res) => {
     const scope = { companyIds: [demo.id], primaryCompanyId: demo.id, branch: null, department: null, startDate: '2026-06-01', endDate: '2026-06-30', year: 2026, employeeId: null };
     const meta = await companyMeta(demo.id);
     const out = await def.generate(scope, { meta });
+    // Post-process rows to map official Employee Code and naturally sort
+    const processedRows = await postProcessReportRows(scope.companyIds, out.rows);
     res.json({
       reportKey: key, reportName: def.label, category: def.category, isDemo: true,
       generatedAt: new Date().toISOString(), generatedBy: 'Sample Preview',
-      meta, columns: out.columns, rows: out.rows || [], summary: out.summary || null,
-      warnings: ['This is a SAMPLE PREVIEW using VISHV ENTERPRISE demo data — not your company data.', ...(out.warnings || [])],
-      canExport: (out.rows?.length || 0) > 0,
+      meta, columns: out.columns, rows: processedRows, summary: out.summary || null,
+      warnings: ['This is a SAMPLE PREVIEW using VISHV ENTER ENTERPRISE demo data — not your company data.', ...(out.warnings || [])],
+      canExport: (processedRows?.length || 0) > 0,
     });
   } catch (e) { console.error('reports.preview', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };
@@ -1318,12 +1408,14 @@ exports.generate = async (req, res) => {
     }
     const ctx = { meta };
     const out = await def.generate(scope, ctx);
+    // Post-process rows to map official Employee Code and naturally sort
+    const processedRows = await postProcessReportRows(scope.companyIds, out.rows);
     const warnings = out.warnings || [];
-    if (!out.rows || out.rows.length === 0) warnings.unshift('No records match the selected filters — nothing to generate.');
-    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId }), rowCount: out.rows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => {});
-    res.json({ reportKey: key, reportName: def.label, category: def.category, generatedAt: new Date().toISOString(), generatedBy: req.user?.name || req.user?.email || null, meta, columns: out.columns, rows: out.rows || [], summary: out.summary || null, warnings, canExport: (out.rows?.length || 0) > 0 });
+    if (!processedRows || processedRows.length === 0) warnings.unshift('No records match the selected filters — nothing to generate.');
+    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId }), rowCount: processedRows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => {});
+    res.json({ reportKey: key, reportName: def.label, category: def.category, generatedAt: new Date().toISOString(), generatedBy: req.user?.name || req.user?.email || null, meta, columns: out.columns, rows: processedRows, summary: out.summary || null, warnings, canExport: (processedRows?.length || 0) > 0 });
   } catch (e) { console.error('reports.generate', e); res.status(500).json({ error: e.message || 'Server error' }); }
-};
+}
 
 exports.logDownload = async (req, res) => {
   try {

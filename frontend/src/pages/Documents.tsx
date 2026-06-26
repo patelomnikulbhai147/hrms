@@ -444,20 +444,81 @@ export const Documents: React.FC<DocumentsProps> = ({
   // Variables for dynamic filling. Keys map 1:1 to {{token}} placeholders the
   // compiler replaces. `company` is an alias of `company_name`, plus branch /
   // employee_id so {{branch}}, {{company}}, {{employee_id}} bind too.
-  const [docVariables, setDocVariables] = useState({
-    employee_name: 'Rajesh Kumar',
-    employee_id: 'EMP-0001',
-    designation: 'Senior Developer',
-    department: 'Engineering',
-    branch: 'Head Office',
-    joining_date: '2026-06-01',
-    salary: '9,50,000',
-    bonus: '50,000',
-    ctc: '10,000',
-    company: currentCompany.name,
-    company_name: currentCompany.name,
-    company_email: currentCompany.email || 'hr@company.com',
-    company_address: currentCompany.address || 'Corporate Headquarters'
+  const [docVariables, setDocVariables] = useState(() => {
+    const c: any = currentCompany;
+    return {
+      employee_name: 'Rajesh Kumar',
+      employee_id: 'EMP-0001',
+      designation: 'Senior Developer',
+      department: 'Engineering',
+      branch: 'Head Office',
+      joining_date: '2026-06-01',
+      salary: '9,50,000',
+      bonus: '50,000',
+      ctc: '10,000',
+      // ── Company Master placeholders (single source of truth) ──
+      company: c.name || '',
+      company_name: c.name || '',
+      company_legal_name: c.legalName || c.name || '',
+      company_display_name: c.displayName || c.shortName || c.name || '',
+      company_trade_name: c.tradeName || '',
+      company_short_name: c.shortName || '',
+      company_code: c.companyCode || '',
+      company_tagline: c.tagline || '',
+      company_motto: c.motto || c.tagline || '',
+      company_email: c.contactEmail || c.email || 'hr@company.com',
+      company_phone: c.contactNumber || c.phone || '',
+      company_landline: c.landline || '',
+      company_website: c.website || c.domain || '',
+      company_address: c.address || c.billingAddress || 'Corporate Headquarters',
+      company_corporate_address: c.corporateAddress || c.address || '',
+      company_city: c.city || '',
+      company_state: c.state || '',
+      company_country: c.country || '',
+      company_pincode: c.pincode || '',
+      // Statutory / registration
+      company_gst: c.gstNumber || '',
+      company_pan: c.panNumber || '',
+      company_cin: c.cinNumber || '',
+      company_tan: c.tanNumber || '',
+      company_registration: c.registrationNumber || '',
+      company_pf_code: c.pfCode || '',
+      company_esi_code: c.esiCode || '',
+      company_ptax_reg: c.ptaxRegistrationNumber || '',
+      company_msme: c.msmeNumber || '',
+      company_shop_establishment: c.shopEstablishmentNumber || '',
+      company_labour_license: c.labourLicenseNumber || '',
+      company_factory_license: c.factoryLicenseNumber || '',
+      company_iec: c.iecCode || '',
+      company_iso: c.isoCertNumber || '',
+      company_fssai: c.fssaiNumber || '',
+      // Management
+      founder_name: c.founderName || '',
+      co_founder_name: c.coFounderName || '',
+      ceo_name: c.ceoName || '',
+      managing_director: c.managingDirector || '',
+      directors: c.directors || '',
+      hr_head: c.hrHeadName || '',
+      finance_head: c.financeHeadName || '',
+      authorized_signatory: c.authorizedSignatory || c.signatureText || '',
+      signatory_designation: c.signatoryDesignation || '',
+      // Banking
+      company_bank: c.bankName || '',
+      company_bank_branch: c.bankBranch || '',
+      company_account: c.bankAccountNumber || '',
+      company_ifsc: c.ifscCode || '',
+      company_swift: c.swiftCode || '',
+      company_account_holder: c.accountHolderName || c.name || '',
+      company_upi: c.upiId || '',
+      // Payroll & cycle
+      salary_cycle: c.salaryCycle || '',
+      financial_year: c.financialYearStart || '',
+      default_currency: c.defaultCurrency || 'INR',
+      // Branding / assets (data URLs — templates may render via <img>)
+      company_logo: c.logoImage || '',
+      company_seal: c.stampImage || '',
+      company_letterhead: c.letterheadImage || '',
+    };
   });
 
   // Modal edit/create template state
@@ -2293,7 +2354,23 @@ export const Documents: React.FC<DocumentsProps> = ({
                   { key: 'salary', label: 'Salary' },
                   { key: 'company', label: 'Company' },
                   { key: 'company_name', label: 'Company Name' },
-                  { key: 'company_email', label: 'Company Email' }
+                  { key: 'company_legal_name', label: 'Legal Name' },
+                  { key: 'company_email', label: 'Company Email' },
+                  { key: 'company_phone', label: 'Company Phone' },
+                  { key: 'company_website', label: 'Website' },
+                  { key: 'company_address', label: 'Address' },
+                  { key: 'company_gst', label: 'GST No.' },
+                  { key: 'company_pan', label: 'PAN' },
+                  { key: 'company_cin', label: 'CIN' },
+                  { key: 'company_tan', label: 'TAN' },
+                  { key: 'company_pf_code', label: 'PF Code' },
+                  { key: 'company_esi_code', label: 'ESI Code' },
+                  { key: 'company_bank', label: 'Bank Name' },
+                  { key: 'company_account', label: 'Account No.' },
+                  { key: 'company_ifsc', label: 'IFSC' },
+                  { key: 'founder_name', label: 'Founder' },
+                  { key: 'ceo_name', label: 'CEO' },
+                  { key: 'authorized_signatory', label: 'Authorized Signatory' }
                 ].map(chip => (
                   <button
                     type="button"

@@ -139,6 +139,62 @@ model Company {
   storageUsed                 String?
   subscriptionPrice           Float?
   isArchived                  Boolean          @default(false)
+  // ── Company Master: extended single-source-of-truth fields (all optional,
+  //    additive & backward-compatible — see updates 2026-06) ──────────────────
+  // Identity
+  legalName                   String?
+  displayName                 String?
+  tradeName                   String?
+  // Contact
+  country                     String?
+  landline                    String?
+  corporateAddress            String?          @db.Text
+  // Statutory / registration numbers (cin/gst/pan/registrationNumber already above)
+  tanNumber                   String?
+  pfCode                      String?
+  esiCode                     String?
+  ptaxRegistrationNumber      String?
+  msmeNumber                  String?
+  shopEstablishmentNumber     String?
+  labourLicenseNumber         String?
+  factoryLicenseNumber        String?
+  iecCode                     String?
+  isoCertNumber               String?
+  fssaiNumber                 String?
+  // Management
+  founderName                 String?
+  coFounderName               String?
+  ceoName                     String?
+  managingDirector            String?
+  directors                   String?          @db.Text
+  hrHeadName                  String?
+  financeHeadName             String?
+  authorizedSignatory         String?
+  signatoryDesignation        String?
+  // Banking
+  bankName                    String?
+  bankBranch                  String?
+  bankAccountNumber           String?
+  ifscCode                    String?
+  swiftCode                   String?
+  accountHolderName           String?
+  upiId                       String?
+  // Payroll & statutory cycle
+  salaryCycle                 String?
+  payrollStartDate            String?
+  financialYearStart          String?
+  leaveYearStart              String?
+  defaultCurrency             String?
+  defaultTimeZone             String?
+  // Branding extras (headerText/footerText/emailSignature already above)
+  motto                       String?
+  watermarkText               String?
+  // Digital assets (base64 / URL)
+  letterheadImage             String?          @db.LongText
+  dscImage                    String?          @db.LongText
+  gstCertificateImage         String?          @db.LongText
+  panCardImage                String?          @db.LongText
+  registrationCertImage       String?          @db.LongText
   attendances                 Attendance[]
   branches                    Branch[]
   companyPayrolls             CompanyPayroll[]

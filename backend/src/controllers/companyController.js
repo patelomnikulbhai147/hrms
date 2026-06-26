@@ -12,6 +12,34 @@ const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 // always lives on the top-level company (never a branch), so a branch id is
 // resolved to its parent. Only the whitelisted branding columns can be written —
 // statutory/payroll/billing fields are untouched.
+// Extended Company Master fields — the single source of truth for every report,
+// certificate, contract, payroll document, export and template. All optional &
+// additive (2026-06). A Company Head/HR may manage them from Settings → Company
+// Profile, so they are part of BOTH the branding whitelist and the full whitelist.
+const COMPANY_MASTER_FIELDS = [
+  // Identity
+  'legalName', 'displayName', 'tradeName',
+  // Contact
+  'country', 'landline', 'corporateAddress',
+  // Statutory / registration numbers
+  'tanNumber', 'pfCode', 'esiCode', 'ptaxRegistrationNumber', 'msmeNumber',
+  'shopEstablishmentNumber', 'labourLicenseNumber', 'factoryLicenseNumber',
+  'iecCode', 'isoCertNumber', 'fssaiNumber',
+  // Management
+  'founderName', 'coFounderName', 'ceoName', 'managingDirector', 'directors',
+  'hrHeadName', 'financeHeadName', 'authorizedSignatory', 'signatoryDesignation',
+  // Banking
+  'bankName', 'bankBranch', 'bankAccountNumber', 'ifscCode', 'swiftCode',
+  'accountHolderName', 'upiId',
+  // Payroll & statutory cycle
+  'salaryCycle', 'payrollStartDate', 'financialYearStart', 'leaveYearStart',
+  'defaultCurrency', 'defaultTimeZone',
+  // Branding extras
+  'motto', 'watermarkText',
+  // Digital assets
+  'letterheadImage', 'dscImage', 'gstCertificateImage', 'panCardImage', 'registrationCertImage',
+];
+
 const BRANDING_FIELDS = [
   'name', 'shortName', 'tagline', 'website', 'contactEmail', 'contactNumber',
   'address', 'description', 'logo', 'logoImage', 'primaryColor', 'themeStyle',
@@ -22,6 +50,7 @@ const BRANDING_FIELDS = [
   'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
   'city', 'state', 'pincode', 'emailSignature',
   'faviconImage', 'stampImage', 'digitalSignatureImage',
+  ...COMPANY_MASTER_FIELDS,
 ];
 
 // Every writable scalar column on the Company model. Any other key in a
@@ -46,6 +75,7 @@ const COMPANY_FIELDS = [
   'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
   'city', 'state', 'pincode', 'emailSignature',
   'faviconImage', 'stampImage', 'digitalSignatureImage',
+  ...COMPANY_MASTER_FIELDS,
 ];
 
 // Build a Prisma-safe Company payload from an arbitrary request body:
@@ -362,46 +392,75 @@ exports.deleteCompany = async (req, res) => {
 };
 
 exports.archiveCompany = async (req, res) => {
+  // ── Validate & convert the workspace id to an Int BEFORE any DB query. ──────
+  // The id column is an integer; passing the raw string param into integer
+  // filters (companyId/branchId, or an `in: [...]` array) is what raised the
+  // Prisma "Expected Int, provided String" error AFTER the row was archived.
+  // Reject a non-numeric id up front so no query ever runs with a bad value.
+  const workspaceId = idParam(req.params.id);
+  if (!Number.isInteger(workspaceId)) {
+    return res.status(400).json({
+      error: 'A valid company or branch is required to offboard.',
+      code: 'INVALID_ID',
+    });
+  }
+
   try {
-    const { id } = req.params;
-    
-    const branchCheck = await prisma.branch.findUnique({ where: { id: idParam(id) } });
+    // Is this id a BRANCH? (Branch and company ids share one integer space.)
+    const branchCheck = await prisma.branch.findUnique({ where: { id: workspaceId } });
+
     if (branchCheck) {
-      const branch = await prisma.branch.update({
-        where: { id: idParam(id) },
-        data: { status: 'Archived', isArchived: true }
-      });
-      await prisma.employee.updateMany({
-        where: { branchId: id },
-        data: { status: 'Archived', exitDate: new Date(), exitReason: 'Branch Archived' }
+      // ── Branch offboarding — atomic: archive the branch AND its employees, or
+      //    nothing at all (so the user never sees "done + error"). ──
+      const branch = await prisma.$transaction(async (tx) => {
+        const updatedBranch = await tx.branch.update({
+          where: { id: workspaceId },
+          data: { status: 'Archived', isArchived: true },
+        });
+        await tx.employee.updateMany({
+          where: { branchId: workspaceId },
+          data: { status: 'Archived', exitDate: new Date(), exitReason: 'Branch Archived' },
+        });
+        return updatedBranch;
       });
       return res.json({ message: 'Branch archived successfully', company: { ...branch, name: branch.branchName } });
     }
 
-    // Archive company
-    const company = await prisma.company.update({
-      where: { id: idParam(id) },
-      data: { status: 'Archived', isArchived: true }
+    // ── Company offboarding — atomic: archive the company, its branches and all
+    //    their employees in one transaction. ──
+    const company = await prisma.$transaction(async (tx) => {
+      const updatedCompany = await tx.company.update({
+        where: { id: workspaceId },
+        data: { status: 'Archived', isArchived: true },
+      });
+      await tx.branch.updateMany({
+        where: { companyId: workspaceId },
+        data: { status: 'Archived', isArchived: true },
+      });
+      // branchIds come straight from the DB → already integers. Combined with the
+      // numeric workspaceId, the `in: [...]` array is now Int[] as Prisma expects.
+      const branches = await tx.branch.findMany({ where: { companyId: workspaceId }, select: { id: true } });
+      const branchIds = branches.map(b => b.id);
+      await tx.employee.updateMany({
+        where: { companyId: { in: [workspaceId, ...branchIds] } },
+        data: { status: 'Archived', exitDate: new Date(), exitReason: 'Company Archived' },
+      });
+      return updatedCompany;
     });
-    
-    // Archive branches
-    await prisma.branch.updateMany({
-      where: { companyId: id },
-      data: { status: 'Archived', isArchived: true }
-    });
-    
-    const branches = await prisma.branch.findMany({ where: { companyId: id } });
-    const branchIds = branches.map(b => b.id);
-    
-    // Archive employees
-    await prisma.employee.updateMany({
-      where: { companyId: { in: [id, ...branchIds] } },
-      data: { status: 'Archived', exitDate: new Date(), exitReason: 'Company Archived' }
-    });
-    
-    res.json({ message: 'Company archived successfully', company });
+
+    return res.json({ message: 'Company archived successfully', company });
   } catch (error) {
-    return respondError(res, error);
+    // Genuine failure: the transaction rolled back (no partial archive). Log the
+    // full technical detail server-side; show the user a friendly message only —
+    // never the raw Prisma/DB error.
+    console.error('[Offboarding] Failed to archive company/branch:', error);
+    if (error && error.code === 'P2025') {
+      return res.status(404).json({ error: 'That company or branch no longer exists.', code: 'NOT_FOUND' });
+    }
+    return res.status(500).json({
+      error: 'Unable to complete offboarding. Please try again or contact your administrator.',
+      code: 'OFFBOARDING_FAILED',
+    });
   }
 };
 /**

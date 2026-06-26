@@ -7,14 +7,19 @@ import { authStorage } from '@/utils/authStorage';
 import { validateEmail } from '@/utils/validation';
 
 export interface ModulePermissions {
+  // Canonical 3-action model surfaced in the permission matrix.
   view: boolean;
   edit: boolean;
-  create: boolean;
-  delete: boolean;
   export: boolean;
-  approve: boolean;
-  print: boolean;
-  manage: boolean;
+  // Legacy actions — folded into edit/export everywhere (see utils/permissionFold
+  // and PermissionContext). Kept OPTIONAL only for backward compatibility with
+  // older stored records; never shown in the matrix.
+  create?: boolean;
+  delete?: boolean;
+  approve?: boolean;
+  print?: boolean;
+  manage?: boolean;
+  import?: boolean;
 }
 
 export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users' | 'tasks' | 'tenders' | 'contracts';
