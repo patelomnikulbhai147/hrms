@@ -18,6 +18,7 @@ import {
   resolveActiveWorkspace
 } from '@/types';
 import { deriveCompanyPayrollStatus } from '@/utils/payroll';
+import { formatDate } from '@/utils/formatDate';
 import {
   calculateSubscriptionAnalytics,
   getSubscriptionAlertsList,
@@ -693,7 +694,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           </td>
                           <td className="py-3.5 px-6 font-semibold">
                             <span className={statusText === 'Expired' ? 'text-red-500' : (statusText === 'Warning' ? 'text-amber-500 animate-pulse' : 'text-gray-700')}>{expiryText}</span>
-                            <span className="text-[10px] text-gray-400 block font-normal mt-0.5">{company.renewalDate}</span>
+                            <span className="text-[10px] text-gray-400 block font-normal mt-0.5">{formatDate(company.renewalDate)}</span>
                           </td>
                           <td className="py-3.5 px-6">
                             <Badge variant={getSimpleBadgeVariant(statusText)}>{statusText}</Badge>
@@ -791,7 +792,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span>•</span>
                             <span className="text-indigo-650 font-semibold">{c.parentCompanyId ? employees.filter(e => isCompanyIdMatch(e.companyId, c.id, companies, e.branchLocation, e.branchId)).length : (c.employeeCount || 0)} Staff</span>
                             <span>•</span>
-                            <span>Onboard: {c.joinDate}</span>
+                            <span>Onboard: {formatDate(c.joinDate)}</span>
                           </div>
                         </div>
                         <button

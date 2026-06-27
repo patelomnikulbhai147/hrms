@@ -256,11 +256,13 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
   const logDownload = (format: string) =>
     api.complianceReports.logDownload({ reportKey: def.reportKey, reportName, format, companyId, rowCount: data?.rows?.length || 0 }).catch(() => {});
 
-  const onPrint = () => { if (printRef.current) { printNode(printRef.current, reportName); logDownload('PRINT'); } };
+  // Same orientation + branding context for print AND pdf so all three outputs match.
+  const exportCtx = () => ({ companyName: data?.meta?.name, title: `${reportName} — ${year}`, generatedBy: userName || undefined, generatedAt: (data as any)?.generatedAt });
+  const onPrint = () => { if (printRef.current) { printNode(printRef.current, reportName, def.orientation, exportCtx()); logDownload('PRINT'); } };
   const onPdf = async () => {
     if (!printRef.current) return;
     setBusy('pdf');
-    try { await nodeToPdf(printRef.current, `${def.fileStem}_${year}`, def.orientation); logDownload('PDF'); }
+    try { await nodeToPdf(printRef.current, `${def.fileStem}_${year}`, def.orientation, exportCtx()); logDownload('PDF'); }
     catch (e: any) { ui.toast.error(e?.message || 'PDF export failed.'); }
     finally { setBusy(null); }
   };

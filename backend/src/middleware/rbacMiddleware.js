@@ -81,6 +81,60 @@ function hasModulePermission(modulePerms, action) {
   return p[canonical] === true;
 }
 
+/**
+ * requireCompanyModuleAccess(moduleName, action, opts)
+ *   opts = { label?: string, defaults?: { view?: string[], edit?: string[], export?: string[] } }
+ *
+ * Gate for COMPANY-INTERNAL modules (e.g. Communication Center) that belong to a
+ * company rather than to the SaaS platform:
+ *   • Super Admin  → REJECTED. The platform admin must not manage a company's
+ *                    internal HR communications. This also blocks a Super Admin
+ *                    masquerading into a company, whose backend role stays
+ *                    'Super Admin' (so direct API/URL calls are rejected too).
+ *   • Company Head → full access (always allowed).
+ *   • Any other role (HR, Finance, …) → governed by the permission matrix: if the
+ *     user has an explicit row for moduleName, that decides; if the row is ABSENT
+ *     (e.g. a user created before this module existed), fall back to `opts.defaults`
+ *     keyed by canonical action — mirroring the frontend's role-default behaviour
+ *     so a newly added module isn't accidentally locked out for everyone.
+ *   • Employees / unauthorised roles → REJECTED (no grant, not in defaults).
+ *
+ * Company-scoping (Company ID isolation) is enforced separately in the controller
+ * (resolveCompanyId locks non-Super-Admin callers to their own company).
+ *
+ * Must run AFTER `protect` (which populates req.user).
+ */
+exports.requireCompanyModuleAccess = (moduleName, action, opts = {}) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized: authentication required.' });
+  const role = req.user.role;
+  const label = opts.label || moduleName;
+  if (role === 'Super Admin') {
+    return res.status(403).json({
+      error: `Access Denied: ${label} is a company module and is not available to Super Admin.`,
+      yourRole: role,
+    });
+  }
+  if (role === 'Company Head') return next();
+
+  const parsedPerms = (req.user.permissions && req.user.permissions.permissions) || {};
+  const modulePerms = parsedPerms[moduleName];
+  let allowed;
+  if (modulePerms && Object.keys(modulePerms).length) {
+    // Explicit matrix row exists → it is authoritative.
+    allowed = hasModulePermission(modulePerms, action);
+  } else {
+    // No row for this (newly added) module → role-default fallback.
+    const canonical = ACTION_ALIASES[action] || action;
+    const roles = (opts.defaults && opts.defaults[canonical]) || [];
+    allowed = roles.includes(role);
+  }
+  if (allowed) return next();
+  return res.status(403).json({
+    error: `Access denied. You do not have permission to ${action} in ${label}.`,
+    yourRole: role || 'Unknown',
+  });
+};
+
 exports.requirePermission = (moduleName, action) => {
   return async (req, res, next) => {
     try {

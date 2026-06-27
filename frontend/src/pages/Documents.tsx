@@ -214,6 +214,83 @@ export const resolveDocHierarchy = (companies: any[], emp: any, currentCompany: 
   return { companyEntity: companyEntity || currentCompany || null, companyName, branchName: String(branchName || '').trim() };
 };
 
+// Build the full set of {{company_*}} template tokens from a live Company record.
+// This is the SINGLE place company master data maps to placeholders, so the
+// template engine and the live-refresh effect stay in sync — any branding/profile
+// edit (saved through Company Profile) flows here automatically. All values are
+// read straight off the Company record (the single source of truth); image fields
+// are data URLs that templates can render via <img>.
+const buildCompanyTokens = (c: any) => {
+  c = c || {};
+  return {
+    company: c.name || '',
+    company_name: c.name || '',
+    company_legal_name: c.legalName || c.name || '',
+    company_display_name: c.displayName || c.shortName || c.name || '',
+    company_trade_name: c.tradeName || '',
+    company_short_name: c.shortName || '',
+    company_code: c.companyCode || '',
+    company_tagline: c.tagline || '',
+    company_motto: c.motto || c.tagline || '',
+    company_email: c.contactEmail || c.email || 'hr@company.com',
+    company_phone: c.contactNumber || c.phone || '',
+    company_landline: c.landline || '',
+    company_website: c.website || c.domain || '',
+    company_address: c.address || c.billingAddress || 'Corporate Headquarters',
+    company_corporate_address: c.corporateAddress || c.address || '',
+    company_city: c.city || '',
+    company_state: c.state || '',
+    company_country: c.country || '',
+    company_pincode: c.pincode || '',
+    // Statutory / registration
+    company_gst: c.gstNumber || '',
+    company_pan: c.panNumber || '',
+    company_cin: c.cinNumber || '',
+    company_tan: c.tanNumber || '',
+    company_registration: c.registrationNumber || '',
+    company_pf_code: c.pfCode || '',
+    company_esi_code: c.esiCode || '',
+    company_ptax_reg: c.ptaxRegistrationNumber || '',
+    company_msme: c.msmeNumber || '',
+    company_shop_establishment: c.shopEstablishmentNumber || '',
+    company_labour_license: c.labourLicenseNumber || '',
+    company_factory_license: c.factoryLicenseNumber || '',
+    company_iec: c.iecCode || '',
+    company_iso: c.isoCertNumber || '',
+    company_fssai: c.fssaiNumber || '',
+    // Management
+    founder_name: c.founderName || '',
+    co_founder_name: c.coFounderName || '',
+    ceo_name: c.ceoName || '',
+    managing_director: c.managingDirector || '',
+    directors: c.directors || '',
+    hr_head: c.hrHeadName || '',
+    finance_head: c.financeHeadName || '',
+    authorized_signatory: c.authorizedSignatory || c.signatureText || '',
+    signatory_designation: c.signatoryDesignation || '',
+    // Banking
+    company_bank: c.bankName || '',
+    company_bank_branch: c.bankBranch || '',
+    company_account: c.bankAccountNumber || '',
+    company_ifsc: c.ifscCode || '',
+    company_swift: c.swiftCode || '',
+    company_account_holder: c.accountHolderName || c.name || '',
+    company_upi: c.upiId || '',
+    // Payroll & cycle
+    salary_cycle: c.salaryCycle || '',
+    financial_year: c.financialYearStart || '',
+    default_currency: c.defaultCurrency || 'INR',
+    // Branding / assets (data URLs — templates may render via <img>)
+    company_logo: c.logoImage || '',
+    company_seal: c.stampImage || '',
+    company_signature: c.digitalSignatureImage || c.signatureImage || '',
+    company_letterhead: c.letterheadImage || '',
+    report_header: c.reportHeaderImage || c.headerText || '',
+    report_footer: c.reportFooterImage || c.footerText || '',
+    company_watermark: c.watermarkImage || c.watermarkText || '',
+  };
+};
+
 
 export const Documents: React.FC<DocumentsProps> = ({
   role,
@@ -457,69 +534,20 @@ export const Documents: React.FC<DocumentsProps> = ({
       bonus: '50,000',
       ctc: '10,000',
       // ── Company Master placeholders (single source of truth) ──
-      company: c.name || '',
-      company_name: c.name || '',
-      company_legal_name: c.legalName || c.name || '',
-      company_display_name: c.displayName || c.shortName || c.name || '',
-      company_trade_name: c.tradeName || '',
-      company_short_name: c.shortName || '',
-      company_code: c.companyCode || '',
-      company_tagline: c.tagline || '',
-      company_motto: c.motto || c.tagline || '',
-      company_email: c.contactEmail || c.email || 'hr@company.com',
-      company_phone: c.contactNumber || c.phone || '',
-      company_landline: c.landline || '',
-      company_website: c.website || c.domain || '',
-      company_address: c.address || c.billingAddress || 'Corporate Headquarters',
-      company_corporate_address: c.corporateAddress || c.address || '',
-      company_city: c.city || '',
-      company_state: c.state || '',
-      company_country: c.country || '',
-      company_pincode: c.pincode || '',
-      // Statutory / registration
-      company_gst: c.gstNumber || '',
-      company_pan: c.panNumber || '',
-      company_cin: c.cinNumber || '',
-      company_tan: c.tanNumber || '',
-      company_registration: c.registrationNumber || '',
-      company_pf_code: c.pfCode || '',
-      company_esi_code: c.esiCode || '',
-      company_ptax_reg: c.ptaxRegistrationNumber || '',
-      company_msme: c.msmeNumber || '',
-      company_shop_establishment: c.shopEstablishmentNumber || '',
-      company_labour_license: c.labourLicenseNumber || '',
-      company_factory_license: c.factoryLicenseNumber || '',
-      company_iec: c.iecCode || '',
-      company_iso: c.isoCertNumber || '',
-      company_fssai: c.fssaiNumber || '',
-      // Management
-      founder_name: c.founderName || '',
-      co_founder_name: c.coFounderName || '',
-      ceo_name: c.ceoName || '',
-      managing_director: c.managingDirector || '',
-      directors: c.directors || '',
-      hr_head: c.hrHeadName || '',
-      finance_head: c.financeHeadName || '',
-      authorized_signatory: c.authorizedSignatory || c.signatureText || '',
-      signatory_designation: c.signatoryDesignation || '',
-      // Banking
-      company_bank: c.bankName || '',
-      company_bank_branch: c.bankBranch || '',
-      company_account: c.bankAccountNumber || '',
-      company_ifsc: c.ifscCode || '',
-      company_swift: c.swiftCode || '',
-      company_account_holder: c.accountHolderName || c.name || '',
-      company_upi: c.upiId || '',
-      // Payroll & cycle
-      salary_cycle: c.salaryCycle || '',
-      financial_year: c.financialYearStart || '',
-      default_currency: c.defaultCurrency || 'INR',
-      // Branding / assets (data URLs — templates may render via <img>)
-      company_logo: c.logoImage || '',
-      company_seal: c.stampImage || '',
-      company_letterhead: c.letterheadImage || '',
+      ...buildCompanyTokens(c),
     };
   });
+
+  // Keep the {{company_*}} tokens in lock-step with the live Company record so a
+  // branding/profile edit saved in Company Profile is reflected here with no manual
+  // refresh. Re-derives the full company token set whenever the active company (or
+  // its branding fields) change; employee-specific tokens are untouched.
+  useEffect(() => {
+    setDocVariables(prev => ({ ...prev, ...buildCompanyTokens(currentCompany) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCompanyId, currentCompany?.id, currentCompany?.logoImage, currentCompany?.name,
+      currentCompany?.gstNumber, currentCompany?.stampImage, currentCompany?.digitalSignatureImage,
+      currentCompany?.reportHeaderImage, currentCompany?.reportFooterImage, currentCompany?.watermarkImage]);
 
   // Modal edit/create template state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -1979,7 +2007,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                       address={docVariables.company_address}
                       email={docVariables.company_email}
                       subject={compiledSubject}
-                      dateStr={new Date().toLocaleDateString('en-IN')}
+                      dateStr={formatDate(new Date())}
                       bodyHtml={compiledBody}
                       employeeName={docVariables.employee_name}
                       signatureText={activeTemplate?.branding?.signatureText || 'Authorized HR Operations Signatory'}
@@ -2370,7 +2398,8 @@ export const Documents: React.FC<DocumentsProps> = ({
                   { key: 'company_ifsc', label: 'IFSC' },
                   { key: 'founder_name', label: 'Founder' },
                   { key: 'ceo_name', label: 'CEO' },
-                  { key: 'authorized_signatory', label: 'Authorized Signatory' }
+                  { key: 'authorized_signatory', label: 'Authorized Signatory' },
+                  { key: 'signatory_designation', label: 'Signatory Designation' }
                 ].map(chip => (
                   <button
                     type="button"

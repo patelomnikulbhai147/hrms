@@ -15,6 +15,7 @@ const prisma = require('../config/prisma');
 const PERMISSION_MODULES = [
   'dashboard', 'employees', 'attendance', 'leaves', 'payroll', 'documents',
   'reports', 'settings', 'companies', 'billing', 'tasks', 'tenders', 'contracts', 'permissions',
+  'company-profile', 'communication',
 ];
 function defaultPermissionsForRole(role) {
   if (role === 'Super Admin') return { permissions: {}, moduleAccess: {} };
@@ -40,6 +41,17 @@ function defaultPermissionsForRole(role) {
   const viewSet = new Set(VIEW[role] || []);
   const permissions = {};
   for (const m of PERMISSION_MODULES) {
+    // Company Profile is COMPANY-HEAD-ONLY — never grant it to any other role by
+    // default (enforced as a hard role gate in companyProfileRoutes regardless).
+    if (m === 'company-profile') { permissions[m] = fullSet.has(m) ? full() : none(); continue; }
+    // Communication Center = company-internal HR module. Company Head full; HR
+    // VIEW by default (grant edit/export via the matrix); all other roles none
+    // (Super Admin is hard-blocked at the route regardless). Never auto-granted to
+    // Finance/Employee so it is not silently reachable by direct URL/API.
+    if (m === 'communication') {
+      permissions[m] = role === 'Company Head' ? full() : role === 'HR' ? view() : none();
+      continue;
+    }
     if (fullSet.has(m)) permissions[m] = full();
     else if (viewSet.has(m)) permissions[m] = view();
     else permissions[m] = (role === 'Employee') ? none() : view();

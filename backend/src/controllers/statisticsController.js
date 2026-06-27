@@ -1,4 +1,4 @@
-const { getSuperAdminStatistics } = require('../services/superAdminStatisticsService');
+const { getSuperAdminStatistics, getPlatformReports } = require('../services/superAdminStatisticsService');
 const respondError = require('../utils/respondError');
 
 // GET /api/statistics/super-admin
@@ -18,6 +18,19 @@ exports.getSuperAdmin = async (req, res) => {
     // Never serve stale cached counts.
     res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(stats);
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
+
+// GET /api/statistics/platform-reports
+// SaaS platform analytics for the Super Admin Reports module — platform-level
+// counts/totals/revenue/growth only (NO company-operational or employee PII).
+exports.getPlatformReports = async (req, res) => {
+  try {
+    const reports = await getPlatformReports();
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.json(reports);
   } catch (error) {
     return respondError(res, error);
   }

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { type UserAccount } from '@/pages/Login';
 import { api } from '@/api/apiClient';
-import { formatDate } from '@/utils/formatDate';
+import { formatDateTime } from '@/utils/formatDate';
 import { templateForKey, type TemplateDef } from '@/components/reports/templateRegistry';
 import { ReportTemplateViewer } from '@/components/reports/ReportTemplateViewer';
 import { isStatutoryReport } from '@/components/reports/reportClassification';
@@ -1126,7 +1126,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="mt-4 space-y-3">
                 <div className="text-[11px] text-slate-500 flex items-center justify-between flex-wrap gap-2 bg-slate-50 border border-slate-200/60 rounded-xl px-4 py-2.5">
                   <span>
-                    <strong>{report.rows.length}</strong> record(s) across <strong>{Object.keys(groupedRows).length}</strong> companies · generated {new Date(report.generatedAt).toLocaleString('en-IN')}{report.generatedBy ? ` · by ${report.generatedBy}` : ''}
+                    <strong>{report.rows.length}</strong> record(s) across <strong>{Object.keys(groupedRows).length}</strong> companies · generated {formatDateTime(report.generatedAt)}{report.generatedBy ? ` · by ${report.generatedBy}` : ''}
                   </span>
                   <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-full text-[10px] tracking-wider uppercase">
                     Executive Multi-Company View
@@ -1201,7 +1201,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                 />
               ) : isStatutoryReport(report.reportKey, report.category) ? (
               <div className="mt-3">
-                <div className="text-[11px] text-slate-500 mb-1.5">{report.rows.length} record(s) · generated {new Date(report.generatedAt).toLocaleString('en-IN')}{report.generatedBy ? ` · by ${report.generatedBy}` : ''} · <span className="font-semibold text-slate-600">statutory format</span></div>
+                <div className="text-[11px] text-slate-500 mb-1.5">{report.rows.length} record(s) · generated {formatDateTime(report.generatedAt)}{report.generatedBy ? ` · by ${report.generatedBy}` : ''} · <span className="font-semibold text-slate-600">statutory format</span></div>
                 <div className="overflow-x-auto max-h-[420px] border border-slate-100 rounded-lg">
                   <Table>
                     <Thead><Tr>{report.columns.map((c: any) => <Th key={c.key}>{c.label}</Th>)}</Tr></Thead>
@@ -1225,7 +1225,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
           <h3 className="text-sm font-bold text-slate-800 mb-2">Report Audit Trail</h3>
           {audit.length === 0 ? <div className="py-6 text-center text-xs text-slate-400">No activity yet.</div> : (
             <div className="overflow-x-auto max-h-[360px]"><Table><Thead><Tr><Th>When</Th><Th>Action</Th><Th>Report</Th><Th>Format</Th><Th>Rows</Th><Th>By</Th></Tr></Thead>
-              <Tbody>{audit.map(a => (<Tr key={a.id}><Td><span className="text-[11px]">{formatDate(a.createdAt)} {new Date(a.createdAt).toLocaleTimeString('en-IN')}</span></Td><Td><Badge variant={a.action === 'DOWNLOAD' ? 'blue' : 'gray'}>{a.action}</Badge></Td><Td>{a.reportName}</Td><Td>{a.format || '—'}</Td><Td>{a.rowCount}</Td><Td>{a.performedByName || '—'}</Td></Tr>))}</Tbody></Table></div>
+              <Tbody>{audit.map(a => (<Tr key={a.id}><Td><span className="text-[11px]">{formatDateTime(a.createdAt)}</span></Td><Td><Badge variant={a.action === 'DOWNLOAD' ? 'blue' : 'gray'}>{a.action}</Badge></Td><Td>{a.reportName}</Td><Td>{a.format || '—'}</Td><Td>{a.rowCount}</Td><Td>{a.performedByName || '—'}</Td></Tr>))}</Tbody></Table></div>
           )}
         </Card>
       )}

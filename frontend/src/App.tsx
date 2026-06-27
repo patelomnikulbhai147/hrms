@@ -16,6 +16,7 @@ const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ defa
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
 const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
+const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
 const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
@@ -23,6 +24,7 @@ const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ de
 const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ default: m.TaskManager })));
 const Tenders = React.lazy(() => import('@/pages/Tenders').then(m => ({ default: m.Tenders })));
 const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ default: m.Contracts })));
+const CompanyProfile = React.lazy(() => import('@/pages/CompanyProfile').then(m => ({ default: m.CompanyProfile })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { authStorage } from '@/utils/authStorage';
@@ -71,6 +73,8 @@ const pageTitles: Record<PageId, string> = {
   tasks: 'Task Manager',
   tenders: 'Tender Management',
   contracts: 'Contract Management',
+  'company-profile': 'Company Profile',
+  communication: 'Communication Center',
   'select-workspace': 'Select Workspace'
 };
 
@@ -79,7 +83,7 @@ const pageTitles: Record<PageId, string> = {
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'bonus', 'attendance',
   'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'select-workspace',
+  'company-profile', 'communication', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -706,6 +710,20 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.setItem('hrms_theme', theme);
   }, [theme]);
 
+  // Apply the active company's favicon (Company Profile → Branding & Assets) to the
+  // browser tab so branding stays the single source of truth. Only overrides when a
+  // favicon is configured — otherwise the default app icon remains.
+  useEffect(() => {
+    try {
+      const co: any = companies.find((c: any) => String(c.id) === String(activeCompanyId));
+      const fav = co?.faviconImage;
+      if (!fav) return;
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+      if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+      if (link.href !== fav) link.href = fav;
+    } catch { /* non-fatal */ }
+  }, [companies, activeCompanyId]);
+
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
@@ -1028,15 +1046,32 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'attendance-devices' ? 'attendance'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage) as AppModules;
-    // Governance modules (Tender / Contract Management) are restricted to
-    // Super Admin + Company Head ONLY — enforced here independently of the
-    // permission matrix so HR/Employees can't reach them via direct navigation
-    // even if a stale matrix grant exists. Mirrors the backend leadership gate.
-    const LEADERSHIP_ONLY_PAGES = ['tenders', 'contracts'];
+    // Governance modules (Tender / Contract Management) belong to the COMPANY HEAD
+    // only — Super Admin (platform admin) must not manage a company's tenders or
+    // contracts. A Super Admin masquerading into a company resolves to
+    // permissionRole 'Company Head', so they still get access in that context.
+    // company-profile stays Super Admin + Company Head (Super Admin via masquerade).
+    // Enforced here independently of the permission matrix so HR/Employees can't
+    // reach them via direct navigation even with a stale matrix grant.
+    const COMPANY_HEAD_ONLY_PAGES = ['tenders', 'contracts'];
+    const LEADERSHIP_ONLY_PAGES = ['company-profile'];
+    // Communication Center is a COMPANY-INTERNAL HR module: Company Head (full) +
+    // HR (per the permission matrix). It is NOT a platform-admin feature, so the
+    // Super Admin is blocked entirely — including a Super Admin masquerading into
+    // a company (permissionRole stays 'Super Admin'). Each company manages its own.
+    // Reports is a COMPANY-level module (operational reports for Company Head /
+    // HR). The Super Admin (platform admin) no longer has a Reports module, so it
+    // is blocked entirely here — including a Super Admin masquerading into a
+    // company (permissionRole stays 'Super Admin'). Direct URL / refresh / manual
+    // route entry all hit this guard and get the Access Denied response.
+    const SUPER_ADMIN_BLOCKED_PAGES = ['communication', 'reports'];
     const isLeadership = permissionRole === 'Super Admin' || permissionRole === 'Company Head';
+    const isCompanyHead = permissionRole === 'Company Head';
     // Secondary render-level check to completely block unauthorized rendering
     if (
+      (COMPANY_HEAD_ONLY_PAGES.includes(currentPage) && !isCompanyHead) ||
       (LEADERSHIP_ONLY_PAGES.includes(currentPage) && !isLeadership) ||
+      (SUPER_ADMIN_BLOCKED_PAGES.includes(currentPage) && permissionRole === 'Super Admin') ||
       (permissionRole !== 'Super Admin' && !checkCanView(permPage, authProfile, permissionRole))
     ) {
       return (
@@ -1189,6 +1224,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onStartMasquerade={handleStartMasquerade}
           />
         );
+      case 'company-profile':
+        return (
+          <CompanyProfile
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+            onUpdateCompanies={handleUpdateCompanies}
+            onNavigate={handleNavigate}
+          />
+        );
       case 'attendance':
         return (
           <Attendance
@@ -1247,6 +1293,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           />
         );
       case 'reports':
+        // Reports is a COMPANY operational module (Company Head / HR per RBAC).
+        // The Super Admin has no Reports module and is blocked above, so this
+        // always renders the company's operational reports for authorised roles.
         return (
           <ComplianceReports
             role={resolvedRole}
@@ -1255,6 +1304,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             authProfile={authProfile}
           />
         );
+      case 'communication':
+        return <CommunicationCenter role={resolvedRole} />;
       case 'settings':
         return (
           <Settings
@@ -1354,11 +1405,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           onExitMasquerade={handleExitMasquerade}
           userName={authProfile.name}
           userAvatar={authProfile.avatar}
-          pageTitle={
-            currentPage === 'tenders' && resolvedRole === 'Super Admin' ? 'Tender Overview'
-              : currentPage === 'contracts' && resolvedRole === 'Super Admin' ? 'Contract Overview'
-                : pageTitles[currentPage] || 'HRMS'
-          }
+          pageTitle={pageTitles[currentPage] || 'HRMS'}
           companies={userAccessibleCompanies}
           notifications={notifications}
           onUpdateNotifications={handleUpdateNotifications}

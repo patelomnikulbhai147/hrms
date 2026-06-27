@@ -556,10 +556,81 @@ export const api = {
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'DELETE', headers: getHeaders() }); }
   },
 
+  // Company Profile — master repository (company record + contacts + company
+  // documents + branches + document health). Reads scoped to the caller's company.
+  companyProfile: {
+    get: async () => { return await apiFetch(`${BASE_URL}/company-profile`, { headers: getHeaders() }); },
+    documentHealth: async (notify = false) => { return await apiFetch(`${BASE_URL}/company-profile/document-health${notify ? '?notify=1' : ''}`, { headers: getHeaders() }); },
+    audit: async () => { return await apiFetch(`${BASE_URL}/company-profile/audit`, { headers: getHeaders() }); },
+    contacts: {
+      list: async () => { return await apiFetch(`${BASE_URL}/company-profile/contacts`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+    documents: {
+      list: async () => { return await apiFetch(`${BASE_URL}/company-profile/documents`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/documents`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/documents/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/documents/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+    compliance: {
+      list: async (notify = false) => { return await apiFetch(`${BASE_URL}/company-profile/compliance${notify ? '?notify=1' : ''}`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+  },
+
+  // Communication Center (Phase 1 — storage only, no sending). Scoped to caller's
+  // company; gated to Super Admin + Company Head on the backend.
+  communication: {
+    categories: async () => apiFetch(`${BASE_URL}/communication/categories`, { headers: getHeaders() }),
+    placeholders: async () => apiFetch(`${BASE_URL}/communication/placeholders`, { headers: getHeaders() }),
+    sampleTemplates: async () => apiFetch(`${BASE_URL}/communication/sample-templates`, { headers: getHeaders() }),
+    sampleHolidays: async (year?: number) => apiFetch(`${BASE_URL}/communication/sample-holidays${year ? `?year=${year}` : ''}`, { headers: getHeaders() }),
+    dashboard: async () => apiFetch(`${BASE_URL}/communication/dashboard`, { headers: getHeaders() }),
+    holidays: {
+      list: async (year?: number) => apiFetch(`${BASE_URL}/communication/holidays${year ? `?year=${year}` : ''}`, { headers: getHeaders() }),
+      create: async (data: any) => apiFetch(`${BASE_URL}/communication/holidays`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      update: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication/holidays/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      remove: async (id: any) => apiFetch(`${BASE_URL}/communication/holidays/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      import: async (holidays: any[]) => apiFetch(`${BASE_URL}/communication/holidays/import`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ holidays }) }),
+    },
+    templates: {
+      list: async (category?: string) => apiFetch(`${BASE_URL}/communication/templates${category && category !== 'All' ? `?category=${encodeURIComponent(category)}` : ''}`, { headers: getHeaders() }),
+      create: async (data: any) => apiFetch(`${BASE_URL}/communication/templates`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      update: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication/templates/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      remove: async (id: any) => apiFetch(`${BASE_URL}/communication/templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    },
+    schedules: {
+      list: async () => apiFetch(`${BASE_URL}/communication/schedules`, { headers: getHeaders() }),
+      create: async (data: any) => apiFetch(`${BASE_URL}/communication/schedules`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      update: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication/schedules/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      remove: async (id: any) => apiFetch(`${BASE_URL}/communication/schedules/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    },
+    announcements: {
+      list: async () => apiFetch(`${BASE_URL}/communication/announcements`, { headers: getHeaders() }),
+      create: async (data: any) => apiFetch(`${BASE_URL}/communication/announcements`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      update: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication/announcements/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      remove: async (id: any) => apiFetch(`${BASE_URL}/communication/announcements/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    },
+    deliveryLogs: async () => apiFetch(`${BASE_URL}/communication/delivery-logs`, { headers: getHeaders() }),
+    settings: {
+      get: async () => apiFetch(`${BASE_URL}/communication/settings`, { headers: getHeaders() }),
+      update: async (data: any) => apiFetch(`${BASE_URL}/communication/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    },
+  },
+
   statistics: {
     // Live, database-driven Super Admin KPI counts (single source of truth).
     getSuperAdmin: async () => {
       return await apiFetch(`${BASE_URL}/statistics/super-admin`, { headers: getHeaders() });
+    },
+    // SaaS platform analytics for the Super Admin Reports module (counts/revenue/
+    // growth only — no company-operational or employee PII).
+    getPlatformReports: async () => {
+      return await apiFetch(`${BASE_URL}/statistics/platform-reports`, { headers: getHeaders() });
     }
   },
 

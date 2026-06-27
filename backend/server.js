@@ -96,6 +96,8 @@ app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
+app.use('/api/company-profile', require('./src/routes/companyProfileRoutes'));
+app.use('/api/communication', require('./src/routes/communicationRoutes'));
 app.use('/api/branches', branchRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/temporary-employees', require('./src/routes/temporaryEmployeeRoutes'));

@@ -9,9 +9,10 @@ import {
   rawAadhaar, formatAadhaar, isValidAadhaar, AADHAAR_ERROR,
   rawPan, isValidPan, PAN_ERROR,
 } from '@/utils/idFormat';
+import { AddressSection, buildAddressString, buildAddressObject } from './AddressSection';
 import {
   User, ShieldCheck, Landmark, MapPin, FileText, CheckCircle2, XCircle,
-  Upload, Copy, Send, ChevronLeft, ChevronRight, Eye, Download, Save, Trash2,
+  Upload, Send, ChevronLeft, ChevronRight, Eye, Download, Save, Trash2,
   Phone, Users, GraduationCap,
 } from 'lucide-react';
 
@@ -167,9 +168,11 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
   };
 
   // ── Persist ──────────────────────────────────────────────────────────────────
-  const presentAddress = () => joinParts(draft.p_line1, draft.p_line2, draft.p_area, draft.p_landmark, draft.p_city, draft.p_district, draft.p_state, draft.p_country, draft.p_pincode);
-  const permanentAddress = () => draft.sameAsPresent ? presentAddress() : joinParts(draft.q_line1, draft.q_line2, draft.q_area, draft.q_landmark, draft.q_city, draft.q_district, draft.q_state, draft.q_country, draft.q_pincode);
-  const addrObj = (pfx: 'p_' | 'q_') => ({ line1: draft[pfx + 'line1'] || '', line2: draft[pfx + 'line2'] || '', area: draft[pfx + 'area'] || '', landmark: draft[pfx + 'landmark'] || '', city: draft[pfx + 'city'] || '', district: draft[pfx + 'district'] || '', state: draft[pfx + 'state'] || '', country: draft[pfx + 'country'] || '', pincode: draft[pfx + 'pincode'] || '' });
+  // Address join/object helpers now come from the shared AddressSection module so
+  // both registration workflows assemble addresses identically.
+  const presentAddress = () => buildAddressString(draft, 'p_');
+  const permanentAddress = () => draft.sameAsPresent ? presentAddress() : buildAddressString(draft, 'q_');
+  const addrObj = (pfx: 'p_' | 'q_') => buildAddressObject(draft, pfx);
 
   const buildPatch = () => ({
     name: composedName || draft.name || '',
@@ -246,20 +249,6 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
         ? <Button size="sm" icon={<ChevronRight size={14} />} onClick={() => setStep(s => Math.min(STEPS.length - 1, s + 1))}>Next</Button>
         : <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" icon={<Send size={14} />} loading={busy} disabled={!canSubmit || !checklist.ok} onClick={submitForApproval} title={checklist.ok ? 'Submit for approval' : 'Complete all required items first'}>Submit for Approval</Button>}
     </>
-  );
-
-  const AddressFields: React.FC<{ pfx: 'p_' | 'q_'; disabled?: boolean }> = ({ pfx, disabled }) => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <Input label={pfx === 'p_' ? 'Address Line 1 *' : 'Address Line 1'} value={draft[pfx + 'line1'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'line1']: e.target.value })} />
-      <Input label="Address Line 2" value={draft[pfx + 'line2'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'line2']: e.target.value })} />
-      <Input label="Area / Locality" value={draft[pfx + 'area'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'area']: e.target.value })} />
-      <Input label="Landmark" value={draft[pfx + 'landmark'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'landmark']: e.target.value })} />
-      <Input label={pfx === 'p_' ? 'City *' : 'City'} value={draft[pfx + 'city'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'city']: e.target.value })} />
-      <Input label={pfx === 'p_' ? 'District *' : 'District'} value={draft[pfx + 'district'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'district']: e.target.value })} />
-      <Input label={pfx === 'p_' ? 'State *' : 'State'} value={draft[pfx + 'state'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'state']: e.target.value })} />
-      <Input label={pfx === 'p_' ? 'Country *' : 'Country'} value={draft[pfx + 'country'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'country']: e.target.value })} />
-      <Input label={pfx === 'p_' ? 'PIN Code *' : 'PIN Code'} className="font-mono" value={draft[pfx + 'pincode'] || ''} disabled={disabled} onChange={e => set({ [pfx + 'pincode']: e.target.value.replace(/\D/g, '').slice(0, 6) })} />
-    </div>
   );
 
   return (
@@ -384,22 +373,9 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
         </Section>
       )}
 
-      {/* ── Step 5: Address ── */}
+      {/* ── Step 5: Address (shared component — same as Register Master Employee) ── */}
       {step === 4 && (
-        <div className="space-y-5">
-          <Section title="Present Address" icon={MapPin}>
-            <AddressFields pfx="p_" />
-          </Section>
-          <Section title="Permanent Address" icon={MapPin}>
-            <label className="mb-3 flex items-center gap-2 text-[11px] font-semibold text-indigo-600 cursor-pointer w-fit">
-              <input type="checkbox" checked={!!draft.sameAsPresent} onChange={e => set({ sameAsPresent: e.target.checked })} />
-              <Copy size={12} /> Same as Present Address
-            </label>
-            {draft.sameAsPresent
-              ? <p className="text-[11px] text-slate-400">Permanent address will mirror the present address above.</p>
-              : <AddressFields pfx="q_" />}
-          </Section>
-        </div>
+        <AddressSection values={draft} onChange={(k, v) => set({ [k]: v })} />
       )}
 
       {/* ── Step 6: Nominee, Education & Previous Employment ── */}

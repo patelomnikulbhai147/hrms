@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { History as HistoryIcon, RefreshCw, ShieldCheck } from 'lucide-react';
+import { formatDateTime } from '@/utils/formatDate';
 
 interface AuditEntry {
   id: number;
@@ -25,10 +26,7 @@ const actionVariant = (action: string): any => {
   return 'gray';
 };
 
-const fmt = (iso: string) => {
-  try { return new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }); }
-  catch { return iso; }
-};
+const fmt = (iso: string) => formatDateTime(iso);
 
 /**
  * Global Audit Trail — who changed what, when. Backed by GET /api/audit, which

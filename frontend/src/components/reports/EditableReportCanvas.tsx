@@ -21,6 +21,7 @@ import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Undo2, Red
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
 import { printNode, nodeToPdf, rowsToExcel } from './reportExport';
+import { formatDate } from '@/utils/formatDate';
 
 interface Col { key: string; label: string; }
 interface ReportShape {
@@ -94,6 +95,11 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
   const versionsKey = `hrms_report_versions_${baseKey}`;
   const auditKey = `hrms_report_audit_${baseKey}`;
   const [resetKey, setResetKey] = useState(0);
+
+  // Orientation is decided ONCE and used for the preview page, the print page and
+  // the PDF — so all three are identical. Wide reports (many columns) go landscape.
+  const orientation: 'portrait' | 'landscape' = cols.length > 7 ? 'landscape' : 'portrait';
+  const exportCtx = () => ({ companyName: plain('companyName'), title: plain('title') || report.reportName, generatedBy: report.generatedBy, generatedAt: report.generatedAt });
 
   const numericCols = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -204,10 +210,10 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
   const fileStem = () => (plain('title') || report.reportName || 'Report').replace(/[^a-z0-9]+/gi, '_');
 
   // ── Exports — all snapshot the EDITED state ──
-  const onPrint = () => { if (!docRef.current) return; printNode(docRef.current, plain('title') || report.reportName || 'Report'); onLog?.('PRINT'); };
+  const onPrint = () => { if (!docRef.current) return; printNode(docRef.current, plain('title') || report.reportName || 'Report', orientation, exportCtx()); onLog?.('PRINT'); };
   const onPdf = async () => {
     if (!docRef.current) return; setBusy('pdf');
-    try { await nodeToPdf(docRef.current, fileStem(), cols.length > 7 ? 'landscape' : 'portrait'); onLog?.('PDF'); }
+    try { await nodeToPdf(docRef.current, fileStem(), orientation, exportCtx()); onLog?.('PDF'); }
     catch (e: any) { ui.toast.error(e?.message || 'PDF export failed.'); } finally { setBusy(null); }
   };
   const onExcel = () => {
@@ -362,7 +368,20 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
 
       {/* Editable document (A4-like). THIS node is the export source. */}
       <div className="bg-slate-200/50 rounded-xl border border-slate-200 p-4 overflow-auto" style={{ maxHeight: '74vh' }}>
-        <div ref={docRef} className="bg-white mx-auto shadow-lg" style={{ width: '210mm', minHeight: '297mm', padding: '18mm', fontFamily: 'Georgia, "Times New Roman", serif', color: '#1f2937', fontSize: 12 }}>
+        <div ref={docRef} className="report-doc bg-white mx-auto shadow-lg" style={{ position: 'relative', overflow: 'hidden', width: orientation === 'landscape' ? '297mm' : '210mm', minHeight: orientation === 'landscape' ? '210mm' : '297mm', padding: '15mm 10mm', fontFamily: 'Georgia, "Times New Roman", serif', color: '#1f2937', fontSize: 12 }}>
+          {/* Watermark from Company Profile (image preferred, else text) — printable
+              documents only; sits BEHIND the content. Captured by Print + PDF. */}
+          {(m.watermarkImage || m.watermarkText) && (
+            <div aria-hidden style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 0, pointerEvents: 'none', opacity: 0.07, overflow: 'hidden' }}>
+              {m.watermarkImage
+                ? <img src={m.watermarkImage} alt="" style={{ maxWidth: '70%', maxHeight: '70%', objectFit: 'contain', transform: 'rotate(-30deg)' }} />
+                : <span style={{ fontSize: 92, fontWeight: 800, color: '#000', transform: 'rotate(-30deg)', whiteSpace: 'nowrap', fontFamily: 'system-ui, sans-serif' }}>{stripHtml(m.watermarkText)}</span>}
+            </div>
+          )}
+          {/* Content layer (above the watermark). */}
+          <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Report header banner from Company Profile (letterhead / report header). */}
+          {m.reportHeaderImage && <img src={m.reportHeaderImage} alt="" style={{ width: '100%', objectFit: 'contain', marginBottom: 12 }} />}
           {/* Header */}
           <div className="flex items-start justify-between border-b-2 pb-3 mb-4" style={{ borderColor: m.primaryColor || '#4f46e5' }}>
             <div className="flex items-start gap-3">
@@ -375,7 +394,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
               </div>
             </div>
             <div className="text-right text-[9px] text-slate-400">
-              <p>Generated: {report.generatedAt ? new Date(report.generatedAt).toLocaleDateString('en-IN') : new Date().toLocaleDateString('en-IN')}</p>
+              <p>Generated: {formatDate(report.generatedAt || new Date())}</p>
               {report.generatedBy && <p>By: {report.generatedBy}</p>}
               <p>{rows.length} record(s)</p>
             </div>
@@ -413,11 +432,18 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
           <div className="mt-10 flex justify-between items-end">
             <EditableField editMode={cellEditable} setRef={setFieldRef} onInput={persistDraft} id="footer" html={init.footer} className="text-[9px] text-slate-400 max-w-[60%]" placeholder={cellEditable ? 'Footer text…' : ''} />
             <div className="text-right">
+              {/* Company seal + authorized signature image from Company Profile. */}
+              {m.stampImage && <img src={m.stampImage} alt="seal" style={{ width: 64, height: 64, objectFit: 'contain', display: 'inline-block', marginBottom: 2 }} />}
+              {m.digitalSignatureImage && <img src={m.digitalSignatureImage} alt="signature" style={{ height: 40, objectFit: 'contain', display: 'block', marginLeft: 'auto', marginBottom: 2 }} />}
               <div className="h-[1px] w-40 bg-slate-400 ml-auto mb-1" />
               <EditableField editMode={cellEditable} setRef={setFieldRef} onInput={persistDraft} id="signatory" html={init.signatory} className="text-[10px] font-semibold text-slate-700 text-right" placeholder="Authorized Signatory" />
               <p className="text-[8px] text-slate-400">For {stripHtml(init.companyName)}</p>
             </div>
           </div>
+
+          {/* Report footer banner from Company Profile. */}
+          {m.reportFooterImage && <img src={m.reportFooterImage} alt="" style={{ width: '100%', objectFit: 'contain', marginTop: 16 }} />}
+          </div>{/* /content layer */}
         </div>
       </div>
 

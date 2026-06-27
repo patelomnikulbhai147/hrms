@@ -53,6 +53,20 @@ async function companyMeta(companyId) {
   // Branch-resolved fallback: a branch inherits the parent's master data (founder,
   // bank, registrations …) unless it overrides — so every report fills completely.
   const v = (k) => c[k] || brandSrc[k] || null;
+
+  // Authorized signatory — prefer the Contacts & Management tab (CompanyContact) so
+  // that tab is the single source of truth, falling back to the Company record's own
+  // fields. Contacts live on the TOP-LEVEL company, so a branch inherits the parent's
+  // signatory. Wrapped in try/catch so an older DB without the table never breaks a report.
+  const topCompanyId = c.parentCompanyId || c.id;
+  let signatory = null;
+  try {
+    const contacts = await prisma.companyContact.findMany({ where: { companyId: topCompanyId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+    signatory = contacts.find((k) => (k.roleKey || '').toLowerCase() === 'authorizedsignatory')
+      || contacts.find((k) => /signator/i.test(k.designation || ''))
+      || null;
+  } catch { /* CompanyContact table absent on older DBs — non-fatal */ }
+
   return {
     // Identity
     name: c.name, legalName: c.legalName || c.name, displayName: c.displayName || c.shortName || c.name,
@@ -74,8 +88,8 @@ async function companyMeta(companyId) {
     founderName: v('founderName'), coFounderName: v('coFounderName'), ceoName: v('ceoName'),
     managingDirector: v('managingDirector'), directors: v('directors'), hrHeadName: v('hrHeadName'),
     financeHeadName: v('financeHeadName'),
-    authorizedSignatory: c.authorizedSignatory || c.signatureText || null,
-    signatoryDesignation: c.signatoryDesignation || null, signatureText: c.signatureText || null,
+    authorizedSignatory: (signatory && signatory.name) || c.authorizedSignatory || c.signatureText || null,
+    signatoryDesignation: (signatory && signatory.designation) || c.signatoryDesignation || null, signatureText: c.signatureText || null,
     // Banking
     bankName: v('bankName'), bankBranch: v('bankBranch'), bankAccountNumber: v('bankAccountNumber'),
     ifscCode: v('ifscCode'), swiftCode: v('swiftCode'), accountHolderName: v('accountHolderName') || c.name, upiId: v('upiId'),
@@ -84,9 +98,13 @@ async function companyMeta(companyId) {
     leaveYearStart: v('leaveYearStart'), defaultCurrency: c.defaultCurrency || 'INR', defaultTimeZone: c.defaultTimeZone || 'Asia/Kolkata',
     // Branding / assets
     logoImage: c.logoImage || brandSrc.logoImage || null, primaryColor: c.primaryColor || brandSrc.primaryColor || '#4F46E5',
-    stampImage: v('stampImage'), digitalSignatureImage: v('digitalSignatureImage'), letterheadImage: v('letterheadImage'),
+    stampImage: v('stampImage'), digitalSignatureImage: (signatory && signatory.signature) || v('digitalSignatureImage'), letterheadImage: v('letterheadImage'),
     headerText: c.headerText || null, footerText: c.footerText || null, emailSignature: c.emailSignature || null,
     watermarkText: c.watermarkText || null,
+    // Report/branding image assets (data URLs) — flow to every report header/footer/
+    // watermark/signature so Company Profile branding shows up with no per-report config.
+    reportHeaderImage: v('reportHeaderImage'), reportFooterImage: v('reportFooterImage'),
+    watermarkImage: v('watermarkImage'), faviconImage: v('faviconImage'),
     rates: { pfRate: c.pfRate ?? 12, esicRate: c.esicRate ?? 3.25, profTaxRate: c.profTaxRate ?? 200 },
   };
 }
@@ -561,10 +579,12 @@ async function monthly(s, ctx, kind) {
   const rate = ctx?.meta?.rates || { pfRate: 12, esicRate: 3.25, profTaxRate: 200 };
   const pay = await prisma.payroll.findMany({ where: payrollWhere(s) });
   const m = new Map();
-  for (const p of pay) { const k = `${p.month} ${p.year}`; if (!m.has(k)) m.set(k, { period: k, employees: 0, amount: 0 }); const r = m.get(k); r.employees++;
+  for (const p of pay) {
+    const k = `${p.month} ${p.year}`; if (!m.has(k)) m.set(k, { period: k, employees: 0, amount: 0 }); const r = m.get(k); r.employees++;
     if (kind === 'pf') r.amount += Math.min(p.basicSalary, PF_WAGE_CEILING) * rate.pfRate / 100 * 2;
     else if (kind === 'esi') { const g = grossOf(p); if (g <= ESI_GROSS_CEILING) r.amount += g * (ESI_EMP_RATE + rate.esicRate) / 100; }
-    else if (kind === 'pt') r.amount += rate.profTaxRate; }
+    else if (kind === 'pt') r.amount += rate.profTaxRate;
+  }
   const rows = [...m.values()].map((r, i) => ({ sr: i + 1, period: r.period, employees: r.employees, amount: r2(r.amount) }));
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'period', label: 'Period' }, { key: 'employees', label: 'Employees' }, { key: 'amount', label: 'Total Contribution' }], rows };
 }
@@ -1412,7 +1432,7 @@ exports.generate = async (req, res) => {
     const processedRows = await postProcessReportRows(scope.companyIds, out.rows);
     const warnings = out.warnings || [];
     if (!processedRows || processedRows.length === 0) warnings.unshift('No records match the selected filters — nothing to generate.');
-    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId }), rowCount: processedRows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => {});
+    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId }), rowCount: processedRows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => { });
     res.json({ reportKey: key, reportName: def.label, category: def.category, generatedAt: new Date().toISOString(), generatedBy: req.user?.name || req.user?.email || null, meta, columns: out.columns, rows: processedRows, summary: out.summary || null, warnings, canExport: (processedRows?.length || 0) > 0 });
   } catch (e) { console.error('reports.generate', e); res.status(500).json({ error: e.message || 'Server error' }); }
 }
@@ -1422,7 +1442,7 @@ exports.logDownload = async (req, res) => {
     if (!canAccess(req)) return res.status(403).json({ error: 'No access.' });
     const { reportKey, reportName, format, companyId, filters, rowCount } = req.body || {};
     const cid = idParam(companyId) || req.user?.companyId;
-    if (cid) await prisma.complianceReportLog.create({ data: { companyId: cid, reportKey: reportKey || 'unknown', reportName: reportName || 'Report', action: 'DOWNLOAD', format: format || null, filters: filters ? JSON.stringify(filters) : null, rowCount: Number(rowCount) || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => {});
+    if (cid) await prisma.complianceReportLog.create({ data: { companyId: cid, reportKey: reportKey || 'unknown', reportName: reportName || 'Report', action: 'DOWNLOAD', format: format || null, filters: filters ? JSON.stringify(filters) : null, rowCount: Number(rowCount) || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => { });
     res.json({ ok: true });
   } catch (e) { console.error('reports.logDownload', e); res.status(500).json({ error: e.message }); }
 };

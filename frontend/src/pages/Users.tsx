@@ -7,6 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { type UserAccount, type AppModules, type ModulePermissions } from '@/pages/Login';
 import { foldPermissions } from '@/utils/permissionFold';
+import { formatDateTime } from '@/utils/formatDate';
 import { type Company } from '@/data/mockData';
 import { buildCompanyBranchGroups, type CompanyBranchGroup } from '@/utils/workspaceUtils';
 import { Badge } from '@/components/ui/Badge';
@@ -1773,7 +1774,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                             </div>
                             <div className="text-right">
                               <p className="text-[12px] font-bold text-slate-500">By: {log.user?.name || 'System'}</p>
-                              <p className="text-[11px] font-medium text-slate-400">{new Date(log.createdAt).toLocaleString()}</p>
+                              <p className="text-[11px] font-medium text-slate-400">{formatDateTime(log.createdAt)}</p>
                             </div>
                           </div>
                         </div>

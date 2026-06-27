@@ -38,6 +38,11 @@ const COMPANY_MASTER_FIELDS = [
   'motto', 'watermarkText',
   // Digital assets
   'letterheadImage', 'dscImage', 'gstCertificateImage', 'panCardImage', 'registrationCertImage',
+  // Company Profile module additions (2026-06) — additive single-source-of-truth fields
+  'companyType', 'businessCategory', 'natureOfBusiness', 'dateOfEstablishment', 'dateOfIncorporation',
+  'companyStatusLabel', 'registeredOfficeAddress', 'headOfficeAddress', 'googleMapLocation',
+  'supportEmail', 'hrEmail', 'payrollEmail', 'socialLinks', 'paymentTerms', 'otherRegistrations',
+  'reportHeaderImage', 'reportFooterImage', 'watermarkImage',
 ];
 
 const BRANDING_FIELDS = [

@@ -14,6 +14,7 @@ import {
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { api } from '@/api/apiClient';
+import { formatDateTime } from '@/utils/formatDate';
 import { getApiErrorMessage } from '@/utils/apiError';
 import {
   type Employee,
@@ -218,7 +219,7 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   const saveAuditLog = (recordId: string, action: string, remarks?: string) => {
     const newLog: AuditLog = {
-      timestamp: `${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })} — ${new Date().toLocaleDateString('en-IN')}`,
+      timestamp: formatDateTime(new Date()),
       user: role === 'Company Head' ? 'Company Head (Finance Admin)' : role === 'HR' ? 'HR Operations Manager' : 'System Administrator',
       action,
       remarks
