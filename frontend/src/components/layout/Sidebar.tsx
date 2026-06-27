@@ -36,7 +36,7 @@ const navItems: NavItem[] = [
   // Employee Management + Payroll. The statutory engine (Form C/D) is retained
   // for compliance but no longer a daily-operations menu item.
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
-  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   // Governance modules — Super Admin + Company Head ONLY (HR/Employee hidden).

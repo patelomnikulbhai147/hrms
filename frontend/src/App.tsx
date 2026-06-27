@@ -16,7 +16,6 @@ const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ defa
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
 const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
-const PlatformReports = React.lazy(() => import('@/pages/PlatformReports').then(m => ({ default: m.PlatformReports })));
 const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
@@ -1060,7 +1059,12 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // HR (per the permission matrix). It is NOT a platform-admin feature, so the
     // Super Admin is blocked entirely — including a Super Admin masquerading into
     // a company (permissionRole stays 'Super Admin'). Each company manages its own.
-    const SUPER_ADMIN_BLOCKED_PAGES = ['communication'];
+    // Reports is a COMPANY-level module (operational reports for Company Head /
+    // HR). The Super Admin (platform admin) no longer has a Reports module, so it
+    // is blocked entirely here — including a Super Admin masquerading into a
+    // company (permissionRole stays 'Super Admin'). Direct URL / refresh / manual
+    // route entry all hit this guard and get the Access Denied response.
+    const SUPER_ADMIN_BLOCKED_PAGES = ['communication', 'reports'];
     const isLeadership = permissionRole === 'Super Admin' || permissionRole === 'Company Head';
     const isCompanyHead = permissionRole === 'Company Head';
     // Secondary render-level check to completely block unauthorized rendering
@@ -1289,13 +1293,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           />
         );
       case 'reports':
-        // Super Admin (platform admin) gets SaaS PLATFORM analytics, NOT a
-        // company's operational reports. A Super Admin masquerading into a company
-        // resolves to 'Company Head' here, so they correctly see that company's
-        // operational reports.
-        return resolvedRole === 'Super Admin' ? (
-          <PlatformReports role={resolvedRole} />
-        ) : (
+        // Reports is a COMPANY operational module (Company Head / HR per RBAC).
+        // The Super Admin has no Reports module and is blocked above, so this
+        // always renders the company's operational reports for authorised roles.
+        return (
           <ComplianceReports
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
