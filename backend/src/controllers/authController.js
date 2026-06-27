@@ -295,41 +295,72 @@ exports.changePassword = async (req, res) => {
 // Forgot password — step 1: request OTP
 // ----------------------------------------------------------------------------
 
+const OTP_EXPIRY_MINUTES = 10;
+const OTP_RESEND_COOLDOWN_SECONDS = 60;
+
 exports.forgotPassword = async (req, res) => {
   const identifier = req.body.email || req.body.username;
   try {
     if (!identifier) {
-      return res.status(400).json({ error: 'Please provide your registered email address.' });
+      return res.status(400).json({ error: 'Please enter your registered email address.' });
     }
 
     const user = await findUserByLogin(identifier);
 
-    // Always respond the same way to prevent account enumeration.
-    const genericResponse = {
-      message:
-        'If an active account exists for that address, a verification code has been sent.',
-    };
-
-    if (!user || !isActive(user.status)) {
-      return res.json(genericResponse);
+    // The product spec asks for a clear "not registered" message (chosen over
+    // anti-enumeration). Inactive accounts get a specific status message.
+    if (!user) {
+      return res.status(404).json({ error: 'Email address is not registered.' });
+    }
+    if (!isActive(user.status)) {
+      return res.status(403).json({ error: statusMessage(user.status) });
     }
 
-    // Generate a 6-digit OTP, store only its hash.
+    // Resend throttle — a new code may be requested only every 60 seconds. The
+    // most recent request (regardless of state) sets the clock.
+    const latest = await prisma.passwordResetToken.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (latest) {
+      const elapsed = (Date.now() - new Date(latest.createdAt).getTime()) / 1000;
+      if (elapsed < OTP_RESEND_COOLDOWN_SECONDS) {
+        const wait = Math.ceil(OTP_RESEND_COOLDOWN_SECONDS - elapsed);
+        return res.status(429).json({
+          error: `Please wait ${wait} second(s) before requesting another code.`,
+          retryAfter: wait,
+        });
+      }
+    }
+
+    // Generate a 6-digit OTP, store only its bcrypt hash.
     const otp = String(Math.floor(100000 + Math.random() * 900000));
     const otpHash = await bcrypt.hash(otp, 10);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // Invalidate any prior outstanding tokens for this user.
+    // Invalidate any prior outstanding tokens — only the newest code stays valid.
     await prisma.passwordResetToken.updateMany({
       where: { userId: user.id, consumed: false },
       data: { consumed: true },
     });
 
-    await prisma.passwordResetToken.create({
+    const created = await prisma.passwordResetToken.create({
       data: { userId: user.id, email: user.email, otpHash, expiresAt },
     });
 
-    const delivery = await sendOtpEmail(user.email, otp, user.name);
+    const delivery = await sendOtpEmail(user.email, otp, user.name, OTP_EXPIRY_MINUTES);
+
+    // SMTP is configured but the provider rejected the message — be honest and
+    // void the just-created code so the user can safely retry.
+    if (!delivery.delivered && delivery.configured) {
+      await prisma.passwordResetToken.update({
+        where: { id: created.id },
+        data: { consumed: true },
+      }).catch(() => {});
+      return res.status(502).json({
+        error: 'We could not send the verification email right now. Please try again in a few minutes.',
+      });
+    }
 
     await prisma.loginAudit.create({
       data: {
@@ -342,16 +373,17 @@ exports.forgotPassword = async (req, res) => {
       },
     }).catch(() => {});
 
-    // In dev mode (no SMTP configured) return the OTP so the flow is testable.
-    const payload = { ...genericResponse };
-    if (delivery.devMode && process.env.NODE_ENV !== 'production') {
+    const payload = { message: `A verification code has been sent to ${user.email}.` };
+    // Dev convenience: when SMTP is NOT configured, return the OTP so the flow is
+    // testable locally. Never happens once SMTP env vars are set or in production.
+    if (delivery.devMode && !delivery.configured && process.env.NODE_ENV !== 'production') {
       payload.devOtp = otp;
       payload.devNote = 'SMTP not configured — OTP returned for development only.';
     }
     return res.json(payload);
   } catch (error) {
     console.error('Forgot Password Error:', error);
-    return res.status(500).json({ error: 'Server error while requesting a reset code.' });
+    return res.status(500).json({ error: 'Server error while requesting a reset code. Please try again.' });
   }
 };
 
@@ -431,8 +463,13 @@ exports.resetPassword = async (req, res) => {
     if (!resetToken || !newPassword) {
       return res.status(400).json({ error: 'A reset token and new password are required.' });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters long.' });
+    // Strong-password policy: 8+ chars with upper, lower, number and special char.
+    const pw = String(newPassword);
+    const strong = pw.length >= 8 && /[A-Z]/.test(pw) && /[a-z]/.test(pw) && /[0-9]/.test(pw) && /[^A-Za-z0-9]/.test(pw);
+    if (!strong) {
+      return res.status(400).json({
+        error: 'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character.',
+      });
     }
 
     let decoded;
