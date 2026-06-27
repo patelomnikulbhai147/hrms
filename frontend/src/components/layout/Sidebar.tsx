@@ -3,7 +3,7 @@ import { cn } from '@/utils/cn';
 import {
   LayoutDashboard, Users, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, Fingerprint, FileSignature
+  ClipboardList, Briefcase, History, IdCard, Fingerprint, FileSignature, MessageSquare
 } from 'lucide-react';
 import type { Role, Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
@@ -12,7 +12,8 @@ import { getCompanyInitials } from '@/utils/workspaceUtils';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit';
+  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
+  | 'company-profile' | 'communication';
 
 interface NavItem {
   id: PageId;
@@ -36,15 +37,21 @@ const navItems: NavItem[] = [
   // for compliance but no longer a daily-operations menu item.
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
+  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Super Admin', 'Company Head'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   // Governance modules — Super Admin + Company Head ONLY (HR/Employee hidden).
-  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Super Admin', 'Company Head'] },
-  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Super Admin', 'Company Head'] },
+  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'] },
+  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'] },
   // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
   // — not a platform concern. It is intentionally hidden from the Super Admin
   // root menu; a Super Admin configures a company's settings by entering that
   // company (masquerade), where the role resolves to Company Head and Settings
   // appears. Platform configuration lives under Companies / Subscriptions.
+  // Company Profile — master repository of all company data (single source of
+  // truth). COMPANY HEAD ONLY. HR/Manager/Employee never see it. Super Admin does
+  // NOT see it in the normal sidebar; they reach it via masquerade (role resolves
+  // to Company Head), matching the platform-admin support workflow.
+  { id: 'company-profile', label: 'Company Profile', icon: <Building2 size={15} />, roles: ['Company Head'] },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
   { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
   { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'] },
@@ -198,8 +205,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {!collapsed && (
               <span className="flex-1 text-left">
                 {item.id === 'payroll' && role === 'Employee' ? 'My Payslips'
-                  : item.id === 'tenders' && role === 'Super Admin' ? 'Tender Overview'
-                  : item.id === 'contracts' && role === 'Super Admin' ? 'Contract Overview'
                   : item.label}
               </span>
             )}

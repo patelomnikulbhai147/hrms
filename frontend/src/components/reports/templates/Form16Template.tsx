@@ -123,7 +123,7 @@ const Certificate: React.FC<{ r: any; m: any; year?: number; isLast: boolean; la
             {t('I, on behalf of')} <b>{m?.name || t('the employer')}</b>, {t('certify that a sum of Rs.')} {inr(r.tds)}/- {t('has been deducted and deposited to the credit of the central government. i further certify that the information given above is true, complete and correct and is based on the books of account, documents, tds statements and other available records.')}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 22 }}>
               <span>{t('Place / Date')}: ____________________</span>
-              <span style={{ textAlign: 'right' }}>{t('For')} {m?.name || 'Company'}<br />{m?.signatureText || `(${t('Authorized Signatory')})`}</span>
+              <span style={{ textAlign: 'right' }}>{t('For')} {m?.name || 'Company'}<br />{m?.digitalSignatureImage && <><img src={m.digitalSignatureImage} alt="signature" style={{ height: 34, objectFit: 'contain', display: 'inline-block', verticalAlign: 'middle' }} /><br /></>}{m?.signatureText || `(${t('Authorized Signatory')})`}</span>
             </div>
           </td></tr>
         </tbody>

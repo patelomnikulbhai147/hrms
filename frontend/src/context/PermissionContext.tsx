@@ -34,6 +34,23 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     edit: ['Company Head'],
     export: ['Company Head', 'HR'],
   },
+  // Company Profile = master repository of company data. COMPANY HEAD ONLY —
+  // HR/Manager/Employee have no access. Super Admin reaches it via masquerade.
+  // Mirrors the hard role gate in companyProfileRoutes (backend) and the
+  // LEADERSHIP route guard in App.tsx (frontend).
+  'company-profile': {
+    view: ['Company Head'],
+    create: ['Company Head'],
+    edit: ['Company Head'],
+    export: ['Company Head'],
+  },
+  // Communication Center — Super Admin + Company Head (HR can be added later).
+  communication: {
+    view: ['Super Admin', 'Company Head'],
+    create: ['Super Admin', 'Company Head'],
+    edit: ['Super Admin', 'Company Head'],
+    export: ['Super Admin', 'Company Head'],
+  },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
   NEW_MODULE_ROLE_DEFAULTS[module]?.[action]?.includes(role) ?? false;

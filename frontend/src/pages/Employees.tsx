@@ -34,6 +34,7 @@ import { CreatableSelect } from '@/components/ui/CreatableSelect';
 import { NomineesTab } from '@/components/employee/NomineesTab';
 import { TempEmployeeOnboarding } from '@/components/employee/TempEmployeeOnboarding';
 import { NomineeWizardStep } from '@/components/employee/NomineeWizardStep';
+import { AddressSection, buildAddressString, validatePresentAddress, BLANK_ADDRESS_VALUES } from '@/components/employee/AddressSection';
 import { INDIAN_STATES, citiesForState } from '@/data/indianStatesCities';
 import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '@/data/countries';
 import { byEmployeeCode } from '@/utils/employeeSort';
@@ -684,6 +685,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     bankState: '',
     presentAddress: '',
     permanentAddress: '',
+    ...BLANK_ADDRESS_VALUES,
     state: '',
     city: '',
     shiftId: '' as number | string,
@@ -718,6 +720,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       exitDate: '', exitReason: '', branchLocation: initialBranch, biometricId: '',
       aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
       bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
+      ...BLANK_ADDRESS_VALUES,
       state: '', city: '',
       shiftId: '',
       bonusApplicable: false, bonusType: '', bonusCalcMethod: 'Fixed Amount', bonusValue: null, bonusEffectiveDate: '', bonusEndDate: '', bonusNotes: '',
@@ -1029,12 +1032,8 @@ export const Employees: React.FC<EmployeesProps> = ({
       activeErrors.esic = 'Valid ESIC IP Number is required if entered';
     }
 
-    if (!form.presentAddress || form.presentAddress.trim().length < 5) {
-      activeErrors.presentAddress = 'Present Address is required (min 5 characters)';
-    }
-    if (!form.permanentAddress || form.permanentAddress.trim().length < 5) {
-      activeErrors.permanentAddress = 'Permanent Address is required (min 5 characters)';
-    }
+    // Structured present-address required fields (permanent is optional / mirrors).
+    Object.assign(activeErrors, validatePresentAddress(form));
 
     const hasErrors = Object.values(activeErrors).some(val => val !== '');
     if (hasErrors) {
@@ -1045,7 +1044,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'state', 'city', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
       else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
-      else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
+      else if (firstErrorKey.startsWith('p_') || firstErrorKey.startsWith('q_') || ['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
 
       setTimeout(() => {
         const element = document.getElementById(`field-${firstErrorKey}`);
@@ -1127,8 +1126,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       bankCity: form.bankCity,
       bankDistrict: form.bankDistrict,
       bankState: form.bankState,
-      presentAddress: form.presentAddress,
-      permanentAddress: form.permanentAddress,
+      // Structured fields joined into the same master-schema string columns, so the
+      // DB mapping is unchanged (Quick Add onboarding assembles addresses identically).
+      presentAddress: buildAddressString(form, 'p_'),
+      permanentAddress: form.sameAsPresent ? buildAddressString(form, 'p_') : buildAddressString(form, 'q_'),
       shiftId: form.shiftId ? Number(form.shiftId) : null,
 
       // Bonus configuration
@@ -1268,7 +1269,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       if (['name', 'email', 'phone', 'aadhaarName', 'dob', 'gender', 'maritalStatus', 'nationality', 'state', 'city', 'fatherSpouseName'].includes(firstErrorKey)) setActiveTab('personal');
       else if (['designation', 'category', 'joinDate', 'employmentType', 'salary'].includes(firstErrorKey)) setActiveTab('job');
       else if (['pan', 'aadhaar', 'bankName', 'accountNumber', 'ifsc', 'pfNumber', 'uan', 'esic'].includes(firstErrorKey)) setActiveTab('banking');
-      else if (['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
+      else if (firstErrorKey.startsWith('p_') || firstErrorKey.startsWith('q_') || ['presentAddress', 'permanentAddress'].includes(firstErrorKey)) setActiveTab('address');
 
       setTimeout(() => {
         const element = document.getElementById(`field-${firstErrorKey}`);
@@ -2872,7 +2873,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <div><span className="text-slate-400">Department:</span> <strong className="text-slate-800">{form.department}</strong></div>
                   <div><span className="text-slate-400">Designation:</span> <strong className="text-slate-800">{form.designation}</strong></div>
                   <div><span className="text-slate-400">Branch:</span> <strong className="text-slate-800">{form.branchLocation || '—'}</strong></div>
-                  <div><span className="text-slate-400">Join Date:</span> <strong className="text-slate-800">{form.joinDate}</strong></div>
+                  <div><span className="text-slate-400">Join Date:</span> <strong className="text-slate-800">{formatDate(form.joinDate)}</strong></div>
                 </div>
               </div>
               <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
@@ -3022,14 +3023,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           )}
 
           {activeTab === 'address' && (
-            <div className="space-y-3">
-              <Input id="field-presentAddress" label="Present Address" value={form.presentAddress} onChange={e => setForm({ ...form, presentAddress: e.target.value })} error={errors.presentAddress} />
-              <Input id="field-permanentAddress" label="Permanent Address" value={form.permanentAddress} onChange={e => setForm({ ...form, permanentAddress: e.target.value })} error={errors.permanentAddress} />
-              <div className="p-2 bg-slate-50 rounded border border-slate-200 flex items-center justify-between text-[11px] font-semibold text-slate-600">
-                <span>Copy Present Address to Permanent?</span>
-                <button type="button" onClick={() => setForm({ ...form, permanentAddress: form.presentAddress })} className="text-blue-600 hover:underline">Copy Address</button>
-              </div>
-            </div>
+            <AddressSection values={form} errors={errors} onChange={(k, v) => setForm(f => ({ ...f, [k]: v }))} />
           )}
         </div>
       </Modal>

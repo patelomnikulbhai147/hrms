@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { type UserAccount } from '@/pages/Login';
 import { getUniqueEmployees } from '@/utils/deduplication';
+import { formatDate } from '@/utils/formatDate';
 import { usePermissions } from '@/context/PermissionContext';
 import { getCompanyInitials } from '@/utils/workspaceUtils';
 import { api, type SuperAdminStats } from '@/api/apiClient';
@@ -1330,7 +1331,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                       <td className="py-3 px-5">
                         <div className="text-[11px] text-slate-500 space-y-1">
                           <p>Sector: <span className="font-semibold text-slate-700">{c.industry}</span></p>
-                          <p>Joined: {c.joinDate}</p>
+                          <p>Joined: {formatDate(c.joinDate)}</p>
                           <p>
                             {hasBranches ? 'Combined Staff: ' : 'Employees: '}
                             <span className="font-semibold text-slate-700">{combinedEmpCount}</span>

@@ -9,5 +9,6 @@ router.use(protect);
 router.use(requireSuperAdmin);
 
 router.get('/super-admin', statisticsController.getSuperAdmin);
+router.get('/platform-reports', statisticsController.getPlatformReports);
 
 module.exports = router;

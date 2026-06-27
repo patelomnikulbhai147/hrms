@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { getUniqueEmployees } from '@/utils/deduplication';
+import { formatDate } from '@/utils/formatDate';
 import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { usePermissions } from '@/context/PermissionContext';
@@ -620,7 +621,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       console.debug('[Attendance] markCell DB RESPONSE', dbRes);
       console.debug('[Attendance] markCell AFTER (UI will show)', { date, persistedStatus: dbRes?.status, matches: dbRes?.status === status });
       recalcSummaryAfterEdit(date, [emp.id]);
-      flashWeekly(`${emp.name} · ${new Date(date).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} → ${status}. Saved & synced across Daily, Monthly, Payroll & Reports.`);
+      flashWeekly(`${emp.name} · ${formatDate(date)} → ${status}. Saved & synced across Daily, Monthly, Payroll & Reports.`);
     } catch (e) {
       console.error('[Attendance] markCell FAILED', e);
       ui.toast.error(getApiErrorMessage(e, 'Could not save attendance to the database.'));

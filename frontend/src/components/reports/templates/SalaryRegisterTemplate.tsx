@@ -90,7 +90,11 @@ export const SalaryRegisterTemplate: React.FC<TemplateProps> = ({ data, lang = '
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 28, fontSize: 11 }}>
         <div style={{ color: '#555' }}>{t('Generated on')} {new Date(data.generatedAt).toLocaleString('en-IN')}{data.generatedBy ? ` · ${t('by')} ${data.generatedBy}` : ''}</div>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ height: 40 }} />
+          {/* Authorized signature image from Company Profile (falls back to a blank
+              signing space when none is uploaded). */}
+          {m?.digitalSignatureImage
+            ? <img src={m.digitalSignatureImage} alt="signature" style={{ height: 38, objectFit: 'contain', display: 'block', margin: '0 auto 2px', minWidth: 120 }} />
+            : <div style={{ height: 40 }} />}
           <div style={{ borderTop: '1px solid #333', paddingTop: 4, minWidth: 200 }}>{t('For')} {m?.name || 'Company'}<br /><span style={{ fontSize: 10, color: '#555' }}>{t('Authorised Signatory')}</span></div>
         </div>
       </div>

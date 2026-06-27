@@ -185,4 +185,116 @@ async function getSuperAdminStatistics() {
   };
 }
 
-module.exports = { getSuperAdminStatistics };
+/**
+ * getPlatformReports — SaaS PLATFORM analytics for the Super Admin Reports module.
+ *
+ * Returns ONLY platform-level counts, totals, revenue and growth — never any
+ * company-operational or employee-level confidential data (no names, salaries,
+ * bank details, attendance, leave, documents). Employee figures are summary
+ * counts only. Builds on getSuperAdminStatistics() for the core counts + revenue
+ * and adds role / subscription / plan / growth breakdowns.
+ */
+async function getPlatformReports() {
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const base = await getSuperAdminStatistics();
+
+  const [
+    inactiveCompanies,
+    trialCompanies,
+    expiredSubscriptions,
+    newCompaniesThisMonth,
+    newBranchesThisMonth,
+    totalUsers,
+    activeUsers,
+    usersByRole,
+    activeUsers30d,
+    newUsersThisMonth,
+    offboardedEmployees,
+    joinedThisMonth,
+    leftThisMonth,
+    newEmployeesThisMonth,
+    planGroups,
+  ] = await prisma.$transaction([
+    prisma.company.count({ where: { status: { in: ['Inactive', 'INACTIVE'] } } }),
+    prisma.company.count({ where: { paymentStatus: { in: ['Trial Active', 'Trial', 'TRIAL'] } } }),
+    prisma.company.count({ where: { paymentStatus: { in: ['Overdue', 'OVERDUE', 'Expired', 'EXPIRED', 'Unpaid', 'UNPAID'] } } }),
+    prisma.company.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.branch.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.user.count(),
+    prisma.user.count({ where: { status: { in: ['Active', 'ACTIVE'] } } }),
+    prisma.user.groupBy({ by: ['role'], _count: { _all: true } }),
+    prisma.user.count({ where: { lastLoginAt: { gte: thirtyDaysAgo } } }),
+    prisma.user.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.employee.count({ where: { status: { in: OFFBOARDED_STATUSES } } }),
+    prisma.employee.count({ where: { joinDate: { gte: monthStart } } }),
+    prisma.employee.count({ where: { exitDate: { gte: monthStart } } }),
+    prisma.employee.count({ where: { createdAt: { gte: monthStart } } }),
+    prisma.company.groupBy({ by: ['plan'], _count: { _all: true } }),
+  ]);
+
+  const roleCount = (r) => usersByRole
+    .filter((g) => (g.role || '').toLowerCase() === r.toLowerCase())
+    .reduce((s, g) => s + g._count._all, 0);
+
+  return {
+    generatedAt: now.toISOString(),
+    companies: {
+      total: base.totalCompanies,
+      active: base.activeCompanies,
+      inactive: inactiveCompanies,
+      archived: base.archivedCompanies,
+      suspended: base.suspendedAccounts,
+      trial: trialCompanies,
+      newThisMonth: newCompaniesThisMonth,
+    },
+    branches: {
+      total: base.totalBranches,
+      active: base.activeBranches,
+      suspended: base.suspendedBranches,
+      archived: base.archivedBranches,
+      newThisMonth: newBranchesThisMonth,
+    },
+    users: {
+      total: totalUsers,
+      active: activeUsers,
+      activeLast30Days: activeUsers30d,
+      superAdmins: roleCount('Super Admin'),
+      companyHeads: roleCount('Company Head'),
+      hrManagers: roleCount('HR'),
+      finance: roleCount('Finance'),
+      employees: roleCount('Employee'),
+    },
+    employees: {
+      total: base.totalEmployees,
+      active: base.activeStaff,
+      inactive: offboardedEmployees,
+      joinedThisMonth,
+      leftThisMonth,
+      newThisMonth: newEmployeesThisMonth,
+    },
+    subscriptions: {
+      active: base.activeSubscriptions,
+      trial: trialCompanies,
+      expired: expiredSubscriptions,
+      planDistribution: planGroups
+        .map((g) => ({ plan: g.plan || 'Unknown', count: g._count._all }))
+        .sort((a, b) => b.count - a.count),
+    },
+    revenue: {
+      mrr: base.monthlyRevenue,
+      arr: base.monthlyRevenue * 12,
+      currency: 'INR',
+    },
+    growth: {
+      newCompaniesThisMonth,
+      newBranchesThisMonth,
+      newUsersThisMonth,
+      newEmployeesThisMonth,
+    },
+  };
+}
+
+module.exports = { getSuperAdminStatistics, getPlatformReports };

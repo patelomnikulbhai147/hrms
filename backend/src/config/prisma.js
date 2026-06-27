@@ -42,7 +42,9 @@ const INT_PK_MODELS = new Set([
   'Attendance', 'Payroll', 'Document', 'LeaveRequest', 'Overtime',
   'Notification', 'PaymentRecord', 'CompanyPayroll', 'BranchPayroll',
   'AuditLog', 'Shift', 'LoginAudit', 'PasswordResetToken', 'SubscriptionPlan',
-  'LeaveCreditConfig', 'LeaveBalance', 'AttendanceSummary',
+  'LeaveCreditConfig', 'LeaveBalance', 'AttendanceSummary', 'CompanyContact', 'ComplianceRecord',
+  'CommunicationTemplate', 'CommunicationSchedule', 'CommunicationAnnouncement',
+  'CommunicationDeliveryLog', 'CommunicationSettings', 'CommunicationHoliday',
 ]);
 const FK_KEYS = ['companyId', 'branchId', 'parentCompanyId'];
 
@@ -105,6 +107,9 @@ const AUDIT_MODELS = new Set([
   'User', 'Employee', 'Attendance', 'Payroll', 'Company', 'Branch',
   'Document', 'Task', 'TaskComment', 'LeaveRequest', 'LeaveBalance',
   'LeaveCreditConfig', 'Shift', 'Overtime', 'CompanyPayroll', 'BranchPayroll',
+  'CompanyContact', 'ComplianceRecord',
+  'CommunicationTemplate', 'CommunicationSchedule', 'CommunicationAnnouncement',
+  'CommunicationHoliday',
 ]);
 const AUDIT_ACTION = {
   create: 'CREATE', upsert: 'UPSERT', update: 'UPDATE',

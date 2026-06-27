@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDate } from '@/utils/formatDate';
 
 // ── Deterministic QR / barcode renderers ───────────────────────────────────
 // No external QR/barcode dependency is required. These derive a stable visual
@@ -138,7 +139,7 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
           <div style={label}>Address</div>
           <div style={{ ...value, lineHeight: 1.35 }}>{employee?.presentAddress || employee?.permanentAddress || employee?.location || '—'}</div>
           <div style={label}>Date of Joining</div>
-          <div style={value}>{employee?.joinDate ? new Date(employee.joinDate).toLocaleDateString('en-IN') : '—'}</div>
+          <div style={value}>{formatDate(employee?.joinDate)}</div>
           <div style={{ marginTop: 'auto', borderTop: '1px dashed #cbd5e1', paddingTop: 8, fontSize: 7.5, color: '#94a3b8', textAlign: 'center', lineHeight: 1.4 }}>
             If found, please return to {b.name}. This card remains property of the company.
           </div>
@@ -198,7 +199,7 @@ export const EmployeeInfoCard: React.FC<{ employee: any; company: any }> = ({ em
             <Row k="Department" v={employee?.department} />
             <Row k="Reporting Manager" v={employee?.manager} />
             <Row k="Employee Category" v={employee?.employmentType} />
-            <Row k="Date of Joining" v={employee?.joinDate ? new Date(employee.joinDate).toLocaleDateString('en-IN') : '—'} />
+            <Row k="Date of Joining" v={formatDate(employee?.joinDate)} />
           </div>
           <div style={{ flex: 1 }}>
             <Row k="Email" v={employee?.email} />
