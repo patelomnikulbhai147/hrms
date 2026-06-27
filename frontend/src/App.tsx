@@ -1055,13 +1055,19 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // Enforced here independently of the permission matrix so HR/Employees can't
     // reach them via direct navigation even with a stale matrix grant.
     const COMPANY_HEAD_ONLY_PAGES = ['tenders', 'contracts'];
-    const LEADERSHIP_ONLY_PAGES = ['company-profile', 'communication'];
+    const LEADERSHIP_ONLY_PAGES = ['company-profile'];
+    // Communication Center is a COMPANY-INTERNAL HR module: Company Head (full) +
+    // HR (per the permission matrix). It is NOT a platform-admin feature, so the
+    // Super Admin is blocked entirely — including a Super Admin masquerading into
+    // a company (permissionRole stays 'Super Admin'). Each company manages its own.
+    const SUPER_ADMIN_BLOCKED_PAGES = ['communication'];
     const isLeadership = permissionRole === 'Super Admin' || permissionRole === 'Company Head';
     const isCompanyHead = permissionRole === 'Company Head';
     // Secondary render-level check to completely block unauthorized rendering
     if (
       (COMPANY_HEAD_ONLY_PAGES.includes(currentPage) && !isCompanyHead) ||
       (LEADERSHIP_ONLY_PAGES.includes(currentPage) && !isLeadership) ||
+      (SUPER_ADMIN_BLOCKED_PAGES.includes(currentPage) && permissionRole === 'Super Admin') ||
       (permissionRole !== 'Super Admin' && !checkCanView(permPage, authProfile, permissionRole))
     ) {
       return (

@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Building2, GitBranch, Users, UserCheck, CreditCard, DollarSign, TrendingUp,
+  Building2, GitBranch, Users, UserCheck,
   RefreshCw, FileDown, FileSpreadsheet, ShieldCheck, BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -29,8 +29,6 @@ interface PlatformReportsData {
   revenue: { mrr: number; arr: number; currency: string };
   growth: { newCompaniesThisMonth: number; newBranchesThisMonth: number; newUsersThisMonth: number; newEmployeesThisMonth: number };
 }
-
-const inr = (n: number) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
 const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: string }> = ({ label, value, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
@@ -92,16 +90,6 @@ export const PlatformReports: React.FC<Props> = () => {
       ['Employees', 'Inactive / Exited', d.employees.inactive],
       ['Employees', 'Joined This Month', d.employees.joinedThisMonth],
       ['Employees', 'Left This Month', d.employees.leftThisMonth],
-      ['Subscriptions', 'Active', d.subscriptions.active],
-      ['Subscriptions', 'Trial', d.subscriptions.trial],
-      ['Subscriptions', 'Expired / Overdue', d.subscriptions.expired],
-      ...d.subscriptions.planDistribution.map(p => ['Subscriptions', `Plan · ${p.plan}`, p.count] as any),
-      ['Revenue', 'MRR (Monthly Recurring)', inr(d.revenue.mrr)],
-      ['Revenue', 'ARR (Annual Recurring)', inr(d.revenue.arr)],
-      ['Growth', 'New Companies This Month', d.growth.newCompaniesThisMonth],
-      ['Growth', 'New Branches This Month', d.growth.newBranchesThisMonth],
-      ['Growth', 'New Users This Month', d.growth.newUsersThisMonth],
-      ['Growth', 'New Employees This Month', d.growth.newEmployeesThisMonth],
     ].map(([category, metric, value]) => ({ category, metric, value }));
   }, [data]);
 
@@ -112,8 +100,6 @@ export const PlatformReports: React.FC<Props> = () => {
   ];
   const onPdf = () => { if (exportRows.length) exportRowsToPDF('Platform_Analytics', 'Platform Analytics Report', exportColumns, exportRows, `Generated ${formatDateTime(data?.generatedAt)}`); };
   const onExcel = () => { if (exportRows.length) exportRowsToExcel('Platform_Analytics', exportColumns, exportRows, 'Platform Analytics'); };
-
-  const maxPlan = Math.max(1, ...(data?.subscriptions.planDistribution.map(p => p.count) || [1]));
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -177,49 +163,6 @@ export const PlatformReports: React.FC<Props> = () => {
             <Stat label="Inactive / Exited" value={data.employees.inactive} tone="text-slate-500" />
             <Stat label="Joined This Month" value={data.employees.joinedThisMonth} tone="text-emerald-600" />
             <Stat label="Left This Month" value={data.employees.leftThisMonth} tone="text-rose-600" />
-          </Section>
-
-          <Section title="Subscription Reports" icon={<CreditCard size={15} />}>
-            <Stat label="Active Subscriptions" value={data.subscriptions.active} tone="text-emerald-600" />
-            <Stat label="Trial" value={data.subscriptions.trial} tone="text-indigo-600" />
-            <Stat label="Expired / Overdue" value={data.subscriptions.expired} tone="text-rose-600" />
-          </Section>
-
-          {/* Plan distribution + Revenue */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-slate-700"><CreditCard size={15} className="text-[#4F7CFF]" /> Plan-wise Distribution</h3>
-              {data.subscriptions.planDistribution.length === 0 ? (
-                <p className="text-[11px] text-slate-400">No plan data.</p>
-              ) : (
-                <div className="space-y-2">
-                  {data.subscriptions.planDistribution.map(p => (
-                    <div key={p.plan}>
-                      <div className="mb-0.5 flex items-center justify-between text-[11px] font-semibold text-slate-600"><span>{p.plan}</span><span>{p.count}</span></div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                        <div className="h-full rounded-full bg-[#4F7CFF]" style={{ width: `${(p.count / maxPlan) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-slate-700"><DollarSign size={15} className="text-emerald-600" /> Revenue (SaaS)</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <Stat label="MRR · Monthly Recurring" value={inr(data.revenue.mrr)} tone="text-emerald-600" />
-                <Stat label="ARR · Annual Recurring" value={inr(data.revenue.arr)} tone="text-emerald-600" />
-              </div>
-              <p className="mt-3 text-[10px] text-slate-400">Computed from active subscriptions' plan pricing &amp; billing cycle.</p>
-            </div>
-          </div>
-
-          <Section title="Growth Reports (this month)" icon={<TrendingUp size={15} />}>
-            <Stat label="New Companies" value={data.growth.newCompaniesThisMonth} tone="text-[#4F7CFF]" />
-            <Stat label="New Branches" value={data.growth.newBranchesThisMonth} tone="text-[#4F7CFF]" />
-            <Stat label="New Users" value={data.growth.newUsersThisMonth} tone="text-[#4F7CFF]" />
-            <Stat label="New Employees" value={data.growth.newEmployeesThisMonth} tone="text-[#4F7CFF]" />
           </Section>
         </>
       )}

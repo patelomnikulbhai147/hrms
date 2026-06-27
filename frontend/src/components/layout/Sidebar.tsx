@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
   // for compliance but no longer a daily-operations menu item.
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
-  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Super Admin', 'Company Head'] },
+  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'] },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
   // Governance modules — Super Admin + Company Head ONLY (HR/Employee hidden).
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'] },
@@ -88,6 +88,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (excludedIds.includes(item.id)) {
         return false;
       }
+    }
+
+    // Communication Center is a company-internal HR module — never shown to the
+    // Super Admin, including a Super Admin masquerading into a company (only a
+    // Super Admin can masquerade, so isMasquerading implies the real user is one).
+    if (item.id === 'communication' && (role === 'Super Admin' || isMasquerading)) {
+      return false;
     }
 
     // Rely completely on our central permission context for view access

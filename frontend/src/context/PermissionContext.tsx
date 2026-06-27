@@ -44,12 +44,15 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     edit: ['Company Head'],
     export: ['Company Head'],
   },
-  // Communication Center — Super Admin + Company Head (HR can be added later).
+  // Communication Center = company-internal HR module. Company Head has full
+  // access; HR may VIEW by default and can be granted create/edit/export via the
+  // permission matrix. Super Admin is intentionally absent — it is NOT a platform
+  // feature (blocked in the sidebar, route guard and backend). Employees: none.
   communication: {
-    view: ['Super Admin', 'Company Head'],
-    create: ['Super Admin', 'Company Head'],
-    edit: ['Super Admin', 'Company Head'],
-    export: ['Super Admin', 'Company Head'],
+    view: ['Company Head', 'HR'],
+    create: ['Company Head'],
+    edit: ['Company Head'],
+    export: ['Company Head', 'HR'],
   },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
