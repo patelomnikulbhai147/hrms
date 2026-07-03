@@ -211,7 +211,7 @@ export const resolveDocHierarchy = (companies: any[], emp: any, currentCompany: 
     (_isBranchEntity(currentCompany) ? '' : currentCompany?.name) ||
     'Company Name';
 
-  return { companyEntity: companyEntity || currentCompany || null, companyName, branchName: String(branchName || '').trim() };
+  return { companyEntity: companyEntity || currentCompany || null, branchEntity: branchEntity || null, companyName, branchName: String(branchName || '').trim() };
 };
 
 // Build the full set of {{company_*}} template tokens from a live Company record.
@@ -268,6 +268,11 @@ const buildCompanyTokens = (c: any) => {
     finance_head: c.financeHeadName || '',
     authorized_signatory: c.authorizedSignatory || c.signatureText || '',
     signatory_designation: c.signatoryDesignation || '',
+    // Primary Owner / Director (Company Profile → Owner(s)/Director(s))
+    owner_name: c.primaryOwner?.name || '',
+    owner_designation: c.primaryOwner?.designation || '',
+    owner_email: c.primaryOwner?.email || '',
+    owner_mobile: c.primaryOwner?.mobile || '',
     // Banking
     company_bank: c.bankName || '',
     company_bank_branch: c.bankBranch || '',
@@ -319,6 +324,26 @@ export const Documents: React.FC<DocumentsProps> = ({
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
     || companies.find(c => String(c.id) === String(activeCompanyId))
     || { name: 'Company Name' } as any;
+
+  // ── Live Company Profile branding (single source of truth) ──────────────────
+  // The in-memory `companies` prop can be stale or trimmed (heavy base64 logo /
+  // signature / seal images dropped for storage), which made documents fall back
+  // to the "PM" initials placeholder. We fetch the FRESH company records here so
+  // every document always reflects the CURRENT Company Profile — logo, signature,
+  // seal and all master fields — with no cached/hardcoded branding.
+  const [liveCompanies, setLiveCompanies] = useState<any[]>([]);
+  useEffect(() => {
+    let alive = true;
+    api.companies.getAll()
+      .then((r: any) => { if (alive) setLiveCompanies(Array.isArray(r) ? r : (r?.data || [])); })
+      .catch(() => { /* keep prop fallback */ });
+    return () => { alive = false; };
+  }, [activeCompanyId]);
+  // Prefer the fresh list (with full branding images); fall back to the prop.
+  const brandingCompanies = liveCompanies.length ? liveCompanies : (companies as any[]);
+  const brandCurrentCompany = resolveActiveWorkspace(brandingCompanies, activeCompanyId)
+    || brandingCompanies.find((c: any) => String(c.id) === String(activeCompanyId))
+    || currentCompany;
 
   // Failsafe fetch if list is 0 but we know this branch should have employees
   useEffect(() => {
@@ -543,11 +568,14 @@ export const Documents: React.FC<DocumentsProps> = ({
   // refresh. Re-derives the full company token set whenever the active company (or
   // its branding fields) change; employee-specific tokens are untouched.
   useEffect(() => {
-    setDocVariables(prev => ({ ...prev, ...buildCompanyTokens(currentCompany) }));
+    // Rebuild {{company_*}} tokens from the FRESH company record (Company Profile),
+    // so a logo/signature/seal upload or any master-field edit flows in with no
+    // manual refresh and no stale/cached branding.
+    setDocVariables(prev => ({ ...prev, ...buildCompanyTokens(brandCurrentCompany) }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCompanyId, currentCompany?.id, currentCompany?.logoImage, currentCompany?.name,
-      currentCompany?.gstNumber, currentCompany?.stampImage, currentCompany?.digitalSignatureImage,
-      currentCompany?.reportHeaderImage, currentCompany?.reportFooterImage, currentCompany?.watermarkImage]);
+  }, [activeCompanyId, brandCurrentCompany?.id, brandCurrentCompany?.logoImage, brandCurrentCompany?.name,
+      brandCurrentCompany?.gstNumber, brandCurrentCompany?.stampImage, brandCurrentCompany?.digitalSignatureImage,
+      brandCurrentCompany?.reportHeaderImage, brandCurrentCompany?.reportFooterImage, brandCurrentCompany?.watermarkImage]);
 
   // Modal edit/create template state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -636,8 +664,8 @@ export const Documents: React.FC<DocumentsProps> = ({
       if (prevSel) {
         // Manual mode — company letterhead still resolves to the PARENT company
         // (never a branch name), so {{company}} stays correct with no employee.
-        const h = resolveDocHierarchy(companies as any[], null, currentCompany);
-        const co = h.companyEntity || currentCompany;
+        const h = resolveDocHierarchy(brandingCompanies as any[], null, brandCurrentCompany);
+        const co = h.companyEntity || brandCurrentCompany;
         setDocVariables(prev => ({
           ...prev,
           employee_name: '', employee_id: '', designation: '', department: '',
@@ -655,8 +683,8 @@ export const Documents: React.FC<DocumentsProps> = ({
     const empAny = emp as any;
     const salaryNum = Number(emp.salary) || 0;
     // Resolve Employee → Branch → Company so company/branch are always correct.
-    const h = resolveDocHierarchy(companies as any[], emp, currentCompany);
-    const co = h.companyEntity || currentCompany;
+    const h = resolveDocHierarchy(brandingCompanies as any[], emp, brandCurrentCompany);
+    const co = h.companyEntity || brandCurrentCompany;
 
     setDocVariables(prev => ({
       ...prev,
@@ -715,6 +743,19 @@ export const Documents: React.FC<DocumentsProps> = ({
     if (!activeTemplate) return '';
     return getCompiledText(activeTemplate.body);
   }, [activeTemplate, docVariables]);
+
+  // Dynamic Print button label — reflects the currently selected document type
+  // (the same engine drives every template, so it must never be hardcoded).
+  // "Payslip Template" → "Print Salary Slip"; "Corporate Offer Letter" →
+  // "Print Corporate Offer Letter"; nothing selected → "Print Document".
+  const printDocLabel = useMemo(() => {
+    const cat = (currentCategory || '').trim();
+    if (!cat) return 'Print Document';
+    if (cat === 'Payslip Template') return 'Print Salary Slip';
+    // Strip a trailing "Template" word so generic labels read naturally.
+    const name = cat.replace(/\s*Template$/i, '').trim();
+    return `Print ${name || 'Document'}`;
+  }, [currentCategory]);
 
   // Compute live payslip values for dynamic previews
   const payslipVals = useMemo(() => {
@@ -994,39 +1035,61 @@ export const Documents: React.FC<DocumentsProps> = ({
     } catch (err: any) {
       console.error('[Payslip PDF] Generation failed:', err);
       const reason = err?.message || String(err);
-      await ui.alert({ title: 'Error', message: `PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use "Print Payslip" and choose "Save as PDF" as a reliable fallback.`, variant: 'error' });
+      await ui.alert({ title: 'Error', message: `PDF generation failed.\n\nTechnical reason: ${reason}\n\nTip: use the "${printDocLabel}" button and choose "Save as PDF" as a reliable fallback.`, variant: 'error' });
     } finally {
       restore();
       setIsPrinting(false);
     }
   };
 
-  // Native browser print — renders the real preview DOM (full CSS, fonts,
-  // images, watermarks, oklch colours, multi-page) via the print engine. The
-  // global `@media print` rules (index.css) isolate #a4-sheet-preview so only
-  // the payslip prints. Users can print or "Save as PDF" from the dialog.
-  const printPayslip = () => {
+  // Native browser print — prints the REAL document container in-page so the
+  // output is pixel-identical to the on-screen preview (same live CSS, fonts and
+  // oklch colours — no washed-out re-render, no rasterisation).
+  //
+  // The preview is shown SCALED (transform: scale(zoom)) inside a fixed-size,
+  // overflow:hidden, centred wrapper. Printing that node in place makes Chrome
+  // shrink it into a corner. Instead we clone the sheet into an isolated host that
+  // is a DIRECT child of <body> (#a4-print-host), strip the zoom transform, hide
+  // the whole app (#root) via the `printing-document` class, and let the global
+  // `@media print` rules (index.css) lay the clone out at true full-bleed A4 with
+  // background graphics forced on. Result: Preview = PDF = Print, full colour.
+  const printDocument = () => {
     const element = document.getElementById('a4-sheet-preview');
     if (!element) return;
-    // Drop the zoom transform AND un-clip the fixed-size wrapper so the printed
-    // page is full-width A4 (matching the PDF), not the scaled/clipped preview.
-    const wrap = element.parentElement as HTMLElement | null;
-    const prev = {
-      transform: element.style.transform,
-      wrapW: wrap?.style.width, wrapH: wrap?.style.height, wrapOverflow: wrap?.style.overflow,
-    };
-    element.style.transform = 'none';
-    if (wrap) { wrap.style.width = 'auto'; wrap.style.height = 'auto'; wrap.style.overflow = 'visible'; }
-    document.body.classList.add('printing-payslip');
+
+    document.getElementById('a4-print-host')?.remove();   // clear any stale host
+
+    const host = document.createElement('div');
+    host.id = 'a4-print-host';
+
+    const clone = element.cloneNode(true) as HTMLElement;
+    clone.removeAttribute('id');                            // never duplicate the live id
+    // Requirement 6 — neutralise every transform/zoom and pin to true A4.
+    clone.style.setProperty('transform', 'none', 'important');
+    clone.style.setProperty('scale', '1', 'important');
+    clone.style.transformOrigin = 'top left';
+    clone.style.width = '210mm';
+    clone.style.minHeight = '297mm';
+    clone.style.margin = '0 auto';
+    clone.style.position = 'relative';
+    clone.style.boxShadow = 'none';
+    clone.style.border = 'none';
+    clone.style.borderRadius = '0';
+    clone.style.overflow = 'visible';                      // never clip across page breaks
+    host.appendChild(clone);
+    document.body.appendChild(host);
+
+    document.body.classList.add('printing-document');
+    document.documentElement.classList.add('printing-document');
     const cleanup = () => {
-      document.body.classList.remove('printing-payslip');
-      element.style.transform = prev.transform;
-      if (wrap) { wrap.style.width = prev.wrapW || ''; wrap.style.height = prev.wrapH || ''; wrap.style.overflow = prev.wrapOverflow || ''; }
+      document.body.classList.remove('printing-document');
+      document.documentElement.classList.remove('printing-document');
+      host.remove();
       window.removeEventListener('afterprint', cleanup);
     };
     window.addEventListener('afterprint', cleanup);
-    // Defer so the layout reflows (transform reset) before the dialog opens.
-    setTimeout(() => { window.print(); }, 80);
+    // Defer so the clone is laid out at full A4 before the print dialog opens.
+    setTimeout(() => { window.print(); }, 100);
   };
 
   // Open Edit Template Modal
@@ -1230,20 +1293,28 @@ export const Documents: React.FC<DocumentsProps> = ({
   // (Employee → Branch → Company) for every tenant, no hardcoding. Company is the
   // primary identity, branch the secondary; logo initials come from the COMPANY.
   const docHierarchy = useMemo(
-    () => resolveDocHierarchy(companies as any[], companyEmployees.find(e => String(e.id) === String(selectedEmployeeId)), currentCompany),
-    [companies, companyEmployees, selectedEmployeeId, currentCompany]
+    () => resolveDocHierarchy(brandingCompanies as any[], companyEmployees.find(e => String(e.id) === String(selectedEmployeeId)), brandCurrentCompany),
+    [brandingCompanies, companyEmployees, selectedEmployeeId, brandCurrentCompany]
   );
   const headerCompanyName = docHierarchy.companyName;
   const headerBranchName = docHierarchy.branchName;
+  // The resolved branding source: the Company + (optional) its Branch. When a
+  // branch has its OWN branding uploaded, it overrides the parent company's
+  // (requirement 8); otherwise the parent company branding is used.
+  const brandCompany = (docHierarchy.companyEntity as any) || brandCurrentCompany || {};
+  const brandBranch = (docHierarchy.branchEntity as any) || null;
+  const pickBrand = (field: string): string => (brandBranch && brandBranch[field]) || brandCompany[field] || '';
   // Logo initials always from the company name (never branch); honour an explicit
   // custom logoText only when the user typed one that isn't the wrong auto-slice.
-  const seededLogo = ((docHierarchy.companyEntity?.name || currentCompany.name || '').slice(0, 2)).toUpperCase();
+  const seededLogo = ((brandCompany?.name || brandCurrentCompany?.name || '').slice(0, 2)).toUpperCase();
   const customLogo = activeTemplate?.branding?.logoText && activeTemplate.branding.logoText !== seededLogo
     ? activeTemplate.branding.logoText : '';
   const logoText = customLogo || companyInitials(headerCompanyName);
-  // The RESOLVED company's own uploaded logo (multi-tenant). When present it
-  // brands the document; otherwise the initials emblem above is used.
-  const headerLogoImage = (docHierarchy.companyEntity as any)?.logoImage || (currentCompany as any)?.logoImage || '';
+  // The RESOLVED company's (or branch's) own uploaded assets — the single source
+  // of truth pulled live from Company Profile. When a logo exists it ALWAYS brands
+  // the document (preview / print / PDF); the initials emblem is used only when
+  // there is genuinely no uploaded logo.
+  const headerLogoImage = pickBrand('logoImage');
 
   // Payslip content block — UNCHANGED computation (payslipVals + company rates).
   // Built only for the Payslip category (mirrors the original conditional render,
@@ -1935,12 +2006,13 @@ export const Documents: React.FC<DocumentsProps> = ({
                     </Button>
                     <Button
                       variant="outline"
-                      onClick={printPayslip}
+                      onClick={printDocument}
                       disabled={isPrinting}
+                      title={printDocLabel}
                       className="flex-1 text-xs font-bold flex items-center justify-center gap-1"
                     >
                       <Printer size={13} />
-                      Print Payslip
+                      {printDocLabel}
                     </Button>
                   </div>
                 </div>
@@ -2010,9 +2082,13 @@ export const Documents: React.FC<DocumentsProps> = ({
                       dateStr={formatDate(new Date())}
                       bodyHtml={compiledBody}
                       employeeName={docVariables.employee_name}
-                      signatureText={activeTemplate?.branding?.signatureText || 'Authorized HR Operations Signatory'}
+                      signatureText={activeTemplate?.branding?.signatureText || docVariables.authorized_signatory || (brandCompany as any)?.authorizedSignatory || (brandCompany as any)?.signatureText || 'Authorized Signatory'}
+                      signatureImage={pickBrand('digitalSignatureImage')}
+                      sealImage={pickBrand('stampImage')}
+                      letterheadImage={pickBrand('letterheadImage')}
                       footerText={activeTemplate?.branding?.footerText || `${headerCompanyName} · Confidential Employee Dossier Operations`}
                       watermark={activeTemplate?.branding?.watermark}
+                      watermarkImage={pickBrand('watermarkImage')}
                       isPayslip={currentCategory === 'Payslip Template'}
                       payslipNode={payslipNode}
                     />
@@ -2399,7 +2475,11 @@ export const Documents: React.FC<DocumentsProps> = ({
                   { key: 'founder_name', label: 'Founder' },
                   { key: 'ceo_name', label: 'CEO' },
                   { key: 'authorized_signatory', label: 'Authorized Signatory' },
-                  { key: 'signatory_designation', label: 'Signatory Designation' }
+                  { key: 'signatory_designation', label: 'Signatory Designation' },
+                  { key: 'owner_name', label: 'Owner Name' },
+                  { key: 'owner_designation', label: 'Owner Designation' },
+                  { key: 'owner_email', label: 'Owner Email' },
+                  { key: 'owner_mobile', label: 'Owner Mobile' }
                 ].map(chip => (
                   <button
                     type="button"

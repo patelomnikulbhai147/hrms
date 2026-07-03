@@ -2,36 +2,82 @@
 
 @import "tailwindcss";
 
-/* ── Payslip / document print isolation ──────────────────────────────────────
-   When body.printing-payslip is set (Documents → Print Payslip), only the
-   #a4-sheet-preview node prints — all UI chrome (sidebar, navbar, buttons,
-   panels) is hidden. The printed output is the exact preview DOM, so
-   Preview = PDF = Print. */
+/* ── Document print isolation (every template: Offer/Joining/Salary Slip/…) ────
+   When a document is printed (Documents → Print <Type>), printDocument() clones
+   the live A4 preview (#a4-sheet-preview) into an isolated host that is a DIRECT
+   child of <body> (#a4-print-host) and adds `.printing-document` to <body>. The
+   whole React app (#root) is hidden and only the clone prints. Because the clone
+   stays in the LIVE document, it keeps the exact preview CSS (fonts + oklch
+   colours) — so the print is pixel-identical to the preview, not a washed-out
+   re-render. @page is full-bleed A4 and the sheet is pinned to true 210×297mm
+   with NO transform/zoom, so Chrome can't shrink it into a corner. */
+
+/* Host never shows on screen — it exists only during the print dialog. */
+#a4-print-host { display: none; }
+
 @media print {
-  body.printing-payslip * {
-    visibility: hidden !important;
+  /* Requirement 5 — the printed page is A4 portrait, full-bleed. */
+  @page { size: A4 portrait; margin: 0; }
+
+  /* Requirement 8 — force every element to print its real colours/backgrounds
+     (header bands, accents, watermark) regardless of the "Background graphics"
+     toggle. Applied to the whole tree so nothing prints washed-out. */
+  html.printing-document, html.printing-document * ,
+  body.printing-document, body.printing-document * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  body.printing-payslip #a4-sheet-preview,
-  body.printing-payslip #a4-sheet-preview * {
-    visibility: visible !important;
+
+  /* Requirements 1 & 7 — print ONLY the document; drop the app chrome and any
+     centering/padding wrappers. Reset the page box completely. */
+  html.printing-document, body.printing-document {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: #ffffff !important;
+    display: block !important;     /* neutralise any app-level flex/grid on body */
+    overflow: visible !important;
   }
-  body.printing-payslip #a4-sheet-preview {
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
+  body.printing-document #root { display: none !important; }
+
+  /* The isolated print host — anchored at the page origin, no chrome. */
+  body.printing-document #a4-print-host {
+    display: block !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    background: #ffffff !important;
     transform: none !important;
+  }
+
+  /* Requirements 2, 3 & 6 — the cloned A4 sheet occupies the full printable page
+     at true size with every transform/zoom removed. */
+  body.printing-document #a4-print-host > * {
     width: 210mm !important;
     min-height: 297mm !important;
-    margin: 0 !important;
+    max-width: 210mm !important;
+    margin: 0 auto !important;         /* centred on the sheet */
+    padding: 0;                        /* the template carries its own inner margins */
+    transform: none !important;
+    scale: 1 !important;
+    zoom: 1 !important;
+    position: relative !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
+    overflow: visible !important;      /* never clip across page breaks */
+    box-sizing: border-box !important;
   }
-  body.printing-payslip {
-    background: #ffffff !important;
-  }
-  @page {
-    size: A4 portrait;
-    margin: 0;
+
+  /* Avoid ugly mid-element page breaks (signatures, images, table rows). */
+  body.printing-document #a4-print-host img,
+  body.printing-document #a4-print-host tr,
+  body.printing-document #a4-print-host svg {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 
@@ -132,6 +178,15 @@ h6 {
   background: linear-gradient(90deg, #0f172a 25%, #1e293b 50%, #0f172a 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite linear;
+}
+
+/* Right-side drawer slide-in (Communication Center detail panels) */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); opacity: 0.4; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.22s ease-out;
 }
 
 /* Glassmorphism base utility */
@@ -557,3 +612,16 @@ html[data-theme="light"] .shadow-indigo-500\/10 {
 .doc-tables-fit th,
 .doc-tables-fit td { padding-left: 0.5rem; padding-right: 0.5rem; }
 .doc-tables-fit > div { overflow-x: hidden; }
+
+/* Google Places Autocomplete dropdown must float above the map picker modal
+   (Modal dialog is z-50; feedback dialogs z-120). */
+.pac-container {
+  z-index: 100000 !important;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+  font-family: inherit;
+  margin-top: 4px;
+}
+.pac-item { padding: 6px 10px; font-size: 12px; cursor: pointer; }
+.pac-item:hover { background: #f1f5f9; }

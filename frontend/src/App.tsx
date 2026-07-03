@@ -9,8 +9,9 @@ const SelectWorkspace = React.lazy(() => import('@/pages/SelectWorkspace').then(
 const Employees = React.lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })));
 const LeaveManagement = React.lazy(() => import('@/pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
 const Attendance = React.lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })));
-const AttendanceDevices = React.lazy(() => import('@/pages/AttendanceDevices').then(m => ({ default: m.AttendanceDevices })));
+const AttendanceApiIntegration = React.lazy(() => import('@/pages/AttendanceApiIntegration').then(m => ({ default: m.AttendanceApiIntegration })));
 const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default: m.Payroll })));
+const InvoiceManagement = React.lazy(() => import('@/pages/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
 const BonusManagement = React.lazy(() => import('@/pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
 const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ default: m.Companies })));
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
@@ -62,9 +63,10 @@ const pageTitles: Record<PageId, string> = {
   employees: 'Employees',
   leaves: 'Leave Management',
   payroll: 'Payroll',
+  'invoice-management': 'Invoice Management',
   bonus: 'Bonus Management',
   attendance: 'Attendance',
-  'attendance-devices': 'Attendance Devices',
+  'attendance-integration': 'Attendance API Integration',
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
@@ -81,8 +83,8 @@ const pageTitles: Record<PageId, string> = {
 // Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
-  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'bonus', 'attendance',
-  'attendance-devices', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'bonus', 'attendance',
+  'attendance-integration', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'communication', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
@@ -512,6 +514,12 @@ export default function App() {
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Support Session (a Super Admin assisting one company). Declared here — above
+  // hydrateAll — because the hydrate logic reads it to skip employee-PII loads for
+  // a non-masquerading Super Admin (multi-tenant privacy).
+  const [isMasquerading, setIsMasquerading] = useState<boolean>(() => {
+    return localStorage.getItem('hrms_is_masquerading') === 'true';
+  });
 
     // Data hydration from backend MySQL
   const hydrateAll = async () => {
@@ -526,15 +534,22 @@ export default function App() {
           return null;
         });
 
+      // Multi-tenant privacy: the platform admin (Super Admin) must NOT bulk-load
+      // any company's employee PII. Those datasets load ONLY inside an audited
+      // Support Session (when isMasquerading is true). The backend enforces this
+      // too (403 without a session) — this simply avoids needless 403s/banners.
+      const skipPII = authProfile?.role === 'Super Admin' && !isMasquerading;
+      const skip = () => Promise.resolve(null);
+
       const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments, fetchedLeaves, fetchedAttendance] = await Promise.all([
         catchApi(api.companies.getAll(), 'companies'),
         catchApi(api.branches.getAll(), 'branches'),
-        catchApi(api.employees.getAll('?include=all'), 'employees'),
+        skipPII ? skip() : catchApi(api.employees.getAll('?include=all'), 'employees'),
         catchApi(api.users.getAll(), 'users'),
-        catchApi(api.payroll.getAll(), 'payroll'),
-        catchApi(api.documents.getAll(), 'documents'),
-        catchApi(api.leaves.getAll(), 'leaves'),
-        catchApi(api.attendance.getAll(), 'attendance')
+        skipPII ? skip() : catchApi(api.payroll.getAll(), 'payroll'),
+        skipPII ? skip() : catchApi(api.documents.getAll(), 'documents'),
+        skipPII ? skip() : catchApi(api.leaves.getAll(), 'leaves'),
+        skipPII ? skip() : catchApi(api.attendance.getAll(), 'attendance')
       ]);
       
       // Only overwrite a dataset when its fetch SUCCEEDED. Never blank good data
@@ -651,7 +666,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
   useEffect(() => {
     if (isAuthenticated) hydrateAll();
-  }, [isAuthenticated, activeCompanyId]);
+  }, [isAuthenticated, activeCompanyId, isMasquerading]);
 
   // Real-time notification bell: poll the server every 20s (and immediately on
   // login / workspace change) so newly created notifications appear without a
@@ -690,9 +705,6 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }, 500);
     return () => clearTimeout(timer);
   }, [companies, employees, isAuthenticated, storedAuthProfile?.role]);
-  const [isMasquerading, setIsMasquerading] = useState<boolean>(() => {
-    return localStorage.getItem('hrms_is_masquerading') === 'true';
-  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -914,7 +926,24 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
-  const handleStartMasquerade = (companyId: string, kind?: 'company' | 'branch', targetPage: PageId = 'dashboard') => {
+  const handleStartMasquerade = async (companyId: string, kind?: 'company' | 'branch', targetPage: PageId = 'dashboard') => {
+    // Multi-tenant privacy: a Super Admin may only enter a company through an
+    // AUDITED Support Session — that is the single controlled door, and the backend
+    // blocks all employee-PII APIs without it. The Companies "Overview → Start
+    // Support Session" flow records a specific reason/ticket; any other entry point
+    // here auto-opens an audited session (generic reason) so masquerade can never
+    // happen unaudited. (Re-uses an already-open session if one exists.)
+    if (authProfile?.role === 'Super Admin') {
+      try {
+        const active = await api.supportSessions.active();
+        if (!active) {
+          await api.supportSessions.start({ companyId, reason: 'Support access (quick entry)' });
+        }
+      } catch (e: any) {
+        showToast(e?.message || 'Could not start an audited support session.');
+        return;
+      }
+    }
     // Normalize to a string so the active workspace id matches the value that is
     // rehydrated from localStorage on reload (avoids number-vs-string `===`
     // drift that would otherwise drop the selected branch context). The id may
@@ -933,6 +962,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   };
 
   const handleExitMasquerade = () => {
+    // End (and audit the close of) the backend Support Session. Fire-and-forget —
+    // the UI exits immediately regardless; the backend also auto-expires sessions.
+    api.supportSessions.end().catch(() => {});
     setIsMasquerading(false);
     localStorage.setItem('hrms_is_masquerading', 'false');
     setRole('Super Admin');
@@ -1001,8 +1033,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // Employees module permission (no dedicated matrix row).
     if (permissionRole !== 'Super Admin') {
       const permCurrent = (currentPage === 'employee-cards' ? 'employees'
-        : currentPage === 'attendance-devices' ? 'attendance'
+        : currentPage === 'attendance-integration' ? 'attendance'
         : currentPage === 'bonus' ? 'payroll'
+        : currentPage === 'invoice-management' ? 'invoicing'
         : currentPage) as AppModules;
       const isAllowed = checkCanView(permCurrent, authProfile, permissionRole);
       
@@ -1043,8 +1076,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // Employee Cards is gated on the Employees module permission (it has no
     // dedicated permission-matrix row).
     const permPage = (currentPage === 'employee-cards' ? 'employees'
-      : currentPage === 'attendance-devices' ? 'attendance'
+      : currentPage === 'attendance-integration' ? 'attendance'
       : currentPage === 'bonus' ? 'payroll'
+      : currentPage === 'invoice-management' ? 'invoicing'
       : currentPage) as AppModules;
     // Governance modules (Tender / Contract Management) belong to the COMPANY HEAD
     // only — Super Admin (platform admin) must not manage a company's tenders or
@@ -1248,9 +1282,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onRefresh={hydrateAll}
           />
         );
-      case 'attendance-devices':
+      case 'attendance-integration':
         return (
-          <AttendanceDevices
+          <AttendanceApiIntegration
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
@@ -1264,6 +1298,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             companies={companies}
             authProfile={authProfile}
+          />
+        );
+      case 'invoice-management':
+        return (
+          <InvoiceManagement
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
           />
         );
       case 'payroll':

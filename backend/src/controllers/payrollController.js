@@ -6,6 +6,35 @@ const idParam = require('../utils/idParam');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
 
+// ── Payroll money guard (pre-deployment audit fix) ───────────────────────────
+// The create/update endpoints persist a client-supplied `payload` directly. This
+// sanitiser enforces the financial invariants at the LAST write choke-point so no
+// path can ever store an invalid payroll row:
+//   • no monetary field may be negative (basic/allowances/deductions/bonus/tax/OT);
+//   • netSalary can NEVER be negative — it is clamped to ≥ 0 (a ₹200 deduction on
+//     a ₹0-earnings employee produced net = −200 before this guard);
+//   • non-finite / NaN amounts are dropped so the DB never stores garbage.
+// Deterministic & idempotent: re-running it yields the same result.
+const MONEY_FIELDS = ['basicSalary', 'allowances', 'deductions', 'bonus', 'tax', 'overtime', 'otHours'];
+const round2 = (n) => Math.round(n * 100) / 100;
+function sanitizePayrollMoney(payload, existing = null) {
+  for (const f of MONEY_FIELDS) {
+    if (payload[f] === undefined || payload[f] === null || payload[f] === '') continue;
+    const n = Number(payload[f]);
+    if (!Number.isFinite(n)) { delete payload[f]; continue; } // never persist NaN/Infinity
+    payload[f] = round2(Math.max(0, n)); // no negative earnings/deductions
+  }
+  // Enforce net ≥ 0. Use the value being written, else the existing stored one.
+  if (payload.netSalary !== undefined && payload.netSalary !== null && payload.netSalary !== '') {
+    const net = Number(payload.netSalary);
+    payload.netSalary = Number.isFinite(net) ? round2(Math.max(0, net)) : 0;
+  } else if (existing && Number(existing.netSalary) < 0) {
+    // A component edit that leaves the stored net negative → repair it in-place.
+    payload.netSalary = 0;
+  }
+  return payload;
+}
+
 // Helper to sync payroll for missing employees
 const syncPayrollForEmployees = async (companyWhere, month, year) => {
   // Offboarded employees are excluded from payroll generation.
@@ -582,6 +611,9 @@ exports.create = async (req, res) => {
     delete payload.overtimeHours;
     delete payload.overtimeAmount;
 
+    // Enforce financial invariants (net ≥ 0, no negative amounts) before persisting.
+    sanitizePayrollMoney(payload);
+
     // Prevent duplicates by upserting based on unique constraint
     const data = await prisma.payroll.upsert({
       where: {
@@ -650,6 +682,9 @@ exports.update = async (req, res) => {
         changes.push({ field: f, original: Number(existingRecord[f] ?? 0), modified: Number(payload[f]) });
       }
     }
+
+    // Enforce financial invariants (net ≥ 0, no negative amounts) before persisting.
+    sanitizePayrollMoney(payload, existingRecord);
 
     const data = await prisma.payroll.update({
       where: { id: idParam(id) },

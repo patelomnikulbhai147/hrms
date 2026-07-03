@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   ShieldCheck, ChevronDown, ChevronRight, Plus, Edit, Trash2, Upload, Download, Save,
-  Search, AlertTriangle, FileClock, X, History,
+  Search, AlertTriangle, FileClock, X, History, Eye,
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
-import { exportRowsToExcel, exportRowsToPDF, type ExportColumn } from '@/utils/exportUtils';
+import { type ExportColumn } from '@/utils/exportUtils';
+import { ExportWizard, type ExportReportType, type ExportWizardConfig } from '@/components/export/ExportWizard';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
 import { formatDate } from '@/utils/formatDate';
@@ -81,18 +81,18 @@ const CATALOG: CatalogCategory[] = [
     { key: 'code_of_conduct', label: 'Code of Conduct' },
     { key: 'org_chart', label: 'Organization Chart' },
   ] },
-  { id: 'Other', label: 'Other Company Documents', items: [
-    { key: 'company_profile_pdf', label: 'Company Profile PDF' },
-    { key: 'brochure', label: 'Brochure' },
-    { key: 'authorized_signature', label: 'Authorized Signature' },
-    { key: 'company_seal', label: 'Company Seal' },
-    { key: 'letterhead', label: 'Letterhead' },
-    { key: 'dsc', label: 'Digital Signature Certificate' },
-  ] },
+  // NOTE: The "Other Company Documents" category (Company Profile PDF, Brochure,
+  // Authorized Signature, Company Seal, Letterhead, DSC) was intentionally removed
+  // from this manual module. In an upcoming phase these are synced automatically
+  // from their source modules (Branding & Assets, Digital Signature, Company
+  // Profile). Legacy records with category 'Other' remain in the DB but are hidden
+  // here (see HIDDEN_CATEGORIES) — no data is deleted.
 ];
+
+// Categories that must never render in this manual module (managed elsewhere).
+const HIDDEN_CATEGORIES = new Set(['Other']);
 const CATALOG_BY_KEY: Record<string, CatalogItem & { category: string }> = {};
 CATALOG.forEach(c => c.items.forEach(it => { CATALOG_BY_KEY[it.key] = { ...it, category: c.id }; }));
-const MANDATORY_KEYS = Object.values(CATALOG_BY_KEY).filter(i => i.mandatory).map(i => i.key);
 
 const dayMs = 86400000;
 const daysUntil = (d?: string) => {
@@ -110,7 +110,7 @@ function computeStatus(rec: any, mandatory: boolean): { status: Status; days: nu
   if (days < 0) return { status: 'Expired', days };
   const rdays = daysUntil(rec.renewalDate);
   if (rdays !== null && rdays < 0) return { status: 'Pending Renewal', days };
-  if (days <= (Number(rec.reminderDays) || 90)) return { status: 'Expiring Soon', days };
+  if (days <= (Number(rec.reminderDays) || 45)) return { status: 'Expiring Soon', days };
   return { status: 'Active', days };
 }
 const STATUS_BADGE: Record<Status, 'green' | 'amber' | 'red' | 'indigo' | 'gray'> = {
@@ -138,17 +138,22 @@ interface DisplayItem {
   record: any | null; status: Status; days: number | null;
 }
 
-// Full set drives the type + matchesFilter() — Expiring/Missing/Mandatory/Optional
-// are still used internally (dashboard cards, completion %, notifications, reports).
+// Full set drives the type + matchesFilter() — the extra values remain reachable
+// internally (notifications, reports) even though only a few chips are shown.
 const STATUS_FILTERS = ['All', 'Active', 'Expiring', 'Expired', 'Missing', 'Mandatory', 'Optional'] as const;
 type StatusFilter = typeof STATUS_FILTERS[number];
 // Only these quick-filter chips are shown in the toolbar (cleaner enterprise UI);
 // the rest remain reachable via the Category dropdown / future advanced filter.
 const VISIBLE_STATUS_FILTERS: StatusFilter[] = ['All', 'Active', 'Expired'];
 
-interface Props { companyId: string; company: any; editable: boolean; }
+interface Props { companyId: string; company: any; editable: boolean; generatedBy?: string; }
 
-export const ComplianceManagement: React.FC<Props> = ({ companyId, company, editable }) => {
+// Map a computed compliance Status → one of the 4 export status buckets.
+const STATUS_BUCKET: Record<Status, 'Active' | 'Expiring' | 'Expired' | 'Missing'> = {
+  Active: 'Active', 'Expiring Soon': 'Expiring', 'Pending Renewal': 'Expiring', Expired: 'Expired', Missing: 'Missing',
+};
+
+export const ComplianceManagement: React.FC<Props> = ({ companyId, company, editable, generatedBy }) => {
   const [records, setRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -159,6 +164,7 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   const [draft, setDraft] = useState<any>(null);
   const [catalogItem, setCatalogItem] = useState<(CatalogItem & { category: string }) | null>(null);
   const [versionsFor, setVersionsFor] = useState<any | null>(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
@@ -189,7 +195,9 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
       }
     }
     for (const r of records) {
-      if (!CATALOG_BY_KEY[r.complianceKey]) {
+      // Skip records whose category is managed elsewhere (e.g. legacy 'Other').
+      // Data stays in the DB; it is simply not surfaced in this manual module.
+      if (!CATALOG_BY_KEY[r.complianceKey] && !HIDDEN_CATEGORIES.has(r.category || 'Other')) {
         const { status, days } = computeStatus(r, !!r.mandatory);
         items.push({ key: r.complianceKey, name: r.name, category: r.category || 'Other', mandatory: !!r.mandatory, record: r, status, days });
       }
@@ -202,18 +210,10 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
     return {
       total: withRec.length,
       active: withRec.filter(i => i.status === 'Active').length,
-      expiring90: withRec.filter(i => i.days != null && i.days >= 0 && i.days <= 90).length,
-      expiring30: withRec.filter(i => i.days != null && i.days >= 0 && i.days <= 30).length,
+      expiring45: withRec.filter(i => i.days != null && i.days >= 0 && i.days <= 45).length,
       expired: withRec.filter(i => i.status === 'Expired').length,
-      missingMandatory: allItems.filter(i => i.mandatory && !i.record).length,
     };
   }, [allItems]);
-
-  const completion = useMemo(() => {
-    const total = MANDATORY_KEYS.length;
-    const present = MANDATORY_KEYS.filter(k => recByKey[k]).length;
-    return { pct: total ? Math.round((present / total) * 100) : 100, present, total, missing: total - present };
-  }, [recByKey]);
 
   const matchesFilter = (i: DisplayItem) => {
     if (filter === 'All') return true;
@@ -234,9 +234,77 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   // (e.g. migrated company documents with a non-catalog category).
   const renderCats = useMemo(() => {
     const known = new Set(CATALOG.map(c => c.id));
-    const extras = Array.from(new Set(records.map(r => r.category || 'Other').filter(c => !known.has(c)))).map(id => ({ id, label: id }));
+    const extras = Array.from(new Set(records.map(r => r.category || 'Other').filter(c => !known.has(c) && !HIDDEN_CATEGORIES.has(c)))).map(id => ({ id, label: id }));
     return [...CATALOG.map(c => ({ id: c.id, label: c.label })), ...extras];
   }, [records]);
+
+  // ── Master export config (drives the reusable <ExportWizard>) ──────────────
+  const catLabel = (id: string) => renderCats.find(c => c.id === id)?.label || id;
+  const exportConfig: ExportWizardConfig = useMemo(() => {
+    const rows = allItems.map(i => ({
+      name: i.name,
+      categoryId: i.category,
+      categoryLabel: catLabel(i.category),
+      mandatoryLabel: i.mandatory ? 'Yes' : 'No',
+      registrationNumber: i.record?.registrationNumber || '',
+      certificateNumber: i.record?.certificateNumber || '',
+      issueDate: i.record?.issueDate ? formatDate(i.record.issueDate) : '',
+      expiryDate: i.record?.expiryDate ? formatDate(i.record.expiryDate) : '',
+      uploadedDate: i.record?.createdAt ? formatDate(i.record.createdAt) : '',
+      uploadedBy: i.record?.uploadedBy || '',
+      statusLabel: i.status,
+      daysLabel: i.days == null ? '' : i.days < 0 ? `${Math.abs(i.days)}d overdue` : `${i.days}d left`,
+      // internals for filtering / sorting / attachments
+      status: STATUS_BUCKET[i.status],
+      hasRecord: !!i.record,
+      days: i.days,
+      _issueRaw: i.record?.issueDate || '',
+      _expiryRaw: i.record?.expiryDate || '',
+      _uploadedRaw: i.record?.createdAt || '',
+      _attachment: i.record?.fileData ? { fileName: i.record.fileName, fileData: i.record.fileData, mimeType: i.record.mimeType } : null,
+    }));
+
+    const C = (header: string, key: string, width = 16): ExportColumn => ({ header, key, width });
+    const reportTypes: ExportReportType[] = [
+      { id: 'register', label: 'Company Document Register', baseFilter: r => r.hasRecord,
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Reg. No', 'registrationNumber', 18), C('Certificate No', 'certificateNumber', 16), C('Issue', 'issueDate', 13), C('Expiry', 'expiryDate', 13), C('Status', 'statusLabel', 12), C('Uploaded By', 'uploadedBy', 16)] },
+      { id: 'compliance', label: 'Compliance Report',
+        columns: [C('Compliance', 'name', 26), C('Category', 'categoryLabel'), C('Mandatory', 'mandatoryLabel', 11), C('Status', 'statusLabel', 12), C('Expiry', 'expiryDate', 13), C('Days Left', 'daysLabel', 12)] },
+      { id: 'expiry', label: 'Expiry Report', baseFilter: r => !!r._expiryRaw,
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Expiry', 'expiryDate', 13), C('Days Left', 'daysLabel', 12), C('Status', 'statusLabel', 12)] },
+      { id: 'expiring45', label: 'Expiring Within 45 Days', baseFilter: r => r.days != null && r.days >= 0 && r.days <= 45,
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Expiry', 'expiryDate', 13), C('Days Left', 'daysLabel', 12), C('Status', 'statusLabel', 12)] },
+      { id: 'expired', label: 'Expired Documents', baseFilter: r => r.status === 'Expired',
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Expiry', 'expiryDate', 13), C('Days Left', 'daysLabel', 12), C('Status', 'statusLabel', 12)] },
+      { id: 'missing', label: 'Missing Documents', baseFilter: r => r.status === 'Missing',
+        columns: [C('Document', 'name', 28), C('Category', 'categoryLabel'), C('Mandatory', 'mandatoryLabel', 11)] },
+      { id: 'active', label: 'Active Documents', baseFilter: r => r.status === 'Active',
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Reg. No', 'registrationNumber', 18), C('Expiry', 'expiryDate', 13), C('Status', 'statusLabel', 12)] },
+      { id: 'custom', label: 'Custom Report',
+        columns: [C('Document', 'name', 26), C('Category', 'categoryLabel'), C('Mandatory', 'mandatoryLabel', 11), C('Reg. No', 'registrationNumber', 18), C('Certificate No', 'certificateNumber', 16), C('Issue', 'issueDate', 13), C('Expiry', 'expiryDate', 13), C('Uploaded', 'uploadedDate', 13), C('Uploaded By', 'uploadedBy', 16), C('Status', 'statusLabel', 12), C('Days Left', 'daysLabel', 12)] },
+    ];
+
+    return {
+      entityName: 'Company Documents',
+      title: 'Export Company Documents',
+      reportTypes,
+      rows,
+      categories: renderCats,
+      categoryOf: (r: any) => r.categoryId,
+      statusOf: (r: any) => r.status,
+      dateAccessors: { issue: (r: any) => r._issueRaw, expiry: (r: any) => r._expiryRaw, uploaded: (r: any) => r._uploadedRaw },
+      sortAccessors: {
+        name: (r: any) => (r.name || '').toLowerCase(), category: (r: any) => (r.categoryLabel || '').toLowerCase(),
+        expiry: (r: any) => r._expiryRaw || '', issue: (r: any) => r._issueRaw || '', upload: (r: any) => r._uploadedRaw || '',
+      },
+      attachmentOf: (r: any) => r._attachment,
+      company,
+      // Only a real uploaded image is usable as a report logo (never the emblem text).
+      companyLogo: /^data:image\//i.test(company?.logoImage || '') ? company.logoImage : undefined,
+      generatedBy,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allItems, renderCats, company, generatedBy]);
 
   // ── Open the editor for a catalog/custom item ──────────────────────────────
   const openEditor = (item: DisplayItem) => {
@@ -248,7 +316,7 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
           complianceKey: item.key, name: item.name, category: item.category, mandatory: item.mandatory,
           registrationNumber: cat?.companyField ? (company?.[cat.companyField] || '') : '',
           certificateNumber: '', issuingAuthority: '', issueDate: '', expiryDate: '', renewalDate: '',
-          reminderDays: 90, assignedTo: '', status: '', remarks: '', fileData: '', mimeType: '', fileName: '', fileSize: '',
+          reminderDays: 45, assignedTo: '', status: '', remarks: '', fileData: '', mimeType: '', fileName: '', fileSize: '',
           versionHistory: '',
         };
     setDraft(base);
@@ -256,12 +324,13 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   };
 
   // Add an ad-hoc company document not in the catalog (any category, free name).
+  // Defaults to the first visible category so it never lands in a hidden one.
   const openCustom = () => {
     setCatalogItem(null);
     setDraft({
-      complianceKey: `custom_${Date.now()}`, name: '', category: 'Other', mandatory: false,
+      complianceKey: `custom_${Date.now()}`, name: '', category: CATALOG[0]?.id || 'Legal', mandatory: false,
       registrationNumber: '', certificateNumber: '', issuingAuthority: '', issueDate: '', expiryDate: '', renewalDate: '',
-      reminderDays: 90, assignedTo: '', status: '', remarks: '', fileData: '', mimeType: '', fileName: '', fileSize: '', versionHistory: '',
+      reminderDays: 45, assignedTo: '', status: '', remarks: '', fileData: '', mimeType: '', fileName: '', fileSize: '', versionHistory: '',
     });
     setModal(true);
   };
@@ -285,8 +354,11 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   const save = async () => {
     if (!draft?.name?.trim()) { ui.toast.error('Compliance name is required.'); return; }
     try {
-      if (draft.id) await api.companyProfile.compliance.update(draft.id, draft);
-      else await api.companyProfile.compliance.create(draft);
+      // Standardized policy: reminder is always 45 days and status is always
+      // auto-computed from the dates — no manual override is exposed or saved.
+      const payload = { ...draft, reminderDays: 45, status: '' };
+      if (payload.id) await api.companyProfile.compliance.update(payload.id, payload);
+      else await api.companyProfile.compliance.create(payload);
       // Keep the Company record as the single source of truth for the number.
       if (catalogItem?.companyField && draft.registrationNumber) {
         try { await api.companies.updateBranding(companyId, { [catalogItem.companyField]: draft.registrationNumber }); } catch { /* non-fatal */ }
@@ -309,6 +381,30 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
     const a = document.createElement('a'); a.href = fileData; a.download = fileName || 'certificate'; a.target = '_blank'; a.click();
   };
 
+  // View/preview an uploaded document. PDFs & images open inline in a new tab;
+  // other types fall back to download. Data URLs are converted to a Blob URL first
+  // (browsers block top-level navigation to data: URLs). No document → friendly note.
+  const previewFile = (rec?: any) => {
+    const data = rec?.fileData || rec?.url;
+    if (!data) { ui.toast.info('No document uploaded yet.'); return; }
+    if (/^https?:\/\//i.test(data)) { window.open(data, '_blank', 'noopener'); return; }
+    if (/^data:/i.test(data)) {
+      try {
+        const [meta, b64] = String(data).split(',');
+        const mime = (meta.match(/data:([^;]+)/) || [])[1] || rec.mimeType || 'application/octet-stream';
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+        const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        const w = window.open(url, '_blank', 'noopener');
+        if (!w) downloadFile(data, rec.fileName); // popup blocked → download instead
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        return;
+      } catch { downloadFile(data, rec.fileName); return; }
+    }
+    downloadFile(data, rec.fileName);
+  };
+
   const toggleCat = (id: string) => setOpenCats(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (loading) return <p className="text-sm text-slate-400 p-6">Loading compliance data…</p>;
@@ -316,16 +412,14 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   const cards = [
     { label: 'Total Documents', value: summary.total, color: 'bg-blue-500' },
     { label: 'Active', value: summary.active, color: 'bg-emerald-500' },
-    { label: 'Expiring in 90 Days', value: summary.expiring90, color: 'bg-amber-500' },
-    { label: 'Expiring in 30 Days', value: summary.expiring30, color: 'bg-orange-500' },
+    { label: 'Expiring in 45 Days', value: summary.expiring45, color: 'bg-amber-500' },
     { label: 'Expired', value: summary.expired, color: 'bg-rose-500' },
-    { label: 'Missing Mandatory', value: summary.missingMandatory, color: 'bg-slate-500' },
   ];
 
   return (
     <div className="space-y-5">
       {/* Dashboard summary */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cards.map(c => (
           <div key={c.label} className="rounded-xl bg-white border border-slate-200 shadow-sm p-3.5">
             <div className={`w-7 h-7 rounded-lg ${c.color} flex items-center justify-center mb-2`}><ShieldCheck size={15} className="text-white" /></div>
@@ -334,20 +428,6 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
           </div>
         ))}
       </div>
-
-      {/* Completion */}
-      <Card className="!bg-white !border-slate-200 !text-slate-700 !shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-xs font-extrabold text-slate-800">Compliance Completion (Mandatory)</h3>
-          <span className="text-sm font-extrabold text-slate-800">{completion.pct}%</span>
-        </div>
-        <div className="h-2.5 rounded-full bg-slate-100 overflow-hidden">
-          <div className={`h-full rounded-full transition-all ${completion.pct >= 90 ? 'bg-emerald-500' : completion.pct >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${completion.pct}%` }} />
-        </div>
-        <p className="text-[11px] text-slate-500 font-semibold mt-1.5">
-          {completion.present}/{completion.total} mandatory present · <span className={completion.missing ? 'text-rose-600' : 'text-emerald-600'}>{completion.missing} missing</span>
-        </p>
-      </Card>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -367,17 +447,20 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ReportsMenu items={allItems} />
+          <Button variant="outline" size="sm" icon={<Download size={14} />} onClick={() => setExportOpen(true)}>Reports</Button>
           {editable && <Button size="sm" icon={<Plus size={14} />} onClick={openCustom}>Add Document</Button>}
         </div>
       </div>
+
+      {/* Professional master export wizard (reusable across modules) */}
+      <ExportWizard open={exportOpen} onClose={() => setExportOpen(false)} config={exportConfig} />
 
       {/* Category accordions */}
       {renderCats.map(cat => {
         const items = filteredItems.filter(i => i.category === cat.id);
         if (!items.length) return null;
         const open = openCats.has(cat.id);
-        const issues = items.filter(i => i.status === 'Expired' || i.status === 'Expiring Soon' || (i.mandatory && i.status === 'Missing')).length;
+        const issues = items.filter(i => i.status === 'Expired' || i.status === 'Expiring Soon').length;
         return (
           <div key={cat.id} className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
             <button onClick={() => toggleCat(cat.id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50">
@@ -390,11 +473,15 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
             {open && (
               <div className="divide-y divide-slate-100">
                 {items.map(i => (
-                  <div key={i.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                  <div
+                    key={i.key}
+                    onClick={() => { if (editable) openEditor(i); else previewFile(i.record); }}
+                    title={editable ? (i.record ? 'Open document' : 'Upload document') : (i.record ? 'View document' : '')}
+                    className={`flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-150 ${(editable || i.record) ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                  >
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-bold text-slate-800">{i.name}</span>
-                        {i.mandatory && <Badge variant="indigo">Mandatory</Badge>}
                         <Badge variant={STATUS_BADGE[i.status]} dot>{STATUS_DOT[i.status]} {i.status}</Badge>
                         {i.days != null && i.status !== 'Expired' && <span className="text-[11px] text-slate-500 font-semibold">{i.days}d left</span>}
                         {i.status === 'Expired' && i.record?.expiryDate && <span className="text-[11px] text-rose-600 font-semibold">overdue {Math.abs(i.days || 0)}d</span>}
@@ -405,7 +492,9 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
                         {i.record?.assignedTo && <span>Owner: {i.record.assignedTo}</span>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    {/* Actions — do NOT trigger the row click. */}
+                    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => previewFile(i.record)} className="text-slate-400 hover:text-[#4F7CFF]" title="View document"><Eye size={15} /></button>
                       {i.record?.fileData && <button onClick={() => downloadFile(i.record.fileData, i.record.fileName)} className="text-slate-400 hover:text-[#4F7CFF]" title="Download certificate"><Download size={15} /></button>}
                       {i.record?.versionHistory && i.record.versionHistory !== '[]' && <button onClick={() => setVersionsFor(i.record)} className="text-slate-400 hover:text-indigo-500" title="Version history"><History size={15} /></button>}
                       {editable && <button onClick={() => openEditor(i)} className="text-slate-400 hover:text-indigo-500" title={i.record ? 'Edit' : 'Add'}>{i.record ? <Edit size={15} /> : <Plus size={15} />}</button>}
@@ -429,14 +518,9 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
               options={CATALOG.map(c => ({ value: c.id, label: c.label }))} />
             <Input label="Registration Number" value={draft.registrationNumber || ''} onChange={e => setDraft({ ...draft, registrationNumber: e.target.value })} />
             <Input label="Certificate Number" value={draft.certificateNumber || ''} onChange={e => setDraft({ ...draft, certificateNumber: e.target.value })} />
-            <Input label="Issuing Authority" value={draft.issuingAuthority || ''} onChange={e => setDraft({ ...draft, issuingAuthority: e.target.value })} />
             <Input label="Issue Date" type="date" value={draft.issueDate || ''} onChange={e => setDraft({ ...draft, issueDate: e.target.value })} />
             <Input label="Expiry Date" type="date" value={draft.expiryDate || ''} onChange={e => setDraft({ ...draft, expiryDate: e.target.value })} />
-            <Input label="Renewal Date" type="date" value={draft.renewalDate || ''} onChange={e => setDraft({ ...draft, renewalDate: e.target.value })} />
-            <Input label="Reminder Before (Days)" type="number" value={draft.reminderDays ?? ''} onChange={e => setDraft({ ...draft, reminderDays: e.target.value })} />
-            <Input label="Assigned To" value={draft.assignedTo || ''} onChange={e => setDraft({ ...draft, assignedTo: e.target.value })} />
-            <Select label="Status (optional override)" value={draft.status || ''} onChange={e => setDraft({ ...draft, status: e.target.value })}
-              options={[{ value: '', label: 'Auto (from dates)' }, ...['Active', 'Expiring Soon', 'Expired', 'Pending Renewal'].map(s => ({ value: s, label: s }))]} />
+            {/* Reminder is standardized to 45 days (saved automatically); status is auto-computed from the dates. */}
             <div className="md:col-span-2"><Textarea label="Remarks" value={draft.remarks || ''} onChange={e => setDraft({ ...draft, remarks: e.target.value })} /></div>
             <div className="md:col-span-2">
               <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Certificate / Document (PDF, DOCX, XLSX, JPG, PNG)</label>
@@ -485,68 +569,6 @@ const VersionList: React.FC<{ record: any; onDownload: (f?: string, n?: string) 
           <button onClick={() => onDownload(v.fileData, v.fileName)} className="text-slate-400 hover:text-[#4F7CFF]"><Download size={14} /></button>
         </div>
       ))}
-    </div>
-  );
-};
-
-// ── Reports dropdown — 5 named reports over the full document set ─────────────
-const mapItem = (i: DisplayItem) => ({
-  name: i.name, category: i.category, mandatory: i.mandatory ? 'Yes' : 'No',
-  registrationNumber: i.record?.registrationNumber || '', certificateNumber: i.record?.certificateNumber || '',
-  issuingAuthority: i.record?.issuingAuthority || '', issueDate: i.record?.issueDate || '',
-  expiryDate: i.record?.expiryDate || '', renewalDate: i.record?.renewalDate || '',
-  status: i.status, daysRemaining: i.days ?? '', uploadedBy: i.record?.uploadedBy || '',
-});
-const C = (header: string, key: string, width = 16): ExportColumn => ({ header, key, width });
-
-const ReportsMenu: React.FC<{ items: DisplayItem[] }> = ({ items }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
-
-  const REPORTS: { id: string; label: string; rows: () => any[]; cols: ExportColumn[] }[] = [
-    { id: 'compliance', label: 'Compliance Report', rows: () => items.map(mapItem),
-      cols: [C('Compliance', 'name', 26), C('Category', 'category'), C('Mandatory', 'mandatory', 11), C('Status', 'status'), C('Expiry', 'expiryDate'), C('Days Left', 'daysRemaining', 10)] },
-    { id: 'register', label: 'Company Document Register', rows: () => items.filter(i => i.record).map(mapItem),
-      cols: [C('Document', 'name', 26), C('Category', 'category'), C('Reg. No', 'registrationNumber', 18), C('Certificate No', 'certificateNumber', 16), C('Authority', 'issuingAuthority', 18), C('Issue', 'issueDate', 12), C('Expiry', 'expiryDate', 12), C('Status', 'status'), C('Uploaded By', 'uploadedBy', 16)] },
-    { id: 'expiry', label: 'Expiry Report', rows: () => items.filter(i => i.record?.expiryDate).map(mapItem),
-      cols: [C('Document', 'name', 26), C('Category', 'category'), C('Expiry', 'expiryDate'), C('Days Left', 'daysRemaining', 10), C('Status', 'status')] },
-    { id: 'renewal', label: 'Renewal Report', rows: () => items.filter(i => i.record?.renewalDate).map(mapItem),
-      cols: [C('Document', 'name', 26), C('Category', 'category'), C('Renewal', 'renewalDate'), C('Expiry', 'expiryDate'), C('Status', 'status')] },
-    { id: 'missing', label: 'Missing Documents Report', rows: () => items.filter(i => i.status === 'Missing').map(mapItem),
-      cols: [C('Document', 'name', 28), C('Category', 'category'), C('Mandatory', 'mandatory', 11)] },
-  ];
-
-  const run = (rep: typeof REPORTS[number], format: 'pdf' | 'excel') => {
-    setOpen(false);
-    const rows = rep.rows();
-    if (!rows.length) { ui.toast.info('No data for this report.'); return; }
-    const file = rep.label.replace(/\s+/g, '_');
-    if (format === 'excel') exportRowsToExcel(file, rep.cols, rows, rep.label.slice(0, 28));
-    else exportRowsToPDF(file, rep.label, rep.cols, rows);
-  };
-
-  return (
-    <div className="relative inline-block" ref={ref}>
-      <Button variant="outline" size="sm" icon={<Download size={14} />} onClick={() => setOpen(o => !o)}>Reports</Button>
-      {open && (
-        <div className="absolute right-0 z-50 mt-1.5 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-          {REPORTS.map(rep => (
-            <div key={rep.id} className="flex items-center justify-between px-3 py-2 hover:bg-slate-50 border-b border-slate-50 last:border-0">
-              <span className="text-xs font-semibold text-slate-600">{rep.label}</span>
-              <span className="flex items-center gap-1.5">
-                <button onClick={() => run(rep, 'pdf')} className="text-[10px] font-bold text-rose-600 hover:underline">PDF</button>
-                <button onClick={() => run(rep, 'excel')} className="text-[10px] font-bold text-emerald-600 hover:underline">Excel</button>
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

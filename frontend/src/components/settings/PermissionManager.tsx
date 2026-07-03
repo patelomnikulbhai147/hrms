@@ -7,23 +7,16 @@ import { Badge } from '@/components/ui/Badge';
 import { api } from '@/api/apiClient';
 import { type AppModules } from '@/pages/Login';
 import { foldPermissions } from '@/utils/permissionFold';
+import { roleDefaultRow } from '@/context/PermissionContext';
+import { getCompanyMatrixModules } from '@/config/moduleRegistry';
 
-// Modules shown in the matrix (label → AppModules key). Mirrors the spec list,
-// limited to modules that exist in the permission system.
-const MODULES: { key: AppModules; label: string }[] = [
-  { key: 'dashboard', label: 'Dashboard' },
-  { key: 'employees', label: 'Employees' },
-  { key: 'attendance', label: 'Attendance' },
-  { key: 'leaves', label: 'Leave Management' },
-  { key: 'payroll', label: 'Payroll' },
-  { key: 'documents', label: 'Documents' },
-  { key: 'reports', label: 'Reports' },
-  { key: 'settings', label: 'Settings' },
-  { key: 'tasks', label: 'Task Manager' },
-  { key: 'tenders', label: 'Tender Management' },
-  { key: 'contracts', label: 'Contract Management' },
-  { key: 'users', label: 'User Management' },
-];
+// Modules shown in the matrix are derived from the single module registry
+// (config/moduleRegistry) — the SAME source that drives the sidebar. Every
+// company-scoped module therefore appears automatically, and any future module
+// added to the registry shows up here with no code change. Each row carries a
+// unique `rowId` (React key) plus the `key` (AppModules permission) it edits;
+// sub-features (Employee Cards, Attendance Devices) share their parent's key.
+const MODULES = getCompanyMatrixModules();
 
 // The matrix controls ONLY these three permissions: VIEW (read/search/open/view
 // reports), EDIT (edit/save/update/modify — folds create/delete/approve/import),
@@ -72,12 +65,17 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
 
   const selected = users.find(u => String(u.id) === String(selectedId));
 
+  // Seed a matrix row from the user's EFFECTIVE access: an explicit stored row is
+  // folded into the 3-action model; a module with no stored row falls back to the
+  // role-default (so modules like Communication/Task/Tender that grant access by
+  // role aren't silently reset to "denied" the next time the matrix is saved).
+  const effectiveRow = (u: any, key: AppModules) =>
+    u?.permissions?.[key] !== undefined ? foldPermissions(u.permissions[key]) : roleDefaultRow(key, u?.role);
+
   const selectUser = (u: any) => {
     setSelectedId(u.id);
     const p: Record<string, any> = {};
-    // Fold any legacy (create/delete/approve/import/print) grants into the 3-action
-    // model so the matrix shows the converted state and saves it cleanly.
-    MODULES.forEach(m => { p[m.key] = foldPermissions(u.permissions?.[m.key]); });
+    MODULES.forEach(m => { p[m.key] = effectiveRow(u, m.key); });
     setPerms(p);
   };
 
@@ -116,7 +114,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const cloneFrom = (sourceId: any) => {
     const src = users.find(u => String(u.id) === String(sourceId)); if (!src) return;
     const p: Record<string, any> = {};
-    MODULES.forEach(m => { p[m.key] = foldPermissions(src.permissions?.[m.key]); });
+    MODULES.forEach(m => { p[m.key] = effectiveRow(src, m.key); });
     setPerms(p);
     flash('ok', `Cloned permissions from ${src.name} — review and Save.`);
   };
@@ -190,7 +188,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                   </thead>
                   <tbody className="divide-y divide-slate-50">
                     {MODULES.map(m => (
-                      <tr key={m.key} className="hover:bg-slate-50/60">
+                      <tr key={m.rowId} className="hover:bg-slate-50/60">
                         <td className="py-2.5 pr-2 text-xs font-semibold text-slate-700">{m.label}</td>
                         <td className="py-2.5 px-2 text-center">
                           <input

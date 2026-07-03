@@ -29,6 +29,7 @@ router.use(protect);
 router.get('/', requireProfileAccess('view'), ctrl.getProfile);
 router.get('/document-health', requireProfileAccess('view'), ctrl.getDocumentHealth);
 router.get('/contacts', requireProfileAccess('view'), ctrl.listContacts);
+router.get('/owners', requireProfileAccess('view'), ctrl.listOwners);
 router.get('/documents', requireProfileAccess('view'), ctrl.listDocuments);
 router.get('/audit', requireProfileAccess('view'), ctrl.getAuditTimeline);
 router.get('/compliance', requireProfileAccess('view'), ctrl.listCompliance);
@@ -37,6 +38,10 @@ router.get('/compliance', requireProfileAccess('view'), ctrl.listCompliance);
 router.post('/contacts', requireProfileAccess('edit'), readOnly, ctrl.createContact);
 router.put('/contacts/:id', requireProfileAccess('edit'), readOnly, ctrl.updateContact);
 router.delete('/contacts/:id', requireProfileAccess('edit'), readOnly, ctrl.deleteContact);
+
+router.post('/owners', requireProfileAccess('edit'), readOnly, ctrl.createOwner);
+router.put('/owners/:id', requireProfileAccess('edit'), readOnly, ctrl.updateOwner);
+router.delete('/owners/:id', requireProfileAccess('edit'), readOnly, ctrl.deleteOwner);
 
 router.post('/documents', requireProfileAccess('edit'), readOnly, ctrl.createDocument);
 router.put('/documents/:id', requireProfileAccess('edit'), readOnly, ctrl.updateDocument);

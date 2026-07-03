@@ -119,8 +119,13 @@ export const Modal: React.FC<ModalProps> = ({
     return mainEl ? createPortal(node, mainEl) : node;
   }
 
-  // ── DIALOG variant (unchanged) ─────────────────────────────────────────────
-  return (
+  // ── DIALOG variant ──────────────────────────────────────────────────────────
+  // Portaled to <body> so the fixed overlay escapes any transformed / overflow-
+  // hidden ancestor (e.g. App's framer-motion page-transition wrapper, whose CSS
+  // `transform` becomes the containing block for `position: fixed` and would clip /
+  // offset the modal). Guarantees true viewport centering + internal scroll on every
+  // page and screen size.
+  const dialog = (
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -160,4 +165,5 @@ export const Modal: React.FC<ModalProps> = ({
       )}
     </AnimatePresence>
   );
+  return typeof document !== 'undefined' ? createPortal(dialog, document.body) : dialog;
 };

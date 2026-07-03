@@ -67,6 +67,14 @@ async function companyMeta(companyId) {
       || null;
   } catch { /* CompanyContact table absent on older DBs — non-fatal */ }
 
+  // Primary Owner / Director — feeds the {{owner_*}} placeholders. Lives on the
+  // top-level company; guarded so an un-migrated DB never breaks a report.
+  let owner = null;
+  try {
+    owner = await prisma.companyOwner.findFirst({ where: { companyId: topCompanyId, isPrimary: true } })
+      || await prisma.companyOwner.findFirst({ where: { companyId: topCompanyId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+  } catch { /* CompanyOwner table absent on older DBs — non-fatal */ }
+
   return {
     // Identity
     name: c.name, legalName: c.legalName || c.name, displayName: c.displayName || c.shortName || c.name,
@@ -90,6 +98,11 @@ async function companyMeta(companyId) {
     financeHeadName: v('financeHeadName'),
     authorizedSignatory: (signatory && signatory.name) || c.authorizedSignatory || c.signatureText || null,
     signatoryDesignation: (signatory && signatory.designation) || c.signatoryDesignation || null, signatureText: c.signatureText || null,
+    // Primary Owner / Director → {{owner_*}} placeholders
+    owner_name: (owner && owner.name) || null,
+    owner_designation: (owner && owner.designation) || null,
+    owner_email: (owner && owner.email) || null,
+    owner_mobile: (owner && owner.mobile) || null,
     // Banking
     bankName: v('bankName'), bankBranch: v('bankBranch'), bankAccountNumber: v('bankAccountNumber'),
     ifscCode: v('ifscCode'), swiftCode: v('swiftCode'), accountHolderName: v('accountHolderName') || c.name, upiId: v('upiId'),

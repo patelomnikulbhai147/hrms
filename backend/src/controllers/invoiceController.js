@@ -1,0 +1,350 @@
+/**
+ * Invoice Management — invoices (with line items), payments, dashboard & status
+ * workflow. Company-scoped (RULE 5), role-gated. Fully isolated: touches only
+ * invoice_* tables — no Payroll/Attendance/Employee/Reports impact.
+ *
+ * Money is ALWAYS recomputed server-side (services/invoiceCalc) so the DB can
+ * never hold a wrong/negative total. Invoice numbers are unique per company.
+ */
+const prisma = require('../config/prisma');
+const idParam = require('../utils/idParam');
+const calc = require('../services/invoiceCalc');
+const { canView, canEdit, canManage, actorOf, targetCompanyId, scopedWhere, isSuperAdmin } = require('../utils/invoiceScope');
+
+const STATUSES = ['Draft', 'Generated', 'Sent', 'Viewed', 'Partially Paid', 'Paid', 'Closed', 'Cancelled'];
+const audit = (companyId, invoiceId, action, by, details) =>
+  prisma.invoiceAudit.create({ data: { companyId, entityType: 'Invoice', entityId: invoiceId, invoiceId, action, performedBy: by, details: details ? String(details).slice(0, 2000) : null } }).catch(() => {});
+
+// Resolve the company's home state (to decide intra vs inter-state GST) from the
+// invoice settings GSTIN state code, else the Company record. Best-effort only.
+async function companyState(companyId) {
+  const c = await prisma.company.findUnique({ where: { id: companyId }, select: { state: true } }).catch(() => null);
+  return (c && c.state) || null;
+}
+
+// Recompute + persist an invoice's payment rollup and derived status.
+async function recalcPayments(invoice) {
+  const pays = await prisma.invoicePayment.findMany({ where: { invoiceId: invoice.id, status: { in: ['Paid', 'Partial'] } } });
+  const amountPaid = calc.r2(pays.reduce((s, p) => s + (Number(p.amount) || 0), 0));
+  const balanceDue = calc.r2(Math.max(0, invoice.grandTotal - amountPaid));
+  // Don't override a manually Cancelled/Closed invoice's lifecycle status.
+  let status = invoice.status;
+  if (!['Cancelled', 'Closed'].includes(status)) {
+    if (amountPaid <= 0) status = ['Draft'].includes(invoice.status) ? 'Draft' : (invoice.status === 'Viewed' ? 'Viewed' : invoice.status);
+    else if (amountPaid + 0.01 < invoice.grandTotal) status = 'Partially Paid';
+    else status = 'Paid';
+  }
+  return prisma.invoice.update({ where: { id: invoice.id }, data: { amountPaid, balanceDue, status } });
+}
+
+// ── Number generation (atomic-ish: bump settings.nextNumber, retry on clash) ──
+async function nextInvoiceNumber(companyId, invoiceDate) {
+  let settings = await prisma.invoiceSettings.findUnique({ where: { companyId } });
+  if (!settings) settings = await prisma.invoiceSettings.create({ data: { companyId } });
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const seq = settings.nextNumber + attempt;
+    const number = calc.formatInvoiceNumber(settings, seq, invoiceDate);
+    const clash = await prisma.invoice.findFirst({ where: { companyId, invoiceNumber: number }, select: { id: true } });
+    if (!clash) {
+      await prisma.invoiceSettings.update({ where: { companyId }, data: { nextNumber: seq + 1 } });
+      return number;
+    }
+  }
+  // Fallback: timestamp-suffixed to guarantee uniqueness.
+  return `${settings.invoicePrefix || 'INV'}-${companyId}-${Date.now()}`;
+}
+
+// Validate + normalise an invoice body. Returns { error } or { data, items }.
+function validateBody(b) {
+  if (!b) return { error: 'Empty request.' };
+  if (!String(b.billToName || '').trim() && !b.customerId) return { error: 'A customer is required.' };
+  const items = Array.isArray(b.items) ? b.items.filter((it) => String(it.name || '').trim()) : [];
+  if (items.length === 0) return { error: 'Add at least one line item.' };
+  if (!String(b.invoiceDate || '').trim()) return { error: 'Invoice date is required.' };
+  if (b.dueDate && b.invoiceDate && new Date(b.dueDate) < new Date(b.invoiceDate)) return { error: 'Due date cannot be earlier than the invoice date.' };
+  for (const it of items) {
+    if (Number(it.quantity) < 0 || Number(it.rate) < 0) return { error: `Line "${it.name}" has a negative quantity or rate.` };
+  }
+  return { items };
+}
+
+// ── LIST ──────────────────────────────────────────────────────────────────────
+exports.list = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized workspace.' });
+    const where = { ...base };
+    const { q, status, customerId, from, to } = req.query;
+    if (status && status !== 'All') where.status = status;
+    if (customerId) where.customerId = idParam(customerId);
+    if (q) where.OR = [{ invoiceNumber: { contains: String(q) } }, { billToName: { contains: String(q) } }];
+    if (from || to) where.invoiceDate = { ...(from ? { gte: String(from) } : {}), ...(to ? { lte: String(to) } : {}) };
+    const invoices = await prisma.invoice.findMany({ where, orderBy: { id: 'desc' }, take: 1000 });
+    res.json(invoices);
+  } catch (e) { console.error('invoice.list', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── GET ONE (with items, payments, audit) ─────────────────────────────────────
+exports.getOne = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+    const [items, payments, audits] = await Promise.all([
+      prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } }),
+      prisma.invoicePayment.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } }),
+      prisma.invoiceAudit.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' }, take: 100 }),
+    ]);
+    res.json({ ...invoice, items, payments, audits });
+  } catch (e) { console.error('invoice.getOne', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// Build the invoice column payload + computed items from a validated body.
+async function buildInvoiceData(companyId, b, items) {
+  const homeState = (b.placeOfSupply != null ? null : await companyState(companyId)); // placeOfSupply drives it
+  const supply = b.placeOfSupply || b.billToState || null;
+  // Intra-state when the customer's state matches the company's home state.
+  const cState = await companyState(companyId);
+  const intraState = supply && cState ? String(supply).trim().toLowerCase() === String(cState).trim().toLowerCase() : true;
+  const { lines, totals } = calc.computeInvoice(items, { intraState });
+  const data = {
+    companyId,
+    customerId: b.customerId ? idParam(b.customerId) : null,
+    billToName: String(b.billToName || '').trim() || 'Customer',
+    billToGstin: b.billToGstin || null, billToAddress: b.billToAddress || null, billToEmail: b.billToEmail || null,
+    billToPhone: b.billToPhone || null, billToState: b.billToState || supply || null,
+    invoiceDate: String(b.invoiceDate), dueDate: b.dueDate || null, currency: b.currency || 'INR',
+    paymentTerms: b.paymentTerms || null, placeOfSupply: supply,
+    notes: b.notes || null, termsConditions: b.termsConditions || null, paymentMode: b.paymentMode || null,
+    bankDetails: b.bankDetails || null, upiId: b.upiId || null,
+    ...totals,
+  };
+  return { data, lines };
+}
+
+// Persist line items (delete + recreate — simplest correct approach for edits).
+async function writeItems(companyId, invoiceId, lines) {
+  await prisma.invoiceItem.deleteMany({ where: { invoiceId } });
+  if (lines.length) {
+    await prisma.invoiceItem.createMany({
+      data: lines.map((l, i) => ({
+        companyId, invoiceId, productId: l.productId ? idParam(l.productId) : null,
+        name: String(l.name).trim(), description: l.description || null, hsnSac: l.hsnSac || null,
+        quantity: l.quantity, unit: l.unit || 'Nos', rate: l.rate, discountPct: l.discountPct, discountAmt: l.discountAmt,
+        taxRate: l.taxRate, taxableValue: l.taxableValue, cgst: l.cgst, sgst: l.sgst, igst: l.igst, amount: l.amount, sortOrder: i,
+      })),
+    });
+  }
+}
+
+// ── CREATE ────────────────────────────────────────────────────────────────────
+exports.create = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to create invoices.' });
+    const companyId = targetCompanyId(req, req.body?.companyId);
+    if (!companyId) return res.status(400).json({ error: isSuperAdmin(req) ? 'Select a company.' : 'Your account has no company.' });
+    const v = validateBody(req.body); if (v.error) return res.status(400).json({ error: v.error });
+
+    const { data, lines } = await buildInvoiceData(companyId, req.body, v.items);
+    // Draft keeps a provisional number only when finalised; but we still assign a
+    // unique number up-front so the list/print always has one. A Draft can be
+    // regenerated. Requested explicit number is honoured if unique.
+    let invoiceNumber = String(req.body.invoiceNumber || '').trim();
+    if (invoiceNumber) {
+      const clash = await prisma.invoice.findFirst({ where: { companyId, invoiceNumber }, select: { id: true } });
+      if (clash) return res.status(409).json({ error: `Invoice number "${invoiceNumber}" already exists.`, code: 'DUP_NUMBER' });
+    } else {
+      invoiceNumber = await nextInvoiceNumber(companyId, req.body.invoiceDate);
+    }
+    const status = req.body.status === 'Generated' || req.body.finalize ? 'Generated' : (STATUSES.includes(req.body.status) ? req.body.status : 'Draft');
+    const invoice = await prisma.invoice.create({
+      data: { ...data, invoiceNumber, status, balanceDue: data.grandTotal, amountPaid: 0, createdBy: actorOf(req), updatedBy: actorOf(req) },
+    });
+    await writeItems(companyId, invoice.id, lines);
+    audit(companyId, invoice.id, 'CREATED', actorOf(req), `${invoiceNumber} · ${invoice.billToName} · ₹${invoice.grandTotal}`);
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: invoice.id }, orderBy: { sortOrder: 'asc' } });
+    res.status(201).json({ ...invoice, items });
+  } catch (e) { console.error('invoice.create', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── UPDATE (edit draft/generated; locked once Paid/Cancelled) ─────────────────
+exports.update = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to edit invoices.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const existing = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found.' });
+    if (['Cancelled', 'Paid', 'Closed'].includes(existing.status)) return res.status(400).json({ error: `A ${existing.status} invoice cannot be edited.` });
+    const v = validateBody(req.body); if (v.error) return res.status(400).json({ error: v.error });
+
+    const { data, lines } = await buildInvoiceData(existing.companyId, req.body, v.items);
+    // Keep the existing number (immutable) and re-derive balance/status vs payments.
+    const amountPaid = existing.amountPaid || 0;
+    const balanceDue = calc.r2(Math.max(0, data.grandTotal - amountPaid));
+    let status = STATUSES.includes(req.body.status) ? req.body.status : existing.status;
+    if (amountPaid > 0 && !['Cancelled', 'Closed'].includes(status)) status = amountPaid + 0.01 < data.grandTotal ? 'Partially Paid' : 'Paid';
+    const invoice = await prisma.invoice.update({ where: { id }, data: { ...data, balanceDue, status, updatedBy: actorOf(req) } });
+    await writeItems(existing.companyId, id, lines);
+    audit(existing.companyId, id, 'UPDATED', actorOf(req), `${invoice.invoiceNumber} · ₹${invoice.grandTotal}`);
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    res.json({ ...invoice, items });
+  } catch (e) { console.error('invoice.update', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── STATUS transitions (Generate / Send / View / Cancel / Close) ──────────────
+exports.setStatus = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const status = req.body?.status;
+    if (!STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.' });
+    const existing = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found.' });
+    if (status === 'Cancelled' && !canManage(req)) return res.status(403).json({ error: 'Only Company Head / Finance can cancel an invoice.' });
+    if (existing.status === 'Cancelled') return res.status(400).json({ error: 'A cancelled invoice cannot change status.' });
+    const invoice = await prisma.invoice.update({ where: { id }, data: { status, updatedBy: actorOf(req) } });
+    const map = { Sent: 'SENT', Generated: 'CREATED', Cancelled: 'CANCELLED' };
+    audit(existing.companyId, id, map[status] || 'UPDATED', actorOf(req), `Status → ${status}`);
+    res.json(invoice);
+  } catch (e) { console.error('invoice.setStatus', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── DUPLICATE ─────────────────────────────────────────────────────────────────
+exports.duplicate = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const src = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!src) return res.status(404).json({ error: 'Invoice not found.' });
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const invoiceNumber = await nextInvoiceNumber(src.companyId, new Date().toISOString().slice(0, 10));
+    const { id: _i, createdAt: _c, updatedAt: _u, ...rest } = src;
+    const clone = await prisma.invoice.create({
+      data: { ...rest, invoiceNumber, status: 'Draft', amountPaid: 0, balanceDue: src.grandTotal, invoiceDate: new Date().toISOString().slice(0, 10), createdBy: actorOf(req), updatedBy: actorOf(req) },
+    });
+    await writeItems(src.companyId, clone.id, items);
+    audit(src.companyId, clone.id, 'CREATED', actorOf(req), `Duplicated from ${src.invoiceNumber}`);
+    res.status(201).json(clone);
+  } catch (e) { console.error('invoice.duplicate', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── DELETE (Draft/Cancelled only, and only if never paid) ─────────────────────
+exports.remove = async (req, res) => {
+  try {
+    if (!canManage(req)) return res.status(403).json({ error: 'No permission to delete invoices.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const existing = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!existing) return res.status(404).json({ error: 'Invoice not found.' });
+    if (existing.amountPaid > 0) return res.status(409).json({ error: 'This invoice has recorded payments and cannot be deleted. Cancel it instead.', code: 'HAS_PAYMENTS' });
+    if (!['Draft', 'Cancelled'].includes(existing.status)) return res.status(409).json({ error: `Only Draft or Cancelled invoices can be deleted (this one is ${existing.status}). Cancel it first.`, code: 'NOT_DELETABLE' });
+    await prisma.invoiceItem.deleteMany({ where: { invoiceId: id } });
+    await prisma.invoicePayment.deleteMany({ where: { invoiceId: id } });
+    await prisma.invoice.delete({ where: { id } });
+    audit(existing.companyId, id, 'DELETED', actorOf(req), existing.invoiceNumber);
+    res.json({ ok: true });
+  } catch (e) { console.error('invoice.remove', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── PAYMENTS ──────────────────────────────────────────────────────────────────
+exports.recordPayment = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+    if (invoice.status === 'Cancelled') return res.status(400).json({ error: 'Cannot record a payment against a cancelled invoice.' });
+    const amount = Number(req.body?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Payment amount must be greater than zero.' });
+    if (amount > invoice.balanceDue + 0.01) return res.status(400).json({ error: `Payment ₹${amount} exceeds the balance due ₹${invoice.balanceDue}.` });
+    const payment = await prisma.invoicePayment.create({
+      data: {
+        companyId: invoice.companyId, invoiceId: id, amount: calc.r2(amount),
+        paymentDate: req.body.paymentDate || new Date().toISOString().slice(0, 10),
+        mode: req.body.mode || 'Bank', referenceNumber: req.body.referenceNumber || null, notes: req.body.notes || null,
+        status: 'Paid', recordedBy: actorOf(req),
+      },
+    });
+    const updated = await recalcPayments(invoice);
+    audit(invoice.companyId, id, 'PAYMENT_RECORDED', actorOf(req), `₹${amount} via ${payment.mode} · balance ₹${updated.balanceDue}`);
+    res.status(201).json({ payment, invoice: updated });
+  } catch (e) { console.error('invoice.recordPayment', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.deletePayment = async (req, res) => {
+  try {
+    if (!canManage(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const payId = idParam(req.params.paymentId);
+    const pay = await prisma.invoicePayment.findFirst({ where: { id: payId, ...base } });
+    if (!pay) return res.status(404).json({ error: 'Payment not found.' });
+    await prisma.invoicePayment.delete({ where: { id: payId } });
+    const invoice = await prisma.invoice.findUnique({ where: { id: pay.invoiceId } });
+    const updated = await recalcPayments(invoice);
+    audit(pay.companyId, pay.invoiceId, 'UPDATED', actorOf(req), `Payment ₹${pay.amount} reversed · balance ₹${updated.balanceDue}`);
+    res.json({ ok: true, invoice: updated });
+  } catch (e) { console.error('invoice.deletePayment', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── DASHBOARD (KPIs) ──────────────────────────────────────────────────────────
+exports.dashboard = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const invoices = await prisma.invoice.findMany({ where: base, select: { status: true, grandTotal: true, amountPaid: true, balanceDue: true, dueDate: true, invoiceDate: true, invoiceNumber: true, billToName: true, id: true } });
+    const today = new Date().toISOString().slice(0, 10);
+    const monthPrefix = today.slice(0, 7);
+    const byStatus = {};
+    let totalRevenue = 0, outstanding = 0, thisMonthRevenue = 0, overdue = 0;
+    for (const inv of invoices) {
+      byStatus[inv.status] = (byStatus[inv.status] || 0) + 1;
+      if (inv.status !== 'Cancelled') {
+        totalRevenue += inv.amountPaid;
+        outstanding += inv.balanceDue;
+        if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
+        if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
+      }
+    }
+    // Monthly revenue (last 6 months, from recorded payments).
+    const payments = await prisma.invoicePayment.findMany({ where: { ...base, status: { in: ['Paid', 'Partial'] } }, select: { amount: true, paymentDate: true } });
+    const monthly = {};
+    for (const p of payments) { const m = (p.paymentDate || '').slice(0, 7); if (m) monthly[m] = (monthly[m] || 0) + p.amount; }
+    const recent = [...invoices].sort((a, b) => b.id - a.id).slice(0, 8);
+    const upcoming = invoices.filter((i) => i.balanceDue > 0 && i.dueDate && i.dueDate >= today && i.status !== 'Cancelled').sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || '')).slice(0, 8);
+    res.json({
+      kpis: {
+        total: invoices.length,
+        draft: byStatus['Draft'] || 0, generated: byStatus['Generated'] || 0, sent: byStatus['Sent'] || 0,
+        paid: byStatus['Paid'] || 0, partiallyPaid: byStatus['Partially Paid'] || 0, cancelled: byStatus['Cancelled'] || 0,
+        overdue,
+        totalRevenue: calc.r2(totalRevenue), outstanding: calc.r2(outstanding), thisMonthRevenue: calc.r2(thisMonthRevenue),
+      },
+      byStatus, monthly, recent, upcoming,
+    });
+  } catch (e) { console.error('invoice.dashboard', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// Record a print/email/whatsapp action for the audit trail (fire-and-forget).
+exports.logAction = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+    const action = String(req.body?.action || '').toUpperCase();
+    if (!['PRINTED', 'EMAILED', 'WHATSAPP', 'DOWNLOADED', 'VIEWED'].includes(action)) return res.status(400).json({ error: 'Unknown action.' });
+    audit(invoice.companyId, id, action === 'WHATSAPP' ? 'EMAILED' : action, actorOf(req), req.body?.detail || action);
+    // A print/email of a Draft advances it to Sent (soft workflow).
+    if (['PRINTED', 'EMAILED', 'WHATSAPP'].includes(action) && ['Draft', 'Generated'].includes(invoice.status) && canEdit(req)) {
+      await prisma.invoice.update({ where: { id }, data: { status: 'Sent' } }).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (e) { console.error('invoice.logAction', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};

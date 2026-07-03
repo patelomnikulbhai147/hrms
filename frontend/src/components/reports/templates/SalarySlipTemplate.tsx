@@ -2,6 +2,7 @@ import React from 'react';
 import { type TemplateProps } from './types';
 import { inr } from '../reportExport';
 import { t as translate } from '../../../utils/reportTranslations';
+import { resolveBranding } from '@/services/brandingService';
 
 // ── SALARY SLIP (PAY SLIP) ───────────────────────────────────────────────────
 const bd = '1px solid #222';
@@ -25,9 +26,23 @@ const Slip: React.FC<{ r: any; m: any; lang?: string }> = ({ r, m, lang = 'en' }
   // split re-derives when Basic or Total Deductions is edited (data-const on the
   // slip scope; consumed by data-formula expressions — see reportRecalc.ts).
   const recalcConsts = JSON.stringify({ pfRate: Number(rates.pfRate) || 0, esicRate: Number(rates.esicRate) || 0, profTaxRate: Number(rates.profTaxRate) || 0 });
+  // Branding from the centralized service (reads the same report meta the backend
+  // supplies) — logo in the header, faint watermark behind, seal + signature below.
+  const b = resolveBranding(m);
   return (
-    <div data-recalc-scope="salary_slip" data-row data-const={recalcConsts} style={{ border: bd, width: '100%', fontFamily: 'Arial, Helvetica, sans-serif', color: '#111' }}>
-      <div style={{ textAlign: 'center', fontWeight: 800, fontSize: 12, paddingTop: 3, textDecoration: 'underline' }}>{m?.name || 'Company'}</div>
+    <div data-recalc-scope="salary_slip" data-row data-const={recalcConsts} style={{ position: 'relative', overflow: 'hidden', border: bd, width: '100%', fontFamily: 'Arial, Helvetica, sans-serif', color: '#111' }}>
+      {b.hasWatermark && (
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', zIndex: 0, overflow: 'hidden' }}>
+          {b.watermarkImage
+            ? <img src={b.watermarkImage} style={{ maxWidth: '75%', maxHeight: '75%', opacity: 0.06, transform: 'rotate(-30deg)' }} />
+            : <span style={{ fontSize: 44, fontWeight: 800, opacity: 0.06, transform: 'rotate(-30deg)', whiteSpace: 'nowrap', letterSpacing: 6 }}>{b.watermarkText}</span>}
+        </div>
+      )}
+      <div style={{ position: 'relative', zIndex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, paddingTop: 3 }}>
+        {b.hasLogo && <img src={b.logo} alt="" style={{ height: 22, maxWidth: 60, objectFit: 'contain' }} />}
+        <span style={{ fontWeight: 800, fontSize: 12, textDecoration: 'underline' }}>{m?.name || 'Company'}</span>
+      </div>
       {m?.branchName && <div style={{ textAlign: 'center', fontWeight: 700, fontSize: 10 }}>{m.branchName}</div>}
       {m?.address && <div style={{ textAlign: 'center', fontSize: 8.5, padding: '0 6px 3px' }}>{m.address}</div>}
       <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: bd }}>
@@ -106,6 +121,16 @@ const Slip: React.FC<{ r: any; m: any; lang?: string }> = ({ r, m, lang = 'en' }
       </table>
       <div style={{ fontSize: 8.5, padding: '2px 5px', borderTop: bd, textAlign: 'center' }}>
         {t('Payment Transferred to Employee A/C No.')} {r.accountNumber || '—'} {t('via')} "NEFT".
+      </div>
+      {(b.hasSignature || b.hasSeal) && (
+        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 8, padding: '4px 6px 2px', borderTop: bd }}>
+          {b.hasSeal && <img src={b.seal} alt="" style={{ height: 34, objectFit: 'contain', opacity: 0.9 }} />}
+          <div style={{ textAlign: 'center' }}>
+            {b.hasSignature && <img src={b.signature} alt="" style={{ height: 22, objectFit: 'contain', display: 'block', margin: '0 auto' }} />}
+            <div style={{ fontSize: 8, borderTop: '1px solid #555', paddingTop: 1, marginTop: 1 }}>{b.signatureText || t('Authorized Signatory')}</div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );

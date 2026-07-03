@@ -55,6 +55,11 @@ const BRANDING_FIELDS = [
   'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
   'city', 'state', 'pincode', 'emailSignature',
   'faviconImage', 'stampImage', 'digitalSignatureImage',
+  // Department management (Settings → Manage Departments) — writable here so a
+  // Company Head can add/rename/delete/reorder departments (the full company PUT
+  // is Super-Admin-only). customDepartments is a Json array column; departmentMeta
+  // is a Json map of per-department metadata keyed by name.
+  'customDepartments', 'departmentMeta', 'inheritParentDepartments', 'departmentTemplateType', 'companyIndustry',
   ...COMPANY_MASTER_FIELDS,
 ];
 
@@ -174,6 +179,95 @@ exports.updateBranding = async (req, res) => {
   }
 };
 
+// ── Department Management (Settings → Manage Departments) ─────────────────────
+// A department-specific endpoint that is authorized by the SETTINGS module
+// permission (View/Edit) and its own company-isolation check — NOT the company
+// branding authorization. It writes ONLY department columns, so branding / company
+// profile / logo / theme are never touched here. This decouples "edit department"
+// from "edit branding": a user with Settings → Edit can manage departments even if
+// they have no branding rights, and the confusing "…edit branding for your own
+// company" error can never surface from this flow.
+const DEPARTMENT_FIELDS = ['customDepartments', 'departmentMeta', 'inheritParentDepartments', 'departmentTemplateType'];
+
+// Resolve any company/branch id to its TOP-LEVEL company id (departments live on
+// the company, never on a branch). Returns the id unchanged if it can't be found.
+async function resolveTopCompanyId(id) {
+  if (!id && id !== 0) return null;
+  const c = await prisma.company.findUnique({ where: { id } }).catch(() => null);
+  if (c) return c.parentCompanyId || c.id;
+  const b = await prisma.branch.findUnique({ where: { id } }).catch(() => null);
+  return b ? b.companyId : id;
+}
+
+exports.updateDepartments = async (req, res) => {
+  try {
+    const role = req.user?.role;
+    if (!role || role === 'Employee' || role === 'Staff') {
+      return res.status(403).json({ error: 'You do not have permission to manage departments.' });
+    }
+
+    // Departments live on the top-level company — resolve a branch/sub-company id
+    // to its parent so every consumer reads the same list.
+    const rawId = idParam(req.params.id);
+    const companyId = await resolveTopCompanyId(rawId);
+
+    if (role !== 'Super Admin') {
+      // ── Company isolation ──────────────────────────────────────────────────
+      // The target company (resolved to top level) MUST be one the user actually
+      // belongs to. We resolve every id in the user's grant set (own company +
+      // accessible companies/branches) to its parent company, so a user can manage
+      // departments from any of their own workspaces but NEVER another company's.
+      const ownIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(v => v || v === 0);
+      const allowedTop = new Set(
+        (await Promise.all(ownIds.map(resolveTopCompanyId))).filter(v => v || v === 0).map(String)
+      );
+      if (!allowedTop.has(String(companyId))) {
+        return res.status(403).json({ error: 'You can only manage departments for your own company.' });
+      }
+
+      // ── Permission: Settings → Edit ────────────────────────────────────────
+      // Company Head owns company settings by default. Every other role (HR,
+      // Finance, Manager…) needs an explicit Settings edit grant. Create / delete /
+      // reorder all fold into EDIT, matching the 4-action permission model, so this
+      // single check covers Add / Edit / Delete / Reorder department.
+      if (role !== 'Company Head') {
+        const perms = req.user.permissions || {};
+        const moduleAccess = perms.moduleAccess || {};
+        const granular = perms.permissions || {};
+        const settingsEnabled = moduleAccess.settings !== false;
+        const canEditSettings = granular.settings?.edit === true
+          || granular.settings?.manage === true
+          || granular.settings?.create === true;
+        if (!settingsEnabled || !canEditSettings) {
+          return res.status(403).json({ error: 'You need Settings → Edit permission to manage departments.' });
+        }
+      }
+    }
+
+    // Only department columns are writable here — nothing else on the company row.
+    const data = {};
+    for (const f of DEPARTMENT_FIELDS) if (req.body[f] !== undefined) data[f] = req.body[f];
+    if (Object.keys(data).length === 0) {
+      return res.status(400).json({ error: 'No department fields supplied.' });
+    }
+
+    const updated = await prisma.company.update({ where: { id: companyId }, data });
+
+    if (req.user?.id) {
+      await AuditService.logAudit(req.user.id, 'MANAGE_DEPARTMENTS', 'Department', String(companyId), {
+        count: Array.isArray(data.customDepartments) ? data.customDepartments.length : undefined,
+        by: req.user.name || req.user.email,
+      });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating departments:', error);
+    if (error.code === 'P2025') return res.status(404).json({ error: 'Company not found.' });
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
 // Get all companies
 exports.getCompanies = async (req, res) => {
   try {
@@ -206,6 +300,18 @@ exports.getCompanies = async (req, res) => {
         headcount: _count.employees
       };
     });
+
+    // Attach the primary Owner/Director (for {{owner_*}} document placeholders).
+    // Owners live on the TOP-LEVEL company, so a branch inherits its parent's.
+    // Guarded so an un-migrated DB never breaks the companies list.
+    try {
+      const topIds = [...new Set(enrichedCompanies.map(c => c.parentCompanyId || c.id))];
+      if (topIds.length) {
+        const primaries = await prisma.companyOwner.findMany({ where: { companyId: { in: topIds }, isPrimary: true } });
+        const byCompany = Object.fromEntries(primaries.map(o => [o.companyId, o]));
+        for (const c of enrichedCompanies) c.primaryOwner = byCompany[c.parentCompanyId || c.id] || null;
+      }
+    } catch { /* CompanyOwner table absent on older DBs — non-fatal */ }
 
     res.json(enrichedCompanies);
   } catch (error) {
