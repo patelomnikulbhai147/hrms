@@ -191,6 +191,16 @@ app.use((req, res) => {
       rawPayload: raw, note: 'HTTP_UNMATCHED_PATH (reached server, no matching route)',
     });
   }
+  // For API calls, be self-describing: a bare "Not found" hides WHICH route was
+  // missing (e.g. a controller not yet loaded on a stale server), making it look
+  // like a resource-not-found instead of an unmatched route. Naming the method +
+  // path turns "❌ Not found" into an immediately diagnosable message.
+  if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
+    return res.status(404).json({
+      error: `API route not found: ${req.method} ${req.originalUrl}`,
+      code: 'ROUTE_NOT_FOUND',
+    });
+  }
   res.status(404).json({ error: 'Not found' });
 });
 
