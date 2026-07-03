@@ -10,5 +10,7 @@ router.use(requireSuperAdmin);
 
 router.get('/super-admin', statisticsController.getSuperAdmin);
 router.get('/platform-reports', statisticsController.getPlatformReports);
+// Read-only, no-PII monitoring summary for a single company (Company Overview).
+router.get('/company-overview/:companyId', statisticsController.getCompanyOverview);
 
 module.exports = router;

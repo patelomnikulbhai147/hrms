@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { type UserAccount, type AppModules, type ModulePermissions } from '@/pages/Login';
+import { getPlatformMatrixModules } from '@/config/moduleRegistry';
 import { foldPermissions } from '@/utils/permissionFold';
 import { formatDateTime } from '@/utils/formatDate';
 import { type Company } from '@/data/mockData';
@@ -31,21 +32,13 @@ interface UsersProps {
   onRefresh?: () => Promise<void> | void;
 }
 
-const MODULES_LIST: { id: AppModules; name: string }[] = [
-  { id: 'dashboard', name: 'Dashboard' },
-  { id: 'companies', name: 'Companies (Super Admin only)' },
-  { id: 'billing', name: 'Billing & Subscriptions' },
-  { id: 'employees', name: 'Employees' },
-  { id: 'leaves', name: 'Leave Management' },
-  { id: 'payroll', name: 'Payroll' },
-  { id: 'attendance', name: 'Attendance' },
-  { id: 'documents', name: 'Documents' },
-  { id: 'reports', name: 'Reports' },
-  { id: 'tasks', name: 'Task Manager' },
-  { id: 'tenders', name: 'Tender Management' },
-  { id: 'contracts', name: 'Contract Management' },
-  { id: 'settings', name: 'Settings' }
-];
+// The Super Admin permission matrix is derived from the single module registry
+// (config/moduleRegistry) — the SAME source that drives the sidebar and the
+// Company Head matrix. It lists every company module PLUS platform-only modules
+// (Companies, SaaS Subscriptions, Audit). Any future module added to the registry
+// appears here automatically with no code change. Each row has a unique `rowId`
+// (React key) and the `key` (AppModules permission) it edits.
+const MODULES_LIST = getPlatformMatrixModules();
 
 const DEFAULT_PERMISSIONS: ModulePermissions = {
   view: true,
@@ -288,17 +281,17 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
     });
   };
   const handleSelectAllPermissions = () => {
-    const mods = MODULES_LIST.map(m => m.id);
+    const mods = MODULES_LIST.map(m => m.key);
     applyMatrix(Object.fromEntries(mods.map(m => [m, true])), Object.fromEntries(mods.map(m => [m, fullPerms(true)])));
   };
   const handleClearAllPermissions = () => {
-    const mods = MODULES_LIST.map(m => m.id);
+    const mods = MODULES_LIST.map(m => m.key);
     applyMatrix(Object.fromEntries(mods.map(m => [m, false])), Object.fromEntries(mods.map(m => [m, fullPerms(false)])));
   };
   const handleApplyTemplate = (templateId: string) => {
     const tpl = ROLE_TEMPLATES.find(t => t.id === templateId);
     if (!tpl) return;
-    const { access, perms } = tpl.build(MODULES_LIST.map(m => m.id));
+    const { access, perms } = tpl.build(MODULES_LIST.map(m => m.key));
     applyMatrix(access, perms);
   };
 
@@ -1346,21 +1339,21 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {MODULES_LIST.map((module) => {
-                          const isEnabled = selectedUser.moduleAccess?.[module.id] ?? true;
-                          const perms = selectedUser.permissions?.[module.id] || DEFAULT_PERMISSIONS;
-                          
+                          const isEnabled = selectedUser.moduleAccess?.[module.key] ?? true;
+                          const perms = selectedUser.permissions?.[module.key] || DEFAULT_PERMISSIONS;
+
                           return (
-                            <div key={module.id} className={cn(
+                            <div key={module.rowId} className={cn(
                               "rounded-xl border transition-all duration-200 flex flex-col bg-white",
                               isEnabled ? "border-slate-200 shadow-sm" : "border-slate-200 bg-slate-50/60 opacity-60"
                             )}>
                               {/* Module Header Row */}
                               <div className="p-3.5 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
                                 <span className={cn("font-bold text-xs tracking-tight", isEnabled ? "text-slate-800" : "text-slate-450 line-through decoration-slate-450")}>
-                                  {module.name}
+                                  {module.label}
                                 </span>
                                 <button
-                                  onClick={() => handleToggleModuleAccess(module.id)}
+                                  onClick={() => handleToggleModuleAccess(module.key)}
                                   className={cn(
                                     "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors duration-200 ease-in-out focus:outline-none shadow-inner",
                                     isEnabled ? "bg-indigo-600" : "bg-slate-300"
@@ -1381,7 +1374,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
                                     return (
                                       <button
                                         key={action}
-                                        onClick={() => handleToggleActionPermission(module.id, action)}
+                                        onClick={() => handleToggleActionPermission(module.key, action)}
                                         className={cn(
                                           "flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all border cursor-pointer",
                                           hasAction

@@ -122,6 +122,7 @@ model Company {
   branchRenewalDate           String?
   companyIndustry             String?
   customDepartments           Json                @default(dbgenerated("(JSON_ARRAY())"))
+  departmentMeta              Json?               // rich per-department metadata keyed by name (code/description/status/color/order/head/…)
   departmentTemplateType      String?
   employeeCapacity            Int?
   footerText                  String?
@@ -219,6 +220,7 @@ model Company {
   watermarkImage              String?             @db.LongText
   attendances                 Attendance[]
   companyContacts             CompanyContact[]
+  companyOwners               CompanyOwner[]
   complianceRecords           ComplianceRecord[]
   branches                    Branch[]
   companyPayrolls             CompanyPayroll[]
@@ -361,6 +363,74 @@ model UnmatchedAttendance {
   @@index([companyId])
   @@index([resolved])
   @@map("unmatched_attendance_queue")
+}
+
+// ── E-TimeOffice pull-API integration (Phase 5: live sync) ──────────────────
+// Per-company connection to the E-TimeOffice attendance cloud. The pull sync
+// reads punches via the documented REST API and upserts them into the existing
+// `attendance` table (single source of truth) — every punch routed through
+// attendanceMatcher.resolvePunch so RULES 1–5 stay enforced. Credentials are
+// stored ENCRYPTED (AES-256-GCM via secretCrypto) and never returned plaintext.
+// Relation-less (companyId Int only) — mirrors AttendanceImportLog so the large
+// Company model is untouched.
+model EtimeConnection {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int       @unique
+  enabled             Boolean   @default(false)
+  apiBaseUrl          String    @default("https://api.etimeoffice.com/api/")
+  corporateId         String?
+  apiUsername         String?
+  apiPassword         String?   @db.Text // AES-256-GCM ciphertext ("enc:v1:..."); never returned plaintext
+  empCode             String    @default("ALL") // Empcode filter for the pull (ALL = every employee)
+  // ── Merged from the retired "Attendance Devices" module (single source of truth) ──
+  vendor              String    @default("E-TimeOffice") // validated against the attendance_vendors registry
+  branchId            Int? // optional branch this connection's devices belong to
+  deviceSerialNumber  String? // optional device serial (metadata)
+  deviceLocation      String? // optional physical location (metadata)
+  syncIntervalMinutes Int       @default(30)
+  syncWindowDays      Int       @default(2) // rolling look-back for the IN/OUT pull (idempotent upsert)
+  lastCursor          String? // MaxRecord cursor for incremental LastRecord pulls (future use)
+  lastSyncAt          DateTime?
+  lastSyncStatus      String? // SUCCESS / PARTIAL / FAILED
+  connectionStatus    String    @default("not_connected") // not_connected / connected / error
+  lastTestAt          DateTime?
+  lastTestStatus      String? // CONNECTED / FAILED
+  lastTestResponseMs  Int?
+  lastError           String?   @db.Text
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@map("etimeoffice_connections")
+}
+
+// One row per sync RUN (manual or scheduled) — the run-level log the spec asks
+// for (start/end, imported/failed/duplicates, status, error). Per-PUNCH verdicts
+// continue to use the existing attendance_import_logs table.
+model AttendanceSyncLog {
+  id           Int       @id @default(autoincrement())
+  companyId    Int
+  source       String    @default("E-TimeOffice")
+  trigger      String    @default("manual") // manual / scheduler
+  status       String    @default("RUNNING") // RUNNING / SUCCESS / PARTIAL / FAILED
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  durationMs   Int?
+  fetched      Int       @default(0)
+  imported     Int       @default(0)
+  updated      Int       @default(0)
+  skipped      Int       @default(0)
+  duplicates   Int       @default(0)
+  unmatched    Int       @default(0)
+  failed       Int       @default(0)
+  httpStatus   Int?
+  windowFrom   String?
+  windowTo     String?
+  errorMessage String?   @db.Text
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([status])
+  @@map("attendance_sync_logs")
 }
 
 // ── Bonus Management — separate bonus transaction system ─────────────────────
@@ -1097,6 +1167,29 @@ model CompanyContact {
   @@index([companyId])
 }
 
+// Company Profile → Basic Information → Owner(s) / Director(s). Additive, isolated
+// table (kept separate from CompanyContact key-personnel). Exactly one row per
+// company may be the primary contact (enforced in the controller). The primary
+// owner feeds the {{owner_*}} document/report placeholders.
+model CompanyOwner {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  name                String
+  designation         String?
+  mobile              String?
+  email               String?
+  ownershipPercentage String?
+  joiningDate         String?
+  notes               String?  @db.Text
+  isPrimary           Boolean  @default(false)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
 // Company Profile → Statutory & Compliance. One row per compliance item the
 // company tracks (PF/ESI/GST/Labour License/FSSAI/insurance/…). The catalog +
 // mandatory grouping lives on the frontend; registration numbers are prefilled
@@ -1416,6 +1509,10 @@ model CommunicationTemplate {
   layout                   String?  @db.LongText // drag-and-drop designer layout (stored only in Phase 1)
   festivalName             String?
   festivalDate             String?
+  // ── WhatsApp readiness (Phase 1 — stored only, never sent) ──────────────────
+  whatsappCompatible       Boolean  @default(false) // template can be used over WhatsApp
+  whatsappRichText         Boolean  @default(false) // body uses WhatsApp rich text (*bold* / _italic_)
+  whatsappCaption          String?  @db.Text // caption shown beneath the image when sent as media
   createdBy                String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -1515,4 +1612,565 @@ model CommunicationHoliday {
   @@index([companyId])
   @@index([date])
   @@map("communication_holidays")
+}
+
+// ── WhatsApp integration foundation (Phase 1 — NO messages are ever sent) ──────
+// Prepares HRMate for the Meta WhatsApp Business Cloud API. Phase 1 only stores
+// configuration, queues simulated messages, and writes simulated delivery logs.
+// Fully isolated (scalar companyId, no Company relation) like the rest of the
+// Communication Center. In Phase 2 the WhatsAppService gains a real Meta client;
+// nothing else about these tables needs to change.
+
+// One row per company — connection + development-mode + (future) Meta credentials.
+model WhatsAppSettings {
+  id               Int      @id @default(autoincrement())
+  companyId        Int      @unique
+  enabled          Boolean  @default(false) // master ON/OFF for WhatsApp communication
+  connectionStatus String   @default("not_connected") // not_connected / pending / connected
+  // Development Mode — when ON every message is redirected to developerTestNumber.
+  developmentMode    Boolean @default(true)
+  developerTestNumber String? // e.g. +91XXXXXXXXXX — the single test recipient
+  // Future Meta credentials — captured in Phase 2 (UI shows them disabled now).
+  metaBusinessId            String?
+  whatsappBusinessAccountId String?
+  phoneNumberId             String?
+  permanentAccessToken      String?  @db.Text // stored ENCRYPTED at rest (secretCrypto)
+  verifyToken               String?  @db.Text // stored ENCRYPTED at rest (secretCrypto)
+  webhookUrl                String?
+  // Phase 2 — live Meta connection state (set by the connection test).
+  apiVersion       String?         // e.g. "v21.0"
+  phoneVerified    Boolean  @default(false)
+  tokenValid       Boolean  @default(false)
+  lastConnectedAt  DateTime?
+  // Phase 2.5 — credential health history & production readiness.
+  businessVerified  Boolean  @default(false)
+  environment       String?         // "sandbox" / "production"
+  tokenExpired      Boolean  @default(false)
+  lastSuccessAt     DateTime?
+  lastFailureAt     DateTime?
+  lastError         String?  @db.Text
+  lastHttpStatus    Int?
+  lastMetaErrorCode String?
+  lastTestedAt      DateTime?
+  // Phase 5 — webhook health + Meta account signals (all additive, nullable).
+  webhookVerified      Boolean  @default(false) // GET verification handshake succeeded
+  lastWebhookAt        DateTime?                 // last inbound status webhook received
+  webhookFailureReason String?  @db.Text
+  qualityRating        String?                   // GREEN / YELLOW / RED (if Meta returns it)
+  messagingLimitTier   String?                   // e.g. TIER_1K / TIER_10K (if available)
+  // Image-template integration — render HRMate gallery designs and send them as
+  // approved WhatsApp IMAGE templates (header media). All additive, nullable.
+  imageTemplateDefault String?                   // Meta template name used when no mapping matches
+  imageTemplateLang    String?                   // default Meta template language code (e.g. en_US)
+  imageTemplateMap     String?  @db.Text         // JSON: { byCategory:{cat:tplName}, byTemplateId:{id:tplName} }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("whatsapp_settings")
+}
+
+// ── Phase 3 — WhatsApp Business Template Management & Approval ─────────────────
+// Synced catalog of the company's Meta-approved WhatsApp message templates. This
+// is SEPARATE from communication_templates (HRMate greeting templates) — never
+// overwrites them. Fully isolated (scalar companyId).
+model WhatsAppMetaTemplate {
+  id                 Int      @id @default(autoincrement())
+  companyId          Int
+  metaTemplateId     String?
+  name               String
+  category           String?  // MARKETING / UTILITY / AUTHENTICATION
+  language           String?  // e.g. en, en_US, gu, hi
+  status             String?  // APPROVED / PENDING / REJECTED / DISABLED / PAUSED
+  components         String?  @db.Text // JSON array from Meta
+  version            String?  // content hash (Meta has no version field) to detect edits
+  bodyVariableCount  Int      @default(0)
+  headerFormat       String?  // TEXT / IMAGE / DOCUMENT / VIDEO / null
+  previousStatus     String?
+  lastStatusChangeAt DateTime?
+  lastSyncedAt       DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("whatsapp_meta_templates")
+}
+
+// Maps one HRMate (communication_templates) template → one Meta template, per
+// language, with a positional variable map ({{1}}→employee_name, …). Scalar
+// hrmateTemplateId (no FK) keeps the module isolated.
+model WhatsAppTemplateMapping {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  hrmateTemplateId    Int?
+  hrmateTemplateName  String?
+  metaTemplateName    String
+  metaTemplateId      String?
+  language            String   @default("en")
+  status              String?  // snapshot of Meta status (refreshed on sync)
+  variableMap         String?  @db.Text // JSON { "1": "employee_name", ... }
+  headerMediaType     String?  // none / image / document / video
+  headerMediaUrl      String?  @db.Text
+  active              Boolean  @default(false) // usable only when Meta status APPROVED
+  lastModifiedAt      DateTime?
+  lastApprovalStatus  String?
+  lastApprovalChangeAt DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("whatsapp_template_mappings")
+}
+
+// Version / approval / sync history for WhatsApp templates & mappings.
+model WhatsAppTemplateEvent {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  templateName String?
+  language     String?
+  event        String   // synced / status_change / version_change / mapped / mapping_updated / test_sent
+  fromValue    String?
+  toValue      String?
+  detail       String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@map("whatsapp_template_events")
+}
+
+// ── Phase 4 — Communication Automation Engine ─────────────────────────────────
+// Generic rules engine that drives ALL communications (birthday/anniversary/
+// festival/announcement/salary/payslip/leave/attendance/custom) over the SAME
+// workflow: resolve recipients → eligibility → render → generate QUEUE entries
+// (never sends directly). Fully isolated (scalar companyId).
+model AutomationRule {
+  id                 Int      @id @default(autoincrement())
+  companyId          Int
+  name               String
+  eventType          String   // birthday/anniversary/festival/announcement/salary_credited/payslip/leave_approved/attendance_reminder/custom
+  triggerType        String   @default("manual") // daily/weekly/monthly/yearly/specific_date/employee_birthday/employee_anniversary/company_holiday/manual/api
+  recipientScope     String   @default("all_active") // today_birthday/today_anniversary/all_active/specific_employee/not_checked_in
+  channel            String   @default("whatsapp")
+  templateMappingId  Int?     // WhatsAppTemplateMapping (preferred)
+  hrmateTemplateId   Int?     // or a communication_templates fallback
+  language           String   @default("en")
+  scheduleTime       String?  // HH:mm
+  scheduleDay        Int?     // 0–6 (weekly) or 1–31 (monthly)
+  scheduleMonth      Int?     // 1–12 (yearly)
+  specificDate       String?  // YYYY-MM-DD
+  specificEmployeeId Int?
+  status             String   @default("active") // active/paused
+  dryRun             Boolean  @default(false)
+  timezone           String?  // IANA tz for scheduleTime matching (default Asia/Kolkata)
+  createdBy          String?
+  lastRunAt          DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("automation_rules")
+}
+
+// Execution history for automation runs (run / preview / dry_run).
+model AutomationRun {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  ruleId             Int?
+  ruleName           String?
+  mode               String   @default("run") // run / preview / dry_run
+  triggerType        String?
+  recipientsEvaluated Int     @default(0)
+  eligibleRecipients Int      @default(0)
+  queuedMessages     Int      @default(0)
+  skippedMessages    Int      @default(0)
+  errorsCount        Int      @default(0)
+  sentMessages       Int?     // 'send' mode: messages actually delivered to Meta (200 + wamid)
+  failedMessages     Int?     // 'send' mode: messages that failed at Meta
+  durationMs         Int?
+  detail             String?  @db.Text // JSON: per-recipient outcomes (sample), errors
+  createdAt          DateTime @default(now())
+
+  @@index([companyId])
+  @@index([ruleId])
+  @@map("automation_runs")
+}
+
+// Phase 2.5 — internal API request history for the Meta Cloud API. NEVER stores
+// credentials; only operational metadata (endpoint/method/status/duration).
+model WhatsAppRequestLog {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  operation     String?         // connection_test / send_test
+  endpoint      String?  @db.Text
+  method        String?
+  httpStatus    Int?
+  ok            Boolean  @default(false)
+  metaMessageId String?
+  metaErrorCode String?
+  durationMs    Int?
+  createdAt     DateTime @default(now())
+
+  @@index([companyId])
+  @@map("whatsapp_request_logs")
+}
+
+// Outbound message queue. Phase 1 only ever stores rows (status Pending) — the
+// queue is NEVER drained against a real API. Statuses model the full lifecycle so
+// Phase 2 can flip them: Pending → Processing → Sent / Failed.
+model WhatsAppQueue {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  employeeId     Int?
+  employeeName   String?
+  templateId     Int?
+  templateName   String?
+  originalNumber String?  // the employee's real mobile (audit trail)
+  resolvedNumber String?  // where it WOULD go (dev test number when dev mode ON)
+  payload        String?  @db.Text // rendered message snapshot (JSON) — no PII rendering in Phase 1
+  status         String   @default("Pending") // Pending / Processing / Sent / Failed
+  attempts       Int      @default(0)
+  errorMessage   String?  @db.Text
+  developmentMode Boolean @default(true)
+  simulated      Boolean  @default(true) // Phase 1 rows are always simulated
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@map("whatsapp_queue")
+}
+
+// Delivery audit log. Records every attempt (simulated in Phase 1) with the
+// original vs. actually-sent number so dev-mode redirection is fully traceable.
+model WhatsAppDeliveryLog {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int?
+  employeeName     String?
+  originalNumber   String?  // the employee's real mobile
+  actualSentNumber String?  // dev test number when dev mode ON, else originalNumber
+  templateId       Int?
+  templateName     String?
+  status           String   @default("Pending") // Pending / Simulated / Sent / Failed
+  errorMessage     String?  @db.Text
+  developmentMode  Boolean  @default(true)
+  simulated        Boolean  @default(true)
+  // Phase 1.5 diagnostics (additive, nullable) — richer delivery log.
+  queueId          Int?            // linked whatsapp_queue row
+  messagePreview   String?  @db.Text // rendered message snapshot for the log view
+  processingMs     Int?            // simulated processing time (ms)
+  // Phase 2 — real Meta Cloud API delivery metadata (additive, nullable).
+  provider         String?         // e.g. "Meta Cloud API" (null = simulated)
+  metaMessageId    String?         // wamid returned by Meta on success
+  errorCode        String?         // Meta error code on failure
+  httpStatus       Int?            // HTTP status from the Graph API call
+  // Phase 5 — delivery lifecycle, driven by the Meta status webhook (additive).
+  metaStatus       String?         // last Meta webhook status: sent/delivered/read/failed
+  sentAt           DateTime?       // Meta "sent" timestamp
+  deliveredAt      DateTime?       // Meta "delivered" timestamp
+  readAt           DateTime?       // Meta "read" timestamp
+  failedAt         DateTime?       // Meta "failed" timestamp
+  failureReason    String?  @db.Text
+  automationRuleId Int?            // originating automation rule (for search/inspector)
+  branch           String?         // recipient branch snapshot (for search/inspector)
+  createdAt        DateTime @default(now())
+
+  @@index([companyId])
+  @@index([status])
+  @@index([metaMessageId])
+  @@map("whatsapp_delivery_logs")
+}
+
+// Phase 5 — raw Meta status webhook events (one row per status transition per
+// message). Fully isolated (scalar companyId). Idempotent via (metaMessageId,
+// status) uniqueness so Meta's at-least-once delivery never double-records.
+model WhatsAppWebhookEvent {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  metaMessageId String?  // wamid the event refers to
+  status        String   // sent / delivered / read / failed
+  recipient     String?  // recipient wa_id
+  eventAt       DateTime? // timestamp Meta reported for the status
+  errorCode     String?
+  errorTitle    String?  @db.Text
+  raw           String?  @db.Text // raw event JSON (for the inspector)
+  createdAt     DateTime @default(now())
+
+  @@unique([metaMessageId, status], name: "wamid_status")
+  @@index([companyId])
+  @@index([metaMessageId])
+  @@map("whatsapp_webhook_events")
+}
+
+// Support Session — the ONLY audited way a Super Admin (platform admin) may enter
+// a company's HR environment. Multi-tenant privacy: without an active session the
+// backend blocks Super Admin from all employee-PII APIs. Fully isolated (scalar
+// ids, no relations) to stay independent.
+model SupportSession {
+  id             Int       @id @default(autoincrement())
+  companyId      Int
+  companyName    String?
+  superAdminId   Int
+  superAdminName String?
+  reason         String    @db.Text
+  ticketNumber   String?
+  status         String    @default("active") // active / ended / expired
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  expiresAt      DateTime?
+  ipAddress      String?
+  userAgent      String?   @db.Text
+  actionCount    Int       @default(0)
+
+  @@index([superAdminId])
+  @@index([companyId])
+  @@index([status])
+  @@map("support_sessions")
+}
+
+// ── Payroll Component Builder ────────────────────────────────────────────────
+// Enterprise payroll component master (Allowance / Deduction / Reimbursement /
+// Bonus / Incentive / Employer Contribution / Loan / Recovery / Custom). Full
+// CRUD, taxability, statutory impact, formula/calculation config, effective
+// dates and lifecycle status. Relation-less (companyId Int only) so the maxed-out
+// Company model is never touched — mirrors the bonus/etime additive models.
+// `usageCount` gates hard-delete: a component that has been used by a payroll run
+// can only be archived/deactivated, never permanently deleted.
+model PayrollComponent {
+  id                Int      @id @default(autoincrement())
+  companyId         Int
+  componentName     String
+  displayName       String?
+  shortCode         String?
+  description       String?  @db.Text
+  componentType     String // Allowance / Deduction / Reimbursement / Bonus / Incentive / Employer Contribution / Loan / Recovery / Custom
+  payrollCategory   String   @default("Fixed") // Fixed / Variable / Attendance Based / Performance Based / Formula Based / Manual Entry
+  calculationMethod String   @default("Fixed Amount") // Fixed Amount / Percentage of Basic / Percentage of Gross / Formula Builder / Manual
+  amount            Float?   @default(0) // for "Fixed Amount"
+  percentage        Float?   @default(0) // for the "Percentage of …" methods
+  formula           String?  @db.Text // for "Formula Builder"
+  taxable           String   @default("Taxable") // Taxable / Non-Taxable / Partially Taxable
+  taxablePercent    Float?   @default(0) // for "Partially Taxable"
+  pfApplicable      Boolean  @default(false)
+  esicApplicable    Boolean  @default(false)
+  ptApplicable      Boolean  @default(false)
+  lwfApplicable     Boolean  @default(false)
+  tdsApplicable     Boolean  @default(false)
+  effectiveFrom     String? // yyyy-MM-dd
+  effectiveTo       String? // yyyy-MM-dd
+  status            String   @default("Active") // Active / Inactive / Archived
+  displayOrder      Int      @default(0)
+  usageCount        Int      @default(0) // >0 → protected from hard-delete
+  lastUsedAt        DateTime?
+  createdBy         String?
+  updatedBy         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, componentType])
+  @@index([companyId, status])
+  @@map("payroll_components")
+}
+
+// Immutable change history for a payroll component (Created / Updated / Cloned /
+// Activated / Deactivated / Archived / Deleted). Relation-less; the View drawer
+// reads this to show the audit trail (who / when / what changed).
+model PayrollComponentAudit {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  componentId Int
+  action      String // CREATED / UPDATED / CLONED / ACTIVATED / DEACTIVATED / ARCHIVED / DELETED
+  changedBy   String?
+  changes     String?  @db.Text // JSON summary of field-level changes
+  createdAt   DateTime @default(now())
+
+  @@index([componentId])
+  @@index([companyId])
+  @@map("payroll_component_audits")
+}
+
+// ── Invoice Management (isolated financial module) ───────────────────────────
+// A self-contained billing module. ALL models are relation-less (companyId Int
+// only, mirrors the bonus/etime/payroll-component pattern) so the maxed-out
+// Company model and every existing table are UNTOUCHED. No FK to Employee/Payroll
+// /Attendance — this module cannot affect HR/payroll data. Additive migration via
+// scripts/addInvoiceModule.js; NEVER `prisma db push`.
+
+model InvoiceCustomer {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  companyName   String
+  contactPerson String?
+  gstin         String?
+  pan           String?
+  email         String?
+  phone         String?
+  addressLine   String?  @db.Text
+  city          String?
+  state         String?
+  country       String?  @default("India")
+  isActive      Boolean  @default(true)
+  notes         String?  @db.Text
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, isActive])
+  @@map("invoice_customers")
+}
+
+model InvoiceProduct {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  hsnSac      String?
+  description String?  @db.Text
+  unit        String?  @default("Nos")
+  rate        Float    @default(0)
+  taxRate     Float    @default(0) // GST %
+  isActive    Boolean  @default(true)
+  createdBy   String?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("invoice_products")
+}
+
+model Invoice {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  invoiceNumber String
+  customerId    Int?
+  // Customer snapshot (invoice stays immutable if the customer record changes).
+  billToName    String
+  billToGstin   String?
+  billToAddress String?  @db.Text
+  billToEmail   String?
+  billToPhone   String?
+  billToState   String?
+  invoiceDate   String // yyyy-MM-dd
+  dueDate       String?
+  currency      String   @default("INR")
+  paymentTerms  String?
+  placeOfSupply String? // customer state → decides CGST+SGST vs IGST
+  // Status workflow: Draft→Generated→Sent→Viewed→Partially Paid→Paid→Closed | Cancelled
+  status        String   @default("Draft")
+  // Money (server-computed; all ≥ 0).
+  subtotal      Float    @default(0)
+  discountTotal Float    @default(0)
+  taxableAmount Float    @default(0)
+  cgst          Float    @default(0)
+  sgst          Float    @default(0)
+  igst          Float    @default(0)
+  roundOff      Float    @default(0)
+  grandTotal    Float    @default(0)
+  amountPaid    Float    @default(0)
+  balanceDue    Float    @default(0)
+  // Presentation / payment info.
+  notes            String? @db.Text
+  termsConditions  String? @db.Text
+  paymentMode      String?
+  bankDetails      String? @db.Text
+  upiId            String?
+  isRecurringChild Boolean @default(false)
+  createdBy     String?
+  updatedBy     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([companyId, customerId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id           Int     @id @default(autoincrement())
+  companyId    Int
+  invoiceId    Int
+  productId    Int?
+  name         String
+  description  String? @db.Text
+  hsnSac       String?
+  quantity     Float   @default(1)
+  unit         String? @default("Nos")
+  rate         Float   @default(0)
+  discountPct  Float   @default(0)
+  discountAmt  Float   @default(0)
+  taxRate      Float   @default(0)
+  taxableValue Float   @default(0)
+  cgst         Float   @default(0)
+  sgst         Float   @default(0)
+  igst         Float   @default(0)
+  amount       Float   @default(0) // line total incl. tax
+  sortOrder    Int     @default(0)
+
+  @@index([invoiceId])
+  @@index([companyId])
+  @@map("invoice_items")
+}
+
+model InvoicePayment {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  invoiceId       Int
+  amount          Float    @default(0)
+  paymentDate     String // yyyy-MM-dd
+  mode            String   @default("Bank") // Cash / Bank / UPI / Cheque / Card / Other
+  referenceNumber String?
+  notes           String?  @db.Text
+  status          String   @default("Paid") // Paid / Partial / Pending / Failed / Refunded
+  recordedBy      String?
+  createdAt       DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([companyId])
+  @@map("invoice_payments")
+}
+
+model InvoiceSettings {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int      @unique
+  invoicePrefix       String   @default("INV")
+  numberFormat        String   @default("{PREFIX}-{FY}-{SEQ}") // tokens: {PREFIX}{FY}{YYYY}{MM}{SEQ}
+  nextNumber          Int      @default(1)
+  seqPadding          Int      @default(4)
+  defaultCurrency     String   @default("INR")
+  defaultPaymentTerms String?  @default("Net 30")
+  defaultNotes        String?  @db.Text
+  defaultTerms        String?  @db.Text
+  companyGstin        String?
+  bankDetails         String?  @db.Text
+  upiId               String?
+  logoUrl             String?  @db.Text
+  signatureUrl        String?  @db.Text
+  themeColor          String?  @default("#4F7CFF")
+  footerText          String?  @db.Text
+  designJson          String?  @db.Text // Invoice Designer template config (JSON)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("invoice_settings")
+}
+
+// Immutable audit trail for the whole invoice module.
+model InvoiceAudit {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  entityType  String // Invoice / Customer / Product / Payment / Settings
+  entityId    Int?
+  invoiceId   Int?
+  action      String // CREATED / UPDATED / SENT / PRINTED / EMAILED / PAYMENT_RECORDED / CANCELLED / DELETED
+  performedBy String?
+  details     String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([invoiceId])
+  @@map("invoice_audits")
 }

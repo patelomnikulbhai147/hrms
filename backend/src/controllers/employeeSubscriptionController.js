@@ -16,6 +16,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
+const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 const isSuper = (req) => req.user?.role === 'Super Admin';
@@ -27,9 +28,12 @@ async function getOrCreateConfig() {
   return cfg;
 }
 
-// Count CURRENTLY active employees for a company (status === 'Active' only).
+// Count CURRENTLY active employees for a company. Uses the single-source
+// ACTIVE_EMPLOYEE_WHERE (not-offboarded) so the billing peak agrees with the
+// headcount shown everywhere else (was strict status==='Active', which could
+// diverge from the roster once statuses like Probation/Notice are used).
 async function countActiveEmployees(companyId) {
-  return prisma.employee.count({ where: { companyId, status: 'Active' } });
+  return prisma.employee.count({ where: { companyId, ...ACTIVE_EMPLOYEE_WHERE } });
 }
 // Count live (non-archived) branches a company actually uses.
 async function countUsedBranches(companyId) {

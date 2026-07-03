@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Communication Center — Phase 1 foundation (storage only, NO sending).
+// Communication Center — enterprise communication module.
 //
-// Central hub for employee communications: templates, a (UI-only) drag-and-drop
-// designer, birthday / festival / announcement management, a scheduler that only
-// STORES schedules, an (empty) delivery log, and a settings page whose providers
-// are disabled ("Coming in Phase 2"). Nothing is actually delivered — WhatsApp /
-// SMS / Email / Push are intentionally deferred. Backed by /api/communication.
+// Central hub for employee communications: templates, a drag-and-drop designer,
+// birthday / festival / announcement management, schedules, delivery logs, and a
+// full WhatsApp integration (Meta Cloud API) with template management, a delivery
+// queue, scheduler, automation rules and live diagnostics. WhatsApp delivery is
+// live; Email / SMS / Push are out of scope. Backed by /api/communication.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,15 +13,20 @@ import {
   Truck, Settings as SettingsIcon, Plus, Edit, Trash2, Search, Eye,
   Send, CalendarClock, Lock, Upload, X, MessageSquare, FileStack, Sparkles, Mail, Smartphone,
   CalendarDays, Download, Copy, ChevronLeft, ChevronRight, List as ListIcon, LayoutGrid, Star,
+  MessageCircle, ShieldCheck, AlertTriangle, FlaskConical, CheckCircle2, Award, Banknote,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { ui } from '@/components/ui/feedback';
+import { DevelopmentBanner } from '@/components/ui/DevelopmentBanner';
 import { api } from '@/api/apiClient';
+import { usePermissions } from '@/context/PermissionContext';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
+import { CommunicationEventModule, EVENT_CONFIGS } from './communication/eventModule';
+import { WhatsAppHealthTab, WhatsAppExplorerTab, WhatsAppWidget } from './communication/whatsappOps';
 
 // ── Static libraries (mirrors the backend; available offline for the UI) ──────
 const CATEGORIES = [
@@ -41,25 +46,99 @@ const DESIGNER_ELEMENTS = [
   'Header', 'Footer', 'Dynamic Text', 'Company Name', 'Greeting Message',
 ];
 
-const TABS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'templates', label: 'Templates', icon: FileText },
-  { id: 'designer', label: 'Template Designer', icon: LayoutTemplate },
-  { id: 'birthday', label: 'Birthday Wishes', icon: Cake },
-  { id: 'festival', label: 'Festival Greetings', icon: PartyPopper },
-  { id: 'holidays', label: 'Holiday Calendar', icon: CalendarDays },
-  { id: 'announcements', label: 'Company Announcements', icon: Megaphone },
-  { id: 'scheduled', label: 'Scheduled Messages', icon: Clock },
-  { id: 'logs', label: 'Delivery Logs', icon: Truck },
-  { id: 'settings', label: 'Settings', icon: SettingsIcon },
-] as const;
-type TabId = typeof TABS[number]['id'];
+// ── Navigation model ──────────────────────────────────────────────────────────
+// Two levels: SEVEN primary modules across the top, each opening a grouped left
+// side-nav of secondary items. Every leaf `id` maps 1:1 to a content panel in the
+// render switch below, so the complete feature set is preserved — only the
+// navigation is consolidated (was 23 flat tabs, prone to horizontal scrolling).
+// New communication features slot into an existing module's `groups` with no
+// change to the top-level bar, so the nav scales cleanly.
+type TabId =
+  | 'dashboard'
+  | 'templates' | 'designer'
+  | 'birthday' | 'anniversary' | 'festival' | 'holiday-greet'
+  | 'announce-send' | 'announcements'
+  | 'salary' | 'payslip' | 'leave' | 'attendance'
+  | 'automation' | 'scheduled' | 'wa-scheduler'
+  | 'logs' | 'wa-queue' | 'wa-explorer'
+  | 'whatsapp' | 'wa-templates' | 'wa-health'
+  | 'settings' | 'holidays';
+
+type IconType = React.ComponentType<{ size?: number | string; className?: string }>;
+interface NavLeaf { id: TabId; label: string; icon: IconType; }
+interface NavGroup { label?: string; items: NavLeaf[]; }
+interface NavModule { id: string; label: string; icon: IconType; groups: NavGroup[]; }
+
+const MODULES: NavModule[] = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, groups: [
+    { items: [{ id: 'dashboard', label: 'Overview', icon: LayoutDashboard }] },
+  ] },
+  { id: 'templates', label: 'Templates', icon: LayoutTemplate, groups: [
+    { items: [
+      { id: 'templates', label: 'Template Library', icon: FileText },
+      { id: 'designer', label: 'Template Designer', icon: LayoutTemplate },
+    ] },
+  ] },
+  { id: 'campaigns', label: 'Campaigns', icon: Megaphone, groups: [
+    { label: 'Greetings', items: [
+      { id: 'birthday', label: 'Birthday Wishes', icon: Cake },
+      { id: 'anniversary', label: 'Work Anniversary', icon: Award },
+      { id: 'festival', label: 'Festival Greetings', icon: PartyPopper },
+      { id: 'holiday-greet', label: 'Holiday Greetings', icon: CalendarDays },
+    ] },
+    { label: 'Announcements', items: [
+      { id: 'announce-send', label: 'Send Announcement', icon: Megaphone },
+      { id: 'announcements', label: 'Manage Announcements', icon: FileStack },
+    ] },
+    { label: 'Payroll Alerts', items: [
+      { id: 'salary', label: 'Salary Credited', icon: Banknote },
+      { id: 'payslip', label: 'Payslip Available', icon: FileText },
+    ] },
+    { label: 'HR Operations', items: [
+      { id: 'leave', label: 'Leave Updates', icon: CheckCircle2 },
+      { id: 'attendance', label: 'Attendance Reminder', icon: Clock },
+    ] },
+  ] },
+  { id: 'automation', label: 'Automation', icon: Sparkles, groups: [
+    { items: [
+      { id: 'automation', label: 'Automation Rules', icon: Sparkles },
+      { id: 'scheduled', label: 'Scheduled Messages', icon: Clock },
+      { id: 'wa-scheduler', label: 'WhatsApp Scheduler', icon: CalendarClock },
+    ] },
+  ] },
+  { id: 'delivery', label: 'Delivery & Logs', icon: Truck, groups: [
+    { items: [
+      { id: 'logs', label: 'Delivery Logs', icon: Truck },
+      { id: 'wa-queue', label: 'WhatsApp Queue', icon: ListIcon },
+      { id: 'wa-explorer', label: 'Message Explorer', icon: Search },
+    ] },
+  ] },
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, groups: [
+    { items: [
+      { id: 'whatsapp', label: 'WhatsApp Settings', icon: MessageCircle },
+      { id: 'wa-templates', label: 'WhatsApp Templates', icon: LayoutTemplate },
+      { id: 'wa-health', label: 'Health & Diagnostics', icon: ShieldCheck },
+    ] },
+  ] },
+  { id: 'settings', label: 'Settings', icon: SettingsIcon, groups: [
+    { items: [
+      { id: 'settings', label: 'General Settings', icon: SettingsIcon },
+      { id: 'holidays', label: 'Holiday Calendar', icon: CalendarDays },
+    ] },
+  ] },
+];
+
+// Flat leaf lookup + reverse map (leaf → owning module) so deep links / quick
+// actions (setTab('templates')) light up the correct primary module too.
+const LEAVES: NavLeaf[] = MODULES.flatMap(m => m.groups.flatMap(g => g.items));
+const MODULE_OF: Record<string, NavModule> = MODULES.reduce((acc, m) => {
+  m.groups.forEach(g => g.items.forEach(it => { acc[it.id] = m; }));
+  return acc;
+}, {} as Record<string, NavModule>);
 
 const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
   const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = reject; r.readAsDataURL(file);
 });
-
-const Phase2Badge = () => <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600 border border-amber-200">Available in Phase 2</span>;
 
 // ── Professional greeting-card rendering ──────────────────────────────────────
 // Templates carry a portable DESIGN spec (gradient + accent + artwork + one of 5
@@ -292,6 +371,10 @@ export const CommunicationCenter: React.FC<Props> = () => {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [branding, setBranding] = useState<Branding>({ companyName: 'Vishv Enterprise' });
 
+  // Which primary module owns the active leaf → drives the top bar + side-nav.
+  const activeModule = MODULE_OF[tab] || MODULES[0];
+  const showSideNav = LEAVES.filter(l => MODULE_OF[l.id]?.id === activeModule.id).length > 1;
+
   // Pull company branding from Company Profile (single source of truth) so every
   // card automatically shows the real company name / logo / footer / signature.
   useEffect(() => {
@@ -315,32 +398,85 @@ export const CommunicationCenter: React.FC<Props> = () => {
       {/* Header */}
       <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm">
         <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><MessageSquare size={16} className="text-[#4F7CFF]" /> Communication Center</h2>
-        <p className="text-[11px] text-slate-400">Central hub for employee notifications, greetings & announcements · Phase 1 (foundation)</p>
+        <p className="text-[11px] text-slate-400">Central hub for employee notifications, greetings & announcements · WhatsApp delivery, automation & live diagnostics</p>
       </div>
 
-      {/* Sub navigation */}
+      {/* Development-status banner — permanent & non-dismissible by design.
+          Remove this <DevelopmentBanner /> from the JSX when the module ships. */}
+      <DevelopmentBanner
+        status="development"
+        message="The Communication Center is under active development. Some features may be incomplete or change during development. Existing stable functionality is safe to use."
+      />
+
+      {/* Primary module navigation (7 modules — no horizontal scrolling) */}
       <div className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map(t => {
-          const Icon = t.icon;
+        {MODULES.map(m => {
+          const Icon = m.icon;
+          const active = activeModule.id === m.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
-              <Icon size={14} /> {t.label}
+            <button key={m.id} onClick={() => setTab(m.groups[0].items[0].id)}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <Icon size={14} /> {m.label}
             </button>
           );
         })}
       </div>
 
+      {/* Module body: grouped left side-nav (when the module has >1 leaf) + panel */}
+      <div className={showSideNav ? 'flex flex-col gap-4 md:flex-row' : ''}>
+        {showSideNav && (
+          <aside className="shrink-0 md:w-56">
+            <nav className="space-y-3 rounded-2xl border border-slate-200 bg-white p-2 md:sticky md:top-2">
+              {activeModule.groups.map((g, gi) => (
+                <div key={gi}>
+                  {g.label && <p className="px-2 pb-1 pt-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-400">{g.label}</p>}
+                  <div className="space-y-0.5">
+                    {g.items.map(it => {
+                      const I = it.icon;
+                      const on = tab === it.id;
+                      return (
+                        <button key={it.id} onClick={() => setTab(it.id)}
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-bold transition-colors ${on ? 'bg-[#EDF4FF] text-[#4F7CFF]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                          <I size={15} /> <span className="truncate">{it.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </aside>
+        )}
+
+        <div className="min-w-0 flex-1">
       {tab === 'dashboard' && <DashboardTab onGo={setTab} />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'designer' && <DesignerTab />}
-      {tab === 'birthday' && <BirthdayTab />}
-      {tab === 'festival' && <FestivalTab />}
+      {/* Event communication modules — single shared engine, config-driven */}
+      {tab === 'birthday' && <EventTab cfg="birthday" />}
+      {tab === 'anniversary' && <EventTab cfg="anniversary" />}
+      {tab === 'festival' && <EventTab cfg="festival" />}
+      {tab === 'holiday-greet' && <EventTab cfg="holiday" />}
+      {tab === 'announce-send' && <EventTab cfg="announcement" />}
+      {tab === 'salary' && <EventTab cfg="salary" />}
+      {tab === 'payslip' && <EventTab cfg="payslip" />}
+      {tab === 'leave' && <EventTab cfg="leave" />}
+      {tab === 'attendance' && <EventTab cfg="attendance" />}
+      {/* Content authoring (kept intact — feed the engine above) */}
       {tab === 'holidays' && <HolidayTab />}
       {tab === 'announcements' && <AnnouncementsTab />}
       {tab === 'scheduled' && <ScheduledTab />}
       {tab === 'logs' && <DeliveryLogsTab />}
+      {tab === 'whatsapp' && <WhatsAppSettingsTab />}
+      {tab === 'wa-health' && <WhatsAppHealthTab />}
+      {tab === 'wa-explorer' && <WhatsAppExplorerTab />}
+      {tab === 'wa-templates' && <WhatsAppTemplatesTab />}
+      {tab === 'wa-queue' && <WhatsAppQueueTab />}
+      {tab === 'wa-scheduler' && <WhatsAppSchedulerTab />}
+      {tab === 'automation' && <AutomationRulesTab />}
       {tab === 'settings' && <SettingsTab />}
+        </div>
+      </div>
     </div>
     </BrandingCtx.Provider>
   );
@@ -373,6 +509,25 @@ const DashboardTab: React.FC<{ onGo: (t: TabId) => void }> = ({ onGo }) => {
         <Card label="Upcoming Holidays" value={loading ? '—' : v('upcomingHolidays')} icon={<CalendarDays size={16} />} tone="bg-teal-50 text-teal-600" />
         <Card label="Draft Messages" value={loading ? '—' : v('draftMessages')} icon={<FileStack size={16} />} tone="bg-slate-100 text-slate-500" />
       </div>
+
+      {/* WhatsApp summary (Phase 1.5) */}
+      <div>
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold text-slate-700"><MessageCircle size={14} className="text-emerald-600" /> WhatsApp Summary
+          <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200">Live · Meta Cloud API</span></p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <Card label="WhatsApp Templates" value={loading ? '—' : v('whatsappTemplates')} icon={<MessageCircle size={16} />} tone="bg-emerald-50 text-emerald-600" />
+          <Card label="Pending Messages" value={loading ? '—' : v('whatsappPending')} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
+          <Card label="Simulated Messages" value={loading ? '—' : v('whatsappSimulated')} icon={<FlaskConical size={16} />} tone="bg-indigo-50 text-indigo-600" />
+          <Card label="Failed Messages" value={loading ? '—' : v('whatsappFailed')} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
+          <Card label="Development Mode" value={loading ? '—' : (d?.whatsappDevelopmentMode ? 'ON' : 'OFF')} icon={<ShieldCheck size={16} />} tone={d?.whatsappDevelopmentMode ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'} />
+          <Card label="Upcoming Birthday Messages" value={loading ? '—' : v('upcomingBirthdayMessages')} icon={<Cake size={16} />} tone="bg-pink-50 text-pink-600" />
+          <Card label="Upcoming Festival Messages" value={loading ? '—' : v('upcomingFestivalMessages')} icon={<PartyPopper size={16} />} tone="bg-orange-50 text-orange-600" />
+        </div>
+        {/* Live WhatsApp dashboard widget (Phase 5) */}
+        <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <WhatsAppWidget />
+        </div>
+      </div>
       <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
         <p className="mb-2 text-xs font-extrabold text-slate-700">Quick actions</p>
         <div className="flex flex-wrap gap-2">
@@ -381,7 +536,7 @@ const DashboardTab: React.FC<{ onGo: (t: TabId) => void }> = ({ onGo }) => {
           <Button size="sm" variant="outline" icon={<CalendarDays size={14} />} onClick={() => onGo('holidays')}>Holiday Calendar</Button>
           <Button size="sm" variant="outline" icon={<Clock size={14} />} onClick={() => onGo('scheduled')}>Schedule a Message</Button>
         </div>
-        <p className="mt-3 text-[11px] text-slate-400">Sending (WhatsApp / SMS / Email / Push) arrives in Phase 2. Phase 1 lets you build and store everything in advance.</p>
+        <p className="mt-3 text-[11px] text-slate-400">WhatsApp delivery is live via the Meta Cloud API. Configure delivery rules in <b>Automation Rules</b> and monitor results in <b>WhatsApp Queue</b> &amp; <b>Delivery Logs</b>.</p>
       </div>
     </div>
   );
@@ -408,9 +563,10 @@ const starterDesign = () => ({
   theme: { bg1: '#4f46e5', bg2: '#9333ea', background: 'linear-gradient(135deg,#4f46e5 0%,#9333ea 100%)', accent: '#fde047', text: '#ffffff', font: "'Trebuchet MS',sans-serif", emoji: '🎉', art: 'celebration', layoutKind: 'classic' },
   greetingTitle: '', subtitle: '', signoff: 'Best wishes, {{company_name}}',
 });
-const blankTemplate = () => ({ title: '', category: 'Birthday Wishes', subject: '', body: '', status: 'Draft', backgroundImage: '', companyLogo: '', employeePhotoPlaceholder: true, festivalName: '', festivalDate: '', layout: starterDesign() });
+const blankTemplate = () => ({ title: '', category: 'Birthday Wishes', subject: '', body: '', status: 'Draft', backgroundImage: '', companyLogo: '', employeePhotoPlaceholder: true, festivalName: '', festivalDate: '', layout: starterDesign(), whatsappCompatible: false, whatsappRichText: false, whatsappCaption: '' });
 
 const TemplatesTab: React.FC = () => {
+  const branding = useContext(BrandingCtx);
   const [items, setItems] = useState<any[]>([]);
   const [samples, setSamples] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -566,7 +722,7 @@ const TemplatesTab: React.FC = () => {
             <div className="lg:sticky lg:top-0 lg:self-start">
               <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">Live Preview</p>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><GreetingCard item={draft} /></div>
-              <p className="mt-2 text-[10px] text-slate-400">Shows sample data (e.g. “OM PATEL”). Real employee &amp; company details merge in Phase 2.</p>
+              <p className="mt-2 text-[10px] text-slate-400">Shows sample data (e.g. “OM PATEL”). Real employee &amp; company details are merged automatically when each message is sent.</p>
             </div>
 
             {/* Form */}
@@ -595,6 +751,11 @@ const TemplatesTab: React.FC = () => {
                     <button key={p} type="button" onClick={() => setDraft((d: any) => ({ ...d, body: `${d.body || ''}${p}` }))}
                       className="rounded-lg border border-indigo-150 bg-white px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white">{p}</button>
                   ))}
+                </div>
+                {/* Live placeholder preview — replaces {{tokens}} with sample data (design only) */}
+                <div className="mt-2 rounded-xl border border-emerald-150 bg-emerald-50/40 p-2.5">
+                  <p className="mb-1 flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide text-emerald-700"><Eye size={11} /> Live Placeholder Preview <span className="font-semibold normal-case text-emerald-600/70">(sample data — e.g. OM PATEL · {branding.companyName})</span></p>
+                  <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-700">{fillSample(draft.body, branding) || <span className="italic text-slate-400">Your message preview will appear here…</span>}</p>
                 </div>
               </div>
               <Input label="Sign-off" value={dLayout.signoff || ''} onChange={e => setLayoutField({ signoff: e.target.value })} placeholder="Best wishes, {{company_name}}" />
@@ -646,6 +807,30 @@ const TemplatesTab: React.FC = () => {
                 </label>
                 <p className="mt-2 text-[10px] text-slate-400">Drag-and-drop positioning of elements arrives in a future enhancement; layout presets cover placement for now.</p>
               </div>
+
+              {/* WhatsApp delivery options */}
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                <p className="mb-2 flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-700"><MessageCircle size={13} /> WhatsApp Options
+                  <span className="ml-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700">Live · Meta Cloud API</span></p>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex w-fit items-center gap-2 text-[11px] font-semibold text-slate-600">
+                    <input type="checkbox" checked={!!draft.whatsappCompatible} onChange={e => setDraft({ ...draft, whatsappCompatible: e.target.checked })} />
+                    WhatsApp Compatible
+                  </label>
+                  <label className="flex w-fit items-center gap-2 text-[11px] font-semibold text-slate-600">
+                    <input type="checkbox" checked={!!draft.whatsappRichText} onChange={e => setDraft({ ...draft, whatsappRichText: e.target.checked })} />
+                    Rich Text (*bold* / _italic_)
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <label className="mb-1 block text-[11px] font-bold text-slate-500">Image Caption (shown beneath the image on WhatsApp)</label>
+                  <textarea value={draft.whatsappCaption || ''} onChange={e => setDraft({ ...draft, whatsappCaption: e.target.value })} rows={2}
+                    className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-emerald-500 focus:outline-none"
+                    placeholder="e.g. Wishing you a wonderful day, {{employee_name}}! — supports placeholders" />
+                  {draft.whatsappCaption && <p className="mt-1 text-[10px] text-emerald-700/80"><b>Preview:</b> {fillSample(draft.whatsappCaption, branding)}</p>}
+                </div>
+                <p className="mt-2 text-[10px] text-emerald-700/70">The background image above is used as the WhatsApp media. These settings drive delivery through the Meta Cloud API.</p>
+              </div>
             </div>
           </div>
         </Modal>
@@ -666,7 +851,7 @@ const TemplatesTab: React.FC = () => {
               {preview.styleName && <Badge variant="blue">{preview.styleName} style</Badge>}
             </div>
           </div>
-          <p className="mt-2 text-center text-[10px] text-slate-400">Preview uses sample employee data (e.g. “OM PATEL”). Real employee details are merged when sending in Phase 2.</p>
+          <p className="mt-2 text-center text-[10px] text-slate-400">Preview uses sample employee data (e.g. “OM PATEL”). Real employee details are merged automatically when each message is sent.</p>
         </Modal>
       )}
     </div>
@@ -682,7 +867,7 @@ const DesignerTab: React.FC = () => {
     if (!name.trim()) { ui.toast.error('Give the layout a name.'); return; }
     try {
       await api.communication.templates.create({ title: name, category: 'Custom Templates', status: 'Draft', layout: { elements: placed } });
-      ui.toast.success('Layout saved as a draft template. Visual rendering arrives in Phase 2.');
+      ui.toast.success('Layout saved as a draft template.');
       setName(''); setPlaced([]);
     } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
@@ -690,7 +875,7 @@ const DesignerTab: React.FC = () => {
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
         <p className="mb-2 text-xs font-extrabold text-slate-700">Elements</p>
-        <p className="mb-3 text-[10px] text-slate-400">Click to place onto the canvas (drag positioning &amp; live rendering come in Phase 2).</p>
+        <p className="mb-3 text-[10px] text-slate-400">Click to place onto the canvas. Layout presets cover placement; saved layouts are reusable templates.</p>
         <div className="flex flex-wrap gap-1.5">
           {DESIGNER_ELEMENTS.map(el => (
             <button key={el} onClick={() => add(el)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#4F7CFF] hover:text-[#4F7CFF]">+ {el}</button>
@@ -722,60 +907,17 @@ const DesignerTab: React.FC = () => {
   );
 };
 
-// ── Birthday Wishes (Phase 2 for sending) ─────────────────────────────────────
-const BirthdayTab: React.FC = () => (
-  <div className="space-y-3">
-    <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-semibold text-amber-700">
-      <span>Auto birthday detection &amp; sending</span><Phase2Badge />
-    </div>
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-      {['Today\'s Birthdays', 'Upcoming Birthdays', 'Sent History'].map(s => (
-        <div key={s} className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Cake size={14} className="text-pink-500" /> {s}</p>
-          <EmptyState small icon={<Cake size={22} />} title="Available in Phase 2" subtitle="Birthday detection activates with sending." />
-        </div>
-      ))}
-    </div>
-    <div className="flex gap-2">
-      <Button size="sm" disabled icon={<Send size={14} />}>Send</Button>
-      <Button size="sm" variant="outline" disabled icon={<CalendarClock size={14} />}>Schedule</Button>
-    </div>
-  </div>
-);
-
-// ── Festival Greetings (create templates only) ────────────────────────────────
-const FestivalTab: React.FC = () => {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const load = async () => { setLoading(true); try { setItems(await api.communication.templates.list('Festival Greetings')); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } };
-  useEffect(() => { load(); }, []);
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-[11px] font-semibold text-indigo-700">
-        <span>Create festival greeting templates here. Sending &amp; auto-scheduling arrive in Phase 2.</span><Phase2Badge />
-      </div>
-      {loading ? <div className="py-12 text-center text-sm text-slate-500">Loading…</div>
-        : items.length === 0 ? <EmptyState icon={<PartyPopper size={26} />} title="No festival templates" subtitle="Add festival greeting templates from the Templates tab (category: Festival Greetings)." />
-          : (
-            <div className="overflow-hidden rounded-xl border border-slate-200">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50 text-slate-500"><tr>{['Festival', 'Date', 'Template', 'Status', 'Preview'].map(h => <th key={h} className="px-3 py-2 text-left font-bold">{h}</th>)}</tr></thead>
-                <tbody>
-                  {items.map(t => (
-                    <tr key={t.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-semibold text-slate-700">{t.festivalName || '—'}</td>
-                      <td className="px-3 py-2">{formatDate(t.festivalDate)}</td>
-                      <td className="px-3 py-2">{t.title}</td>
-                      <td className="px-3 py-2"><Badge variant={t.status === 'Active' ? 'green' : 'amber'}>{t.status}</Badge></td>
-                      <td className="px-3 py-2 text-slate-400">{t.body ? `${String(t.body).slice(0, 40)}…` : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-    </div>
-  );
+// ── Event communication modules — ONE shared engine, config-driven ────────────
+// Birthday, Work Anniversary, Festival, Holiday, Announcement, Salary, Payslip,
+// Leave and Attendance all render through CommunicationEventModule. Only the
+// EVENT_CONFIGS entry (title / icon / colour / data source / template category /
+// automation trigger / preview) differs — every shared enterprise feature
+// (summary cards, employee cards, preview drawer, manual send, view details,
+// filters, export, automation info, audit trail, queue & delivery status, empty
+// states, confirmation dialogs) is inherited from the engine. No duplication.
+const EventTab: React.FC<{ cfg: keyof typeof EVENT_CONFIGS }> = ({ cfg }) => {
+  const branding = useContext(BrandingCtx);
+  return <CommunicationEventModule config={EVENT_CONFIGS[cfg]} branding={{ companyName: branding.companyName, logo: branding.logo }} />;
 };
 
 // ── Holiday Calendar ──────────────────────────────────────────────────────────
@@ -1021,7 +1163,7 @@ const HolidayTab: React.FC = () => {
             <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600"><input type="checkbox" checked={!!draft.isOptionalHoliday} onChange={e => setDraft({ ...draft, isOptionalHoliday: e.target.checked })} /> Optional Holiday</label>
             <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600"><input type="checkbox" checked={!!draft.isRecurring} onChange={e => setDraft({ ...draft, isRecurring: e.target.checked })} /> Recurring Every Year</label>
           </div>
-          <p className="mt-3 text-[10px] text-slate-400">This calendar will drive automatic festival greetings &amp; announcements in Phase 2.</p>
+          <p className="mt-3 text-[10px] text-slate-400">This calendar drives automatic festival greetings &amp; announcements through your WhatsApp Automation Rules.</p>
         </Modal>
       )}
     </div>
@@ -1041,7 +1183,7 @@ const AnnouncementsTab: React.FC = () => {
   const attach = async (file?: File) => { if (!file) return; try { const url = await readFileAsDataUrl(file); setDraft((d: any) => ({ ...d, attachment: url, attachmentName: file.name })); } catch { ui.toast.error('Could not read the file.'); } };
   const save = async () => {
     if (!draft.title?.trim()) { ui.toast.error('Title is required.'); return; }
-    try { if (draft.id) await api.communication.announcements.update(draft.id, draft); else await api.communication.announcements.create(draft); ui.toast.success('Announcement saved (not delivered — Phase 2).'); setModal(false); await load(); }
+    try { if (draft.id) await api.communication.announcements.update(draft.id, draft); else await api.communication.announcements.create(draft); ui.toast.success('Announcement saved.'); setModal(false); await load(); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
   const remove = async (a: any) => { if (!(await ui.confirm({ message: `Delete "${a.title}"?`, variant: 'danger', confirmText: 'Delete' }))) return; try { await api.communication.announcements.remove(a.id); ui.toast.success('Deleted.'); await load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
@@ -1049,7 +1191,7 @@ const AnnouncementsTab: React.FC = () => {
     <div className="space-y-3">
       <div className="flex justify-end"><Button size="sm" icon={<Plus size={14} />} onClick={() => { setDraft(blankAnn()); setModal(true); }}>New Announcement</Button></div>
       {loading ? <div className="py-12 text-center text-sm text-slate-500">Loading…</div>
-        : items.length === 0 ? <EmptyState icon={<Megaphone size={26} />} title="No announcements yet" subtitle="Create an announcement — it will be stored now and deliverable in Phase 2." />
+        : items.length === 0 ? <EmptyState icon={<Megaphone size={26} />} title="No announcements yet" subtitle="Create an announcement — it can be delivered to employees via your WhatsApp Automation Rules." />
           : (
             <div className="space-y-2">
               {items.map(a => (
@@ -1112,18 +1254,18 @@ const ScheduledTab: React.FC = () => {
   useEffect(() => { load(); }, []);
   const save = async () => {
     if (!draft.name?.trim()) { ui.toast.error('Schedule name is required.'); return; }
-    try { if (draft.id) await api.communication.schedules.update(draft.id, draft); else await api.communication.schedules.create(draft); ui.toast.success('Schedule stored (not executed — Phase 2).'); setModal(false); await load(); }
+    try { if (draft.id) await api.communication.schedules.update(draft.id, draft); else await api.communication.schedules.create(draft); ui.toast.success('Schedule saved.'); setModal(false); await load(); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
   const remove = async (s: any) => { if (!(await ui.confirm({ message: `Delete schedule "${s.name}"?`, variant: 'danger', confirmText: 'Delete' }))) return; try { await api.communication.schedules.remove(s.id); ui.toast.success('Deleted.'); await load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-semibold text-amber-700">
-        <span>Schedules are stored only — automatic execution &amp; delivery arrive in Phase 2.</span><Phase2Badge />
+        <span>Saved schedules are executed automatically and delivered through your WhatsApp Automation Rules.</span>
       </div>
       <div className="flex justify-end"><Button size="sm" icon={<Plus size={14} />} onClick={() => { setDraft(blankSchedule()); setModal(true); }}>New Schedule</Button></div>
       {loading ? <div className="py-12 text-center text-sm text-slate-500">Loading…</div>
-        : items.length === 0 ? <EmptyState icon={<Clock size={26} />} title="No schedules yet" subtitle="Configure a schedule — date, time, recurrence, recipients & template — to store for Phase 2." />
+        : items.length === 0 ? <EmptyState icon={<Clock size={26} />} title="No schedules yet" subtitle="Configure a schedule — date, time, recurrence, recipients & template — to deliver automatically." />
           : (
             <div className="overflow-hidden rounded-xl border border-slate-200">
               <table className="w-full text-xs">
@@ -1155,7 +1297,7 @@ const ScheduledTab: React.FC = () => {
             <Select label="Recurrence" value={draft.recurrence} onChange={e => setDraft({ ...draft, recurrence: e.target.value })} options={['none', 'daily', 'weekly', 'monthly', 'yearly'].map(r => ({ value: r, label: r }))} />
             <Input label="Recipients (notes)" value={draft.recipients} onChange={e => setDraft({ ...draft, recipients: e.target.value })} placeholder="e.g. All employees / Sales dept" />
           </div>
-          <p className="mt-3 text-[10px] text-slate-400">Channel (WhatsApp / SMS / Email / Push) selection &amp; automatic delivery arrive in Phase 2.</p>
+          <p className="mt-3 text-[10px] text-slate-400">WhatsApp delivery is live via the Meta Cloud API. Automatic execution is driven by your Automation Rules.</p>
         </Modal>
       )}
     </div>
@@ -1189,6 +1331,1084 @@ const DeliveryLogsTab: React.FC = () => {
   );
 };
 
+// ── WhatsApp Settings (Phase 1 foundation — NO messages are ever sent) ────────
+// Prepares HRMate for the Meta WhatsApp Business Cloud API. Company Head can edit;
+// HR can view (and edit only if granted the Communication "edit" permission).
+// Development Mode (default ON) redirects every message to a single developer
+// test number so future testing is safe. Backed by /api/communication/whatsapp.
+const QUEUE_STATUS_LEGEND = [
+  { label: 'Pending', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { label: 'Processing', tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { label: 'Sent', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { label: 'Failed', tone: 'bg-rose-50 text-rose-700 border-rose-200' },
+];
+
+const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }> = ({ checked, onChange, disabled }) => (
+  <button type="button" disabled={disabled} onClick={() => !disabled && onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${checked ? 'bg-emerald-500' : 'bg-slate-300'} ${disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${checked ? 'translate-x-4' : 'translate-x-0.5'}`} />
+  </button>
+);
+
+const WhatsAppSettingsTab: React.FC = () => {
+  const { canEdit } = usePermissions();
+  const editable = canEdit('communication');
+  const [s, setS] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);   // connection test
+  const [sending, setSending] = useState(false);   // send test message
+  const [diag, setDiag] = useState<any>(null);
+  const [connResult, setConnResult] = useState<any>(null);
+  const [sendResult, setSendResult] = useState<any>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [reqHistory, setReqHistory] = useState<any[]>([]);
+  // Write-only secret inputs — never pre-filled from the server (secrets are
+  // redacted). Sent only when the user types a new value.
+  const [tokenInput, setTokenInput] = useState('');
+  const [verifyInput, setVerifyInput] = useState('');
+
+  const loadDiag = async () => { try { setDiag(await api.communication.whatsapp.diagnostics()); } catch { /* diagnostics optional */ } };
+  const loadHistory = async () => { try { setReqHistory(await api.communication.whatsapp.requestHistory()); } catch { /* history optional */ } };
+  const reloadSettings = async () => { try { setS(await api.communication.whatsapp.settings.get()); } catch { /* keep current */ } };
+  useEffect(() => {
+    (async () => {
+      try { setS(await api.communication.whatsapp.settings.get()); }
+      catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+      finally { setLoading(false); }
+      loadDiag();
+      loadHistory();
+    })();
+  }, []);
+
+  const patch = (p: any) => setS((cur: any) => ({ ...(cur || {}), ...p }));
+
+  // Build the save payload — Meta creds included; secrets only if newly typed.
+  const buildPayload = () => {
+    const payload: any = {
+      enabled: !!s?.enabled,
+      developmentMode: !!s?.developmentMode,
+      developerTestNumber: s?.developerTestNumber || '',
+      metaBusinessId: s?.metaBusinessId || '',
+      whatsappBusinessAccountId: s?.whatsappBusinessAccountId || '',
+      phoneNumberId: s?.phoneNumberId || '',
+      webhookUrl: s?.webhookUrl || '',
+    };
+    if (tokenInput.trim()) payload.permanentAccessToken = tokenInput.trim();
+    if (verifyInput.trim()) payload.verifyToken = verifyInput.trim();
+    return payload;
+  };
+
+  // On a 400 validation error the backend returns { fields: {field: msg} }.
+  const handleSaveError = (e: any) => {
+    if (e?.status === 400 && e?.data?.fields) { setFieldErrors(e.data.fields); ui.toast.error('Please correct the highlighted credential fields.'); return true; }
+    ui.toast.error(getApiErrorMessage(e));
+    return false;
+  };
+
+  const save = async () => {
+    if (!editable) return;
+    setSaving(true); setFieldErrors({});
+    try {
+      const saved = await api.communication.whatsapp.settings.update(buildPayload());
+      setS(saved);
+      setTokenInput(''); setVerifyInput('');
+      ui.toast.success('WhatsApp settings saved.');
+      loadDiag();
+    } catch (e) { handleSaveError(e); }
+    finally { setSaving(false); }
+  };
+
+  // Phase 2 — REAL connection test (validate creds + verify Meta connectivity).
+  const runConnectionTest = async () => {
+    if (!editable) return;
+    setTesting(true); setConnResult(null); setFieldErrors({});
+    try {
+      await api.communication.whatsapp.settings.update(buildPayload()); // persist (validates) edits first
+      setTokenInput(''); setVerifyInput('');
+      const r = await api.communication.whatsapp.connectionTest();
+      setConnResult(r);
+      if (r?.ok) ui.toast.success(r.message || 'Connected to Meta.');
+      else ui.toast.error(`${r?.status || 'Error'}: ${r?.message || 'Connection failed.'}`);
+      await Promise.all([loadDiag(), reloadSettings(), loadHistory()]);
+    } catch (e) { handleSaveError(e); }
+    finally { setTesting(false); }
+  };
+
+  // Phase 2 — send the ONE real test message to the Developer Test Number.
+  const runSendTest = async () => {
+    if (!editable) return;
+    setSending(true); setSendResult(null);
+    try {
+      const r = await api.communication.whatsapp.sendTest();
+      setSendResult(r);
+      if (r?.ok) ui.toast.success(r.message || 'Message sent!');
+      else ui.toast.error(`${r?.status || 'Error'}: ${r?.message || 'Send failed.'}`);
+      await Promise.all([loadDiag(), loadHistory()]);
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setSending(false); }
+  };
+
+  const fieldErr = (k: string) => fieldErrors[k]
+    ? <p className="mt-0.5 text-[10px] font-semibold text-rose-500">{fieldErrors[k]}</p> : null;
+
+  if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500">Loading WhatsApp settings…</div>;
+
+  const status = s?.connectionStatus || 'Not Connected';
+  const statusBadge = status === 'Connected'
+    ? <Badge variant="green">Connected</Badge>
+    : (status === 'not_connected' || status === 'Not Connected') ? <Badge variant="gray">Not Connected</Badge>
+    : status === 'Network Error' ? <Badge variant="amber">{status}</Badge> : <Badge variant="red">{status}</Badge>;
+
+  return (
+    <div className="space-y-4">
+      {/* Banner + environment indicator */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-bold text-emerald-800"><MessageCircle size={16} /> WhatsApp Business — official Meta Cloud API.</p>
+        {(() => {
+          const env = diag?.environment;
+          if (env === 'production') return <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold text-white">● Production Environment</span>;
+          if (env === 'sandbox') return <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-bold text-white">● Sandbox / Test Environment</span>;
+          return <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500 border border-slate-200">Not Configured</span>;
+        })()}
+      </div>
+
+      {/* Token expiry warning (specific, never generic) */}
+      {(diag?.tokenExpired || connResult?.tokenExpired || sendResult?.tokenExpired) && (
+        <div className="flex items-start gap-2 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-rose-600" />
+          <div>
+            <p className="text-xs font-extrabold text-rose-800">Access Token Expired or Invalid</p>
+            <p className="text-[11px] font-semibold text-rose-700">Your Meta Access Token appears to be expired or invalid. Please generate a new Permanent Access Token.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Development Mode warning banner — prevents assuming real employees are messaged */}
+      {s?.developmentMode && (
+        <div className="flex items-start gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <AlertTriangle size={18} className="mt-0.5 shrink-0 text-amber-600" />
+          <div>
+            <p className="text-xs font-extrabold text-amber-800">Development Mode Enabled</p>
+            <p className="text-[11px] font-semibold text-amber-700">All WhatsApp messages will be redirected to the configured Developer Test Number{s?.developerTestNumber ? ` (${s.developerTestNumber})` : ''} — real employees will NOT receive anything.</p>
+          </div>
+        </div>
+      )}
+
+      {!editable && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-[11px] font-semibold text-amber-700">
+          You have view-only access to WhatsApp settings. Editing requires the Communication “edit” permission.
+        </div>
+      )}
+
+      {/* Connection */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><ShieldCheck size={14} className="text-emerald-600" /> Connection</p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-xl border border-slate-150 bg-slate-50/60 px-3 py-2.5">
+            <div><p className="text-xs font-bold text-slate-700">WhatsApp Integration Status</p><p className="text-[10px] text-slate-400">Set automatically once Meta credentials are verified.</p></div>
+            {statusBadge}
+          </div>
+          <div className="flex items-center justify-between rounded-xl border border-slate-150 bg-slate-50/60 px-3 py-2.5">
+            <div><p className="text-xs font-bold text-slate-700">Enable WhatsApp Communication</p><p className="text-[10px] text-slate-400">Master switch for the WhatsApp channel.</p></div>
+            <Toggle checked={!!s?.enabled} disabled={!editable} onChange={v => patch({ enabled: v })} />
+          </div>
+        </div>
+      </div>
+
+      {/* Development Mode */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><FlaskConical size={14} className="text-indigo-600" /> Development Mode</p>
+        <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2.5">
+          <div>
+            <p className="text-xs font-bold text-slate-700">Development Mode {s?.developmentMode ? <span className="ml-1 text-[10px] font-bold text-emerald-600">ON</span> : <span className="ml-1 text-[10px] font-bold text-rose-600">OFF</span>}</p>
+            <p className="text-[10px] text-slate-500">When ON, every WhatsApp message is redirected to the Developer Test Number instead of real employees — for safe testing.</p>
+          </div>
+          <Toggle checked={!!s?.developmentMode} disabled={!editable} onChange={v => patch({ developmentMode: v })} />
+        </div>
+        <div className="mt-3 max-w-sm">
+          <Input label="Developer Test Number" disabled={!editable} value={s?.developerTestNumber || ''} onChange={e => patch({ developerTestNumber: e.target.value })} placeholder="+91XXXXXXXXXX" />
+          <p className="mt-1 text-[10px] text-slate-400">Stored in the database. All test messages route here while Development Mode is ON.</p>
+        </div>
+      </div>
+
+      {/* Meta Business Configuration (Phase 2 — editable, secrets write-only) */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><ShieldCheck size={13} className="text-emerald-600" /> Meta Business Configuration</p>
+          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">Official Meta Cloud API</span>
+        </div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div><Input label="Meta Business ID" disabled={!editable} value={s?.metaBusinessId || ''} onChange={e => patch({ metaBusinessId: e.target.value })} placeholder="e.g. 123456789012345" />{fieldErr('metaBusinessId')}</div>
+          <div><Input label="WhatsApp Business Account ID" disabled={!editable} value={s?.whatsappBusinessAccountId || ''} onChange={e => patch({ whatsappBusinessAccountId: e.target.value })} placeholder="WABA ID" />{fieldErr('whatsappBusinessAccountId')}</div>
+          <div><Input label="Phone Number ID" disabled={!editable} value={s?.phoneNumberId || ''} onChange={e => patch({ phoneNumberId: e.target.value })} placeholder="From Meta → WhatsApp → API Setup" />{fieldErr('phoneNumberId')}</div>
+          <div><Input label="Webhook URL" disabled={!editable} value={s?.webhookUrl || ''} onChange={e => patch({ webhookUrl: e.target.value })} placeholder="https://your-domain/api/communication/whatsapp/webhook" />{fieldErr('webhookUrl')}</div>
+          <div>
+            <label className="mb-1 block text-[11px] font-bold text-slate-500">Permanent Access Token {s?.hasAccessToken && <span className="ml-1 text-[10px] font-semibold text-emerald-600">• stored (encrypted)</span>}</label>
+            <input type="password" autoComplete="new-password" disabled={!editable} value={tokenInput} onChange={e => setTokenInput(e.target.value)}
+              placeholder={s?.hasAccessToken ? '•••••••• leave blank to keep' : 'Paste permanent access token'} className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-emerald-500 focus:outline-none disabled:bg-slate-50" />
+            {fieldErr('permanentAccessToken')}
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-bold text-slate-500">Verify Token {s?.hasVerifyToken && <span className="ml-1 text-[10px] font-semibold text-emerald-600">• stored (encrypted)</span>}</label>
+            <input type="password" autoComplete="new-password" disabled={!editable} value={verifyInput} onChange={e => setVerifyInput(e.target.value)}
+              placeholder={s?.hasVerifyToken ? '•••••••• leave blank to keep' : 'Your webhook verify token'} className="w-full rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-emerald-500 focus:outline-none disabled:bg-slate-50" />
+            {fieldErr('verifyToken')}
+          </div>
+        </div>
+        <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400"><Lock size={11} /> Access Token &amp; Verify Token are encrypted at rest and never sent back to the browser.</p>
+      </div>
+
+      {/* Live Meta connection diagnostics */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><ShieldCheck size={14} className="text-emerald-600" /> Meta Connection Diagnostics
+          <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-bold text-emerald-700 border border-emerald-200">live</span></p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {(diag?.connection || [
+            { key: 'connected', label: 'Meta Connected', ok: false, value: 'Not Connected' },
+            { key: 'phoneVerified', label: 'Phone Number Verified', ok: false, value: 'Not Verified' },
+            { key: 'tokenValid', label: 'Access Token Valid', ok: false, value: 'Not Validated' },
+            { key: 'webhook', label: 'Webhook Configured', ok: false, value: 'Not Configured' },
+            { key: 'apiVersion', label: 'API Version', ok: true, value: '—' },
+          ]).map((it: any) => (
+            <div key={it.key} className="flex items-center justify-between rounded-xl border border-slate-150 bg-slate-50/60 px-3 py-2">
+              <span className="text-[11px] font-bold text-slate-600">{it.label}</span>
+              <span className={`flex items-center gap-1 text-[10px] font-bold ${it.ok ? 'text-emerald-600' : 'text-slate-400'}`}>
+                {it.key !== 'apiVersion' && (it.ok ? <CheckCircle2 size={12} /> : <X size={12} />)}{it.value}
+              </span>
+            </div>
+          ))}
+        </div>
+        {diag?.lastConnectedAt && <p className="mt-2 text-[10px] text-slate-400">Last successful connection: {formatDateTime(diag.lastConnectedAt)}.</p>}
+      </div>
+
+      {/* Production readiness checklist */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><CheckCircle2 size={14} className="text-emerald-600" /> Production Readiness Checklist</p>
+          {diag?.productionReady
+            ? <span className="rounded-full bg-emerald-600 px-2.5 py-0.5 text-[10px] font-bold text-white">Production Ready</span>
+            : <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-500 border border-slate-200">Not Ready</span>}
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {(diag?.checklist || [
+            { key: 'connected', label: 'Meta Connected', ok: false }, { key: 'businessVerified', label: 'Business Verified', ok: false },
+            { key: 'phoneVerified', label: 'Phone Verified', ok: false }, { key: 'webhookVerified', label: 'Webhook Verified', ok: false },
+            { key: 'tokenValid', label: 'Access Token Valid', ok: false }, { key: 'testNumber', label: 'Developer Test Number Configured', ok: false },
+          ]).map((c: any) => (
+            <div key={c.key} className="flex items-center gap-2 rounded-xl border border-slate-150 bg-slate-50/60 px-3 py-2">
+              {c.ok ? <CheckCircle2 size={14} className="text-emerald-600" /> : <X size={14} className="text-slate-300" />}
+              <span className={`text-[11px] font-bold ${c.ok ? 'text-slate-700' : 'text-slate-400'}`}>{c.label}</span>
+            </div>
+          ))}
+        </div>
+        {!diag?.productionReady && <p className="mt-2 text-[10px] text-slate-400">Complete all items above (run the connection test with verified production credentials) to reach <b>Production Ready</b>.</p>}
+      </div>
+
+      {/* Credential health check */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><ShieldCheck size={14} className="text-slate-500" /> Credential Health</p>
+        <div className="grid grid-cols-2 gap-3 text-[11px] sm:grid-cols-3">
+          <div><span className="text-slate-400">Last Tested</span><p className="font-bold">{diag?.health?.lastTestedAt ? formatDateTime(diag.health.lastTestedAt) : '—'}</p></div>
+          <div><span className="text-slate-400">Last Success</span><p className="font-bold text-emerald-600">{diag?.health?.lastSuccessAt ? formatDateTime(diag.health.lastSuccessAt) : '—'}</p></div>
+          <div><span className="text-slate-400">Last Failure</span><p className="font-bold text-rose-600">{diag?.health?.lastFailureAt ? formatDateTime(diag.health.lastFailureAt) : '—'}</p></div>
+          <div><span className="text-slate-400">Last HTTP Status</span><p className="font-mono font-bold">{diag?.health?.lastHttpStatus ?? '—'}</p></div>
+          <div><span className="text-slate-400">Last Meta Error Code</span><p className="font-mono font-bold">{diag?.health?.lastMetaErrorCode || '—'}</p></div>
+          <div className="col-span-2 sm:col-span-1"><span className="text-slate-400">Last Error</span><p className="font-semibold text-slate-600">{diag?.health?.lastError || '—'}</p></div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" disabled={!editable || saving} onClick={save} icon={<CheckCircle2 size={14} />}>{saving ? 'Saving…' : 'Save Settings'}</Button>
+        <Button size="sm" variant="outline" disabled={!editable || testing} onClick={runConnectionTest} icon={<ShieldCheck size={14} />}>{testing ? 'Testing…' : 'Test WhatsApp Configuration'}</Button>
+        <Button size="sm" disabled={!editable || sending} onClick={runSendTest} icon={<Send size={14} />} className="bg-emerald-600 hover:bg-emerald-700 text-white">{sending ? 'Sending…' : 'Send Test Message'}</Button>
+        <span className="text-[10px] text-slate-400">“Send Test Message” delivers ONE real message to your Developer Test Number via the Meta Cloud API.</span>
+      </div>
+
+      {/* Connection test result */}
+      {connResult && (
+        <div className={`rounded-2xl border p-4 ${connResult.ok ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
+          <p className={`flex items-center gap-2 text-xs font-extrabold ${connResult.ok ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {connResult.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />} {connResult.status}: <span className="font-semibold">{connResult.message}</span>
+          </p>
+          {connResult.details && (connResult.details.httpStatus || connResult.details.errorCode) && (
+            <p className="mt-1 text-[10px] text-slate-500">HTTP {connResult.details.httpStatus || '—'}{connResult.details.errorCode ? ` · Meta code ${connResult.details.errorCode}` : ''}{connResult.details.errorSubcode ? ` · subcode ${connResult.details.errorSubcode}` : ''}</p>
+          )}
+          {connResult.ok && connResult.details?.displayPhoneNumber && (
+            <p className="mt-1 text-[11px] text-slate-700">Number: <b>{connResult.details.displayPhoneNumber}</b>{connResult.details.verifiedName ? ` · ${connResult.details.verifiedName}` : ''} · API {connResult.apiVersion}</p>
+          )}
+        </div>
+      )}
+
+      {/* Send test result */}
+      {sendResult && (
+        <div className={`rounded-2xl border p-4 ${sendResult.ok ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
+          <p className={`flex items-center gap-2 text-xs font-extrabold ${sendResult.ok ? 'text-emerald-700' : 'text-rose-700'}`}>
+            {sendResult.ok ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />} {sendResult.status}: <span className="font-semibold">{sendResult.message}</span>
+          </p>
+          {sendResult.ok && sendResult.details && (
+            <div className="mt-2 text-[11px] text-slate-700">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <div><span className="text-slate-400">Sent To</span><p className="font-mono font-bold">{sendResult.details.to}</p></div>
+                <div><span className="text-slate-400">Provider</span><p className="font-bold">{sendResult.details.provider}</p></div>
+                <div className="sm:col-span-1 col-span-2"><span className="text-slate-400">Meta Message ID</span><p className="font-mono font-bold break-all text-emerald-700">{sendResult.details.metaMessageId}</p></div>
+              </div>
+            </div>
+          )}
+          {!sendResult.ok && sendResult.details && (sendResult.details.httpStatus || sendResult.details.errorCode) && (
+            <p className="mt-1 text-[10px] text-slate-500">HTTP {sendResult.details.httpStatus || '—'}{sendResult.details.errorCode ? ` · Meta code ${sendResult.details.errorCode}` : ''}{sendResult.details.errorSubcode ? ` · subcode ${sendResult.details.errorSubcode}` : ''}</p>
+          )}
+        </div>
+      )}
+
+      {/* API request history (operational metadata only — no credentials) */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+          <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><ListIcon size={14} /> Meta API Request History</p>
+          <Button size="sm" variant="outline" icon={<Download size={13} />} onClick={loadHistory}>Refresh</Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['Time', 'Operation', 'Method', 'HTTP', 'Result', 'Duration', 'Meta Message ID'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {reqHistory.length === 0
+                ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-400">No API calls yet — run a connection test or send a test message.</td></tr>
+                : reqHistory.map(r => (
+                  <tr key={r.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                    <td className="px-3 py-2">{r.operation === 'send_test' ? 'Send Test' : r.operation === 'connection_test' ? 'Connection Test' : (r.operation || '—')}</td>
+                    <td className="px-3 py-2 font-mono">{r.method || '—'}</td>
+                    <td className="px-3 py-2 font-mono">{r.httpStatus ?? '—'}</td>
+                    <td className="px-3 py-2"><Badge variant={r.ok ? 'green' : 'red'}>{r.ok ? 'OK' : (r.metaErrorCode ? `Err ${r.metaErrorCode}` : 'Failed')}</Badge></td>
+                    <td className="px-3 py-2 text-slate-500">{r.durationMs != null ? `${r.durationMs}ms` : '—'}</td>
+                    <td className="px-3 py-2 font-mono text-[10px] break-all text-slate-500">{r.metaMessageId || '—'}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Delivery queue legend + pointer to the monitor */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4">
+        <p className="mb-2 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Truck size={14} /> Delivery Queue Statuses</p>
+        <div className="flex flex-wrap gap-2">
+          {QUEUE_STATUS_LEGEND.map(q => (
+            <span key={q.label} className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${q.tone}`}>{q.label}</span>
+          ))}
+        </div>
+        <p className="mt-2 text-[10px] text-slate-400">In <b>Development Mode</b> messages are redirected to your Developer Test Number; with it OFF they are delivered live via the Meta Cloud API. Open the <b>WhatsApp Queue</b> tab for the full queue monitor &amp; delivery logs.</p>
+      </div>
+    </div>
+  );
+};
+
+// ── Communication Automation Engine (Phase 4) ─────────────────────────────────
+const blankRule = () => ({ name: '', eventType: 'birthday', triggerType: 'employee_birthday', recipientScope: 'today_birthday', templateMappingId: '', hrmateTemplateId: '', language: 'en', scheduleTime: '09:00', scheduleDay: '', scheduleMonth: '', specificDate: '', specificEmployeeId: '', status: 'active', dryRun: false });
+
+const AutomationRulesTab: React.FC = () => {
+  const { canEdit } = usePermissions();
+  const editable = canEdit('communication');
+  const [meta, setMeta] = useState<any>({ eventTypes: [], triggerTypes: [], recipientScopes: [] });
+  const [rules, setRules] = useState<any[]>([]);
+  const [runs, setRuns] = useState<any[]>([]);
+  const [mappings, setMappings] = useState<any[]>([]);
+  const [hrTemplates, setHrTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [draft, setDraft] = useState<any>(blankRule());
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string>('');
+  const [result, setResult] = useState<any>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [m, r, ru, mp, hr] = await Promise.all([
+        api.communication.automation.meta(),
+        api.communication.automation.rules(),
+        api.communication.automation.runs(),
+        api.communication.whatsapp.mgmt.mappings().catch(() => []),
+        api.communication.templates.list().catch(() => []),
+      ]);
+      setMeta(m || {}); setRules(r || []); setRuns(ru || []); setMappings(mp || []); setHrTemplates(hr || []);
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const scopeByEvent = useMemo(() => {
+    const m: Record<string, string> = {}; (meta.eventTypes || []).forEach((e: any) => { m[e.key] = e.scope; }); return m;
+  }, [meta]);
+
+  const openEditor = (rule?: any) => {
+    setDraft(rule ? {
+      ...rule,
+      templateMappingId: rule.templateMappingId ?? '', hrmateTemplateId: rule.hrmateTemplateId ?? '',
+      scheduleDay: rule.scheduleDay ?? '', scheduleMonth: rule.scheduleMonth ?? '', specificEmployeeId: rule.specificEmployeeId ?? '',
+      scheduleTime: rule.scheduleTime || '09:00', specificDate: rule.specificDate || '',
+    } : blankRule());
+    setModal(true);
+  };
+  const onEvent = (ev: string) => setDraft((d: any) => ({ ...d, eventType: ev, recipientScope: scopeByEvent[ev] || d.recipientScope }));
+
+  const save = async () => {
+    if (!editable) return;
+    if (!draft.name.trim()) { ui.toast.error('Enter a rule name.'); return; }
+    setSaving(true);
+    try {
+      if (draft.id) await api.communication.automation.updateRule(draft.id, draft);
+      else await api.communication.automation.createRule(draft);
+      ui.toast.success('Automation rule saved.'); setModal(false); load();
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setSaving(false); }
+  };
+
+  const run = async (rule: any, mode: string) => {
+    setBusyId(`${rule.id}:${mode}`); setResult(null);
+    try {
+      const r = await api.communication.automation.execute(rule.id, mode);
+      setResult({ ...r, rule });
+      const s = r.summary || {};
+      ui.toast.success(`${mode === 'run' ? 'Run' : mode === 'dry_run' ? 'Dry run' : 'Preview'}: ${s.eligibleRecipients}/${s.recipientsEvaluated} eligible${mode === 'run' ? `, ${s.queuedMessages} queued` : ''}.`);
+      load();
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setBusyId(''); }
+  };
+
+  const removeRule = async (rule: any) => {
+    if (!editable) return;
+    if (!(await ui.confirm({ title: 'Delete rule?', message: `Delete automation rule "${rule.name}"?`, confirmText: 'Delete', variant: 'danger' }))) return;
+    try { await api.communication.automation.removeRule(rule.id); ui.toast.success('Rule deleted.'); load(); }
+    catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+  };
+
+  const labelOf = (arr: any[], key: string, k = 'key', l = 'label') => (arr || []).find((x: any) => x[k] === key)?.[l] || key;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-bold text-violet-800"><Sparkles size={16} /> Automation Rules — one generic engine for birthdays, anniversaries, festivals, announcements & more. Generates queue entries only (never sends directly).</p>
+        <Button size="sm" disabled={!editable} onClick={() => openEditor()} icon={<Plus size={13} />} className="bg-violet-600 hover:bg-violet-700 text-white">New Rule</Button>
+      </div>
+
+      {/* Rules table */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Sparkles size={14} className="text-violet-600" /> Rules</p></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['Rule', 'Event', 'Trigger', 'Recipients', 'Template', 'Status', 'Last Run', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
+                : rules.length === 0 ? <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">No automation rules yet. Click “New Rule” to create one.</td></tr>
+                  : rules.map(r => (
+                    <tr key={r.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-semibold">{r.name}{r.dryRun && <span className="ml-1 rounded bg-amber-50 px-1 text-[9px] font-bold text-amber-600">DRY</span>}</td>
+                      <td className="px-3 py-2">{labelOf(meta.eventTypes, r.eventType)}</td>
+                      <td className="px-3 py-2">{String(r.triggerType || '').replace(/_/g, ' ')}</td>
+                      <td className="px-3 py-2 text-[10px]">{labelOf(meta.recipientScopes, r.recipientScope)}</td>
+                      <td className="px-3 py-2 font-mono text-[10px]">{r.templateMappingId ? `map#${r.templateMappingId}` : r.hrmateTemplateId ? `tpl#${r.hrmateTemplateId}` : '—'} · {String(r.language || '').toUpperCase()}</td>
+                      <td className="px-3 py-2"><Badge variant={r.status === 'active' ? 'green' : 'gray'}>{r.status}</Badge></td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-500">{r.lastRunAt ? formatDateTime(r.lastRunAt) : '—'}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-1">
+                          <button onClick={() => run(r, 'preview')} disabled={busyId.startsWith(`${r.id}:`)} className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50">Preview</button>
+                          <button onClick={() => run(r, 'dry_run')} disabled={busyId.startsWith(`${r.id}:`)} className="rounded-lg border border-amber-200 px-2 py-1 text-[10px] font-bold text-amber-700 hover:bg-amber-50 disabled:opacity-50">Dry Run</button>
+                          <button onClick={() => run(r, 'run')} disabled={!editable || busyId.startsWith(`${r.id}:`)} className="rounded-lg border border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">{busyId === `${r.id}:run` ? '…' : 'Run'}</button>
+                          <button onClick={() => openEditor(r)} disabled={!editable} className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Edit size={11} /></button>
+                          <button onClick={() => removeRule(r)} disabled={!editable} className="rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash2 size={11} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Execution result */}
+      {result && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
+              {result.mode === 'run' ? <Send size={14} className="text-emerald-600" /> : result.mode === 'dry_run' ? <FlaskConical size={14} className="text-amber-600" /> : <Eye size={14} className="text-slate-500" />}
+              {result.mode === 'run' ? 'Run' : result.mode === 'dry_run' ? 'Dry Run' : 'Preview'} — {result.rule?.name}
+              {result.mode !== 'run' && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500">nothing queued</span>}
+            </p>
+            <button onClick={() => setResult(null)} className="text-slate-400 hover:text-slate-700"><X size={14} /></button>
+          </div>
+          <div className="mb-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {[['Evaluated', result.summary?.recipientsEvaluated], ['Eligible', result.summary?.eligibleRecipients], ['Queued', result.summary?.queuedMessages], ['Skipped', result.summary?.skippedMessages], ['Errors', result.summary?.errorsCount], ['Duration', `${result.summary?.durationMs ?? 0}ms`]].map(([k, v]: any) => (
+              <div key={k} className="rounded-xl border border-slate-150 bg-slate-50/60 px-2 py-1.5 text-center"><p className="text-sm font-extrabold text-slate-800">{v}</p><p className="text-[9px] font-semibold text-slate-400">{k}</p></div>
+            ))}
+          </div>
+          {result.templateCheck && result.templateCheck.warnings?.length > 0 && (
+            <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-semibold text-amber-700">{result.templateCheck.warnings.map((w: string, i: number) => <p key={i}>• {w}</p>)}</div>
+          )}
+          <div className="max-h-72 overflow-auto rounded-xl border border-slate-150">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50 text-slate-500"><tr>{['Employee', 'Status', 'Would Send To', 'Message Preview'].map(h => <th key={h} className="px-3 py-1.5 text-left font-bold">{h}</th>)}</tr></thead>
+              <tbody>
+                {(result.recipients || []).length === 0 ? <tr><td colSpan={4} className="px-3 py-6 text-center text-slate-400">No recipients resolved for this rule today.</td></tr>
+                  : result.recipients.map((r: any, i: number) => (
+                    <tr key={i} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-1.5 font-semibold">{r.employee}</td>
+                      <td className="px-3 py-1.5">{r.eligible ? <Badge variant="green">{r.queued ? 'Queued' : 'Eligible'}</Badge> : <Badge variant="gray">Skipped</Badge>}{!r.eligible && r.reason && <p className="mt-0.5 text-[9px] text-slate-500">{r.reason}</p>}</td>
+                      <td className="px-3 py-1.5 font-mono text-[10px]">{r.redirectedTo || '—'}</td>
+                      <td className="px-3 py-1.5 text-[10px] text-slate-600">{r.preview || '—'}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Run history */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Clock size={14} /> Execution History</p></div>
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-slate-500"><tr>{['Time', 'Rule', 'Mode', 'Evaluated', 'Eligible', 'Queued', 'Skipped', 'Errors', 'Duration'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+          <tbody>
+            {runs.length === 0 ? <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">No executions yet.</td></tr>
+              : runs.map(r => (
+                <tr key={r.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                  <td className="px-3 py-2">{r.ruleName || '—'}</td>
+                  <td className="px-3 py-2"><Badge variant={r.mode === 'run' ? 'green' : r.mode === 'dry_run' ? 'amber' : 'gray'}>{String(r.mode).replace('_', ' ')}</Badge></td>
+                  <td className="px-3 py-2">{r.recipientsEvaluated}</td>
+                  <td className="px-3 py-2">{r.eligibleRecipients}</td>
+                  <td className="px-3 py-2">{r.queuedMessages}</td>
+                  <td className="px-3 py-2">{r.skippedMessages}</td>
+                  <td className="px-3 py-2">{r.errorsCount}</td>
+                  <td className="px-3 py-2 text-slate-500">{r.durationMs != null ? `${r.durationMs}ms` : '—'}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Rule editor */}
+      {modal && (
+        <Modal open={modal} onClose={() => setModal(false)} title={draft.id ? 'Edit Automation Rule' : 'New Automation Rule'} size="lg"
+          footer={<><Button variant="outline" onClick={() => setModal(false)}>Cancel</Button><Button onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save Rule'}</Button></>}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Input label="Rule Name *" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Daily Birthday Wishes" />
+              <Select label="Event Type" value={draft.eventType} onChange={e => onEvent(e.target.value)} options={(meta.eventTypes || []).map((x: any) => ({ value: x.key, label: x.label }))} />
+              <Select label="Trigger" value={draft.triggerType} onChange={e => setDraft({ ...draft, triggerType: e.target.value })} options={(meta.triggerTypes || []).map((t: string) => ({ value: t, label: t.replace(/_/g, ' ') }))} />
+              <Select label="Recipients" value={draft.recipientScope} onChange={e => setDraft({ ...draft, recipientScope: e.target.value })} options={(meta.recipientScopes || []).map((x: any) => ({ value: x.key, label: x.label }))} />
+            </div>
+
+            {/* Schedule (depends on trigger) */}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {['daily', 'weekly', 'monthly', 'yearly'].includes(draft.triggerType) && <Input label="Time" type="time" value={draft.scheduleTime} onChange={e => setDraft({ ...draft, scheduleTime: e.target.value })} />}
+              {draft.triggerType === 'weekly' && <Select label="Day of Week" value={String(draft.scheduleDay)} onChange={e => setDraft({ ...draft, scheduleDay: e.target.value })} options={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map((d, i) => ({ value: String(i), label: d }))} />}
+              {draft.triggerType === 'monthly' && <Input label="Day of Month" type="number" value={draft.scheduleDay} onChange={e => setDraft({ ...draft, scheduleDay: e.target.value })} placeholder="1–31" />}
+              {draft.triggerType === 'specific_date' && <Input label="Specific Date" type="date" value={draft.specificDate} onChange={e => setDraft({ ...draft, specificDate: e.target.value })} />}
+              {draft.recipientScope === 'specific_employee' && <Input label="Specific Employee ID" type="number" value={draft.specificEmployeeId} onChange={e => setDraft({ ...draft, specificEmployeeId: e.target.value })} placeholder="Employee record id" />}
+            </div>
+
+            {/* Template */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <p className="mb-2 text-[11px] font-extrabold text-slate-700">Template</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <Select label="Meta Template Mapping (preferred)" value={String(draft.templateMappingId || '')} onChange={e => setDraft({ ...draft, templateMappingId: e.target.value, language: mappings.find(m => String(m.id) === e.target.value)?.language || draft.language })}
+                  options={[{ value: '', label: 'None (use HRMate template)' }, ...mappings.map(m => ({ value: String(m.id), label: `${m.metaTemplateName} · ${String(m.language).toUpperCase()} · ${m.status}` }))]} />
+                <Select label="HRMate Template (fallback)" value={String(draft.hrmateTemplateId || '')} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
+                  options={[{ value: '', label: 'None' }, ...hrTemplates.map((t: any) => ({ value: String(t.id), label: t.title }))]} />
+                <Input label="Language" value={draft.language} onChange={e => setDraft({ ...draft, language: e.target.value })} placeholder="en / gu / hi" />
+                <Select label="Status" value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })} options={[{ value: 'active', label: 'Active' }, { value: 'paused', label: 'Paused' }]} />
+              </div>
+              <label className="mt-3 flex w-fit items-center gap-2 text-[11px] font-semibold text-slate-600">
+                <input type="checkbox" checked={!!draft.dryRun} onChange={e => setDraft({ ...draft, dryRun: e.target.checked })} />
+                Dry-run mode (rule runs full logic but never queues — for safe testing)
+              </label>
+            </div>
+            <p className="text-[10px] text-slate-400">Automation only creates queue entries. The existing queue processor handles delivery. Use Preview / Dry Run to simulate without queuing.</p>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ── WhatsApp Template Management & Approval (Phase 3) ─────────────────────────
+const WA_TEMPLATE_TOKENS = ['employee_name', 'company_name', 'designation', 'department', 'employee_photo', 'company_logo', 'joining_date', 'today_date'];
+const WA_TOKEN_SAMPLE: Record<string, string> = {
+  employee_name: 'Raj Sharma', company_name: 'Vishv Enterprise', designation: 'Software Developer',
+  department: 'Engineering', employee_photo: '[photo]', company_logo: '[logo]', joining_date: '01 Jun 2022', today_date: 'today',
+};
+const metaStatusBadge = (st?: string) => {
+  const s = (st || '').toUpperCase();
+  if (s === 'APPROVED') return <Badge variant="green">Approved</Badge>;
+  if (s === 'PENDING' || s === 'PENDING_REVIEW' || s === 'IN_APPEAL') return <Badge variant="amber">Pending Review</Badge>;
+  if (s === 'REJECTED') return <Badge variant="red">Rejected</Badge>;
+  if (s === 'DISABLED' || s === 'PAUSED') return <Badge variant="gray">{s === 'PAUSED' ? 'Paused' : 'Disabled'}</Badge>;
+  return <Badge variant="gray">{st || 'Unknown'}</Badge>;
+};
+const parseMetaBody = (components: any): string => {
+  let c = components;
+  if (typeof c === 'string') { try { c = JSON.parse(c); } catch { c = []; } }
+  if (!Array.isArray(c)) return '';
+  const body = c.find((x: any) => (x.type || '').toUpperCase() === 'BODY');
+  return body ? (body.text || '') : '';
+};
+
+const WhatsAppTemplatesTab: React.FC = () => {
+  const branding = useContext(BrandingCtx);
+  const { canEdit } = usePermissions();
+  const editable = canEdit('communication');
+  const [metaTemplates, setMetaTemplates] = useState<any[]>([]);
+  const [mappings, setMappings] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [hrTemplates, setHrTemplates] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [modal, setModal] = useState(false);
+  const [draft, setDraft] = useState<any>(null);
+  const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  const loadAll = async () => {
+    setLoading(true);
+    try {
+      const [m, mp, ev, hr] = await Promise.all([
+        api.communication.whatsapp.mgmt.meta(),
+        api.communication.whatsapp.mgmt.mappings(),
+        api.communication.whatsapp.mgmt.events(),
+        api.communication.templates.list().catch(() => []),
+      ]);
+      setMetaTemplates(m || []); setMappings(mp || []); setEvents(ev || []); setHrTemplates(hr || []);
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { loadAll(); }, []);
+
+  const sync = async () => {
+    if (!editable) return;
+    setSyncing(true);
+    try {
+      const r = await api.communication.whatsapp.mgmt.sync();
+      if (r?.ok) ui.toast.success(`Synced ${r.total} template(s): ${r.created} new, ${r.updated} updated${r.statusChanges ? `, ${r.statusChanges} status change(s)` : ''}.`);
+      else ui.toast.error(r?.message || 'Sync failed.');
+      loadAll();
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setSyncing(false); }
+  };
+
+  const openEditor = (mapping?: any) => {
+    setErrors([]);
+    if (mapping) {
+      let vm = {}; try { vm = JSON.parse(mapping.variableMap || '{}'); } catch { /* ignore */ }
+      setDraft({ id: mapping.id, hrmateTemplateId: mapping.hrmateTemplateId || '', hrmateTemplateName: mapping.hrmateTemplateName || '', metaKey: `${mapping.metaTemplateName}||${mapping.language}`, metaTemplateName: mapping.metaTemplateName, language: mapping.language, variableMap: vm, headerMediaType: mapping.headerMediaType || 'none', headerMediaUrl: mapping.headerMediaUrl || '' });
+    } else {
+      setDraft({ hrmateTemplateId: '', hrmateTemplateName: '', metaKey: '', metaTemplateName: '', language: 'en', variableMap: {}, headerMediaType: 'none', headerMediaUrl: '' });
+    }
+    setModal(true);
+  };
+
+  const selectedMeta = useMemo(() => metaTemplates.find(t => `${t.name}||${t.language}` === draft?.metaKey), [metaTemplates, draft]);
+  const selectedHr = useMemo(() => hrTemplates.find((t: any) => String(t.id) === String(draft?.hrmateTemplateId)), [hrTemplates, draft]);
+  const varCount = selectedMeta?.bodyVariableCount || 0;
+  const metaBody = useMemo(() => parseMetaBody(selectedMeta?.components), [selectedMeta]);
+
+  const onPickMeta = (key: string) => {
+    const t = metaTemplates.find(x => `${x.name}||${x.language}` === key);
+    setDraft((d: any) => ({ ...d, metaKey: key, metaTemplateName: t?.name || '', language: t?.language || 'en', variableMap: {}, headerMediaType: (t?.headerFormat && t.headerFormat !== 'TEXT') ? t.headerFormat.toLowerCase() : 'none' }));
+  };
+  const setVar = (i: number, token: string) => setDraft((d: any) => ({ ...d, variableMap: { ...d.variableMap, [String(i)]: token } }));
+
+  // Meta preview with mapped sample values + unmapped warnings.
+  const metaPreview = useMemo(() => {
+    if (!metaBody) return '';
+    return metaBody.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => {
+      const tok = draft?.variableMap?.[String(n)];
+      return tok ? (WA_TOKEN_SAMPLE[tok] ?? `{{${n}}}`) : `⚠️{{${n}}}`;
+    });
+  }, [metaBody, draft]);
+  const unmapped = useMemo(() => {
+    const miss: number[] = [];
+    for (let i = 1; i <= varCount; i++) if (!draft?.variableMap?.[String(i)]) miss.push(i);
+    return miss;
+  }, [varCount, draft]);
+
+  const save = async () => {
+    if (!editable) return;
+    setSaving(true); setErrors([]);
+    try {
+      await api.communication.whatsapp.mgmt.saveMapping({
+        id: draft.id, hrmateTemplateId: draft.hrmateTemplateId || null, hrmateTemplateName: selectedHr?.title || draft.hrmateTemplateName || '',
+        metaTemplateName: draft.metaTemplateName, language: draft.language, variableMap: draft.variableMap,
+        headerMediaType: draft.headerMediaType, headerMediaUrl: draft.headerMediaUrl,
+      });
+      ui.toast.success('Template mapping saved.');
+      setModal(false); loadAll();
+    } catch (e: any) {
+      if (e?.status === 400 && e?.data?.fields) setErrors(e.data.fields);
+      ui.toast.error(getApiErrorMessage(e));
+    } finally { setSaving(false); }
+  };
+
+  const test = async (m: any) => {
+    if (!editable) return;
+    setTestingId(m.id);
+    try {
+      const r = await api.communication.whatsapp.mgmt.testMapping(m.id);
+      if (r?.ok) ui.toast.success(`${r.message} (Meta ID ${r.details?.metaMessageId || '—'})`);
+      else ui.toast.error(`${r?.status || 'Error'}: ${r?.message || 'Send failed.'}`);
+      loadAll();
+    } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setTestingId(null); }
+  };
+
+  const removeMapping = async (m: any) => {
+    if (!editable) return;
+    if (!(await ui.confirm({ title: 'Delete mapping?', message: `Remove the mapping for "${m.metaTemplateName}"?`, confirmText: 'Delete', variant: 'danger' }))) return;
+    try { await api.communication.whatsapp.mgmt.removeMapping(m.id); ui.toast.success('Mapping deleted.'); loadAll(); }
+    catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+  };
+
+  const canSave = draft && draft.metaTemplateName && draft.hrmateTemplateId && unmapped.length === 0
+    && !(selectedMeta?.headerFormat && selectedMeta.headerFormat !== 'TEXT' && draft.headerMediaType !== 'none' && !draft.headerMediaUrl);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-bold text-emerald-800"><LayoutTemplate size={16} /> WhatsApp Templates — map HRMate templates to Meta-approved templates. Separate from Communication Templates.</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" disabled={!editable || syncing} onClick={sync} icon={<Download size={13} />}>{syncing ? 'Syncing…' : 'Sync Templates'}</Button>
+          <Button size="sm" disabled={!editable} onClick={() => openEditor()} icon={<Plus size={13} />} className="bg-emerald-600 hover:bg-emerald-700 text-white">Map Template</Button>
+        </div>
+      </div>
+
+      {/* Synced Meta templates */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><MessageCircle size={14} className="text-emerald-600" /> Meta Approved Templates</p></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['Template Name', 'Category', 'Language', 'Status', 'Variables', 'Header', 'Version', 'Last Synced'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={8} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
+                : metaTemplates.length === 0 ? <tr><td colSpan={8} className="px-3 py-12 text-center text-slate-400">No templates synced yet. Click “Sync Templates” to pull approved templates from your WhatsApp Business Account.</td></tr>
+                  : metaTemplates.map(t => (
+                    <tr key={t.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-semibold">{t.name}</td>
+                      <td className="px-3 py-2">{t.category || '—'}</td>
+                      <td className="px-3 py-2 uppercase">{t.language || '—'}</td>
+                      <td className="px-3 py-2">{metaStatusBadge(t.status)}</td>
+                      <td className="px-3 py-2 text-center">{t.bodyVariableCount}</td>
+                      <td className="px-3 py-2">{t.headerFormat || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-[10px] text-slate-400">{t.version || '—'}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-500">{t.lastSyncedAt ? formatDateTime(t.lastSyncedAt) : '—'}</td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Mappings */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><LayoutTemplate size={14} /> Template Mappings (HRMate → Meta)</p></div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['HRMate Template', 'Meta Template', 'Language', 'Status', 'Usable', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
+                : mappings.length === 0 ? <tr><td colSpan={6} className="px-3 py-12 text-center text-slate-400">No mappings yet. Click “Map Template” to link an HRMate template to a Meta template.</td></tr>
+                  : mappings.map(m => (
+                    <tr key={m.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-semibold">{m.hrmateTemplateName || `#${m.hrmateTemplateId}`}</td>
+                      <td className="px-3 py-2 font-mono text-[11px]">{m.metaTemplateName}</td>
+                      <td className="px-3 py-2 uppercase">{m.language}</td>
+                      <td className="px-3 py-2">{metaStatusBadge(m.status)}</td>
+                      <td className="px-3 py-2">{m.active ? <Badge variant="green">Ready</Badge> : <Badge variant="gray">Blocked</Badge>}</td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-1">
+                          <button onClick={() => openEditor(m)} disabled={!editable} className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Edit size={11} /></button>
+                          <button onClick={() => test(m)} disabled={!editable || !m.active || testingId === m.id} title={m.active ? 'Send Template Test' : 'Only APPROVED templates can be tested'} className="rounded-lg border border-emerald-200 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-50 disabled:opacity-40">{testingId === m.id ? '…' : 'Send Test'}</button>
+                          <button onClick={() => removeMapping(m)} disabled={!editable} className="rounded-lg border border-rose-200 px-2 py-1 text-[10px] font-bold text-rose-600 hover:bg-rose-50 disabled:opacity-50"><Trash2 size={11} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* History */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Clock size={14} /> Template History</p></div>
+        <table className="w-full text-xs">
+          <thead className="bg-slate-50 text-slate-500"><tr>{['Time', 'Template', 'Language', 'Event', 'Change'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+          <tbody>
+            {events.length === 0 ? <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-400">No template activity yet.</td></tr>
+              : events.map(ev => (
+                <tr key={ev.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(ev.createdAt)}</td>
+                  <td className="px-3 py-2">{ev.templateName || '—'}</td>
+                  <td className="px-3 py-2 uppercase">{ev.language || '—'}</td>
+                  <td className="px-3 py-2"><Badge variant="blue">{String(ev.event || '').replace(/_/g, ' ')}</Badge></td>
+                  <td className="px-3 py-2 text-slate-500">{[ev.fromValue, ev.toValue].filter(Boolean).join(' → ') || ev.detail || '—'}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mapping editor */}
+      {modal && draft && (
+        <Modal open={modal} onClose={() => setModal(false)} title={draft.id ? 'Edit Template Mapping' : 'Map HRMate → Meta Template'} size="lg"
+          footer={<><Button variant="outline" onClick={() => setModal(false)}>Cancel</Button><Button onClick={save} disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save Mapping'}</Button></>}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <Select label="HRMate Template" value={draft.hrmateTemplateId} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
+                options={[{ value: '', label: 'Select HRMate template…' }, ...hrTemplates.map((t: any) => ({ value: String(t.id), label: `${t.title} (${t.category})` }))]} />
+              <Select label="Meta Template (synced)" value={draft.metaKey} onChange={e => onPickMeta(e.target.value)}
+                options={[{ value: '', label: 'Select Meta template…' }, ...metaTemplates.map(t => ({ value: `${t.name}||${t.language}`, label: `${t.name} · ${String(t.language || '').toUpperCase()} · ${t.status}` }))]} />
+            </div>
+
+            {selectedMeta && selectedMeta.status !== 'APPROVED' && (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-700"><AlertTriangle size={13} /> This Meta template is “{selectedMeta.status}”. You can map it, but it can’t be sent until Meta approves it.</div>
+            )}
+
+            {/* Variable mapping */}
+            {selectedMeta && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <p className="mb-2 text-[11px] font-extrabold text-slate-700">Variable Mapping {varCount === 0 && <span className="font-semibold text-slate-400">— this template has no body variables</span>}</p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {Array.from({ length: varCount }, (_, i) => i + 1).map(i => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="w-12 shrink-0 rounded-lg bg-slate-200 px-2 py-1 text-center font-mono text-[11px] font-bold text-slate-700">{`{{${i}}}`}</span>
+                      <span className="text-slate-400">→</span>
+                      <Select value={draft.variableMap[String(i)] || ''} onChange={e => setVar(i, e.target.value)}
+                        options={[{ value: '', label: 'Select placeholder…' }, ...WA_TEMPLATE_TOKENS.map(t => ({ value: t, label: `{{${t}}}` }))]} className="flex-1" />
+                    </div>
+                  ))}
+                </div>
+                {unmapped.length > 0 && <p className="mt-2 flex items-center gap-1 text-[10px] font-semibold text-rose-500"><AlertTriangle size={11} /> Map all variables before saving — missing: {unmapped.map(i => `{{${i}}}`).join(', ')}</p>}
+              </div>
+            )}
+
+            {/* Header media */}
+            {selectedMeta && selectedMeta.headerFormat && selectedMeta.headerFormat !== 'TEXT' && (
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
+                <p className="mb-2 text-[11px] font-extrabold text-indigo-700">Header Media ({selectedMeta.headerFormat})</p>
+                <Input label="Media URL" value={draft.headerMediaUrl} onChange={e => setDraft({ ...draft, headerMediaUrl: e.target.value, headerMediaType: selectedMeta.headerFormat.toLowerCase() })} placeholder="https://…/asset" />
+                <p className="mt-1 text-[10px] text-indigo-700/70">Public URL of the {String(selectedMeta.headerFormat).toLowerCase()} to use in the template header.</p>
+              </div>
+            )}
+
+            {/* Preview + diff */}
+            {selectedMeta && (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">HRMate Preview</p>
+                  <p className="whitespace-pre-wrap text-[11px] text-slate-700">{selectedHr ? fillSample(selectedHr.body, branding) : <span className="italic text-slate-400">Select an HRMate template…</span>}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Meta Template Preview</p>
+                  <p className="whitespace-pre-wrap text-[11px] text-slate-700">{metaPreview || <span className="italic text-slate-400">No body text.</span>}</p>
+                  {unmapped.length > 0 && <p className="mt-1 text-[10px] font-semibold text-rose-500">⚠️ {unmapped.length} variable(s) unmapped — shown as ⚠️{`{{n}}`}.</p>}
+                </div>
+              </div>
+            )}
+
+            {errors.length > 0 && (
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-2.5">
+                {errors.map((er, i) => <p key={i} className="text-[10px] font-semibold text-rose-600">• {er}</p>)}
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ── WhatsApp Queue Monitor + enhanced Delivery Logs (Phase 1.5) ───────────────
+const WA_QUEUE_FILTERS = ['All', 'Pending', 'Processing', 'Sent', 'Failed', 'Simulated'] as const;
+const statusBadgeVariant = (st: string) => st === 'Sent' ? 'green' : st === 'Failed' ? 'red' : st === 'Processing' ? 'blue' : st === 'Simulated' ? 'purple' : 'gray';
+
+const WhatsAppQueueTab: React.FC = () => {
+  const [queue, setQueue] = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [qFilter, setQFilter] = useState<string>('All');
+  const [logFilter, setLogFilter] = useState<string>('All');
+  const [search, setSearch] = useState('');
+  const [logPreview, setLogPreview] = useState<any>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try { const [q, l] = await Promise.all([api.communication.whatsapp.queue(), api.communication.whatsapp.logs()]); setQueue(q || []); setLogs(l || []); }
+    catch (e) { ui.toast.error(getApiErrorMessage(e)); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
+
+  const filteredQueue = useMemo(() => qFilter === 'All' ? queue : queue.filter(r => (r.status || '') === qFilter || (qFilter === 'Simulated' && r.simulated)), [queue, qFilter]);
+  const filteredLogs = useMemo(() => {
+    let rows = logFilter === 'All' ? logs : logs.filter(r => (r.status || '') === logFilter || (logFilter === 'Simulated' && r.simulated));
+    const s = search.trim().toLowerCase();
+    if (s) rows = rows.filter(r => [r.employeeName, r.templateName, r.originalNumber, r.actualSentNumber, r.messagePreview].some(v => String(v || '').toLowerCase().includes(s)));
+    return rows;
+  }, [logs, logFilter, search]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><ListIcon size={15} className="text-emerald-600" /> WhatsApp Queue Monitor &amp; Delivery Logs</p>
+        <Button size="sm" variant="outline" icon={<Download size={13} />} onClick={load}>Refresh</Button>
+      </div>
+
+      {/* Queue Monitor */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+          <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Truck size={14} /> Delivery Queue <span className="text-[10px] font-semibold text-slate-400">(read-only — no manual editing)</span></p>
+          <div className="flex flex-wrap gap-1">
+            {WA_QUEUE_FILTERS.map(f => (
+              <button key={f} onClick={() => setQFilter(f)} className={`rounded-lg px-2 py-1 text-[10px] font-bold ${qFilter === f ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{f}</button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['Queue ID', 'Employee', 'Template', 'Status', 'Created', 'Scheduled', 'Retry'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={7} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
+                : filteredQueue.length === 0 ? <tr><td colSpan={7} className="px-3 py-12 text-center text-slate-400">No queued messages{qFilter !== 'All' ? ` with status “${qFilter}”` : ''}.</td></tr>
+                  : filteredQueue.map(r => (
+                    <tr key={r.id} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-mono">#{r.id}</td>
+                      <td className="px-3 py-2">{r.employeeName || '—'}</td>
+                      <td className="px-3 py-2">{r.templateName || '—'}</td>
+                      <td className="px-3 py-2"><Badge variant={statusBadgeVariant(r.status)}>{r.status}{r.simulated ? ' (sim)' : ''}</Badge></td>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(r.createdAt)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-400">Immediate</td>
+                      <td className="px-3 py-2">{r.attempts ?? 0}</td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Enhanced Delivery Logs */}
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+          <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><FileStack size={14} /> Delivery Logs</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employee / template / number…" className="w-56 rounded-lg border border-slate-200 py-1.5 pl-7 pr-2 text-[11px] focus:border-emerald-500 focus:outline-none" />
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {WA_QUEUE_FILTERS.map(f => (
+                <button key={f} onClick={() => setLogFilter(f)} className={`rounded-lg px-2 py-1 text-[10px] font-bold ${logFilter === f ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{f}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-500"><tr>{['Date', 'Employee', 'Template', 'Original', 'Actual Sent', 'Dev Mode', 'Time', 'Queue', 'Status', 'Preview'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={10} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
+                : filteredLogs.length === 0 ? <tr><td colSpan={10} className="px-3 py-12 text-center text-slate-400">No delivery logs{(logFilter !== 'All' || search) ? ' match your filters' : ' yet — run “Test WhatsApp Configuration”'}.</td></tr>
+                  : filteredLogs.map(l => (
+                    <tr key={l.id} className="border-t border-slate-100 align-top">
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(l.createdAt)}</td>
+                      <td className="px-3 py-2">{l.employeeName || '—'}</td>
+                      <td className="px-3 py-2">{l.templateName || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-[11px]">{l.originalNumber || '—'}</td>
+                      <td className="px-3 py-2 font-mono text-[11px]">{l.actualSentNumber || '—'}</td>
+                      <td className="px-3 py-2">{l.developmentMode ? <Badge variant="purple">Yes</Badge> : <Badge variant="gray">No</Badge>}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-slate-500">{l.processingMs != null ? `${l.processingMs}ms` : '—'}</td>
+                      <td className="px-3 py-2 font-mono text-slate-500">{l.queueId ? `#${l.queueId}` : '—'}</td>
+                      <td className="px-3 py-2"><Badge variant={statusBadgeVariant(l.status)}>{l.status}</Badge>{l.errorMessage && <p className="mt-0.5 max-w-[160px] text-[9px] text-rose-500">{l.errorMessage}</p>}</td>
+                      <td className="px-3 py-2">{l.messagePreview ? <button onClick={() => setLogPreview(l)} className="text-[10px] font-bold text-emerald-600 hover:underline">View</button> : '—'}</td>
+                    </tr>
+                  ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {logPreview && (
+        <Modal open={!!logPreview} onClose={() => setLogPreview(null)} title="Message Preview" size="md"
+          footer={<Button variant="outline" onClick={() => setLogPreview(null)}>Close</Button>}>
+          <div className="space-y-2 text-[11px]">
+            <div className="grid grid-cols-2 gap-2">
+              <div><span className="text-slate-400">Employee</span><p className="font-bold">{logPreview.employeeName || '—'}</p></div>
+              <div><span className="text-slate-400">Template</span><p className="font-bold">{logPreview.templateName || '—'}</p></div>
+              <div><span className="text-slate-400">Original Recipient</span><p className="font-mono font-bold">{logPreview.originalNumber || '—'}</p></div>
+              <div><span className="text-slate-400">Actual Recipient</span><p className="font-mono font-bold text-indigo-600">{logPreview.actualSentNumber || '—'}</p></div>
+            </div>
+            <div>
+              <span className="text-slate-400">Generated Message</span>
+              <div className="mt-1 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-800">{logPreview.messagePreview}</div>
+            </div>
+            <p className="text-[10px] text-slate-400">Queue #{logPreview.queueId || '—'} · {logPreview.processingMs != null ? `${logPreview.processingMs}ms` : '—'} · {logPreview.developmentMode ? 'Development Mode (redirected)' : 'Production'} · simulated.</p>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ── WhatsApp Scheduler Preview (Phase 1.5 — simulates upcoming jobs, no sending) ──
+const WhatsAppSchedulerTab: React.FC = () => {
+  const [d, setD] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { (async () => { try { setD(await api.communication.whatsapp.schedulerPreview()); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } })(); }, []);
+
+  const Section: React.FC<{ title: string; icon: React.ReactNode; rows: any[]; cols: string[]; render: (r: any) => React.ReactNode; empty: string }> = ({ title, icon, rows, cols, render, empty }) => (
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+        <p className="flex items-center gap-2 text-xs font-extrabold text-slate-700">{icon} {title}</p>
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">{rows.length} job{rows.length === 1 ? '' : 's'}</span>
+      </div>
+      <table className="w-full text-xs">
+        <thead className="bg-slate-50 text-slate-500"><tr>{cols.map(h => <th key={h} className="px-3 py-2 text-left font-bold">{h}</th>)}</tr></thead>
+        <tbody>
+          {loading ? <tr><td colSpan={cols.length} className="px-3 py-8 text-center text-slate-500">Loading…</td></tr>
+            : rows.length === 0 ? <tr><td colSpan={cols.length} className="px-3 py-10 text-center text-slate-400">{empty}</td></tr>
+              : rows.map((r, i) => <tr key={i} className="border-t border-slate-100">{render(r)}</tr>)}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+        <CalendarClock size={18} className="mt-0.5 shrink-0 text-indigo-600" />
+        <div>
+          <p className="text-xs font-extrabold text-indigo-800">Scheduler Preview (simulation only)</p>
+          <p className="text-[11px] font-semibold text-indigo-700">Shows the WhatsApp jobs that <i>would</i> run — nothing is queued or sent. {d?.developmentMode && <>In Development Mode all recipients resolve to <b>{d?.testNumber || 'the test number'}</b>.</>}</p>
+        </div>
+      </div>
+
+      <Section title="Today's Birthday Queue" icon={<Cake size={14} className="text-pink-600" />} rows={d?.todayBirthdays || []}
+        cols={['Employee', 'Date', 'Original Number', 'Would Send To']} empty="No birthdays today."
+        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-indigo-600">{r.redirectedTo}</td></>)} />
+
+      <Section title="Tomorrow's Birthday Queue" icon={<Cake size={14} className="text-pink-500" />} rows={d?.tomorrowBirthdays || []}
+        cols={['Employee', 'Date', 'Original Number', 'Would Send To']} empty="No birthdays tomorrow."
+        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-indigo-600">{r.redirectedTo}</td></>)} />
+
+      <Section title="Upcoming Festival Queue (next 30 days)" icon={<PartyPopper size={14} className="text-orange-600" />} rows={d?.upcomingFestivals || []}
+        cols={['Festival', 'Date', 'Category', 'Templates Available']} empty="No festivals in the next 30 days."
+        render={(r) => (<><td className="px-3 py-2 font-semibold">{r.festival}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2">{r.category}</td><td className="px-3 py-2">{r.templatesAvailable}</td></>)} />
+    </div>
+  );
+};
+
 // ── Settings (providers disabled — Phase 2) ───────────────────────────────────
 const SettingsTab: React.FC = () => {
   const [s, setS] = useState<any>(null);
@@ -1196,22 +2416,22 @@ const SettingsTab: React.FC = () => {
   const saveBasic = async () => { try { await api.communication.settings.update({ timezone: s?.timezone, workingHoursStart: s?.workingHoursStart, workingHoursEnd: s?.workingHoursEnd }); ui.toast.success('Settings saved.'); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[11px] font-semibold text-amber-700 flex items-center justify-between">
-        <span>Delivery provider configuration is locked in Phase 1.</span><Phase2Badge />
+      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-[11px] font-semibold text-emerald-700 flex items-center justify-between">
+        <span>WhatsApp delivery is live via the Meta Cloud API — configure it in the <b>WhatsApp Settings</b> tab. Email, SMS &amp; Push are not part of this module.</span>
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         {[
-          { label: 'Email Provider', icon: <Mail size={15} /> },
-          { label: 'SMS Provider', icon: <Smartphone size={15} /> },
-          { label: 'WhatsApp Provider', icon: <MessageSquare size={15} /> },
-          { label: 'Push Notifications', icon: <Send size={15} /> },
+          { label: 'WhatsApp Provider', icon: <MessageSquare size={15} />, live: true, note: 'Meta Cloud API · configured in WhatsApp Settings' },
+          { label: 'Email Provider', icon: <Mail size={15} />, live: false, note: 'Not part of this module' },
+          { label: 'SMS Provider', icon: <Smartphone size={15} />, live: false, note: 'Not part of this module' },
+          { label: 'Push Notifications', icon: <Send size={15} />, live: false, note: 'Not part of this module' },
         ].map(p => (
-          <div key={p.label} className="rounded-2xl border border-slate-200 bg-white p-4 opacity-80">
+          <div key={p.label} className={`rounded-2xl border border-slate-200 bg-white p-4 ${p.live ? '' : 'opacity-80'}`}>
             <div className="mb-2 flex items-center justify-between">
               <p className="flex items-center gap-2 text-xs font-extrabold text-slate-600">{p.icon} {p.label}</p>
-              <Lock size={13} className="text-slate-400" />
+              {p.live ? <Badge variant="green">Active</Badge> : <Lock size={13} className="text-slate-400" />}
             </div>
-            <input disabled placeholder="Coming in Phase 2" className="w-full cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-[11px] text-slate-400" />
+            <p className={`text-[11px] ${p.live ? 'text-emerald-700' : 'text-slate-400'}`}>{p.note}</p>
           </div>
         ))}
       </div>

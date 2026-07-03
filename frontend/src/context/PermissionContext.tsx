@@ -54,9 +54,35 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     edit: ['Company Head'],
     export: ['Company Head', 'HR'],
   },
+  // Invoice Management = company financial module. Company Head & Finance
+  // (Accountant) have full access; HR may view/create/edit invoices (no delete/
+  // cancel — that stays with Company Head/Finance). Employees: none. Mirrors the
+  // backend RBAC in utils/invoiceScope.js.
+  invoicing: {
+    view: ['Company Head', 'Finance', 'HR'],
+    create: ['Company Head', 'Finance', 'HR'],
+    edit: ['Company Head', 'Finance', 'HR'],
+    export: ['Company Head', 'Finance', 'HR'],
+  },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
   NEW_MODULE_ROLE_DEFAULTS[module]?.[action]?.includes(role) ?? false;
+
+/**
+ * The effective { view, edit, export } a given role gets for a module when the
+ * user has NO explicit permission row stored — i.e. the runtime fallback used by
+ * checkCanView/Edit/Export. Exported so the permission matrices can SEED a user's
+ * row from their true effective access instead of all-false. Without this, saving
+ * a user through the matrix would materialise an explicit deny row that overrides
+ * a module's role-default (e.g. HR would lose their default Communication access).
+ * Modules without a role-default (the deny-by-default majority) return all-false,
+ * exactly as before — so only the role-default modules are affected.
+ */
+export const roleDefaultRow = (module: AppModules, role: string) => ({
+  view: roleDefault(module, 'view', role),
+  edit: roleDefault(module, 'edit', role),
+  export: roleDefault(module, 'export', role),
+});
 
 interface PermissionContextType {
   canView: (module: AppModules) => boolean;

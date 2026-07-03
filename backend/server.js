@@ -23,7 +23,6 @@ const notificationRoutes = require('./src/routes/notificationRoutes');
 const payrollRoutes = require('./src/routes/payrollRoutes');
 const attendanceRoutes = require('./src/routes/attendanceRoutes');
 const attendanceSummaryRoutes = require('./src/routes/attendanceSummaryRoutes');
-const attendanceDeviceRoutes = require('./src/routes/attendanceDeviceRoutes');
 const attendanceVendorRoutes = require('./src/routes/attendanceVendorRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const overtimeRoutes = require('./src/routes/overtimeRoutes');
@@ -91,47 +90,66 @@ app.use((req, _res, next) => {
   next();
 });
 
+// ── Multi-tenant privacy gate ────────────────────────────────────────────────
+// `pii(label)` = [protect, blockSuperAdminPII] applied BEFORE a route group so a
+// Super Admin can only reach company HR data (employees, payroll, attendance,
+// leave, documents, contracts, …) while an active, audited Support Session is
+// open. Company Head / HR / Employee are unaffected. The route's own `protect`
+// runs again inside (idempotent) — keeping each router self-contained.
+const { protect: _protect } = require('./src/middleware/authMiddleware');
+const { blockSuperAdminPII } = require('./src/middleware/supportSessionGate');
+const pii = (label) => [_protect, blockSuperAdminPII(label)];
+
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
 app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
-app.use('/api/company-profile', require('./src/routes/companyProfileRoutes'));
+app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
+app.use('/api/company-profile', pii('CompanyProfile'), require('./src/routes/companyProfileRoutes'));
 app.use('/api/communication', require('./src/routes/communicationRoutes'));
+// Public Meta WhatsApp webhook (no auth — Meta calls it; company resolved by phone_number_id).
+app.use('/api/whatsapp', require('./src/routes/whatsappWebhookRoutes'));
 app.use('/api/branches', branchRoutes);
-app.use('/api/employees', employeeRoutes);
-app.use('/api/temporary-employees', require('./src/routes/temporaryEmployeeRoutes'));
-app.use('/api/leaves', leaveRoutes);
-app.use('/api/leave-credit', leaveCreditRoutes);
-app.use('/api/leave-balances', leaveBalanceRoutes);
-app.use('/api/leave-admin', leaveAdminRoutes);
+app.use('/api/employees', pii('Employees'), employeeRoutes);
+app.use('/api/temporary-employees', pii('TemporaryEmployees'), require('./src/routes/temporaryEmployeeRoutes'));
+app.use('/api/leaves', pii('Leave'), leaveRoutes);
+app.use('/api/leave-credit', pii('Leave'), leaveCreditRoutes);
+app.use('/api/leave-balances', pii('Leave'), leaveBalanceRoutes);
+app.use('/api/leave-admin', pii('Leave'), leaveAdminRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api/tenders', tenderRoutes);
-app.use('/api/contracts', require('./src/routes/contractRoutes'));
-app.use('/api/contract-sites', require('./src/routes/siteRoutes'));
-app.use('/api/deployments', require('./src/routes/deploymentRoutes'));
-app.use('/api/documents', documentRoutes);
+app.use('/api/tenders', pii('Tenders'), tenderRoutes);
+app.use('/api/contracts', pii('Contracts'), require('./src/routes/contractRoutes'));
+app.use('/api/contract-sites', pii('Contracts'), require('./src/routes/siteRoutes'));
+app.use('/api/deployments', pii('Contracts'), require('./src/routes/deploymentRoutes'));
+app.use('/api/documents', pii('Documents'), documentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/payroll', payrollRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/attendance-summary', attendanceSummaryRoutes);
-app.use('/api/attendance-devices', attendanceDeviceRoutes);
-app.use('/api/attendance-vendors', attendanceVendorRoutes);
-app.use('/api/biometric-mappings', require('./src/routes/biometricMappingRoutes'));
-app.use('/api/attendance-import', require('./src/routes/attendanceImportRoutes'));
-app.use('/api/bonus', require('./src/routes/bonusRoutes'));
-app.use('/api/employee-bonuses', require('./src/routes/employeeBonusRoutes'));
+app.use('/api/payroll', pii('Payroll'), payrollRoutes);
+app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payrollComponentRoutes'));
+// Invoice Management — isolated financial module (own invoice_* tables only).
+app.use('/api/invoicing', require('./src/routes/invoiceRoutes'));
+app.use('/api/attendance', pii('Attendance'), attendanceRoutes);
+app.use('/api/attendance-summary', pii('Attendance'), attendanceSummaryRoutes);
+app.use('/api/attendance-vendors', pii('Attendance'), attendanceVendorRoutes);
+app.use('/api/biometric-mappings', pii('Attendance'), require('./src/routes/biometricMappingRoutes'));
+app.use('/api/attendance-import', pii('Attendance'), require('./src/routes/attendanceImportRoutes'));
+app.use('/api/etimeoffice', pii('Attendance'), require('./src/routes/etimeRoutes'));
+app.use('/api/bonus', pii('Bonus'), require('./src/routes/bonusRoutes'));
+app.use('/api/employee-bonuses', pii('Bonus'), require('./src/routes/employeeBonusRoutes'));
 app.use('/api/location-masters', require('./src/routes/locationMasterRoutes'));
-app.use('/api/compliance-reports', require('./src/routes/complianceReportRoutes'));
-app.use('/api/nominees', require('./src/routes/nomineeRoutes'));
+app.use('/api/compliance-reports', pii('Reports'), require('./src/routes/complianceReportRoutes'));
+app.use('/api/nominees', pii('Nominees'), require('./src/routes/nomineeRoutes'));
 app.use('/api/ifsc', require('./src/routes/ifscRoutes'));
 app.use('/api/users', userRoutes);
-app.use('/api/overtime', overtimeRoutes);
-app.use('/api/shifts', shiftRoutes);
+app.use('/api/overtime', pii('Overtime'), overtimeRoutes);
+app.use('/api/shifts', pii('Shifts'), shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
 app.use('/api/employee-subscription', employeeSubscriptionRoutes);
 app.use('/api/statistics', statisticsRoutes);
+// Global third-party integration config (Google Maps). Public key read for any
+// authenticated user; Super-Admin-only writes/test inside the router.
+app.use('/api/system-settings', require('./src/routes/systemSettingsRoutes'));
 
 // Health Check — also verifies the DATABASE is actually reachable, so a green
 // health response means the API AND its MySQL connection are live (distinguishes
@@ -193,6 +211,15 @@ app.use((err, req, res, next) => {
 
 const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  // Start the production automation scheduler (per-minute autonomous sends).
+  // Extend-only: fires existing automation rules; "Send Test Message" untouched.
+  try { require('./src/services/automation/automationScheduler').start(); }
+  catch (e) { console.error('[automation][scheduler] failed to start:', e.message); }
+  // Start the E-TimeOffice pull-sync scheduler (per-company, interval-driven).
+  // Extend-only: reuses the existing attendance table + matcher. Disable with
+  // ETIME_SYNC_SCHEDULER=off.
+  try { require('./src/services/etimeoffice/etimeScheduler').start(); }
+  catch (e) { console.error('[etime][scheduler] failed to start:', e.message); }
 });
 
 // ── Phase 6 diagnostics: capture NON-HTTP traffic on the HTTP port ───────────

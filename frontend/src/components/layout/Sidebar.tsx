@@ -1,61 +1,18 @@
 import React from 'react';
 import { cn } from '@/utils/cn';
 import {
-  LayoutDashboard, Users, CalendarDays, DollarSign,
-  FileText, BarChart3, Settings, ChevronRight, Building2, ArrowLeft, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, Fingerprint, FileSignature, MessageSquare
+  ChevronRight, Building2, ArrowLeft,
 } from 'lucide-react';
-import type { Role, Company } from '@/data/mockData';
+import type { Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { usePermissions } from '@/context/PermissionContext';
 import { getCompanyInitials } from '@/utils/workspaceUtils';
+import { MODULE_REGISTRY, type PageId } from '@/config/moduleRegistry';
+import type { Role } from '@/data/mockData';
 
-export type PageId =
-  | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-devices' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
-  | 'company-profile' | 'communication';
-
-interface NavItem {
-  id: PageId;
-  label: string;
-  icon: React.ReactNode;
-  roles: Role[];
-}
-
-const navItems: NavItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'] },
-  { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'] },
-  { id: 'billing', label: 'SaaS Subscriptions', icon: <CreditCard size={15} />, roles: ['Super Admin'] },
-  { id: 'employees', label: 'Employees', icon: <Users size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
-  { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'] },
-  { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
-  { id: 'attendance-devices', label: 'Attendance Devices', icon: <Fingerprint size={15} />, roles: ['Super Admin', 'Company Head', 'HR'] },
-  { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'] },
-  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
-  // Standalone "Bonus Management" removed — bonuses are now handled inside
-  // Employee Management + Payroll. The statutory engine (Form C/D) is retained
-  // for compliance but no longer a daily-operations menu item.
-  { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'] },
-  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'] },
-  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'] },
-  { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'] },
-  // Governance modules — Super Admin + Company Head ONLY (HR/Employee hidden).
-  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'] },
-  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'] },
-  // Settings is COMPANY-specific (profile, payroll, branding, departments, roles)
-  // — not a platform concern. It is intentionally hidden from the Super Admin
-  // root menu; a Super Admin configures a company's settings by entering that
-  // company (masquerade), where the role resolves to Company Head and Settings
-  // appears. Platform configuration lives under Companies / Subscriptions.
-  // Company Profile — master repository of all company data (single source of
-  // truth). COMPANY HEAD ONLY. HR/Manager/Employee never see it. Super Admin does
-  // NOT see it in the normal sidebar; they reach it via masquerade (role resolves
-  // to Company Head), matching the platform-admin support workflow.
-  { id: 'company-profile', label: 'Company Profile', icon: <Building2 size={15} />, roles: ['Company Head'] },
-  { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'] },
-  { id: 'users', label: 'Users', icon: <ShieldCheck size={15} />, roles: ['Super Admin'] },
-  { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'] },
-];
+// PageId is defined in the single module registry (config/moduleRegistry) and
+// re-exported here so existing importers (App.tsx) keep working unchanged.
+export type { PageId };
 
 interface SidebarProps {
   currentPage: PageId;
@@ -81,10 +38,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { canView } = usePermissions();
 
-  const visibleItems = navItems.filter(item => {
+  // Navigation is derived from the single module registry (config/moduleRegistry)
+  // — the same source the permission matrices use — so the sidebar and the
+  // matrices can never drift out of sync.
+  const visibleItems = MODULE_REGISTRY.filter(item => {
     // Hide specific modules from Super Admin navigation only
     if (role === 'Super Admin') {
-      const excludedIds: string[] = ['tasks', 'attendance-devices', 'audit', 'gallery'];
+      const excludedIds: string[] = ['tasks', 'attendance-integration', 'audit', 'gallery'];
       if (excludedIds.includes(item.id)) {
         return false;
       }
@@ -97,17 +57,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       return false;
     }
 
-    // Rely completely on our central permission context for view access
-    // This accurately handles Super Admin vs regular users, module disabling, and missing module matrices.
-    // Employee Cards is a sub-feature of the Employees module — gate it on the
-    // same permission so it never needs its own permission-matrix row.
-    // Employee Cards and Attendance Devices are sub-features that ride on the
-    // Employees / Attendance permission rows (no dedicated permission matrix).
-    const permKey = (item.id === 'employee-cards' ? 'employees'
-      : item.id === 'attendance-devices' ? 'attendance'
-      : item.id === 'bonus' ? 'payroll'
-      : item.id) as AppModules;
-    return canView(permKey) && item.roles.includes(role);
+    // Rely completely on our central permission context for view access.
+    // The registry's `permission` key already folds sub-features onto their
+    // parent module (Employee Cards → employees, Attendance Devices → attendance),
+    // so gating is identical to before — no dedicated matrix row needed for them.
+    const permKey = item.permission as AppModules;
+    return canView(permKey) && item.roles.includes(role as Role);
   });
 
   return (

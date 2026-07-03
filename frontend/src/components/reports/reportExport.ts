@@ -30,6 +30,7 @@ export interface ExportContext {
   generatedBy?: string;
   generatedAt?: string;
   footerNote?: string;
+  hideFooter?: boolean;   // suppress the running "Generated…" footer (e.g. formal letters)
 }
 
 // ── Shared A4 page geometry (millimetres) — the single source for print + PDF ──
@@ -114,7 +115,7 @@ export function printNode(node: HTMLElement, title = 'Report', orientation: Orie
                  display: flex; justify-content: space-between; gap: 12px; }
     </style></head><body>
       <div class="rp-wrap">${node.outerHTML}</div>
-      <div class="rp-foot"><span>${genLine}</span><span>${footRight}</span></div>
+      ${ctx.hideFooter ? '' : `<div class="rp-foot"><span>${genLine}</span><span>${footRight}</span></div>`}
     </body></html>`);
   w.document.close();
   w.focus();

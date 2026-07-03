@@ -5,14 +5,17 @@ import { Input, Select } from '@/components/ui/Input';
 import { ShieldCheck, FileText, Database, Plus, Trash2, Save, Download, Upload, Activity, Layers, PenTool, BarChart3, GripVertical, CheckCircle2, History } from 'lucide-react';
 import { type Company } from '@/data/mockData';
 import { ui } from '@/components/ui/feedback';
+import { EsicSettings, PtSettings, LwfSettings, OvertimeSettings } from '@/components/settings/statutory/StatutoryConfig';
+import { PayrollComponentBuilder } from '@/components/settings/PayrollComponentBuilder';
 
 interface PayrollComplianceEngineProps {
   currentCompany: Company;
   isSuperOrHead: boolean;
   onSave: (payload: any) => void;
+  performedBy?: string;
 }
 
-export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = ({ currentCompany, isSuperOrHead, onSave }) => {
+export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = ({ currentCompany, isSuperOrHead, onSave, performedBy = 'Administrator' }) => {
   const [activeSection, setActiveSection] = useState('customComponents');
   
   // Engine State simulating a deep database structure for dynamic columns
@@ -75,6 +78,68 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
     }, 600);
   };
 
+  // ── Per-module helpers (statutory config workspaces) ──────────────────────
+  // Persist the whole engine snapshot to the existing localStorage store and
+  // propagate the headline rates up to the parent (Company statutory fields).
+  const persist = (next: any) => {
+    localStorage.setItem(`hrms_compliance_${currentCompany.id}`, JSON.stringify(next));
+    onSave({
+      pfRate: next.pf?.employeePct,
+      esicRate: next.esic?.employerPct,
+      profTaxRate: next.pt?.amount,
+      overtimeRate: next.overtime?.multiplier,
+    });
+  };
+
+  // Shallow-merge a patch into one module's config (live editing, no save).
+  const setModule = (section: string, patch: any) =>
+    setEngineState((prev: any) => ({ ...prev, [section]: { ...prev[section], ...patch } }));
+
+  // Save one module: snapshot its current config as a new immutable version
+  // (History tab + rollback), then persist. Reason is optional.
+  const saveModule = async (section: string, label: string) => {
+    const reason = await ui.prompt({ message: `Describe this change to ${label} (optional):`, defaultValue: '' });
+    setEngineState((prev: any) => {
+      const cur = prev[section] || {};
+      const { history: _omit, ...snapshot } = cur;
+      const version = (cur.history?.[0]?.version || 0) + 1;
+      const entry = { version, changedBy: performedBy, date: new Date().toISOString(), reason: reason || 'Configuration updated', snapshot };
+      const nextModule = { ...cur, history: [entry, ...(cur.history || [])] };
+      const next = { ...prev, [section]: nextModule };
+      persist(next);
+      return next;
+    });
+    logAudit(`Saved ${label} configuration`, label);
+    ui.toast.success(`${label} saved.`);
+  };
+
+  // Reset a module to its last saved version (or clear edits if never saved).
+  const resetModule = async (section: string, label: string) => {
+    if (!(await ui.confirm({ message: `Discard unsaved changes to ${label} and revert to the last saved version?`, confirmText: 'Reset' }))) return;
+    setEngineState((prev: any) => {
+      const cur = prev[section] || {};
+      const last = cur.history?.[0]?.snapshot;
+      if (!last) return prev;
+      return { ...prev, [section]: { ...last, history: cur.history } };
+    });
+  };
+
+  // Roll back a module to a chosen historical version (recorded as a new version).
+  const rollbackModule = async (section: string, label: string, target: any) => {
+    if (!(await ui.confirm({ message: `Roll ${label} back to version v${target?.version}? The current settings will be replaced.`, confirmText: 'Rollback' }))) return;
+    const snapshot = target?.snapshot || {};
+    setEngineState((prev: any) => {
+      const cur = prev[section] || {};
+      const version = (cur.history?.[0]?.version || 0) + 1;
+      const entry = { version, changedBy: performedBy, date: new Date().toISOString(), reason: `Rolled back to v${target?.version}`, snapshot };
+      const next = { ...prev, [section]: { ...snapshot, history: [entry, ...(cur.history || [])] } };
+      persist(next);
+      return next;
+    });
+    logAudit(`Rolled back ${label} configuration`, label);
+    ui.toast.success(`${label} rolled back.`);
+  };
+
   const logAudit = (action: string, module: string) => {
     const log = { 
       user: 'Super Admin', 
@@ -85,18 +150,6 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
       time: new Date().toLocaleString() 
     };
     setEngineState((prev: any) => ({ ...prev, auditLogs: [log, ...prev.auditLogs] }));
-  };
-
-  const addCustomComponent = async () => {
-    const name = await ui.prompt({ message: "Enter Custom Component Name (e.g. Internet Allowance):" });
-    if (!name) return;
-    const type = (await ui.prompt({ message: "Type (Earnings, Deductions, Reimbursements, Benefits):", defaultValue: "Earnings" })) || "Earnings";
-    const calculation = (await ui.prompt({ message: "Calculation Type (Fixed, Percentage, Formula):", defaultValue: "Fixed" })) || "Fixed";
-    const val = await ui.prompt({ message: `Enter numeric value for ${calculation}:`, defaultValue: "0" });
-    
-    const nextList = [...engineState.customComponents, { id: `c${Date.now()}`, name, type, calculation, value: Number(val) || 0, enabled: true }];
-    setEngineState({ ...engineState, customComponents: nextList });
-    logAudit(`Created custom component: ${name}`, 'Component Builder');
   };
 
   const addFormula = async () => {
@@ -183,54 +236,9 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
         {/* Content Area */}
         <div className="flex-1 p-6 overflow-y-auto max-h-[650px] relative">
           
-          {/* Section 1: Custom Component Builder */}
+          {/* Section 1: Payroll Component Builder — full DB-backed CRUD module */}
           {activeSection === 'customComponents' && (
-            <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="flex justify-between items-end border-b border-slate-200 pb-3">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-lg">Custom Component Builder</h4>
-                  <p className="text-xs text-slate-500 mt-1">Create unlimited earnings, deductions, reimbursements, and benefits components. Schema updates automatically.</p>
-                </div>
-                {isSuperOrHead && <Button size="sm" onClick={addCustomComponent} className="flex items-center gap-1 bg-slate-900 text-white"><Plus size={14}/> Add Component</Button>}
-              </div>
-              
-              <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600">
-                    <tr><th className="p-3 font-semibold">Component Name</th><th className="p-3 font-semibold">Classification</th><th className="p-3 font-semibold">Calculation</th><th className="p-3 font-semibold">Value</th><th className="p-3 font-semibold text-center">Status</th><th className="p-3 font-semibold text-right">Actions</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {engineState.customComponents.map((c: any, idx: number) => (
-                      <tr key={c.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="p-3 font-bold text-slate-800">{c.name}</td>
-                        <td className="p-3">
-                          <span className={`px-2 py-1 rounded text-[10px] font-bold ${c.type === 'Earnings' ? 'bg-emerald-100 text-emerald-800' : c.type === 'Deductions' ? 'bg-rose-100 text-rose-800' : 'bg-indigo-100 text-indigo-800'}`}>{c.type}</span>
-                        </td>
-                        <td className="p-3 text-slate-600">{c.calculation}</td>
-                        <td className="p-3 font-mono text-xs">{c.value}{c.calculation === 'Percentage' ? '%' : ' INR'}</td>
-                        <td className="p-3 text-center">
-                          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${c.enabled ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                            {c.enabled ? <CheckCircle2 size={10} /> : null} {c.enabled ? 'Active' : 'Disabled'}
-                          </div>
-                        </td>
-                        <td className="p-3 text-right">
-                          {isSuperOrHead && (
-                            <button className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-rose-50" onClick={async () => {
-                              if(await ui.confirm({ message: 'Delete component? This updates DB schema.', variant: 'danger', confirmText: 'Delete' })) {
-                                const next = [...engineState.customComponents];
-                                next.splice(idx, 1);
-                                setEngineState({...engineState, customComponents: next});
-                                logAudit(`Deleted component: ${c.name}`, 'Component Builder');
-                              }
-                            }}><Trash2 size={14}/></button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <PayrollComponentBuilder isSuperOrHead={isSuperOrHead} performedBy={performedBy} />
           )}
 
           {/* Section 2: Formula Builder */}
@@ -383,13 +391,35 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
             </div>
           )}
 
-          {/* Fallback for other generic sections */}
-          {['esic', 'pt', 'lwf', 'overtime'].includes(activeSection) && (
-            <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in bg-white border border-slate-200 rounded-xl mt-4 shadow-sm">
-              <Database size={48} className="text-slate-200 mb-4" />
-              <p className="text-lg font-bold text-slate-700 capitalize">{activeSection} Module Engine</p>
-              <p className="text-sm text-slate-500 max-w-md mt-2">This module is actively integrated via the Database schema. Rules set here apply automatically to the Payroll Engine globally.</p>
-            </div>
+          {/* Statutory configuration workspaces (full Overview/Config/Rules/
+              Validation/Preview/History layout — replaces the old placeholders). */}
+          {activeSection === 'esic' && (
+            <EsicSettings cfg={engineState.esic} canEdit={isSuperOrHead}
+              onChange={(patch) => setModule('esic', patch)}
+              onSave={() => saveModule('esic', 'ESIC Settings')}
+              onReset={() => resetModule('esic', 'ESIC Settings')}
+              onRollback={(entry) => rollbackModule('esic', 'ESIC Settings', entry)} />
+          )}
+          {activeSection === 'pt' && (
+            <PtSettings cfg={engineState.pt} canEdit={isSuperOrHead}
+              onChange={(patch) => setModule('pt', patch)}
+              onSave={() => saveModule('pt', 'Professional Tax')}
+              onReset={() => resetModule('pt', 'Professional Tax')}
+              onRollback={(entry) => rollbackModule('pt', 'Professional Tax', entry)} />
+          )}
+          {activeSection === 'lwf' && (
+            <LwfSettings cfg={engineState.lwf} canEdit={isSuperOrHead}
+              onChange={(patch) => setModule('lwf', patch)}
+              onSave={() => saveModule('lwf', 'Labour Welfare Fund')}
+              onReset={() => resetModule('lwf', 'Labour Welfare Fund')}
+              onRollback={(entry) => rollbackModule('lwf', 'Labour Welfare Fund', entry)} />
+          )}
+          {activeSection === 'overtime' && (
+            <OvertimeSettings cfg={engineState.overtime} canEdit={isSuperOrHead}
+              onChange={(patch) => setModule('overtime', patch)}
+              onSave={() => saveModule('overtime', 'Overtime Settings')}
+              onReset={() => resetModule('overtime', 'Overtime Settings')}
+              onRollback={(entry) => rollbackModule('overtime', 'Overtime Settings', entry)} />
           )}
         </div>
       </div>

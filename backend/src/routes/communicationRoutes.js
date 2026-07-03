@@ -66,4 +66,62 @@ router.get('/delivery-logs', ctrl.listDeliveryLogs);
 router.get('/settings', ctrl.getSettings);
 router.put('/settings', canWrite, readOnly, ctrl.updateSettings);
 
+// ── WhatsApp integration foundation (Phase 1 — NO messages sent) ──────────────
+// Sub-routes of Communication Center, inheriting the same canRead/canWrite gate
+// (Super Admin blocked; Company Head full; HR per matrix). Reads need VIEW;
+// saving settings / running the test need EDIT.
+router.get('/whatsapp/settings', ctrl.getWhatsAppSettings);
+router.put('/whatsapp/settings', canWrite, readOnly, ctrl.updateWhatsAppSettings);
+router.get('/whatsapp/placeholders', ctrl.getWhatsAppPlaceholders);
+router.get('/whatsapp/templates', ctrl.listWhatsAppTemplates);
+router.get('/whatsapp/queue', ctrl.listWhatsAppQueue);
+router.get('/whatsapp/logs', ctrl.listWhatsAppLogs);
+router.get('/whatsapp/diagnostics', ctrl.getWhatsAppDiagnostics);
+router.get('/whatsapp/request-history', ctrl.getWhatsAppRequestHistory);
+router.get('/whatsapp/scheduler-preview', ctrl.getWhatsAppSchedulerPreview);
+router.post('/whatsapp/test', canWrite, readOnly, ctrl.testWhatsAppConfiguration); // Phase 1 simulated full-flow (kept)
+// Phase 2 — REAL Meta Cloud API:
+router.post('/whatsapp/connection-test', canWrite, readOnly, ctrl.testWhatsAppConnection);
+router.post('/whatsapp/send-test', canWrite, readOnly, ctrl.sendWhatsAppTestMessage);
+// Phase 3 — WhatsApp Template Management:
+router.get('/whatsapp/templates/meta', ctrl.listWhatsAppMetaTemplates);
+router.post('/whatsapp/templates/sync', canWrite, readOnly, ctrl.syncWhatsAppTemplates);
+router.get('/whatsapp/templates/mappings', ctrl.listWhatsAppMappings);
+router.post('/whatsapp/templates/mappings', canWrite, readOnly, ctrl.saveWhatsAppMapping);
+router.delete('/whatsapp/templates/mappings/:id', canWrite, readOnly, ctrl.deleteWhatsAppMapping);
+router.post('/whatsapp/templates/mappings/:id/test', canWrite, readOnly, ctrl.testWhatsAppTemplate);
+router.get('/whatsapp/templates/events', ctrl.listWhatsAppTemplateEvents);
+
+// ── WhatsApp Image-Template Integration (render HRMate designs → image template) ─
+router.post('/whatsapp/image/preview', ctrl.previewWhatsAppCard);   // render-only (VIEW)
+router.post('/whatsapp/image/send', canWrite, readOnly, ctrl.sendWhatsAppImage);
+router.post('/whatsapp/image/test', canWrite, readOnly, ctrl.sendWhatsAppTestImage);
+
+// ── Phase 4 — Communication Automation Engine ─────────────────────────────────
+router.get('/automation/meta', ctrl.getAutomationMeta);
+router.get('/automation/rules', ctrl.listAutomationRules);
+router.post('/automation/rules', canWrite, readOnly, ctrl.createAutomationRule);
+router.put('/automation/rules/:id', canWrite, readOnly, ctrl.updateAutomationRule);
+router.delete('/automation/rules/:id', canWrite, readOnly, ctrl.deleteAutomationRule);
+router.post('/automation/rules/:id/execute', canWrite, readOnly, ctrl.executeAutomationRule);
+router.get('/automation/runs', ctrl.listAutomationRuns);
+router.get('/automation/scheduler', ctrl.getAutomationScheduler);
+
+// ── Communication Audit Trail (reuses AuditLog; company-scoped) ────────────────
+// Read needs VIEW (baseline). Logging an action (Preview/Manual Send/Retry/etc.)
+// is allowed for any view-capable user so the trail is complete — it is an
+// internal activity log, not a business mutation.
+router.get('/audit', ctrl.listCommunicationAudit);
+router.post('/audit', ctrl.createCommunicationAudit);
+
+// ── Phase 5 — Enterprise WhatsApp completion (reads = VIEW; retry = EDIT) ──────
+router.get('/whatsapp/analytics', ctrl.getWhatsAppAnalytics);
+router.get('/whatsapp/messages/search', ctrl.searchWhatsAppMessages);
+router.get('/whatsapp/messages/:id', ctrl.getWhatsAppMessageDetail);
+router.get('/whatsapp/conversation', ctrl.getWhatsAppConversation);
+router.get('/whatsapp/webhook-health', ctrl.getWhatsAppWebhookHealth);
+router.get('/whatsapp/queue-monitor', ctrl.getWhatsAppQueueMonitor);
+router.get('/whatsapp/retry-policy', ctrl.getWhatsAppRetryPolicy);
+router.post('/whatsapp/retry', canWrite, readOnly, ctrl.retryWhatsAppFailed);
+
 module.exports = router;

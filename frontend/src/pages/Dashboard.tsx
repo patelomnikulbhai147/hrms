@@ -18,7 +18,7 @@ import {
   resolveActiveWorkspace
 } from '@/types';
 import { deriveCompanyPayrollStatus } from '@/utils/payroll';
-import { formatDate } from '@/utils/formatDate';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import {
   calculateSubscriptionAnalytics,
   getSubscriptionAlertsList,
@@ -161,6 +161,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const [broadcastMsg, setBroadcastMsg] = useState('');
   const [rosterTab, setRosterTab] = useState<'Joined' | 'On Leave' | 'Pending Exit'>('Joined');
+  const [recentAuditLogs, setRecentAuditLogs] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (role === 'Super Admin') return;
+    api.companyProfile.audit(10)
+      .then((data: any) => setRecentAuditLogs(Array.isArray(data) ? data : []))
+      .catch(() => setRecentAuditLogs([]));
+  }, [activeCompanyId, role]);
 
   const isParentCompany = !currentCompany?.parentCompanyId;
   const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all' : 'branch');
@@ -981,35 +989,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ).length;
 
     // 10. Recent Activities = real record events (joins, leaves, payroll, documents).
-    const recentActivitiesLive = (() => {
-      type Act = { kind: 'employee' | 'leave' | 'payroll' | 'document'; title: string; sub: string; ts: number };
-      const acts: Act[] = [];
-      rawScopedEmployees.forEach(e => {
-        if (e.joinDate) acts.push({ kind: 'employee', title: `${e.name} joined`, sub: e.department ? `${e.department} team` : 'New employee', ts: new Date(e.joinDate).getTime() });
-      });
-      scopedLeavesLive.forEach(l => {
-        acts.push({ kind: 'leave', title: `${l.employeeName || 'Employee'} ${String(l.status) === 'Pending' ? 'requested' : String(l.status).toLowerCase()} ${l.leaveType || 'leave'}`, sub: l.days ? `${l.days} day(s)` : 'Leave request', ts: new Date(l.appliedOn || l.fromDate || todayStr).getTime() });
-      });
-      scopedPayroll.forEach((p: any) => {
-        if (p.netSalary) acts.push({ kind: 'payroll', title: `Payroll processed${p.employeeName ? ` for ${p.employeeName}` : ''}`, sub: `Net ₹${(p.netSalary || 0).toLocaleString('en-IN')}`, ts: new Date(p.createdAt || p.payDate || todayStr).getTime() });
-      });
-      scopedDocs.forEach((d: any) => {
-        acts.push({ kind: 'document', title: `Document ${d.name || ''}`.trim(), sub: d.status ? `Status: ${d.status}` : (d.uploadedBy ? `By ${d.uploadedBy}` : 'Uploaded'), ts: new Date(d.uploadedOn || d.createdAt || todayStr).getTime() });
-      });
-      return acts.filter(a => !isNaN(a.ts)).sort((a, b) => b.ts - a.ts).slice(0, 5);
-    })();
-
-    const relativeTime = (ts: number): string => {
-      const diff = Date.now() - ts;
-      const mins = Math.floor(diff / 60000);
-      if (mins < 1) return 'just now';
-      if (mins < 60) return `${mins}m ago`;
-      const hrs = Math.floor(mins / 60);
-      if (hrs < 24) return `${hrs}h ago`;
-      const days = Math.floor(hrs / 24);
-      return `${days}d ago`;
-    };
-
     return (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
@@ -1301,25 +1280,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
-                <span onClick={() => onNavigate('reports')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <span onClick={() => {
+                  localStorage.setItem('hrms_company_profile_tab', 'audit');
+                  onNavigate('company-profile');
+                }} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
               </div>
               <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
-                {recentActivitiesLive.length === 0 ? (
+                {recentAuditLogs.length === 0 ? (
                   <p className="text-[12px] text-gray-400 font-medium py-4">No recent activity for this workspace</p>
-                ) : recentActivitiesLive.map((act, i) => {
-                  const style = {
-                    employee: { bg: 'bg-blue-50', text: 'text-[#2563EB]', Icon: Users },
-                    payroll: { bg: 'bg-purple-50', text: 'text-[#8B5CF6]', Icon: Wallet },
-                    leave: { bg: 'bg-amber-50', text: 'text-[#F59E0B]', Icon: Calendar },
-                    document: { bg: 'bg-emerald-50', text: 'text-[#10B981]', Icon: FileText },
-                  }[act.kind];
-                  const Icon = style.Icon;
+                ) : recentAuditLogs.map((act, i) => {
+                  let bg = 'bg-gray-50';
+                  let text = 'text-gray-500';
+                  let Icon = Activity;
+                  if (act.module === 'Employee' || act.module === 'CompanyContact') { bg = 'bg-blue-50'; text = 'text-[#2563EB]'; Icon = Users; }
+                  else if (act.module === 'Payroll') { bg = 'bg-purple-50'; text = 'text-[#8B5CF6]'; Icon = Wallet; }
+                  else if (act.module === 'Leave') { bg = 'bg-amber-50'; text = 'text-[#F59E0B]'; Icon = Calendar; }
+                  else if (act.module === 'Document' || act.module === 'Company' || act.module === 'Branch') { bg = 'bg-emerald-50'; text = 'text-[#10B981]'; Icon = FileText; }
+
                   return (
                     <div key={i} className="relative flex items-start gap-4">
-                      <div className={`w-7 h-7 rounded-full ${style.bg} border-[3px] border-white flex items-center justify-center z-10 ${style.text} shadow-sm`}><Icon size={12} strokeWidth={3} /></div>
+                      <div className={`w-7 h-7 rounded-full ${bg} border-[3px] border-white flex items-center justify-center z-10 ${text} shadow-sm`}><Icon size={12} strokeWidth={3} /></div>
                       <div className="flex-1 pb-1">
-                        <p className="text-[12px] font-semibold text-gray-800">{act.title}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{act.sub} <span className="float-right text-gray-400">{relativeTime(act.ts)}</span></p>
+                        <p className="text-[12px] font-semibold text-gray-800">{act.action}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">{act.details} <span className="float-right text-gray-400">{formatDateTime(act.createdAt)}</span></p>
                       </div>
                     </div>
                   );

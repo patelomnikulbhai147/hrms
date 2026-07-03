@@ -41,8 +41,16 @@ export interface DocumentCanvasProps {
   bodyHtml: string;
   employeeName?: string;
   signatureText: string;
+  /** Authorized signature image (base64/URL) — rendered above the signatory name. */
+  signatureImage?: string;
+  /** Company seal / stamp image — replaces the placeholder "Seal" mark. */
+  sealImage?: string;
+  /** Full-page letterhead background image — becomes the sheet background. */
+  letterheadImage?: string;
   footerText: string;
   watermark?: string;
+  /** Watermark image (base64/URL) — used instead of the watermark text when set. */
+  watermarkImage?: string;
   isPayslip?: boolean;
   payslipNode?: React.ReactNode;
 }
@@ -50,9 +58,13 @@ export interface DocumentCanvasProps {
 const SERIF = 'Georgia, "Times New Roman", serif';
 const SANS = 'system-ui, "Segoe UI", Arial, sans-serif';
 
-// Subtle, professional watermark — small, light, and never overpowering the body.
-const Watermark: React.FC<{ text?: string }> = ({ text }) =>
-  text ? (
+// Subtle, professional watermark — image when supplied, else the light text mark.
+const Watermark: React.FC<{ text?: string; image?: string }> = ({ text, image }) =>
+  image ? (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden z-0">
+      <img src={image} alt="" className="-rotate-[30deg]" style={{ maxWidth: '65%', maxHeight: '65%', opacity: 0.07 }} />
+    </div>
+  ) : text ? (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden z-0">
       <span className="text-[26px] font-bold text-slate-400/40 border border-slate-300/30 px-3 py-0.5 rounded-lg -rotate-[30deg] uppercase tracking-[0.3em] opacity-[0.07]" style={{ fontFamily: SANS }}>{text}</span>
     </div>
@@ -60,6 +72,16 @@ const Watermark: React.FC<{ text?: string }> = ({ text }) =>
 
 export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
   const { primary, logoText, companyName, branchName, address, email, subject, dateStr, bodyHtml, employeeName, signatureText, footerText, watermark, isPayslip, payslipNode } = p;
+
+  // Central branding marks (from Company Profile via BrandingService, passed as
+  // props by Documents.tsx). All optional — when absent the letter renders exactly
+  // as before (backward compatible).
+  const signMark = p.signatureImage
+    ? <img src={p.signatureImage} alt="signature" style={{ maxHeight: 30, objectFit: 'contain', display: 'block', marginBottom: 2 }} />
+    : null;
+  const sealMark = (size: number) => p.sealImage
+    ? <img src={p.sealImage} alt="seal" style={{ width: size, height: size, objectFit: 'contain', opacity: 0.9 }} />
+    : null;
   const layout = LAYOUT_IDS.includes(p.layout || '') ? p.layout : 'modern-corporate';
   const tint = (hex: string, a: string) => `${hex}${a}`; // hex + alpha suffix
 
@@ -89,7 +111,11 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
 
   const sheet = (extra: React.CSSProperties, children: React.ReactNode) => (
     <div className="w-full relative bg-white flex flex-col" style={{ minHeight: '297mm', ...extra }}>
-      <Watermark text={watermark} />
+      {/* Uploaded letterhead becomes the full-page background (no plain white page). */}
+      {p.letterheadImage && (
+        <img src={p.letterheadImage} alt="" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
+      )}
+      <Watermark text={watermark} image={p.watermarkImage} />
       <div className="relative z-10 flex flex-col flex-1">{children}</div>
     </div>
   );
@@ -117,7 +143,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           <div className="flex justify-between items-end border-t border-slate-100 pt-5" style={{ fontFamily: SANS }}>
             <div>
               <p className="font-bold text-[11px]">For {companyName}</p>
-              <p className="text-[10px] text-slate-500 italic mt-6">{signatureText}</p>
+              <p className="text-[10px] text-slate-500 italic mt-6">{signMark}{signatureText}</p>
               <p className="text-[8px] text-slate-400 mt-0.5">Corporate Operations Department</p>
             </div>
             <div className="text-right text-[8px] text-slate-400"><p className="font-bold">CONFIDENTIAL AND PROPRIETARY</p><p className="mt-0.5">{companyName}</p></div>
@@ -146,9 +172,11 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           <Body serif size={13} justify />
         </div>
         <div className="mt-14 flex flex-col items-center text-center" style={{ fontFamily: SERIF }}>
-          <div className="w-12 h-12 rounded-full border flex items-center justify-center text-[7px] uppercase tracking-wider text-slate-400 mb-2" style={{ borderColor: tint(primary, '55') }}>Seal</div>
+          {p.sealImage
+            ? <div className="mb-2">{sealMark(48)}</div>
+            : <div className="w-12 h-12 rounded-full border flex items-center justify-center text-[7px] uppercase tracking-wider text-slate-400 mb-2" style={{ borderColor: tint(primary, '55') }}>Seal</div>}
           <div className="h-[1px] w-40" style={{ backgroundColor: primary }} />
-          <p className="text-[11px] font-bold mt-1.5">{signatureText}</p>
+          <p className="text-[11px] font-bold mt-1.5">{signMark}{signatureText}</p>
           <p className="text-[9px] text-slate-500">For {companyName}</p>
           <p className="text-[7px] text-slate-300 tracking-widest uppercase mt-6">{footerText}</p>
         </div>
@@ -182,7 +210,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           </div>
           <div className="mt-10" style={{ fontFamily: SANS }}>
             <div className="h-[2px] w-28 mb-1" style={{ backgroundColor: primary }} />
-            <p className="text-[11px] font-bold">{signatureText}</p>
+            <p className="text-[11px] font-bold">{signMark}{signatureText}</p>
             <p className="text-[9px] text-slate-500">For {companyName}</p>
           </div>
         </div>
@@ -205,7 +233,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
         </div>
         <div className="mt-16" style={{ fontFamily: SANS }}>
           <div className="h-[1px] w-32 bg-slate-300 mb-1.5" />
-          <p className="text-[11px] text-slate-800">{signatureText}</p>
+          <p className="text-[11px] text-slate-800">{signMark}{signatureText}</p>
           <p className="text-[9px] text-slate-400">{companyName}</p>
           <p className="text-[8px] text-slate-300 mt-10">{footerText}</p>
         </div>
@@ -232,7 +260,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
             <div>
               <div className="h-[1px] bg-slate-800 mb-1 mt-8" />
               <p className="text-[10px] font-bold uppercase tracking-wide">For the Employer</p>
-              <p className="text-[10px] text-slate-700">{signatureText}</p>
+              <p className="text-[10px] text-slate-700">{signMark}{signatureText}</p>
               <p className="text-[9px] text-slate-500">{companyName}</p>
             </div>
             <div>
@@ -265,8 +293,10 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
         <div className="flex-1"><Body serif size={12.5} justify /></div>
         <div className="flex justify-end mt-8" style={{ fontFamily: SERIF }}>
           <div className="text-center">
-            <div className="w-16 h-16 rounded-full border-2 border-dashed flex items-center justify-center text-[7px] uppercase text-slate-400 mb-1 mx-auto" style={{ borderColor: tint(primary, '66') }}>Seal &amp; Sign</div>
-            <p className="text-[10px] font-bold">{signatureText}</p>
+            {p.sealImage
+              ? <div className="mb-1 mx-auto flex justify-center">{sealMark(64)}</div>
+              : <div className="w-16 h-16 rounded-full border-2 border-dashed flex items-center justify-center text-[7px] uppercase text-slate-400 mb-1 mx-auto" style={{ borderColor: tint(primary, '66') }}>Seal &amp; Sign</div>}
+            <p className="text-[10px] font-bold">{signMark}{signatureText}</p>
             <p className="text-[8px] text-slate-500">For {companyName}</p>
           </div>
         </div>
@@ -297,7 +327,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
         <div className="mt-12 flex justify-end" style={{ fontFamily: SANS }}>
           <div className="text-right">
             <div className="h-[2px] w-32 ml-auto mb-1" style={{ backgroundColor: primary }} />
-            <p className="text-[11px] font-bold">{signatureText}</p>
+            <p className="text-[11px] font-bold">{signMark}{signatureText}</p>
             <p className="text-[9px] text-slate-500">For {companyName}</p>
           </div>
         </div>
@@ -328,7 +358,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
           <div className="rounded-2xl border border-slate-200 p-5"><Body size={13} /></div>
         </div>
         <div className="mt-8 rounded-2xl border p-4 flex justify-between items-end" style={{ borderColor: tint(primary, '33'), fontFamily: SANS }}>
-          <div><p className="text-[11px] font-bold">{signatureText}</p><p className="text-[9px] text-slate-500">For {companyName} · Authorized Signatory</p></div>
+          <div><p className="text-[11px] font-bold">{signMark}{signatureText}</p><p className="text-[9px] text-slate-500">For {companyName} · Authorized Signatory</p></div>
           <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: primary }}>Verified</span>
         </div>
       </div>

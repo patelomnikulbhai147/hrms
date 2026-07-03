@@ -172,7 +172,7 @@ export const api = {
       });
     }
   },
-  
+
   companies: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/companies`, { headers: getHeaders() });
@@ -195,6 +195,16 @@ export const api = {
     // not just Super Admin. Persists branding to the DB and writes an audit entry.
     updateBranding: async (id: string, data: any) => {
       return await apiFetch(`${BASE_URL}/companies/${id}/branding`, {
+        method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    // Department management (Settings → Manage Departments). Uses the dedicated
+    // department endpoint authorized by the SETTINGS permission — NOT branding —
+    // so a user with Settings → Edit can add/rename/delete/reorder departments.
+    updateDepartments: async (id: string, data: any) => {
+      return await apiFetch(`${BASE_URL}/companies/${id}/departments`, {
         method: 'PUT',
         headers: getHeaders(),
         body: JSON.stringify(data)
@@ -322,7 +332,7 @@ export const api = {
       });
     }
   },
-  
+
   audit: {
     getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
   },
@@ -405,20 +415,6 @@ export const api = {
     audit: async () => { return await apiFetch(`${BASE_URL}/leave-admin/audit`, { headers: getHeaders() }); },
   },
 
-  // Attendance device registry (Phase 1 — device management only, no biometric sync)
-  attendanceDevices: {
-    getAll: async () => { return await apiFetch(`${BASE_URL}/attendance-devices`, { headers: getHeaders() }); },
-    getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { headers: getHeaders() }); },
-    create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance-devices`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
-    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
-    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    // Phase 5 — read-only diagnostics
-    testConnection: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}/test-connection`, { method: 'POST', headers: getHeaders() }); },
-    discover: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-devices/${id}/discover`, { method: 'POST', headers: getHeaders() }); },
-    // Phase 6 — raw device push logs (Live Device Monitor)
-    pushLogs: async () => { return await apiFetch(`${BASE_URL}/attendance-devices/push-logs`, { headers: getHeaders() }); },
-  },
-
   // Attendance vendor registry — configurable catalog (E-TimeOffice, eSSL, …).
   // New vendors are added as data (Super Admin), so no code change is required.
   attendanceVendors: {
@@ -426,6 +422,62 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/attendance-vendors/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
+  // E-TimeOffice Attendance API Integration (Phase 5 — live pull sync). Config +
+  // test + manual sync + run logs + dashboard. Credentials never returned plaintext.
+  etimeoffice: {
+    getConnection: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/connection${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    saveConnection: async (data: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/connection`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    testConnection: async (data: any = {}) => { return await apiFetch(`${BASE_URL}/etimeoffice/connection/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    syncNow: async (data: any = {}) => { return await apiFetch(`${BASE_URL}/etimeoffice/sync`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    syncLogs: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/sync-logs${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    dashboard: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/dashboard${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    // Unmatched Queue + biometric mapping
+    unmatched: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/unmatched${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    mappingEmployees: async (q = '', companyId?: any) => { const p = new URLSearchParams(); if (q) p.set('q', q); if (companyId) p.set('companyId', String(companyId)); const qs = p.toString(); return await apiFetch(`${BASE_URL}/etimeoffice/employees${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    resolveUnmatched: async (data: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/unmatched/resolve`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    ignoreUnmatched: async (data: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/unmatched/ignore`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+  },
+
+  // Payroll Component Builder — full CRUD for the payroll component master.
+  payrollComponents: {
+    meta: async () => { return await apiFetch(`${BASE_URL}/payroll-components/meta`, { headers: getHeaders() }); },
+    list: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return await apiFetch(`${BASE_URL}/payroll-components${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    getOne: async (id: any) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/payroll-components`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    clone: async (id: any) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}/clone`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
+    setStatus: async (id: any, status: string) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}/status`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status }) }); },
+    archive: async (id: any, restore = false) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}/archive`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ restore }) }); },
+    remove: async (id: any) => { return await apiFetch(`${BASE_URL}/payroll-components/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
+  // Invoice Management — isolated financial module (/api/invoicing).
+  invoicing: {
+    dashboard: async () => apiFetch(`${BASE_URL}/invoicing/dashboard`, { headers: getHeaders() }),
+    // Customers
+    listCustomers: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/customers${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    saveCustomer: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/customers${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    deleteCustomer: async (id: any) => apiFetch(`${BASE_URL}/invoicing/customers/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    // Products
+    listProducts: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/products${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    saveProduct: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/products${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    deleteProduct: async (id: any) => apiFetch(`${BASE_URL}/invoicing/products/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    // Settings
+    getSettings: async () => apiFetch(`${BASE_URL}/invoicing/settings`, { headers: getHeaders() }),
+    saveSettings: async (data: any) => apiFetch(`${BASE_URL}/invoicing/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    // Invoices
+    listInvoices: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/invoices${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    getInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { headers: getHeaders() }),
+    createInvoice: async (data: any) => apiFetch(`${BASE_URL}/invoicing/invoices`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    updateInvoice: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    duplicateInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    setInvoiceStatus: async (id: any, status: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/status`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status }) }),
+    logInvoiceAction: async (id: any, action: string, detail?: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/log`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, detail }) }),
+    deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
   },
 
   // Bonus Management (Phase 1 — Bonus Configuration). Separate bonus
@@ -561,12 +613,18 @@ export const api = {
   companyProfile: {
     get: async () => { return await apiFetch(`${BASE_URL}/company-profile`, { headers: getHeaders() }); },
     documentHealth: async (notify = false) => { return await apiFetch(`${BASE_URL}/company-profile/document-health${notify ? '?notify=1' : ''}`, { headers: getHeaders() }); },
-    audit: async () => { return await apiFetch(`${BASE_URL}/company-profile/audit`, { headers: getHeaders() }); },
+    audit: async (limit?: number) => { return await apiFetch(`${BASE_URL}/company-profile/audit${limit ? `?limit=${limit}` : ''}`, { headers: getHeaders() }); },
     contacts: {
       list: async () => { return await apiFetch(`${BASE_URL}/company-profile/contacts`, { headers: getHeaders() }); },
       create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
       update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
       remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/contacts/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+    owners: {
+      list: async () => { return await apiFetch(`${BASE_URL}/company-profile/owners`, { headers: getHeaders() }); },
+      create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/owners`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/owners/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/owners/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     },
     documents: {
       list: async () => { return await apiFetch(`${BASE_URL}/company-profile/documents`, { headers: getHeaders() }); },
@@ -579,6 +637,19 @@ export const api = {
       create: async (data: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
       update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
       remove: async (id: any) => { return await apiFetch(`${BASE_URL}/company-profile/compliance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    },
+  },
+
+  // System Settings → Third Party Integrations. Google Maps is a GLOBAL
+  // installation setting managed only by a Super Admin (installer). `publicConfig`
+  // is the runtime key any authenticated user needs to load the Maps JS API.
+  systemSettings: {
+    googleMaps: {
+      publicConfig: async () => { return await apiFetch(`${BASE_URL}/system-settings/google-maps/public`, { headers: getHeaders() }); },
+      geocode: async (data: { url?: string; lat?: number; lng?: number }) => { return await apiFetch(`${BASE_URL}/system-settings/google-maps/geocode`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+      get: async () => { return await apiFetch(`${BASE_URL}/system-settings/google-maps`, { headers: getHeaders() }); },
+      update: async (data: { apiKey: string }) => { return await apiFetch(`${BASE_URL}/system-settings/google-maps`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+      test: async (data?: { apiKey?: string }) => { return await apiFetch(`${BASE_URL}/system-settings/google-maps/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data || {}) }); },
     },
   },
 
@@ -620,6 +691,71 @@ export const api = {
       get: async () => apiFetch(`${BASE_URL}/communication/settings`, { headers: getHeaders() }),
       update: async (data: any) => apiFetch(`${BASE_URL}/communication/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
     },
+    // WhatsApp integration foundation (Phase 1 — NO messages are ever sent).
+    whatsapp: {
+      settings: {
+        get: async () => apiFetch(`${BASE_URL}/communication/whatsapp/settings`, { headers: getHeaders() }),
+        update: async (data: any) => apiFetch(`${BASE_URL}/communication/whatsapp/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      },
+      placeholders: async () => apiFetch(`${BASE_URL}/communication/whatsapp/placeholders`, { headers: getHeaders() }),
+      templates: async () => apiFetch(`${BASE_URL}/communication/whatsapp/templates`, { headers: getHeaders() }),
+      queue: async () => apiFetch(`${BASE_URL}/communication/whatsapp/queue`, { headers: getHeaders() }),
+      logs: async () => apiFetch(`${BASE_URL}/communication/whatsapp/logs`, { headers: getHeaders() }),
+      diagnostics: async () => apiFetch(`${BASE_URL}/communication/whatsapp/diagnostics`, { headers: getHeaders() }),
+      schedulerPreview: async () => apiFetch(`${BASE_URL}/communication/whatsapp/scheduler-preview`, { headers: getHeaders() }),
+      test: async () => apiFetch(`${BASE_URL}/communication/whatsapp/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+      // Phase 2 — real Meta Cloud API
+      connectionTest: async () => apiFetch(`${BASE_URL}/communication/whatsapp/connection-test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+      sendTest: async () => apiFetch(`${BASE_URL}/communication/whatsapp/send-test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+      // Phase 2.5 — production hardening
+      requestHistory: async () => apiFetch(`${BASE_URL}/communication/whatsapp/request-history`, { headers: getHeaders() }),
+      // Phase 5 — enterprise completion (analytics, search, inspector, health, retry)
+      analytics: async () => apiFetch(`${BASE_URL}/communication/whatsapp/analytics`, { headers: getHeaders() }),
+      messagesSearch: async (params: Record<string, string> = {}) => {
+        const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '' && v !== 'All')).toString();
+        return apiFetch(`${BASE_URL}/communication/whatsapp/messages/search${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+      },
+      messageDetail: async (id: any) => apiFetch(`${BASE_URL}/communication/whatsapp/messages/${id}`, { headers: getHeaders() }),
+      conversation: async (params: Record<string, string> = {}) => {
+        const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
+        return apiFetch(`${BASE_URL}/communication/whatsapp/conversation${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+      },
+      webhookHealth: async () => apiFetch(`${BASE_URL}/communication/whatsapp/webhook-health`, { headers: getHeaders() }),
+      queueMonitor: async () => apiFetch(`${BASE_URL}/communication/whatsapp/queue-monitor`, { headers: getHeaders() }),
+      retryPolicy: async () => apiFetch(`${BASE_URL}/communication/whatsapp/retry-policy`, { headers: getHeaders() }),
+      retry: async (logId?: any) => apiFetch(`${BASE_URL}/communication/whatsapp/retry`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(logId ? { logId } : {}) }),
+      // Image-template integration — render an HRMate gallery design and send it
+      // as an approved WhatsApp IMAGE template (header media).
+      imagePreview: async (data: { templateId: any; employeeId?: any }) => apiFetch(`${BASE_URL}/communication/whatsapp/image/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      imageSend: async (data: { templateId: any; employeeId?: any; toOverride?: string; useImageFallback?: boolean; automationRuleId?: any }) => apiFetch(`${BASE_URL}/communication/whatsapp/image/send`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      imageTest: async (data: { templateId: any; employeeId?: any }) => apiFetch(`${BASE_URL}/communication/whatsapp/image/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      // Phase 3 — template management
+      mgmt: {
+        meta: async () => apiFetch(`${BASE_URL}/communication/whatsapp/templates/meta`, { headers: getHeaders() }),
+        sync: async () => apiFetch(`${BASE_URL}/communication/whatsapp/templates/sync`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+        mappings: async () => apiFetch(`${BASE_URL}/communication/whatsapp/templates/mappings`, { headers: getHeaders() }),
+        saveMapping: async (data: any) => apiFetch(`${BASE_URL}/communication/whatsapp/templates/mappings`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+        removeMapping: async (id: any) => apiFetch(`${BASE_URL}/communication/whatsapp/templates/mappings/${id}`, { method: 'DELETE', headers: getHeaders() }),
+        testMapping: async (id: any) => apiFetch(`${BASE_URL}/communication/whatsapp/templates/mappings/${id}/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+        events: async () => apiFetch(`${BASE_URL}/communication/whatsapp/templates/events`, { headers: getHeaders() }),
+      },
+    },
+    // Phase 4 — Communication Automation Engine
+    automation: {
+      meta: async () => apiFetch(`${BASE_URL}/communication/automation/meta`, { headers: getHeaders() }),
+      rules: async () => apiFetch(`${BASE_URL}/communication/automation/rules`, { headers: getHeaders() }),
+      createRule: async (data: any) => apiFetch(`${BASE_URL}/communication/automation/rules`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      updateRule: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication/automation/rules/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      removeRule: async (id: any) => apiFetch(`${BASE_URL}/communication/automation/rules/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      execute: async (id: any, mode: string) => apiFetch(`${BASE_URL}/communication/automation/rules/${id}/execute`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ mode }) }),
+      runs: async () => apiFetch(`${BASE_URL}/communication/automation/runs`, { headers: getHeaders() }),
+      scheduler: async () => apiFetch(`${BASE_URL}/communication/automation/scheduler`, { headers: getHeaders() }),
+    },
+    // Communication Audit Trail (reuses AuditLog server-side; company-scoped).
+    audit: {
+      list: async (eventType?: string) => apiFetch(`${BASE_URL}/communication/audit${eventType ? `?eventType=${encodeURIComponent(eventType)}` : ''}`, { headers: getHeaders() }),
+      log: async (data: any) => apiFetch(`${BASE_URL}/communication/audit`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    },
   },
 
   statistics: {
@@ -631,7 +767,22 @@ export const api = {
     // growth only — no company-operational or employee PII).
     getPlatformReports: async () => {
       return await apiFetch(`${BASE_URL}/statistics/platform-reports`, { headers: getHeaders() });
+    },
+    // Read-only, no-PII monitoring summary for one company (Company Overview).
+    getCompanyOverview: async (companyId: string | number) => {
+      return await apiFetch(`${BASE_URL}/statistics/company-overview/${companyId}`, { headers: getHeaders() });
     }
+  },
+
+  // Support Sessions — the only audited way a Super Admin enters a company's HR
+  // environment. Super Admin only (backend-gated).
+  supportSessions: {
+    active: async () => apiFetch(`${BASE_URL}/support-sessions/active`, { headers: getHeaders() }),
+    start: async (data: { companyId: string | number; reason: string; ticketNumber?: string }) =>
+      apiFetch(`${BASE_URL}/support-sessions`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    end: async () => apiFetch(`${BASE_URL}/support-sessions/end`, { method: 'POST', headers: getHeaders() }),
+    list: async (companyId?: string | number) =>
+      apiFetch(`${BASE_URL}/support-sessions${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }),
   },
 
   plans: {
@@ -702,11 +853,11 @@ export const api = {
 
   attendance: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/attendance`, { headers: getHeaders() }); },
-    getAnalytics: async (companyId?: string, date?: string) => { 
+    getAnalytics: async (companyId?: string, date?: string) => {
       const params = new URLSearchParams();
       if (companyId) params.append('companyId', companyId);
       if (date) params.append('date', date);
-      return await apiFetch(`${BASE_URL}/attendance/analytics?${params.toString()}`, { headers: getHeaders() }); 
+      return await apiFetch(`${BASE_URL}/attendance/analytics?${params.toString()}`, { headers: getHeaders() });
     },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },

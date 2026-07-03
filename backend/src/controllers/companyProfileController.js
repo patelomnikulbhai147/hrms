@@ -26,10 +26,26 @@ async function resolveTopCompanyId(req) {
     return asBranch ? asBranch.companyId : rawId;
   };
 
+  const raw = idParam(req.query.companyId || req.headers['x-workspace-id']);
+  
   if (req.user?.role === 'Super Admin') {
-    const raw = idParam(req.query.companyId || req.headers['x-workspace-id']);
     return await toParent(raw);
   }
+
+  // Multi-tenant isolation check: if a non-Super Admin requests a specific workspace,
+  // we must allow it IF it belongs to their allowed list (primary or accessible).
+  if (raw) {
+    const requestedParentId = await toParent(raw);
+    const allowedIds = [
+      req.user?.companyId,
+      ...(req.user?.accessibleCompanyIds || [])
+    ].filter(Boolean).map(id => String(id));
+    
+    if (requestedParentId && allowedIds.includes(String(requestedParentId))) {
+      return requestedParentId;
+    }
+  }
+  
   return await toParent(req.user?.companyId);
 }
 
@@ -156,13 +172,54 @@ exports.getProfile = async (req, res) => {
     const companyId = await resolveTopCompanyId(req);
     if (!companyId) return res.status(400).json({ error: 'No company in context.' });
 
+    // Branch Information must ALWAYS enforce strict multi-tenant isolation.
+    // It should only display branches for the CURRENTLY ACTIVE workspace.
+    // Never show branches from other companies the user might have access to.
+    const rawWorkspace = idParam(req.query.companyId || req.headers['x-workspace-id']);
+    let activeCompanyCtx = rawWorkspace;
+    
+    // If the active workspace is a branch, resolve it to its owning company
+    // so we can show all branches of that company (if the user has permission).
+    if (rawWorkspace) {
+      const asCompany = await prisma.company.findUnique({ where: { id: rawWorkspace } });
+      if (!asCompany) {
+        const asBranch = await prisma.branch.findUnique({ where: { id: rawWorkspace } }).catch(() => null);
+        if (asBranch) activeCompanyCtx = asBranch.companyId;
+      }
+    }
+    
+    // Fallback to the resolved top-level company if no explicit workspace was found
+    activeCompanyCtx = activeCompanyCtx || companyId;
+
+    let branchWhere;
+    if (req.user && req.user.role !== 'Super Admin') {
+      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const ids = allowedIds.length ? allowedIds : ['__none__'];
+      // Enforce BOTH the active workspace context AND the user's allowed permissions.
+      branchWhere = { 
+        AND: [
+          { companyId: activeCompanyCtx },
+          { OR: [{ companyId: { in: ids } }, { id: { in: ids } }] }
+        ]
+      };
+    } else {
+      // Super Admin viewing the active workspace
+      branchWhere = { companyId: activeCompanyCtx };
+    }
+
     const [company, contacts, docs, branches] = await Promise.all([
       prisma.company.findUnique({ where: { id: companyId } }),
       prisma.companyContact.findMany({ where: { companyId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] }),
       companyDocuments(companyId),
-      prisma.branch.findMany({ where: { companyId }, orderBy: [{ branchNo: 'asc' }, { id: 'asc' }] }),
+      prisma.branch.findMany({ where: branchWhere, orderBy: [{ branchNo: 'asc' }, { id: 'asc' }] }),
     ]);
     if (!company) return res.status(404).json({ error: 'Company not found.' });
+
+    // Owner(s) / Director(s) — guarded so an un-migrated DB never breaks the page.
+    let owners = [];
+    try {
+      owners = await prisma.companyOwner.findMany({ where: { companyId }, orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }] });
+    } catch { /* CompanyOwner table absent on older DBs — non-fatal */ }
 
     // Live employee headcount per branch (mirrors branchController).
     const branchIds = branches.map((b) => b.id);
@@ -184,6 +241,7 @@ exports.getProfile = async (req, res) => {
     res.json({
       company,
       contacts,
+      owners,
       documents: docs,
       branches: enrichedBranches,
       documentHealth: computeDocumentHealth(docs),
@@ -482,6 +540,120 @@ exports.deleteContact = async (req, res) => {
     res.json({ message: 'Deleted' });
   } catch (e) {
     sendError(res, e, 'companyProfile.deleteContact');
+  }
+};
+
+// ── Owner(s) / Director(s) (CompanyOwner CRUD) ───────────────────────────────
+// Isolated from CompanyContact. Exactly one owner may be primary; setting one
+// primary clears the flag on the rest (in a transaction).
+const OWNER_FIELDS = ['name', 'designation', 'mobile', 'email', 'ownershipPercentage', 'joiningDate', 'notes', 'isPrimary', 'sortOrder'];
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[0-9\+\-\(\)\s]{7,20}$/;
+
+function validateOwner(data) {
+  if (!data.name || !String(data.name).trim()) return 'Full Name is required.';
+  if (data.email && !EMAIL_REGEX.test(data.email)) return 'Invalid email format.';
+  if (data.mobile && !PHONE_REGEX.test(data.mobile)) return 'Invalid mobile number.';
+  return null;
+}
+
+function pickOwner(body) {
+  const data = {};
+  for (const f of OWNER_FIELDS) {
+    if (body[f] !== undefined) {
+      if (f === 'isPrimary' || f === 'sortOrder') continue;
+      // Convert empty strings to null for optional fields to avoid Prisma type errors.
+      // Coerce to string to guarantee it matches String? in Prisma.
+      data[f] = (body[f] === '' || body[f] === null) ? null : asStringCol(body[f]);
+    }
+  }
+  if (body.sortOrder !== undefined) data.sortOrder = Number(body.sortOrder) || 0;
+  if (body.isPrimary !== undefined) data.isPrimary = !!body.isPrimary;
+  return data;
+}
+
+exports.listOwners = async (req, res) => {
+  try {
+    const companyId = await resolveTopCompanyId(req);
+    if (!companyId) return res.status(400).json({ error: 'No company in context.' });
+    const owners = await prisma.companyOwner.findMany({ where: { companyId }, orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }, { id: 'asc' }] });
+    res.json(owners);
+  } catch (e) {
+    sendError(res, e, 'companyProfile.listOwners');
+  }
+};
+
+exports.createOwner = async (req, res) => {
+  try {
+    const companyId = await resolveTopCompanyId(req);
+    if (!companyId) return res.status(400).json({ error: 'No company in context.' });
+    const data = pickOwner(req.body);
+    
+    const errorMsg = validateOwner(data);
+    if (errorMsg) return res.status(400).json({ error: errorMsg });
+
+    // If this is the first owner, make it primary by default.
+    const count = await prisma.companyOwner.count({ where: { companyId } });
+    if (count === 0) data.isPrimary = true;
+    const created = await prisma.$transaction(async (tx) => {
+      const row = await tx.companyOwner.create({ data: { ...data, companyId } });
+      if (row.isPrimary) {
+        await tx.companyOwner.updateMany({ where: { companyId, id: { not: row.id } }, data: { isPrimary: false } });
+      }
+      return row;
+    });
+    res.status(201).json(created);
+  } catch (e) {
+    sendError(res, e, 'companyProfile.createOwner');
+  }
+};
+
+exports.updateOwner = async (req, res) => {
+  try {
+    const companyId = await resolveTopCompanyId(req);
+    const id = idParam(req.params.id);
+    const existing = await prisma.companyOwner.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Owner not found.' });
+    if (req.user?.role !== 'Super Admin' && existing.companyId !== companyId) {
+      return res.status(403).json({ error: 'This owner is outside your company.' });
+    }
+    const data = pickOwner(req.body);
+    
+    const errorMsg = validateOwner(data);
+    if (errorMsg) return res.status(400).json({ error: errorMsg });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const row = await tx.companyOwner.update({ where: { id }, data });
+      if (row.isPrimary) {
+        await tx.companyOwner.updateMany({ where: { companyId: row.companyId, id: { not: row.id } }, data: { isPrimary: false } });
+      }
+      return row;
+    });
+    res.json(updated);
+  } catch (e) {
+    sendError(res, e, 'companyProfile.updateOwner');
+  }
+};
+
+exports.deleteOwner = async (req, res) => {
+  try {
+    const companyId = await resolveTopCompanyId(req);
+    const id = idParam(req.params.id);
+    const existing = await prisma.companyOwner.findUnique({ where: { id } });
+    if (!existing) return res.status(404).json({ error: 'Owner not found.' });
+    if (req.user?.role !== 'Super Admin' && existing.companyId !== companyId) {
+      return res.status(403).json({ error: 'This owner is outside your company.' });
+    }
+    await prisma.companyOwner.delete({ where: { id } });
+    // If we removed the primary, promote the next owner so one is always primary.
+    if (existing.isPrimary) {
+      const next = await prisma.companyOwner.findFirst({ where: { companyId: existing.companyId }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+      if (next) await prisma.companyOwner.update({ where: { id: next.id }, data: { isPrimary: true } });
+    }
+    res.json({ message: 'Deleted' });
+  } catch (e) {
+    sendError(res, e, 'companyProfile.deleteOwner');
   }
 };
 

@@ -13,6 +13,10 @@ router.post('/', requireSuperAdmin, companyController.createCompany);
 // Branding is permission-gated INSIDE the controller (Super Admin any company,
 // Company Head own company, HR if granted, Employee denied) — not Super-Admin-only.
 router.put('/:id/branding', companyController.updateBranding);
+// Department management (Settings → Manage Departments) — authorized INSIDE the
+// controller by the SETTINGS permission (Super Admin any company, Company Head own
+// company, HR/Finance if granted Settings → Edit), NOT by branding rights.
+router.put('/:id/departments', companyController.updateDepartments);
 router.put('/:id', requireSuperAdmin, companyController.updateCompany);
 router.get('/:id/dependencies', requireSuperAdmin, companyController.getCompanyDependencies);
 router.delete('/:id', requireSuperAdmin, companyController.deleteCompany);

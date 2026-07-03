@@ -153,7 +153,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="bg-[#361905] border-b border-amber-900/40 text-amber-500 px-4 py-1.5 text-xs font-bold flex items-center justify-between gap-3 shadow-lg select-none">
           <div className="flex items-center gap-2.5">
             <ShieldAlert size={14} className="animate-pulse text-amber-500" />
-            <span className="tracking-tight text-[11px] text-amber-500">Viewing workspace as Super Admin (Masquerade Mode){currentCompany?.name ? <> — {isBranchWorkspace && activeParentCompany ? <strong className="text-amber-400 font-extrabold">{activeParentCompany.name} → {branchLabel} Branch</strong> : <strong className="text-amber-400 font-extrabold">{currentCompany.name}</strong>}</> : null}</span>
+            <span className="tracking-tight text-[11px] text-amber-500">🛟 Support Session Active — Super Admin assisting{currentCompany?.name ? <> {isBranchWorkspace && activeParentCompany ? <strong className="text-amber-400 font-extrabold">{activeParentCompany.name} → {branchLabel} Branch</strong> : <strong className="text-amber-400 font-extrabold">{currentCompany.name}</strong>}</> : null} · all actions are audited</span>
           </div>
           <button
             onClick={onExitMasquerade}

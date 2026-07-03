@@ -204,6 +204,34 @@ export const Companies: React.FC<CompaniesProps> = ({
 
   const [isConfirmingOffboard, setIsConfirmingOffboard] = useState(false);
   const [manageAccountsModal, setManageAccountsModal] = useState<Company | null>(null);
+
+  // Company Overview (Super Admin monitoring — read-only, no PII) + Support Session.
+  const [overviewTarget, setOverviewTarget] = useState<{ company: Company; kind: 'company' | 'branch' } | null>(null);
+  const [overviewData, setOverviewData] = useState<any>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [supportForm, setSupportForm] = useState<{ open: boolean; reason: string; ticketNumber: string }>({ open: false, reason: '', ticketNumber: '' });
+  const [startingSupport, setStartingSupport] = useState(false);
+  const openOverview = async (company: Company, kind: 'company' | 'branch') => {
+    setOverviewTarget({ company, kind });
+    setOverviewData(null);
+    setSupportForm({ open: false, reason: '', ticketNumber: '' });
+    setOverviewLoading(true);
+    try { setOverviewData(await api.statistics.getCompanyOverview(company.id)); }
+    catch (e) { ui.toast.error(getApiErrorMessage(e) || 'Could not load company overview.'); }
+    finally { setOverviewLoading(false); }
+  };
+  const startSupportSession = async () => {
+    if (!overviewTarget) return;
+    if (!supportForm.reason.trim()) { ui.toast.error('Please select or enter a reason for the support session.'); return; }
+    setStartingSupport(true);
+    try {
+      await api.supportSessions.start({ companyId: overviewTarget.company.id, reason: supportForm.reason.trim(), ticketNumber: supportForm.ticketNumber.trim() || undefined });
+      const { company, kind } = overviewTarget;
+      setOverviewTarget(null);
+      onStartMasquerade(company.id, kind); // enter the audited workspace
+    } catch (e) { ui.toast.error(getApiErrorMessage(e) || 'Could not start the support session.'); }
+    finally { setStartingSupport(false); }
+  };
   const [workspaceAssignUser, setWorkspaceAssignUser] = useState<UserAccount | null>(null);
 
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
@@ -1352,10 +1380,10 @@ export const Companies: React.FC<CompaniesProps> = ({
                           {canEdit && (
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => onStartMasquerade(c.id, 'company')}
+                                onClick={() => openOverview(c, 'company')}
                                 className="text-xs px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium transition-colors hover:bg-slate-50 inline-flex items-center gap-1.5 shadow-sm"
                               >
-                                Manage {hasBranches ? 'All' : ''} <ChevronRight size={14} className="text-slate-400" />
+                                Overview <ChevronRight size={14} className="text-slate-400" />
                               </button>
 
                               <button
@@ -1468,10 +1496,10 @@ export const Companies: React.FC<CompaniesProps> = ({
                                           {canEdit && (
                                             <div className="inline-flex items-center gap-2">
                                               <button
-                                                onClick={() => onStartMasquerade(b.id, 'branch')}
+                                                onClick={() => openOverview(b, 'branch')}
                                                 className="px-3 py-1.5 bg-white text-slate-700 border border-slate-200 rounded-full font-medium text-[11px] transition-colors hover:bg-slate-50 shadow-sm"
                                               >
-                                                Manage
+                                                Overview
                                               </button>
                                               <button
                                                 onClick={() => handleOpenEditBranch(b)}
@@ -1733,6 +1761,146 @@ export const Companies: React.FC<CompaniesProps> = ({
             />
           </div>
 
+        </div>
+      </Modal>
+
+      {/* Company Overview (Super Admin monitoring — READ-ONLY, no employee PII) */}
+      <Modal
+        open={!!overviewTarget}
+        onClose={() => setOverviewTarget(null)}
+        title={`Company Overview — ${overviewTarget?.company?.name || ''}`}
+        size="lg"
+        footer={<>
+          <Button variant="outline" onClick={() => setOverviewTarget(null)}>Close</Button>
+          {canEdit && <Button icon={<ShieldAlert size={14} />} onClick={() => setSupportForm(s => ({ ...s, open: true }))}>Start Support Session</Button>}
+        </>}
+      >
+        {overviewLoading ? (
+          <div className="py-16 text-center text-sm text-slate-500">Loading overview…</div>
+        ) : !overviewData ? (
+          <div className="py-16 text-center text-sm text-slate-500">No overview data available.</div>
+        ) : (() => {
+          const d = overviewData;
+          const fmtBytes = (n: number) => !n ? '0 B' : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${(n / 1024).toFixed(0)} KB` : `${n} B`;
+          const Field = ({ label, value }: { label: string; value: any }) => (
+            <div className="rounded-lg border border-slate-150 bg-white px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+              <p className="text-[12.5px] font-bold text-slate-800 break-words">{value === null || value === undefined || value === '' ? '—' : value}</p>
+            </div>
+          );
+          const Stat = ({ label, value, tone }: { label: string; value: any; tone?: string }) => (
+            <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center">
+              <p className={`text-xl font-extrabold ${tone || 'text-slate-800'}`}>{value}</p>
+              <p className="text-[10px] font-semibold text-slate-400">{label}</p>
+            </div>
+          );
+          return (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700">
+                <Shield size={14} className="mt-0.5 shrink-0" />
+                Platform monitoring only. Employee names, salary, payroll, attendance, leave, documents and personal data are private to the company and are never shown here. To assist this company, start an <b>audited Support Session</b>.
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-extrabold text-slate-700">Company</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Field label="Company Name" value={d.company.name} />
+                  <Field label="Company Code" value={d.company.code} />
+                  <Field label="Status" value={d.company.status} />
+                  <Field label="Company Head" value={d.company.head} />
+                  <Field label="Email" value={d.company.email} />
+                  <Field label="Contact Number" value={d.company.contactNumber} />
+                  <Field label="Registered Address" value={[d.company.address, d.company.city, d.company.state].filter(Boolean).join(', ')} />
+                  <Field label="Industry" value={d.company.industry} />
+                  <Field label="Registration Date" value={formatDate(d.company.registrationDate)} />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-extrabold text-slate-700">Subscription &amp; License</p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <Field label="Plan" value={d.subscription.plan} />
+                  <Field label="Subscription Status" value={d.subscription.status} />
+                  <Field label="Expiry" value={d.subscription.expiry ? formatDate(d.subscription.expiry) : '—'} />
+                  <Field label="Licensed Employees" value={d.subscription.licensedEmployeeLimit} />
+                  <Field label="License Active" value={d.subscription.licenseActive === null ? '—' : d.subscription.licenseActive ? 'Yes' : 'No'} />
+                  <Field label="License Status" value={d.subscription.licenseStatus} />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-extrabold text-slate-700">Usage (counts only)</p>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  <Stat label="Branches" value={d.branchesTotal} />
+                  <Stat label="Active Branches" value={d.branchesActive} tone="text-emerald-600" />
+                  <Stat label="Employees" value={d.employeesTotal} />
+                  <Stat label="Active" value={d.employeesActive} tone="text-emerald-600" />
+                  <Stat label="Inactive" value={d.employeesInactive} tone="text-slate-500" />
+                  <Stat label="Storage" value={fmtBytes(d.storageBytes)} tone="text-indigo-600" />
+                </div>
+                <p className="mt-2 text-[11px] text-slate-400">Last login: {d.lastLogin ? formatDate(d.lastLogin) : '—'}</p>
+              </div>
+
+              {d.branches?.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-extrabold text-slate-700">Branches (summary only)</p>
+                  <div className="overflow-hidden rounded-xl border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 text-slate-500"><tr>{['Branch', 'Code', 'Status', 'Manager', 'Employees', 'Active'].map(h => <th key={h} className="px-3 py-2 text-left font-bold">{h}</th>)}</tr></thead>
+                      <tbody>
+                        {d.branches.map((b: any) => (
+                          <tr key={b.id} className="border-t border-slate-100">
+                            <td className="px-3 py-2 font-semibold text-slate-700">{b.name}</td>
+                            <td className="px-3 py-2">{b.code || '—'}</td>
+                            <td className="px-3 py-2"><Badge variant={b.status === 'Active' ? 'green' : 'gray'}>{b.status}</Badge></td>
+                            <td className="px-3 py-2">{b.manager || '—'}</td>
+                            <td className="px-3 py-2">{b.employeeCount}</td>
+                            <td className="px-3 py-2">{b.activeEmployeeCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <p className="text-[10px] text-slate-400">Allowed platform actions (Suspend / Activate / Archive / change subscription) are available from the company row. HR management requires a Support Session.</p>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Start Support Session — reason + optional ticket, then enter the audited workspace */}
+      <Modal
+        open={supportForm.open}
+        onClose={() => setSupportForm(s => ({ ...s, open: false }))}
+        title="Start Support Session"
+        size="md"
+        footer={<>
+          <Button variant="outline" onClick={() => setSupportForm(s => ({ ...s, open: false }))}>Cancel</Button>
+          <Button icon={<ShieldAlert size={14} />} loading={startingSupport} onClick={startSupportSession}>Start &amp; Enter</Button>
+        </>}
+      >
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+            <ShieldAlert size={14} className="mt-0.5 shrink-0" />
+            You are about to enter <b>{overviewTarget?.company?.name}</b>'s environment for support. The session and <b>every action you take</b> are recorded and auditable.
+          </div>
+          <Select
+            label="Reason *"
+            value={supportForm.reason}
+            onChange={e => setSupportForm(s => ({ ...s, reason: e.target.value }))}
+            options={[
+              { value: '', label: 'Select a reason…' },
+              { value: 'Customer-reported issue', label: 'Customer-reported issue' },
+              { value: 'Payroll / attendance correction', label: 'Payroll / attendance correction' },
+              { value: 'Configuration assistance', label: 'Configuration assistance' },
+              { value: 'Data verification', label: 'Data verification' },
+              { value: 'Bug investigation', label: 'Bug investigation' },
+              { value: 'Other (see ticket)', label: 'Other (see ticket)' },
+            ]}
+          />
+          <Input label="Ticket Number (optional)" value={supportForm.ticketNumber} onChange={e => setSupportForm(s => ({ ...s, ticketNumber: e.target.value }))} placeholder="e.g. TKT-1024" />
         </div>
       </Modal>
 
