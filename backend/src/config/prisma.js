@@ -55,6 +55,7 @@ const INT_PK_MODELS = new Set([
   'InvoiceCustomer', 'InvoiceProduct', 'Invoice', 'InvoiceItem',
   'InvoicePayment', 'InvoiceSettings', 'InvoiceAudit',
   'LoanType', 'Loan', 'LoanInstallment', 'LoanAudit',
+  'ComplianceFiling', 'ComplianceFilingAudit',
 ]);
 const FK_KEYS = ['companyId', 'branchId', 'parentCompanyId'];
 

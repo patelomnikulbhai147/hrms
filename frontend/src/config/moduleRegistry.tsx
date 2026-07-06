@@ -23,7 +23,7 @@ import type { AppModules } from '@/pages/Login';
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-integration' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
-  | 'company-profile' | 'communication' | 'invoice-management' | 'loan-management';
+  | 'company-profile' | 'communication' | 'invoice-management' | 'loan-management' | 'compliance-management';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -72,6 +72,7 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'payroll', inMatrix: true },
   { id: 'invoice-management', label: 'Invoice Management', icon: <ReceiptText size={15} />, roles: ['Company Head', 'Finance', 'HR'], permission: 'invoicing', inMatrix: true },
   { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true },
+  { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
   { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true },

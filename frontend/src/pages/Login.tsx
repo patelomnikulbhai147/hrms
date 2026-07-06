@@ -22,7 +22,7 @@ export interface ModulePermissions {
   import?: boolean;
 }
 
-export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'company-profile' | 'communication' | 'audit' | 'invoicing' | 'loans';
+export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'company-profile' | 'communication' | 'audit' | 'invoicing' | 'loans' | 'compliance';
 
 export interface UserAccount {
   id: string;
