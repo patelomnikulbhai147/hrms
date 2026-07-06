@@ -898,6 +898,10 @@ model Payroll {
   // + Overtime + Bonus − Deductions).
   overtime         Float?    @default(0)
   tax              Float?
+  // Loan EMI auto-deducted from this payroll (part of `deductions`; surfaced
+  // separately so the payslip can show a Loan EMI line without polluting the
+  // "Other deductions" bucket). Written by the loan→payroll settle hook.
+  loanDeduction    Float?    @default(0)
   notes            String?
   companyPayrollId String?
   branchPayrollId  String?
@@ -2173,4 +2177,122 @@ model InvoiceAudit {
   @@index([companyId])
   @@index([invoiceId])
   @@map("invoice_audits")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  EMPLOYEE LOAN MANAGEMENT  (relation-less, companyId-scoped — like Invoice*)
+//  Deeply integrated with payroll: an Approved/Disbursed/Running loan's monthly
+//  EMI is auto-deducted when payroll is (re)computed, its installment ledger is
+//  settled idempotently (keyed by payrollId), and outstanding is always DERIVED
+//  (principal − Σ paid principal) so repeated recalcs can never drift.
+// ═══════════════════════════════════════════════════════════════════════════
+
+model LoanType {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  name                String
+  code                String?
+  description         String?  @db.Text
+  defaultInterestType String   @default("Flat") // Flat / Reducing / None
+  defaultInterestRate Float    @default(0)
+  maxAmount           Float?   @default(0) // 0 = unlimited
+  maxTenureMonths     Int?     @default(0) // 0 = unlimited
+  requiresApproval    Boolean  @default(true)
+  isSystem            Boolean  @default(false) // seeded defaults
+  active              Boolean  @default(true)
+  displayOrder        Int      @default(0)
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, active])
+  @@map("loan_types")
+}
+
+model Loan {
+  id                 Int       @id @default(autoincrement())
+  companyId          Int
+  branchId           Int?
+  employeeId         Int
+  employeeName       String    @default("Unknown")
+  department         String?
+  loanNumber         String
+  loanTypeId         Int?
+  loanTypeName       String    @default("Loan")
+  principalAmount    Float     @default(0)
+  interestType       String    @default("Flat") // Flat / Reducing / None
+  interestRate       Float     @default(0) // annual %
+  totalInterest      Float     @default(0)
+  totalPayable       Float     @default(0) // principal + totalInterest
+  tenureMonths       Int       @default(1)
+  emiAmount          Float     @default(0)
+  startDate          String? // yyyy-MM-dd
+  endDate            String? // yyyy-MM-dd
+  deductionStartMonth String   @default("January")
+  deductionStartYear  Int      @default(2026)
+  approvalAuthority  String?
+  remarks            String?   @db.Text
+  attachments        String?   @db.Text // JSON array of {name,data,mimeType}
+  // Workflow: Draft → Pending Approval → Approved → (Rejected) → Disbursed →
+  // Running → Completed → Closed
+  status             String    @default("Draft")
+  rejectionReason    String?
+  disbursedDate      String?
+  requestedBy        String?
+  approvedBy         String?
+  approvedAt         DateTime?
+  closedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([companyId, loanNumber])
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([employeeId])
+  @@map("loans")
+}
+
+model LoanInstallment {
+  id                 Int       @id @default(autoincrement())
+  companyId          Int
+  loanId             Int
+  seq                Int // installment number 1..n
+  periodMonth        String // January..December
+  periodYear         Int
+  dueDate            String? // yyyy-MM-dd
+  emiAmount          Float     @default(0)
+  principalComponent Float     @default(0)
+  interestComponent  Float     @default(0)
+  openingBalance     Float     @default(0)
+  closingBalance     Float     @default(0)
+  status             String    @default("Pending") // Pending / Paid / Skipped
+  paidAmount         Float     @default(0)
+  paidDate          DateTime?
+  paidByPayrollId    Int? // idempotency key: which payroll settled this installment
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([loanId, seq])
+  @@index([companyId])
+  @@index([loanId])
+  @@index([companyId, periodMonth, periodYear])
+  @@map("loan_installments")
+}
+
+model LoanAudit {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  loanId      Int?
+  entityType  String   @default("Loan") // Loan / LoanType / Installment
+  action      String // CREATED / SUBMITTED / APPROVED / REJECTED / DISBURSED / EMI_DEDUCTED / COMPLETED / CLOSED / UPDATED / DELETED
+  fromStatus  String?
+  toStatus    String?
+  performedBy String?
+  details     String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([loanId])
+  @@map("loan_audits")
 }

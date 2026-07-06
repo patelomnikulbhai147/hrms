@@ -480,6 +480,27 @@ export const api = {
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
   },
 
+  // Employee Loan Management — loans, EMI schedule (ledger), approval workflow,
+  // dashboard, employee portal, reports. Auto-deducts via the payroll engine.
+  loans: {
+    dashboard: async () => apiFetch(`${BASE_URL}/loans/dashboard`, { headers: getHeaders() }),
+    previewEmi: async (data: any) => apiFetch(`${BASE_URL}/loans/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    // Loan types
+    listTypes: async () => apiFetch(`${BASE_URL}/loans/types`, { headers: getHeaders() }),
+    saveType: async (id: any, data: any) => apiFetch(`${BASE_URL}/loans/types${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    deleteType: async (id: any) => apiFetch(`${BASE_URL}/loans/types/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    // Loans
+    list: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/loans${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    get: async (id: any) => apiFetch(`${BASE_URL}/loans/${id}`, { headers: getHeaders() }),
+    create: async (data: any) => apiFetch(`${BASE_URL}/loans`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    update: async (id: any, data: any) => apiFetch(`${BASE_URL}/loans/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    setStatus: async (id: any, action: string, extra: any = {}) => apiFetch(`${BASE_URL}/loans/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, ...extra }) }),
+    remove: async (id: any) => apiFetch(`${BASE_URL}/loans/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    // Employee portal + reports
+    myLoans: async () => apiFetch(`${BASE_URL}/loans/portal/me`, { headers: getHeaders() }),
+    report: async (key: string, params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/loans/reports/${key}${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+  },
+
   // Bonus Management (Phase 1 — Bonus Configuration). Separate bonus
   // transaction system; never stored on the employee record.
   bonus: {

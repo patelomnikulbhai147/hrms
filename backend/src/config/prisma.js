@@ -54,6 +54,7 @@ const INT_PK_MODELS = new Set([
   'PayrollComponent', 'PayrollComponentAudit',
   'InvoiceCustomer', 'InvoiceProduct', 'Invoice', 'InvoiceItem',
   'InvoicePayment', 'InvoiceSettings', 'InvoiceAudit',
+  'LoanType', 'Loan', 'LoanInstallment', 'LoanAudit',
 ]);
 const FK_KEYS = ['companyId', 'branchId', 'parentCompanyId'];
 

@@ -308,7 +308,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
           { label: 'Total Requests', value: dash.total, icon: <FileText size={16} />, color: 'bg-indigo-500' },
           { label: 'Pending Approvals', value: dash.pending.length, icon: <Clock size={16} />, color: 'bg-amber-500' },
           { label: 'Approved', value: dash.approved, icon: <CheckCircle2 size={16} />, color: 'bg-emerald-500' },
-          { label: 'Leave Balance (days)', value: dash.totalRemaining, icon: <Wallet size={16} />, color: 'bg-violet-500' },
           { label: 'Employees', value: scopedEmployees.length, icon: <Users size={16} />, color: 'bg-blue-500' },
         ];
         const fmt = (d: string) => formatDate(d);
@@ -324,7 +323,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         return (
           <div className="space-y-4">
             {/* Leave Statistics */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {tiles.map(t => (
                 <div key={t.label} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3.5 flex items-center gap-3">
                   <span className={`w-10 h-10 rounded-xl text-white flex items-center justify-center ${t.color}`}>{t.icon}</span>

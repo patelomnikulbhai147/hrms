@@ -129,6 +129,7 @@ app.use('/api/payroll', pii('Payroll'), payrollRoutes);
 app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payrollComponentRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
 app.use('/api/invoicing', require('./src/routes/invoiceRoutes'));
+app.use('/api/loans', require('./src/routes/loanRoutes'));
 app.use('/api/attendance', pii('Attendance'), attendanceRoutes);
 app.use('/api/attendance-summary', pii('Attendance'), attendanceSummaryRoutes);
 app.use('/api/attendance-vendors', pii('Attendance'), attendanceVendorRoutes);

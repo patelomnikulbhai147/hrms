@@ -5,6 +5,10 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
+// Loan → payroll integration: auto-deduct an active loan's EMI when a payroll row
+// is (re)computed, settle its installment ledger, and advance the loan status.
+// Idempotent — safe on repeated recalc (see services/loanPayroll.js).
+const { applyLoanToPayrollRow } = require('../services/loanPayroll');
 
 // ── Payroll money guard (pre-deployment audit fix) ───────────────────────────
 // The create/update endpoints persist a client-supplied `payload` directly. This
@@ -116,7 +120,10 @@ const syncPayrollForEmployees = async (companyWhere, month, year) => {
           paymentStatus: 'pending',
           payslipGenerated: false
         }
-      }).catch(err => {
+      })
+        // Fold in any active loan EMI on the freshly-created draft (idempotent).
+        .then(row => applyLoanToPayrollRow(prisma, row, 'Payroll Engine'))
+        .catch(err => {
          console.error("Failed to auto-create draft payroll:", err.message);
       });
     });
@@ -167,17 +174,22 @@ async function recalcOne(payroll, summary, emp, company) {
   const { total: bonus } = await bonusForPayroll(prisma, emp || { id: payroll.employeeId }, payroll.month, payroll.year);
   const netSalary = Math.max(0, (basicSalary + allowances + bonus) - deductions);
 
-  return prisma.payroll.update({
+  const updated = await prisma.payroll.update({
     where: { id: payroll.id },
     data: {
       basicSalary, allowances, deductions, netSalary, bonus,
       overtime: otAmount,
+      // Reset the loan portion here; applyLoanToPayrollRow re-adds the current
+      // month's EMI on top (keeps the recompute idempotent).
+      loanDeduction: 0,
       presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
       halfDays: half, otHours: ot, payableDays,
       isOutdated: false, summarySyncedAt: new Date(),
       notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s)${bonus ? `, bonus ₹${bonus}` : ''}.`,
     },
   });
+  // Fold in any active loan EMI + settle the installment ledger (idempotent).
+  return applyLoanToPayrollRow(prisma, updated, 'Payroll Engine');
 }
 
 // Auto-sync helper: recompute every (unlocked) payroll row for one employee &
@@ -400,6 +412,8 @@ exports.generate = async (req, res) => {
         netSalary,
         bonus,
         overtime: 0,
+        // Reset loan portion; the loan hook re-adds this month's EMI after upsert.
+        loanDeduction: 0,
         // Workflow: generate → Pending Approval (NOT paid). Approval and payment
         // are separate explicit stages (approve, then mark-paid).
         payrollStatus: 'pending_approval',
@@ -452,7 +466,7 @@ exports.generate = async (req, res) => {
 
     // Upsert employee payroll records (idempotent — re-generating updates).
     for (const record of payrollRecordsToCreate) {
-      await prisma.payroll.upsert({
+      const row = await prisma.payroll.upsert({
         where: {
           employeeId_month_year_companyId: {
             employeeId: record.employeeId,
@@ -464,6 +478,8 @@ exports.generate = async (req, res) => {
         update: record,
         create: record
       });
+      // Auto-deduct any active loan EMI + settle the ledger (idempotent).
+      await applyLoanToPayrollRow(prisma, row, req.user?.name || 'Payroll Engine');
     }
 
     // Recompute the period's totals from ALL its child rows so appends keep the

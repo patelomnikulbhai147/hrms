@@ -19,13 +19,16 @@ const Slip: React.FC<{ r: any; m: any; lang?: string }> = ({ r, m, lang = 'en' }
   const pf = Math.min(totalDeduction, Math.round((basic * rates.pfRate) / 100));
   const esic = Math.min(Math.max(0, totalDeduction - pf), Math.round((basic * rates.esicRate) / 100));
   const pt = Math.min(Math.max(0, totalDeduction - pf - esic), Number(rates.profTaxRate) || 0);
-  const other = Math.max(0, totalDeduction - pf - esic - pt);
+  // Loan EMI is a distinct deduction line — split it out so it isn't hidden in
+  // "Other". Comes straight off the payroll row (services/loanPayroll settle).
+  const loanEmi = Math.min(Math.max(0, totalDeduction - pf - esic - pt), Number(r.loanDeduction) || 0);
+  const other = Math.max(0, totalDeduction - pf - esic - pt - loanEmi);
   const totalEarnings = (Number(r.basic) || 0) + (Number(r.allowances) || 0) + (Number(r.bonus) || 0);
 
   // Statutory rates exposed to the live-recalc engine so the PF / ESI / PT / Other
   // split re-derives when Basic or Total Deductions is edited (data-const on the
   // slip scope; consumed by data-formula expressions — see reportRecalc.ts).
-  const recalcConsts = JSON.stringify({ pfRate: Number(rates.pfRate) || 0, esicRate: Number(rates.esicRate) || 0, profTaxRate: Number(rates.profTaxRate) || 0 });
+  const recalcConsts = JSON.stringify({ pfRate: Number(rates.pfRate) || 0, esicRate: Number(rates.esicRate) || 0, profTaxRate: Number(rates.profTaxRate) || 0, loanEmi });
   // Branding from the centralized service (reads the same report meta the backend
   // supplies) — logo in the header, faint watermark behind, seal + signature below.
   const b = resolveBranding(m);
@@ -109,7 +112,10 @@ const Slip: React.FC<{ r: any; m: any; lang?: string }> = ({ r, m, lang = 'en' }
           <tr>
             <td style={td}>{t('LWP')} &nbsp;<b>{r.lwpDays ?? 0}</b></td>
             <td style={td}>{t('OT Hrs')}</td><td style={numC}>{r.otHours ?? 0}</td>
-            <td style={td}>{t('Other')} &nbsp; <span data-cell="other" data-formula="max(0, deductions - pf - esic - pt)">{inr(other)}</span></td>
+            <td style={td}>
+              {loanEmi > 0 && <div>{t('Loan EMI')} &nbsp; <span data-cell="loanEmi">{inr(loanEmi)}</span></div>}
+              <div>{t('Other')} &nbsp; <span data-cell="other" data-formula="max(0, deductions - pf - esic - pt - loanEmi)">{inr(other)}</span></div>
+            </td>
           </tr>
           <tr>
             <td style={{ ...lbl }}>{t('Total Day')} &nbsp;<b>{r.payableDays ?? 0}</b></td>

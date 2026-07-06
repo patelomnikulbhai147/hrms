@@ -365,6 +365,9 @@ async function salarySlip(s) {
       slDays: p.slDays ?? 0, plDays: p.plDays ?? 0, lwpDays: p.lwpDays ?? 0, halfDays: p.halfDays ?? 0, otHours: p.otHours ?? 0,
       basic: r2(p.basicSalary), allowances: r2(p.allowances), bonus: r2(p.bonus || 0),
       deductions: r2(p.deductions), tax: r2(p.tax || 0), net: r2(p.netSalary), status: p.paymentStatus,
+      // Loan EMI auto-deducted this month (drives the payslip's Loan line; the
+      // "Other" deduction split subtracts it so it isn't double-shown).
+      loanDeduction: r2(p.loanDeduction || 0),
     };
   });
   const summary = { slips: rows.length, net: r2(rows.reduce((t, r) => t + r.net, 0)) };

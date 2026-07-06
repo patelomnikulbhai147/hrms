@@ -12,6 +12,7 @@ const Attendance = React.lazy(() => import('@/pages/Attendance').then(m => ({ de
 const AttendanceApiIntegration = React.lazy(() => import('@/pages/AttendanceApiIntegration').then(m => ({ default: m.AttendanceApiIntegration })));
 const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default: m.Payroll })));
 const InvoiceManagement = React.lazy(() => import('@/pages/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
+const LoanManagement = React.lazy(() => import('@/pages/LoanManagement').then(m => ({ default: m.LoanManagement })));
 const BonusManagement = React.lazy(() => import('@/pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
 const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ default: m.Companies })));
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
@@ -64,6 +65,7 @@ const pageTitles: Record<PageId, string> = {
   leaves: 'Leave Management',
   payroll: 'Payroll',
   'invoice-management': 'Invoice Management',
+  'loan-management': 'Employee Loan Management',
   bonus: 'Bonus Management',
   attendance: 'Attendance',
   'attendance-integration': 'Attendance API Integration',
@@ -83,7 +85,7 @@ const pageTitles: Record<PageId, string> = {
 // Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
-  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'bonus', 'attendance',
+  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'loan-management', 'bonus', 'attendance',
   'attendance-integration', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'communication', 'select-workspace',
 ] as const;
@@ -1036,6 +1038,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         : currentPage === 'attendance-integration' ? 'attendance'
         : currentPage === 'bonus' ? 'payroll'
         : currentPage === 'invoice-management' ? 'invoicing'
+        : currentPage === 'loan-management' ? 'loans'
         : currentPage) as AppModules;
       const isAllowed = checkCanView(permCurrent, authProfile, permissionRole);
       
@@ -1079,6 +1082,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'attendance-integration' ? 'attendance'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage === 'invoice-management' ? 'invoicing'
+      : currentPage === 'loan-management' ? 'loans'
       : currentPage) as AppModules;
     // Governance modules (Tender / Contract Management) belong to the COMPANY HEAD
     // only — Super Admin (platform admin) must not manage a company's tenders or
@@ -1303,6 +1307,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       case 'invoice-management':
         return (
           <InvoiceManagement
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+          />
+        );
+      case 'loan-management':
+        return (
+          <LoanManagement
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}
