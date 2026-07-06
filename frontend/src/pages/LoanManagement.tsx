@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   LayoutDashboard, HandCoins, FilePlus2, ListChecks, Tags, BarChart3, Plus, Search, Eye,
   CheckCircle2, XCircle, Send, Banknote, Clock, AlertTriangle, TrendingUp, IndianRupee,
-  Trash2, Download, Printer, Ban, Calculator,
+  Trash2, Download, Printer, Ban, Calculator, Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -51,7 +51,10 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
           <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><HandCoins size={16} className="text-[#4F7CFF]" /> Employee Loan Management</h2>
           <p className="text-[11px] text-slate-400">Loans &amp; advances, EMI schedules, approvals and automatic payroll deduction — {activeCompany?.name || 'your company'}.</p>
         </div>
-        {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setTab('create')}>New Loan</Button>}
+        <div className="flex items-center gap-2">
+          {canEdit && <Button size="sm" variant="outline" icon={<Bell size={14} />} onClick={async () => { try { const r = await api.loans.runReminders(); ui.toast.success(`EMI reminders sent: ${r.sent} of ${r.checked} loan(s).`); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }}>Send Reminders</Button>}
+          {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setTab('create')}>New Loan</Button>}
+        </div>
       </div>
 
       <DevelopmentBanner

@@ -202,6 +202,15 @@ exports.create = async (req, res) => {
     const principalAmount = Number(req.body.principalAmount) || 0;
     if (principalAmount <= 0) return res.status(400).json({ error: 'Loan amount must be greater than zero.' });
     const tenureMonths = Math.max(1, Math.round(Number(req.body.tenureMonths) || 1));
+
+    // Enforce the loan type's configured limits (0 = unlimited).
+    if (req.body.loanTypeId) {
+      const lt = await prisma.loanType.findUnique({ where: { id: idParam(req.body.loanTypeId) } });
+      if (lt) {
+        if (lt.maxAmount && principalAmount > lt.maxAmount) return res.status(400).json({ error: `Amount exceeds the ${lt.name} limit of ₹${lt.maxAmount}.` });
+        if (lt.maxTenureMonths && tenureMonths > lt.maxTenureMonths) return res.status(400).json({ error: `Tenure exceeds the ${lt.name} maximum of ${lt.maxTenureMonths} month(s).` });
+      }
+    }
     const interestType = req.body.interestType || 'Flat';
     const interestRate = Math.max(0, Number(req.body.interestRate) || 0);
     const deductionStartMonth = req.body.deductionStartMonth || MONTHS[new Date().getMonth()];
@@ -368,6 +377,15 @@ exports.remove = async (req, res) => {
     await prisma.loan.delete({ where: { id } });
     await logAction(loan.companyId, null, 'DELETED', { performedBy: actorOf(req), details: loan.loanNumber });
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// ── Run EMI reminders now (manual trigger of the scheduler's loan pass) ──────
+exports.runReminders = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised.' });
+    const out = await require('../services/reminderScheduler').runLoanReminders();
+    res.json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 

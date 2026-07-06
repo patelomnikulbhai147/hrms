@@ -24,8 +24,9 @@ router.delete('/types/:id', types.remove);
 // Employee portal (own loans) — must precede /:id
 router.get('/portal/me', loans.myLoans);
 
-// Reports
+// Reports + reminders
 router.get('/reports/:key', loans.report);
+router.post('/run-reminders', loans.runReminders);
 
 // Loans
 router.get('/', loans.list);

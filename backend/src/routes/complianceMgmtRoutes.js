@@ -12,6 +12,7 @@ router.use(require('../middleware/readOnlyMiddleware'));
 router.get('/dashboard', c.dashboard);
 router.get('/categories', c.categories);
 router.post('/regenerate', c.regenerate);
+router.post('/run-reminders', c.runReminders);
 router.get('/filings', c.list);
 router.post('/filings', c.save);
 router.get('/filings/:id', c.get);

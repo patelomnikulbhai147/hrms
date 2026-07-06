@@ -499,6 +499,7 @@ export const api = {
     // Employee portal + reports
     myLoans: async () => apiFetch(`${BASE_URL}/loans/portal/me`, { headers: getHeaders() }),
     report: async (key: string, params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/loans/reports/${key}${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    runReminders: async () => apiFetch(`${BASE_URL}/loans/run-reminders`, { method: 'POST', headers: getHeaders(), body: '{}' }),
   },
 
   // Compliance Management — statutory filing calendar / due-date tracker.
@@ -506,6 +507,7 @@ export const api = {
     dashboard: async () => apiFetch(`${BASE_URL}/compliance-mgmt/dashboard`, { headers: getHeaders() }),
     categories: async () => apiFetch(`${BASE_URL}/compliance-mgmt/categories`, { headers: getHeaders() }),
     regenerate: async () => apiFetch(`${BASE_URL}/compliance-mgmt/regenerate`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    runReminders: async () => apiFetch(`${BASE_URL}/compliance-mgmt/run-reminders`, { method: 'POST', headers: getHeaders(), body: '{}' }),
     listFilings: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/compliance-mgmt/filings${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
     getFiling: async (id: any) => apiFetch(`${BASE_URL}/compliance-mgmt/filings/${id}`, { headers: getHeaders() }),
     saveFiling: async (id: any, data: any) => apiFetch(`${BASE_URL}/compliance-mgmt/filings${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),

@@ -185,6 +185,17 @@ exports.regenerate = async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
+// ── Run reminders now (manual trigger of the scheduler's compliance pass) ────
+exports.runReminders = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised.' });
+    const company = await resolveCompany(targetCompanyId(req));
+    if (company) await generateCalendar(prisma, company, { actor: actorOf(req) }).catch(() => {});
+    const out = await require('../services/reminderScheduler').runComplianceReminders();
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
 // ── Categories + registration summary (reuses ComplianceRecord) ──────────────
 exports.categories = async (req, res) => {
   try {

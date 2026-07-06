@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   LayoutDashboard, ShieldCheck, CalendarDays, ListChecks, FolderOpen, BarChart3, Plus, Search,
-  CheckCircle2, AlertTriangle, Clock, Upload, Download, Trash2, Ban, RefreshCw, FileText, IndianRupee,
+  CheckCircle2, AlertTriangle, Clock, Upload, Download, Trash2, Ban, RefreshCw, FileText, IndianRupee, Bell,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -41,6 +41,7 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
           <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#4F7CFF]" /> Compliance Management</h2>
           <p className="text-[11px] text-slate-400">Statutory filing calendar, due-date tracking &amp; challans — PF · ESI · PT · TDS · GST · LWF — {activeCompany?.name || 'your company'}.</p>
         </div>
+        {canEdit && <Button size="sm" variant="outline" icon={<Bell size={14} />} onClick={async () => { try { const r = await api.compliance.runReminders(); ui.toast.success(`Reminders sent: ${r.sent} of ${r.checked} filing(s) due.`); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }}>Send Reminders</Button>}
       </div>
 
       <DevelopmentBanner status="development" message="Compliance Management is under active development. The statutory filing calendar (PF/ESI/PT/TDS/GST/LWF), due-date tracking, status, challan upload and payroll-derived amounts are live; auto-reminders, government e-filing integrations and the full statutory report suite are still being expanded (detailed challans are in the Reports module)." />

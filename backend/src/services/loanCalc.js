@@ -10,6 +10,11 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const r0 = (n) => Math.round(Number(n) || 0);              // to whole rupee
 const nn = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0);
 const monthIndex = (m) => MONTHS.findIndex((x) => x.toLowerCase() === String(m).toLowerCase());
+// Last day of a period month → the installment's notional due date (yyyy-MM-dd).
+const periodDueDate = (monthName, year) => {
+  const mi = monthIndex(monthName); const last = new Date(Number(year), mi + 1, 0).getDate();
+  return `${year}-${String(mi + 1).padStart(2, '0')}-${String(last).padStart(2, '0')}`;
+};
 
 /** month/year advanced by `offset` months (offset can be 0..n). */
 function addMonths(month, year, offset) {
@@ -82,7 +87,7 @@ function buildSchedule({ principal, interestType, interestRate, tenureMonths, de
       const closing = Math.max(0, r0(opening - principalComp));
       const { month, year } = addMonths(deductionStartMonth, deductionStartYear, i);
       rows.push({
-        seq: i + 1, periodMonth: month, periodYear: year,
+        seq: i + 1, periodMonth: month, periodYear: year, dueDate: periodDueDate(month, year),
         emiAmount: r0(thisEmi), principalComponent: r0(principalComp),
         interestComponent: r0(interest), openingBalance: r0(opening), closingBalance: closing,
       });
@@ -104,7 +109,7 @@ function buildSchedule({ principal, interestType, interestRate, tenureMonths, de
     const closing = Math.max(0, r0(opening - principalComp));
     const { month, year } = addMonths(deductionStartMonth, deductionStartYear, i);
     rows.push({
-      seq: i + 1, periodMonth: month, periodYear: year,
+      seq: i + 1, periodMonth: month, periodYear: year, dueDate: periodDueDate(month, year),
       emiAmount: r0(principalComp + interestComp), principalComponent: r0(principalComp),
       interestComponent: r0(interestComp), openingBalance: r0(opening), closingBalance: closing,
     });

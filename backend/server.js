@@ -232,6 +232,10 @@ const server = app.listen(PORT, () => {
   // ETIME_SYNC_SCHEDULER=off.
   try { require('./src/services/etimeoffice/etimeScheduler').start(); }
   catch (e) { console.error('[etime][scheduler] failed to start:', e.message); }
+  // Start the compliance/loan auto-reminder scheduler (30/15/7/1-day + overdue
+  // alerts → in-app + email). Disable with REMINDER_SCHEDULER=off.
+  try { require('./src/services/reminderScheduler').start(); }
+  catch (e) { console.error('[reminders][scheduler] failed to start:', e.message); }
 });
 
 // ── Phase 6 diagnostics: capture NON-HTTP traffic on the HTTP port ───────────
