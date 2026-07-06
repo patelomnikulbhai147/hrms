@@ -2,7 +2,7 @@
 // set of enterprise defaults per company; admins can add unlimited custom types.
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
-const { canView, canEdit, canManage, actorOf, targetCompanyId, scopedWhere } = require('../utils/loanScope');
+const { canView, canEdit, canManage, actorOf, readCompanyId, scopedWhere } = require('../utils/loanScope');
 
 // Enterprise default loan categories (seeded once per company).
 const SYSTEM_TYPES = [
@@ -34,7 +34,10 @@ exports.list = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'Not authorised.' });
     const where = scopedWhere(req);
     if (where === null) return res.status(403).json({ error: 'Unauthorised workspace.' });
-    const cid = targetCompanyId(req);
+    // Seed the SAME company the read is scoped to (the selected workspace), not
+    // the user's home company — otherwise a multi-company user viewing another
+    // of their companies gets an empty list while their home company is seeded.
+    const cid = readCompanyId(req);
     if (cid) await ensureSeeded(cid);
     const types = await prisma.loanType.findMany({ where, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] });
     res.json(types);
@@ -44,7 +47,9 @@ exports.list = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised to create loan types.' });
-    const companyId = targetCompanyId(req, req.body.companyId);
+    // Create the type in the company currently being viewed (workspace-scoped),
+    // so a Company Head managing several companies adds it to the right one.
+    const companyId = readCompanyId(req, req.body.companyId);
     if (!companyId) return res.status(400).json({ error: 'Company context required.' });
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Loan type name is required.' });
@@ -75,7 +80,9 @@ exports.update = async (req, res) => {
     const id = idParam(req.params.id);
     const existing = await prisma.loanType.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Loan type not found.' });
-    const cid = targetCompanyId(req);
+    // Validate ownership against the company being viewed (workspace-scoped),
+    // consistent with how the list + create resolve the company.
+    const cid = readCompanyId(req);
     if (cid && existing.companyId !== cid) return res.status(403).json({ error: 'Not your company.' });
     const data = {};
     for (const f of ['name', 'code', 'description', 'defaultInterestType']) if (req.body[f] !== undefined) data[f] = req.body[f];

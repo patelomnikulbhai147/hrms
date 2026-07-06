@@ -23,6 +23,21 @@ function targetCompanyId(req, requested) {
   return req.user?.companyId || null;
 }
 
+// The concrete company the CURRENT view/scope resolves to — i.e. the workspace
+// the user actually selected (x-workspace-id / ?companyId), validated against
+// their allowed scope, falling back to their home company. This is deliberately
+// aligned with `scopedWhere` so that any per-company auto-provisioning (e.g.
+// seeding default loan types) targets the SAME company the read is filtered by.
+// Without this, a multi-company user viewing company B would read B's (empty)
+// list while the seeder provisioned their home company A — an empty dropdown.
+function readCompanyId(req, requested) {
+  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
+  if (isSuperAdmin(req)) return workspaceId || null;
+  const scope = companyScopeFor(req);
+  if (workspaceId && scope.includes(workspaceId)) return workspaceId;
+  return req.user?.companyId || null;
+}
+
 // Company-scoped WHERE for reads (null → unauthorised workspace).
 function scopedWhere(req) {
   const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
@@ -34,5 +49,5 @@ function scopedWhere(req) {
 
 module.exports = {
   isSuperAdmin, isEmployee, canView, canEdit, canApprove, canManage,
-  actorOf, targetCompanyId, scopedWhere,
+  actorOf, targetCompanyId, readCompanyId, scopedWhere,
 };

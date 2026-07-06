@@ -26,7 +26,8 @@ const TABS = [
   { id: 'documents', label: 'Documents', icon: FolderOpen },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
 ] as const;
-type TabId = typeof TABS[number]['id'];
+export type ComplianceTabId = typeof TABS[number]['id'];
+type TabId = ComplianceTabId;
 
 export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, companies = [] }) => {
   const canEdit = ['Company Head', 'HR', 'Finance'].includes(role);
@@ -81,7 +82,7 @@ const dueChip = (dueDate: string) => {
 };
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-const DashboardTab: React.FC<{ onGoto: (t: TabId) => void }> = ({ onGoto }) => {
+export const DashboardTab: React.FC<{ onGoto: (t: TabId) => void }> = ({ onGoto }) => {
   const [d, setD] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { (async () => { try { setD(await api.compliance.dashboard()); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } })(); }, []);
@@ -141,7 +142,7 @@ const DashboardTab: React.FC<{ onGoto: (t: TabId) => void }> = ({ onGoto }) => {
 };
 
 // ── Calendar (by-due-date list for a month) ───────────────────────────────────
-const CalendarTab: React.FC = () => {
+export const CalendarTab: React.FC = () => {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [rows, setRows] = useState<any[]>([]);
@@ -179,7 +180,7 @@ const CalendarTab: React.FC = () => {
 };
 
 // ── Filings (table + actions) ─────────────────────────────────────────────────
-const FilingsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+export const FilingsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
   const now = new Date();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -285,7 +286,7 @@ const AddFilingModal: React.FC<{ draft: any; onClose: () => void; onDone: () => 
 };
 
 // ── Documents (challans) ──────────────────────────────────────────────────────
-const DocumentsTab: React.FC = () => {
+export const DocumentsTab: React.FC = () => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { (async () => { try { const r = await api.compliance.listFilings({}); setRows((r?.filings || []).filter((f: any) => f.hasChallan)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } })(); }, []);
@@ -308,7 +309,7 @@ const DocumentsTab: React.FC = () => {
 };
 
 // ── Reports (compliance summary + CSV; detailed challans live in Reports mod) ──
-const ReportsTab: React.FC<{ company?: any }> = ({ company }) => {
+export const ReportsTab: React.FC<{ company?: any }> = ({ company }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => { (async () => { try { const r = await api.compliance.listFilings({}); setRows(r?.filings || []); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } })(); }, []);

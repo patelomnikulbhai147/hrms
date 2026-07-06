@@ -45,6 +45,7 @@ const INT_PK_MODELS = new Set([
   'LeaveCreditConfig', 'LeaveBalance', 'AttendanceSummary', 'CompanyContact', 'ComplianceRecord',
   'CommunicationTemplate', 'CommunicationSchedule', 'CommunicationAnnouncement',
   'CommunicationDeliveryLog', 'CommunicationSettings', 'CommunicationHoliday',
+  'CommunicationMasterTemplate', 'CommunicationEventMapping',
   'WhatsAppSettings', 'WhatsAppQueue', 'WhatsAppDeliveryLog', 'WhatsAppRequestLog',
   'WhatsAppMetaTemplate', 'WhatsAppTemplateMapping', 'WhatsAppTemplateEvent',
   'WhatsAppWebhookEvent',
@@ -55,7 +56,8 @@ const INT_PK_MODELS = new Set([
   'InvoiceCustomer', 'InvoiceProduct', 'Invoice', 'InvoiceItem',
   'InvoicePayment', 'InvoiceSettings', 'InvoiceAudit',
   'LoanType', 'Loan', 'LoanInstallment', 'LoanAudit',
-  'ComplianceFiling', 'ComplianceFilingAudit',
+  'ComplianceFiling', 'ComplianceFilingAudit', 'ComplianceDocument',
+  'CardTemplate',
 ]);
 const FK_KEYS = ['companyId', 'branchId', 'parentCompanyId'];
 
@@ -120,7 +122,7 @@ const AUDIT_MODELS = new Set([
   'LeaveCreditConfig', 'Shift', 'Overtime', 'CompanyPayroll', 'BranchPayroll',
   'CompanyContact', 'ComplianceRecord',
   'CommunicationTemplate', 'CommunicationSchedule', 'CommunicationAnnouncement',
-  'CommunicationHoliday',
+  'CommunicationHoliday', 'CommunicationEventMapping',
   // WhatsApp config changes (enable / dev-mode / test number / future creds) are
   // security-relevant & low-volume → audited. Queue + delivery logs are excluded
   // (high-volume log tables, like CommunicationDeliveryLog).

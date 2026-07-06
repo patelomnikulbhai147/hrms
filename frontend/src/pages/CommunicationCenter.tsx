@@ -24,9 +24,11 @@ import { DevelopmentBanner } from '@/components/ui/DevelopmentBanner';
 import { api } from '@/api/apiClient';
 import { usePermissions } from '@/context/PermissionContext';
 import { getApiErrorMessage } from '@/utils/apiError';
+import { resolveBranding } from '@/services/brandingService';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import { CommunicationEventModule, EVENT_CONFIGS } from './communication/eventModule';
 import { WhatsAppHealthTab, WhatsAppExplorerTab, WhatsAppWidget } from './communication/whatsappOps';
+import { EventMappingTab, MasterLibraryTab, CommunicationHealthCard } from './communication/eventMapping';
 
 // ── Static libraries (mirrors the backend; available offline for the UI) ──────
 const CATEGORIES = [
@@ -55,7 +57,7 @@ const DESIGNER_ELEMENTS = [
 // change to the top-level bar, so the nav scales cleanly.
 type TabId =
   | 'dashboard'
-  | 'templates' | 'designer'
+  | 'templates' | 'master-library' | 'event-mapping' | 'designer'
   | 'birthday' | 'anniversary' | 'festival' | 'holiday-greet'
   | 'announce-send' | 'announcements'
   | 'salary' | 'payslip' | 'leave' | 'attendance'
@@ -76,6 +78,7 @@ const MODULES: NavModule[] = [
   { id: 'templates', label: 'Templates', icon: LayoutTemplate, groups: [
     { items: [
       { id: 'templates', label: 'Template Library', icon: FileText },
+      { id: 'master-library', label: 'Master Library', icon: LayoutTemplate },
       { id: 'designer', label: 'Template Designer', icon: LayoutTemplate },
     ] },
   ] },
@@ -101,6 +104,7 @@ const MODULES: NavModule[] = [
   ] },
   { id: 'automation', label: 'Automation', icon: Sparkles, groups: [
     { items: [
+      { id: 'event-mapping', label: 'Event → Template', icon: Sparkles },
       { id: 'automation', label: 'Automation Rules', icon: Sparkles },
       { id: 'scheduled', label: 'Scheduled Messages', icon: Clock },
       { id: 'wa-scheduler', label: 'WhatsApp Scheduler', icon: CalendarClock },
@@ -382,11 +386,14 @@ export const CommunicationCenter: React.FC<Props> = () => {
       try {
         const p = await api.companyProfile.get();
         const c = (p && (p.company || p)) || {};
+        // Route through the single-source-of-truth accessor so the card logo /
+        // signature / footer always match Company Profile → Branding & Assets.
+        const b = resolveBranding(c);
         setBranding({
-          companyName: c.displayName || c.tradeName || c.name || c.legalName || 'Vishv Enterprise',
-          logo: c.logoImage || c.logo || '',
-          footer: c.footerText || '',
-          signature: c.signatureText || c.digitalSignatureImage || c.authorizedSignatory || '',
+          companyName: c.displayName || c.tradeName || b.companyName || 'Vishv Enterprise',
+          logo: b.logo,
+          footer: b.footerText,
+          signature: b.signature || b.signatureText,
         });
       } catch { /* branding optional — sample defaults used */ }
     })();
@@ -451,6 +458,8 @@ export const CommunicationCenter: React.FC<Props> = () => {
         <div className="min-w-0 flex-1">
       {tab === 'dashboard' && <DashboardTab onGo={setTab} />}
       {tab === 'templates' && <TemplatesTab />}
+      {tab === 'master-library' && <MasterLibraryTab />}
+      {tab === 'event-mapping' && <EventMappingTab />}
       {tab === 'designer' && <DesignerTab />}
       {/* Event communication modules — single shared engine, config-driven */}
       {tab === 'birthday' && <EventTab cfg="birthday" />}
@@ -498,6 +507,8 @@ const DashboardTab: React.FC<{ onGo: (t: TabId) => void }> = ({ onGo }) => {
   const v = (k: string) => (d ? d[k] ?? 0 : 0);
   return (
     <div className="space-y-4">
+      {/* Communication Health — configure-once workflow status (Enterprise Workflow) */}
+      <CommunicationHealthCard onConfigure={() => onGo('event-mapping' as TabId)} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <Card label="Total Templates" value={loading ? '—' : v('totalTemplates')} icon={<FileText size={16} />} />
         <Card label="Scheduled Messages" value={loading ? '—' : v('scheduledMessages')} icon={<Clock size={16} />} />
@@ -578,7 +589,6 @@ const TemplatesTab: React.FC = () => {
   const [preview, setPreview] = useState<any>(null);
   const [duplicating, setDuplicating] = useState<string>('');
   const bgRef = useRef<HTMLInputElement>(null);
-  const logoRef = useRef<HTMLInputElement>(null);
 
   const load = async () => { setLoading(true); try { setItems(await api.communication.templates.list()); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } };
   useEffect(() => {
@@ -793,11 +803,14 @@ const TemplatesTab: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <p className="mb-1 text-[11px] font-bold text-slate-500">Company Logo (override)</p>
-                    <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={e => upload('companyLogo', e.target.files?.[0])} />
-                    <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm" icon={<Upload size={13} />} onClick={() => logoRef.current?.click()}>{draft.companyLogo ? 'Replace' : 'Upload'}</Button>
-                      {draft.companyLogo && <button onClick={() => setDraft({ ...draft, companyLogo: '' })} className="text-slate-400 hover:text-rose-500"><X size={14} /></button>}
+                    <p className="mb-1 text-[11px] font-bold text-slate-500">Company Logo</p>
+                    {/* Branding is centralised — the logo comes from Company Profile →
+                        Branding & Assets (via resolveBranding), never uploaded here. */}
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+                      {branding.logo
+                        ? <img src={branding.logo} alt="Company logo" className="h-6 w-auto max-w-[72px] object-contain" />
+                        : <span className="text-[11px] font-semibold text-slate-400">No logo set</span>}
+                      <span className="text-[10px] leading-tight text-slate-400">Managed in <b className="text-slate-500">Company Profile → Branding &amp; Assets</b></span>
                     </div>
                   </div>
                 </div>
@@ -1312,16 +1325,16 @@ const DeliveryLogsTab: React.FC = () => {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-xs">
-        <thead className="bg-slate-50 text-slate-500"><tr>{['Date', 'Template', 'Channel', 'Recipient Count', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-bold">{h}</th>)}</tr></thead>
+        <thead className="bg-slate-50 text-slate-500"><tr>{['Date', 'Employee', 'Template', 'Channel', 'Status'].map(h => <th key={h} className="px-3 py-2 text-left font-bold">{h}</th>)}</tr></thead>
         <tbody>
           {loading ? <tr><td colSpan={5} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
             : items.length === 0 ? <tr><td colSpan={5} className="px-3 py-12 text-center text-slate-400">No deliveries yet.</td></tr>
               : items.map(l => (
                 <tr key={l.id} className="border-t border-slate-100">
                   <td className="px-3 py-2">{formatDateTime(l.createdAt)}</td>
-                  <td className="px-3 py-2">{l.templateId || '—'}</td>
-                  <td className="px-3 py-2">{l.channel || '—'}</td>
-                  <td className="px-3 py-2">{l.recipientCount}</td>
+                  <td className="px-3 py-2">{l.employeeName || '—'}</td>
+                  <td className="px-3 py-2">{l.templateName || (l.templateId ? `#${l.templateId}` : '—')}</td>
+                  <td className="px-3 py-2">WhatsApp</td>
                   <td className="px-3 py-2"><Badge variant="gray">{l.status}</Badge></td>
                 </tr>
               ))}

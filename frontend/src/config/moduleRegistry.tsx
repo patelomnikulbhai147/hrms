@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard, Users as UsersIcon, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, Building2, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins
+  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark
 } from 'lucide-react';
 import type { Role } from '@/data/mockData';
 import type { AppModules } from '@/pages/Login';
@@ -23,7 +23,7 @@ import type { AppModules } from '@/pages/Login';
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-integration' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
-  | 'company-profile' | 'communication' | 'invoice-management' | 'loan-management' | 'compliance-management';
+  | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -49,6 +49,29 @@ export interface ModuleRegistryEntry {
    * in the Super Admin permission matrix — never in the Company Head matrix.
    */
   platformOnly?: boolean;
+  /**
+   * When true, the module is NOT rendered as its own sidebar item. Used for
+   * modules that have been folded into a parent sidebar entry but must remain a
+   * permission-matrix row so their access is still governed independently
+   * (e.g. Loans & Compliance now live under the "Finance & Compliance" item).
+   */
+  hideInSidebar?: boolean;
+  /**
+   * Optional set of permission keys — the module is visible in the sidebar if the
+   * user can VIEW ANY of them (OR-logic). Used by parent items that aggregate
+   * several sub-modules (Finance & Compliance aggregates `loans` + `compliance`).
+   * Falls back to the single `permission` key when omitted.
+   */
+  anyPermission?: AppModules[];
+  /**
+   * When true, the module is still under active development. The sidebar shows a
+   * small "🚧 Beta" status badge beside the label, and the module renders the
+   * in-page <DevelopmentBanner /> "Work in Progress" notice. Keep this flag in
+   * sync with that banner: set it while a module is in progress, and REMOVE it
+   * (and the banner) the moment the module is production-ready — the badge then
+   * disappears automatically everywhere it is derived from this registry.
+   */
+  beta?: boolean;
 }
 
 // The canonical, ordered list. Order here === sidebar order === matrix order.
@@ -59,7 +82,7 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'employees', label: 'Employees', icon: <UsersIcon size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'employees', inMatrix: true },
   // Employee Cards is a sub-feature of Employees — it is governed by the
   // `employees` permission everywhere in the app, so it shares that key here.
-  { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'], permission: 'employees', inMatrix: true },
+  { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'], permission: 'employees', inMatrix: true, beta: true },
   { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'attendance', inMatrix: true },
   // Attendance Devices is a sub-feature of Attendance — governed by the
   // `attendance` permission, so it shares that key here.
@@ -67,15 +90,22 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   // truth for attendance device/vendor integration. Rides on the `attendance`
   // permission (no separate matrix row — inMatrix:false — so it doesn't duplicate
   // the Attendance permission row); hidden from the Super-Admin root menu.
-  { id: 'attendance-integration', label: 'Attendance API Integration', icon: <PlugZap size={15} />, roles: ['Super Admin', 'Company Head', 'HR'], permission: 'attendance', inMatrix: false },
+  { id: 'attendance-integration', label: 'Attendance API Integration', icon: <PlugZap size={15} />, roles: ['Super Admin', 'Company Head', 'HR'], permission: 'attendance', inMatrix: false, beta: true },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'], permission: 'leaves', inMatrix: true },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'payroll', inMatrix: true },
-  { id: 'invoice-management', label: 'Invoice Management', icon: <ReceiptText size={15} />, roles: ['Company Head', 'Finance', 'HR'], permission: 'invoicing', inMatrix: true },
-  { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true },
-  { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true },
+  { id: 'invoice-management', label: 'Invoice Management', icon: <ReceiptText size={15} />, roles: ['Company Head', 'Finance', 'HR'], permission: 'invoicing', inMatrix: true, beta: true },
+  // Finance & Compliance — the single sidebar entry that unifies Employee Loans
+  // and Statutory Compliance. Visible when the user can VIEW EITHER underlying
+  // module (anyPermission OR-logic). It is NOT itself a matrix row (inMatrix:
+  // false) — access stays governed by the individual `loans` / `compliance`
+  // rows below, which remain in both permission matrices (hideInSidebar keeps
+  // them out of the nav so there is only one menu item).
+  { id: 'finance-compliance', label: 'Finance & Compliance', icon: <Landmark size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', anyPermission: ['loans', 'compliance'], inMatrix: false, beta: true },
+  { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true, hideInSidebar: true },
+  { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
-  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true },
+  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true, beta: true },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks', inMatrix: true },
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },
   { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'], permission: 'contracts', inMatrix: true },

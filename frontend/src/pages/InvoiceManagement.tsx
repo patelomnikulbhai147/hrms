@@ -6,10 +6,10 @@
 // are computed live for preview and re-verified server-side on every save. A4
 // print/PDF via a faithful print window. Fully DB-backed; zero impact on HR.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { invoiceDocHtml, resolveDesign, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
+import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
 import { InvoiceDesigner } from '@/components/invoicing/InvoiceDesigner';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -23,7 +23,8 @@ import type { Role } from '@/data/mockData';
 import {
   LayoutDashboard, FilePlus2, ReceiptText, Users, Package, Wallet, Settings as SettingsIcon,
   Plus, Trash2, Search, Eye, Edit, Copy, Printer, IndianRupee, X, Save, RefreshCw, Ban,
-  CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette,
+  CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette, Maximize2,
+  ZoomIn, ZoomOut, Download,
 } from 'lucide-react';
 
 interface Props { role: Role; activeCompanyId?: string; companies?: any[]; }
@@ -52,27 +53,55 @@ function computeInvoice(items: any[], intraState: boolean) {
   return { lines, subtotal: sum('gross'), discountTotal: sum('discountAmt'), taxableAmount, cgst, sgst, igst, roundOff: r2(grandTotal - preRound), grandTotal };
 }
 
+// A4 / Letter pixel dimensions (~96dpi) for the scaled Create-Invoice preview.
+const PREVIEW_PAGE_PX: Record<string, Record<string, [number, number]>> = {
+  A4: { portrait: [794, 1123], landscape: [1123, 794] },
+  Letter: { portrait: [816, 1056], landscape: [1056, 816] },
+};
+const presetName = (id?: string) => TEMPLATE_PRESETS.find((p) => p.id === id)?.name || 'Standard';
+// Apply a gallery preset over a base design — mirrors InvoiceDesigner.applyPreset,
+// but returns a fresh design instead of mutating the company default. Used to
+// preview a per-invoice template choice without ever touching saved settings.
+const buildDesignForTemplate = (base: InvoiceDesign, templateId: string): InvoiceDesign => {
+  const preset = TEMPLATE_PRESETS.find((p) => p.id === templateId);
+  if (!preset) return base;
+  return resolveDesign({ ...base, ...preset.apply, paper: preset.paper, orientation: preset.orientation });
+};
+
 const STATUS_TONE: Record<string, string> = {
   Draft: 'gray', Generated: 'blue', Sent: 'blue', Viewed: 'blue',
   'Partially Paid': 'amber', Paid: 'green', Closed: 'green', Cancelled: 'red',
 };
 const statusBadge = (s: string) => <Badge variant={(STATUS_TONE[s] || 'gray') as any}>{s}</Badge>;
 
-const TABS = [
+// Daily OPERATIONS — the tabs Accounts/HR use every day to bill customers.
+const OPERATION_TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'create', label: 'Create Invoice', icon: FilePlus2 },
   { id: 'invoices', label: 'All Invoices', icon: ReceiptText },
   { id: 'customers', label: 'Customers', icon: Users },
   { id: 'products', label: 'Products & Services', icon: Package },
   { id: 'payments', label: 'Payments', icon: Wallet },
-  { id: 'designer', label: 'Invoice Designer', icon: Palette },
+] as const;
+// One-time company CONFIGURATION — an administrative setup area, opened once by
+// the Company Head / authorized admin, never part of the daily billing workflow.
+// "Invoice Designer" is renamed "Templates & Branding"; its tab id stays
+// `designer` so the existing render switch and saved design payload are untouched.
+const ADMIN_TABS = [
+  { id: 'designer', label: 'Templates & Branding', icon: Palette },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const;
+const TABS = [...OPERATION_TABS, ...ADMIN_TABS] as const;
 type TabId = typeof TABS[number]['id'];
 
 export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, companies = [] }) => {
   const canEdit = ['Company Head', 'Finance', 'HR'].includes(role);
   const canManage = ['Company Head', 'Finance', 'Super Admin'].includes(role);
+  // Templates & Branding is a one-time company configuration, not a daily task.
+  // Only the Company Head / authorized admin may open it — Accounts (Finance) and
+  // HR create invoices but do NOT change company branding. Everyday invoicing is
+  // unaffected: generated invoices always pick up the saved template automatically.
+  const canBranding = ['Company Head', 'Super Admin'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
   const activeCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
@@ -95,12 +124,16 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
           Remove this <DevelopmentBanner /> from the JSX when the module ships. */}
       <DevelopmentBanner
         status="development"
-        message="The Invoice Management module is currently under active development. Invoice templates, automation, tax configuration, PDF generation, payment integrations, and advanced billing features are still being implemented. Some functionality may be incomplete during development."
+        message="Invoice Management is under active development. Advanced invoice templates, branding, recurring invoices, payment gateway integrations, PDF enhancements, and automation are still being completed. Current invoice generation remains safe to use."
       />
 
-      {/* Sub navigation */}
-      <div className="flex flex-wrap gap-1 border-b border-slate-200">
-        {TABS.map((t) => {
+      {/* Sub navigation — daily OPERATIONS on the left, a divider, then the
+          one-time SETUP group (Templates & Branding + Settings) on the right so
+          users immediately see that branding is administrative config, not a step
+          in creating an invoice. The branding tab is hidden from users who cannot
+          manage it (Accounts/HR) — they only ever create invoices. */}
+      {(() => {
+        const renderTab = (t: typeof TABS[number]) => {
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'create') setEditInvoiceId(null); }}
@@ -108,8 +141,21 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
               <Icon size={14} /> {t.label}
             </button>
           );
-        })}
-      </div>
+        };
+        const adminTabs = ADMIN_TABS.filter((t) => t.id !== 'designer' || canBranding);
+        return (
+          <div className="flex flex-wrap items-center gap-1 border-b border-slate-200">
+            {OPERATION_TABS.map(renderTab)}
+            {adminTabs.length > 0 && (
+              <>
+                <span aria-hidden className="mx-2 hidden h-5 w-px self-center bg-slate-200 sm:block" />
+                <span className="hidden select-none self-center pr-1 text-[9px] font-bold uppercase tracking-wider text-slate-300 sm:block">Setup</span>
+                {adminTabs.map(renderTab)}
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {tab === 'dashboard' && <DashboardTab onOpen={(id) => { setEditInvoiceId(id); setTab('invoices'); }} onNew={() => goCreate(null)} />}
       {tab === 'create' && <InvoiceEditor editId={editInvoiceId} canEdit={canEdit} companyState={companyState} company={activeCompany} onDone={() => { setEditInvoiceId(null); setTab('invoices'); }} />}
@@ -117,7 +163,9 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
       {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'payments' && <PaymentsTab canEdit={canEdit} />}
-      {tab === 'designer' && <InvoiceDesigner company={activeCompany} canManage={canEdit} />}
+      {tab === 'designer' && (canBranding
+        ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
+        : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} />}
     </div>
   );
@@ -213,11 +261,60 @@ const Empty: React.FC<{ icon: React.ReactNode; title: string; sub?: string }> = 
 const blankItem = () => ({ name: '', description: '', hsnSac: '', quantity: 1, unit: 'Nos', rate: 0, discountPct: 0, taxRate: 18 });
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+// ── Auto-fitting A4 live preview ────────────────────────────────────────────
+// Measures its OWN container width and scales the full-size A4 page to fit —
+// proportional, never cropped or stretched. `zoom` (from the panel's controls)
+// multiplies the fit scale; when >1 the page overflows and the box scrolls, so
+// it is still never cropped. Grey box = paper background; iframe = page shadow.
+// Rendered by the same invoiceDocHtml as the real print/PDF → identical output.
+const InvoicePreviewFrame: React.FC<{ html: string; pw: number; ph: number; zoom?: number; maxHeightVh?: number }> =
+  ({ html, pw, ph, zoom = 1, maxHeightVh = 82 }) => {
+    const boxRef = useRef<HTMLDivElement>(null);
+    const [fit, setFit] = useState(0.45);
+    useEffect(() => {
+      const el = boxRef.current;
+      if (!el) return;
+      const measure = () => { const avail = el.clientWidth - 24; if (avail > 0) setFit(Math.max(0.1, Math.min(1.4, avail / pw))); };
+      measure();
+      const ro = new ResizeObserver(measure);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, [pw]);
+    const scale = Math.max(0.1, Math.min(3, fit * zoom));
+    return (
+      <div ref={boxRef} className="flex justify-center overflow-auto rounded-xl border border-slate-200 bg-slate-200/70 p-3 shadow-inner" style={{ maxHeight: `${maxHeightVh}vh` }}>
+        <div style={{ width: pw * scale, height: ph * scale, flex: '0 0 auto' }}>
+          <iframe title="Invoice preview" srcDoc={html} className="bg-white shadow-lg" style={{ width: pw, height: ph, transform: `scale(${scale})`, transformOrigin: '0 0', border: 0 }} />
+        </div>
+      </div>
+    );
+  };
+
 const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; companyState: string; company: any; onDone: () => void }> = ({ editId, canEdit, companyState, company, onDone }) => {
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  // Per-invoice template choice. '' = follow the company default from Templates &
+  // Branding; picking another preset only re-styles THIS invoice's live preview
+  // and never mutates the saved company default.
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [fullOpen, setFullOpen] = useState(false); // full-screen preview modal (desktop control + mobile button)
+  const [zoom, setZoom] = useState(1);             // preview zoom multiplier (right-panel controls)
+  // The split is decided by the CONTAINER width (not the viewport), so the sidebar
+  // never breaks it: as long as this panel is ≥980px wide it shows FORM | PREVIEW.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [containerW, setContainerW] = useState(1200);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = () => setContainerW(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const layout: 'split' | 'stacked' | 'compact' = containerW >= 980 ? 'split' : containerW >= 640 ? 'stacked' : 'compact';
   const [form, setForm] = useState<any>({
     customerId: '', billToName: '', billToGstin: '', billToAddress: '', billToEmail: '', billToPhone: '', billToState: '',
     invoiceDate: todayIso(), dueDate: '', currency: 'INR', paymentTerms: 'Net 30', notes: '', termsConditions: '',
@@ -271,6 +368,43 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const intraState = !form.billToState || !companyState || String(form.billToState).trim().toLowerCase() === String(companyState).trim().toLowerCase();
   const totals = useMemo(() => computeInvoice(form.items, intraState), [form.items, intraState]);
 
+  // ── Template & live preview (no impact on generation / PDF / API) ────────────
+  // The company default design comes from the saved Invoice Settings (Templates &
+  // Branding). `effectiveTemplateId` is what's highlighted & previewed: the user's
+  // per-invoice pick, else the company default.
+  const companyDefaultDesign = useMemo(() => resolveDesign(settings), [settings]);
+  const defaultTemplateId = companyDefaultDesign.template;
+  const effectiveTemplateId = selectedTemplateId || defaultTemplateId;
+  const activeDesign = useMemo(() => (
+    !selectedTemplateId || selectedTemplateId === defaultTemplateId
+      ? companyDefaultDesign                                   // keep the company's saved colours/branding as-is
+      : buildDesignForTemplate(companyDefaultDesign, selectedTemplateId)
+  ), [companyDefaultDesign, defaultTemplateId, selectedTemplateId]);
+
+  // A live invoice object built from the form + computed totals so the preview
+  // shows the real customer, items and amounts. Purely presentational — the
+  // server still recomputes GST/totals authoritatively on save.
+  const previewInvoice = useMemo(() => ({
+    invoiceNumber: form.invoiceNumber || 'DRAFT',
+    invoiceDate: form.invoiceDate, dueDate: form.dueDate, status: form.status || 'Draft',
+    billToName: form.billToName || 'Customer name', billToGstin: form.billToGstin, billToAddress: form.billToAddress,
+    billToEmail: form.billToEmail, billToPhone: form.billToPhone, billToState: form.billToState, placeOfSupply: form.billToState,
+    currency: form.currency, paymentTerms: form.paymentTerms, paymentMode: form.paymentMode, upiId: form.upiId,
+    bankDetails: form.bankDetails, notes: form.notes, termsConditions: form.termsConditions,
+    items: (totals.lines || []).map((l: any) => ({ name: l.name || 'Item', description: l.description, hsnSac: l.hsnSac, quantity: l.quantity, unit: l.unit, rate: l.rate, discountPct: l.discountPct, taxRate: l.taxRate, amount: l.amount })),
+    subtotal: totals.subtotal, discountTotal: totals.discountTotal, taxableAmount: totals.taxableAmount,
+    cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, roundOff: totals.roundOff, grandTotal: totals.grandTotal,
+    amountPaid: 0, balanceDue: totals.grandTotal,
+  }), [form, totals]);
+  const previewHtml = useMemo(() => invoiceDocHtml(previewInvoice, company, activeDesign, { print: false }), [previewInvoice, company, activeDesign]);
+  const [pw, ph] = (PREVIEW_PAGE_PX[activeDesign.paper] || PREVIEW_PAGE_PX.A4)[activeDesign.orientation] || PREVIEW_PAGE_PX.A4.portrait;
+  const openFullPreview = () => {
+    const html = invoiceDocHtml(previewInvoice, company, activeDesign, { print: true });
+    const w = window.open('', '_blank', 'width=900,height=1000');
+    if (!w) { ui.toast.error('Allow pop-ups to open the full preview.'); return; }
+    w.document.write(html); w.document.close();
+  };
+
   const save = async (finalize: boolean) => {
     if (!canEdit) return;
     if (!form.billToName.trim() && !form.customerId) { ui.toast.error('Select or enter a customer.'); return; }
@@ -286,10 +420,11 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
     finally { setSaving(false); }
   };
 
-  return (
-    <div className="grid grid-cols-1 xl:grid-cols-[1fr,320px] gap-4">
-      {/* Form */}
-      <div className="space-y-4">
+  // ── LEFT editing column — built once, positioned by the layout below. Holds
+  // Customer → Invoice Details → Items → Summary → Payment/Notes → Buttons. The
+  // template selector now lives in the RIGHT panel, per the split-screen design.
+  const formColumn = (
+      <div className="space-y-4 min-w-0">
         <Card>
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Customer</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -379,10 +514,8 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
               <textarea value={form.termsConditions} onChange={(e) => set('termsConditions', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
           </div>
         </Card>
-      </div>
 
-      {/* Sticky totals + actions */}
-      <div className="xl:sticky xl:top-2 self-start space-y-3">
+        {/* Summary — live taxes, discounts & totals for THIS invoice. */}
         <Card>
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Summary</h3>
           <Row label="Subtotal" value={inr(totals.subtotal)} />
@@ -396,14 +529,123 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           </div>
           <p className="text-[10px] text-slate-400 mt-2">{intraState ? 'Intra-state supply → CGST + SGST.' : 'Inter-state supply → IGST.'} Totals are re-verified on the server.</p>
         </Card>
+
+        {/* Action buttons — pinned at the bottom of the editing panel. */}
         {canEdit && (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2 pt-1">
             <Button icon={<CheckCircle2 size={14} />} loading={saving} onClick={() => save(true)}>Generate Invoice</Button>
             <Button variant="outline" icon={<Save size={14} />} loading={saving} onClick={() => save(false)}>Save as Draft</Button>
+            <Button variant="outline" icon={<Eye size={14} />} onClick={openFullPreview}>Preview PDF</Button>
             <Button variant="ghost" onClick={onDone}>Cancel</Button>
           </div>
         )}
       </div>
+  );
+
+  // ── RIGHT panel — Template selector + preview controls (zoom / full screen /
+  // print / download) + the sticky live A4 preview. Built once; placed by the
+  // layout below (right column when split, below the form when stacked, or inside
+  // the full-screen modal on compact). Never duplicated.
+  const rightPanel = (
+    <div className="space-y-3">
+      {/* Invoice Template selector */}
+      <Card>
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#4F7CFF]" /> Invoice Template</h3>
+          <span className="text-[10px] text-slate-400">This invoice only</span>
+        </div>
+        <div className="flex gap-2.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+          {TEMPLATE_PRESETS.map((p) => {
+            const active = effectiveTemplateId === p.id;
+            const isDefault = defaultTemplateId === p.id;
+            return (
+              <button key={p.id} type="button" onClick={() => setSelectedTemplateId(p.id)} title={isDefault ? `${p.name} (company default)` : p.name}
+                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#4F7CFF] ring-2 ring-[#4F7CFF]/20 bg-blue-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
+                <div className="rounded-md overflow-hidden border border-slate-100 bg-white">
+                  <div className="h-4" style={{ background: p.swatch }} />
+                  <div className="p-1 space-y-0.5">
+                    <div className="h-1 w-3/4 rounded-sm bg-slate-200" />
+                    <div className="h-1 w-1/2 rounded-sm bg-slate-100" />
+                    <div className="mt-1 h-1.5 w-full rounded-sm" style={{ background: `${p.swatch}22` }} />
+                    <div className="mt-1 h-1.5 w-1/2 rounded-sm ml-auto" style={{ background: p.swatch }} />
+                  </div>
+                </div>
+                <div className="mt-1 flex items-center justify-between gap-1">
+                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#4F7CFF]' : 'text-slate-600'}`}>{p.name}</span>
+                  {active && <CheckCircle2 size={11} className="text-[#4F7CFF] shrink-0" />}
+                </div>
+                {isDefault && <span className="absolute top-1 right-1 rounded-full bg-slate-900/80 px-1.5 py-px text-[8px] font-bold text-white">Default</span>}
+              </button>
+            );
+          })}
+        </div>
+        {selectedTemplateId && selectedTemplateId !== defaultTemplateId && (
+          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#4F7CFF]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
+        )}
+      </Card>
+
+      {/* Preview + controls */}
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
+          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><Eye size={13} className="text-blue-500" /> Live Preview</p>
+          <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><ZoomOut size={13} /></button>
+            <span className="w-9 text-center text-[10px] font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
+            <button type="button" title="Zoom in" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><ZoomIn size={13} /></button>
+            <span className="mx-0.5 h-4 w-px bg-slate-200" />
+            <button type="button" title="Full screen" onClick={() => setFullOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Maximize2 size={13} /></button>
+            <button type="button" title="Print" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Printer size={13} /></button>
+            <button type="button" title="Download PDF" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Download size={13} /></button>
+          </div>
+        </div>
+        <InvoicePreviewFrame html={previewHtml} pw={pw} ph={ph} zoom={zoom} maxHeightVh={82} />
+        <p className="mt-1 text-center text-[10px] text-slate-400">Template “{presetName(effectiveTemplateId)}” · A4 · matches the exported PDF.</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <div ref={wrapRef}>
+      {layout === 'split' ? (
+        // Desktop: TRUE side-by-side split. Left ≈58% scrolls with the page; the
+        // right ≈42% preview stays pinned (sticky) while the form scrolls.
+        <div className="grid items-start gap-4 grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          {formColumn}
+          <div className="sticky top-2 self-start">{rightPanel}</div>
+        </div>
+      ) : (
+        // Tablet: preview stacks below the form. Compact/mobile: preview via button.
+        <div className="space-y-4">
+          {formColumn}
+          {layout === 'stacked' && rightPanel}
+        </div>
+      )}
+
+      {layout === 'compact' && (
+        <button type="button" onClick={() => setFullOpen(true)}
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#4F7CFF] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/30">
+          <Eye size={15} /> Preview
+        </button>
+      )}
+
+      {/* Full-screen preview modal — used by the Full-screen control (any size)
+          and by the compact Preview button. */}
+      {fullOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6" onClick={() => setFullOpen(false)}>
+          <div className="flex max-h-[94vh] w-full max-w-3xl flex-col rounded-2xl bg-white p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-sm font-bold text-slate-700">Invoice Preview — {presetName(effectiveTemplateId)}</p>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" icon={<Printer size={13} />} onClick={openFullPreview}>Print / PDF</Button>
+                <button type="button" onClick={() => setFullOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X size={16} /></button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <InvoicePreviewFrame html={previewHtml} pw={pw} ph={ph} zoom={1} maxHeightVh={86} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

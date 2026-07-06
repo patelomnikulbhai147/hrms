@@ -340,9 +340,13 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       if (!rule) { ui.toast.info(`Create a ${config.label} automation rule first (Automation Rules tab).`); return; }
       setBusy(true);
       try {
-        await api.communication.automation.execute(rule.id, 'run');
-        logAudit('Manual Send', r ? { id: r.id, name: r.name } : undefined, 'send');
-        ui.toast.success(`${config.label} triggered — messages queued per your Automation Rule.`);
+        const res: any = await api.communication.automation.execute(rule.id, 'send');
+        const s = res?.summary || {};
+        const sent = s.sentMessages ?? 0, failed = s.failedMessages ?? 0, eligible = s.eligibleRecipients ?? 0;
+        logAudit('Manual Send', r ? { id: r.id, name: r.name } : undefined, `${sent} sent${failed ? `, ${failed} failed` : ''}`);
+        if (sent && !failed) ui.toast.success(`${config.label}: ${sent} message${sent === 1 ? '' : 's'} sent over WhatsApp.`);
+        else if (sent) ui.toast.info(`${sent} sent, ${failed} failed.`);
+        else ui.toast.error(eligible === 0 ? 'Nothing sent — no eligible recipients.' : `Nothing sent${failed ? ` — ${failed} failed` : ''}.`);
         await load();
       } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
       finally { setBusy(false); }
@@ -385,7 +389,14 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
     const ok = await ui.confirm({ title: 'Retry delivery?', message: `Re-run ${config.label} to retry failed messages?`, confirmText: 'Retry' });
     if (!ok) return;
     setBusy(true);
-    try { await api.communication.automation.execute(rule.id, 'run'); logAudit('Retry', { id: l.employeeId, name: l.employeeName }, `log #${l.id}`); ui.toast.success('Retry queued.'); await load(); }
+    try {
+      const res: any = await api.communication.automation.execute(rule.id, 'send');
+      const s = res?.summary || {};
+      const sent = s.sentMessages ?? 0, failed = s.failedMessages ?? 0;
+      logAudit('Retry', { id: l.employeeId, name: l.employeeName }, `log #${l.id} · ${sent} sent${failed ? `, ${failed} failed` : ''}`);
+      ui.toast[sent ? 'success' : 'info'](`Retry: ${sent} sent${failed ? `, ${failed} failed` : ''}.`);
+      await load();
+    }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
     finally { setBusy(false); }
   };

@@ -33,6 +33,7 @@ router.get('/', loans.list);
 router.post('/', loans.create);
 router.get('/:id', loans.get);
 router.put('/:id', loans.update);
+router.post('/:id/duplicate', loans.duplicate);
 router.post('/:id/status', loans.setStatus);
 router.delete('/:id', loans.remove);
 

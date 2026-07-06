@@ -149,7 +149,14 @@ exports.list = async (req, res) => {
       prisma.loan.count({ where }),
       prisma.loan.findMany({ where, orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize }),
     ]);
-    res.json({ total, page, pageSize, loans: rows });
+    // Attach derived ledger figures (recovered / remaining / next-due) so list
+    // consumers (e.g. the Salary Advances table) don't need a call per row.
+    const ids = rows.map((l) => l.id);
+    const insts = ids.length ? await prisma.loanInstallment.findMany({ where: { loanId: { in: ids } } }) : [];
+    const byLoan = {};
+    for (const i of insts) (byLoan[i.loanId] ||= []).push(i);
+    const loans = rows.map((l) => ({ ...l, derived: derive(l, byLoan[l.id] || []) }));
+    res.json({ total, page, pageSize, loans });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
@@ -236,6 +243,7 @@ exports.create = async (req, res) => {
         endDate: req.body.endDate || `${end.year}-${String(monthIndex(end.month) + 1).padStart(2, '0')}-28`,
         deductionStartMonth, deductionStartYear,
         approvalAuthority: req.body.approvalAuthority || null,
+        purpose: req.body.purpose || null,
         remarks: req.body.remarks || null,
         attachments: req.body.attachments ? JSON.stringify(req.body.attachments).slice(0, 200000) : null,
         status: submit ? 'Pending Approval' : 'Draft',
@@ -276,13 +284,50 @@ exports.update = async (req, res) => {
       totalInterest: totals.totalInterest, totalPayable: totals.totalPayable, emiAmount: totals.emiAmount,
       deductionStartMonth, deductionStartYear,
     };
-    for (const f of ['loanTypeName', 'approvalAuthority', 'remarks', 'startDate', 'endDate']) if (b[f] !== undefined) data[f] = b[f];
+    for (const f of ['loanTypeName', 'approvalAuthority', 'purpose', 'remarks', 'startDate', 'endDate']) if (b[f] !== undefined) data[f] = b[f];
     if (b.loanTypeId !== undefined) data.loanTypeId = b.loanTypeId ? idParam(b.loanTypeId) : null;
     if (b.attachments !== undefined) data.attachments = b.attachments ? JSON.stringify(b.attachments).slice(0, 200000) : null;
     const updated = await prisma.loan.update({ where: { id }, data });
     await logAction(loan.companyId, id, 'UPDATED', { performedBy: actorOf(req) });
     res.json(updated);
   } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// ── Duplicate ────────────────────────────────────────────────────────────────
+// Clone an existing loan (any status) into a brand-new DRAFT the user can edit
+// and re-submit. Terms are copied verbatim; only the workflow fields reset and a
+// fresh loan number is issued. No installments/ledger are created (that happens
+// on disbursement), so this never touches payroll.
+exports.duplicate = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised to create loans.' });
+    const id = idParam(req.params.id);
+    const src = await prisma.loan.findUnique({ where: { id } });
+    if (!src) return res.status(404).json({ error: 'Loan not found.' });
+    // Company scope — only duplicate loans within the caller's own company.
+    const companyId = targetCompanyId(req, src.companyId);
+    if (!companyId || Number(companyId) !== src.companyId) return res.status(403).json({ error: 'Not authorised for this loan.' });
+
+    const loanNumber = await nextLoanNumber(src.companyId);
+    const copy = await prisma.loan.create({
+      data: {
+        companyId: src.companyId, branchId: src.branchId, employeeId: src.employeeId, employeeName: src.employeeName,
+        department: src.department, loanNumber,
+        loanTypeId: src.loanTypeId, loanTypeName: src.loanTypeName,
+        principalAmount: src.principalAmount, interestType: src.interestType, interestRate: src.interestRate,
+        totalInterest: src.totalInterest, totalPayable: src.totalPayable, tenureMonths: src.tenureMonths, emiAmount: src.emiAmount,
+        startDate: src.startDate, endDate: src.endDate,
+        deductionStartMonth: src.deductionStartMonth, deductionStartYear: src.deductionStartYear,
+        approvalAuthority: src.approvalAuthority, purpose: src.purpose, remarks: src.remarks, attachments: src.attachments,
+        status: 'Draft', requestedBy: actorOf(req),
+      },
+    });
+    await logAction(src.companyId, copy.id, 'DUPLICATED', { toStatus: 'Draft', performedBy: actorOf(req), details: `Copied from ${src.loanNumber}` });
+    res.status(201).json(copy);
+  } catch (e) {
+    if (e.code === 'P2002') return res.status(409).json({ error: 'Duplicate loan number — retry.' });
+    res.status(500).json({ error: e.message });
+  }
 };
 
 // ── Workflow transitions ─────────────────────────────────────────────────────

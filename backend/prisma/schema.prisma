@@ -1517,6 +1517,9 @@ model CommunicationTemplate {
   whatsappCompatible       Boolean  @default(false) // template can be used over WhatsApp
   whatsappRichText         Boolean  @default(false) // body uses WhatsApp rich text (*bold* / _italic_)
   whatsappCaption          String?  @db.Text // caption shown beneath the image when sent as media
+  // ── Enterprise workflow (additive) ──────────────────────────────────────────
+  masterTemplateId         Int?     // provenance: the master library template this was copied from (null = authored in-company)
+  libraryState             String   @default("enabled") // company-library management: enabled / disabled / archived
   createdBy                String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
@@ -1524,6 +1527,59 @@ model CommunicationTemplate {
   @@index([companyId])
   @@index([category])
   @@map("communication_templates")
+}
+
+// ── Master Template Library (Super-Admin governed, global — companies COPY, never modify) ──
+// Platform-level catalog of professional templates. Company Head / HR browse this
+// and copy a template into their own communication_templates (which sets
+// masterTemplateId provenance). The master rows themselves are NEVER edited by a
+// company. Reuses the exact same design JSON shape as communication_templates so
+// the existing GreetingCard renderer / image pipeline render them unchanged.
+model CommunicationMasterTemplate {
+  id                 Int      @id @default(autoincrement())
+  title              String
+  category           String   // Birthday / Work Anniversary / Joining / Promotion / Confirmation / Leave / Attendance / Payroll / Payslip / Loan / Compliance / Festival / Holiday / Announcement / Custom
+  festivalKey        String   @default("") // sub-key for Festival/Holiday (diwali, christmas, holi, eid, new-year, …) — "" for non-festival
+  subject            String?  @db.Text
+  body               String?  @db.Text
+  placeholders       String?  @db.Text
+  layout             String?  @db.LongText // design JSON (theme/layout/art) — identical shape to communication_templates.layout
+  backgroundImage    String?  @db.LongText
+  whatsappCompatible Boolean  @default(true)
+  whatsappCaption    String?  @db.Text
+  status             String   @default("Active") // Active / Archived (master-side lifecycle)
+  sortOrder          Int      @default(0)
+  createdBy          String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([category])
+  @@map("communication_master_templates")
+}
+
+// ── Event → Template Mapping (per company) ──────────────────────────────────────
+// THE workflow spine: for each event a company picks ONE company template + which
+// channels are on + whether the automation is enabled. Saving a mapping keeps the
+// underlying canonical automation_rule in sync (template + on/off) so the EXISTING
+// scheduler/engine send it automatically — no engine rewrite. One row per
+// (company, event, festivalKey).
+model CommunicationEventMapping {
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  eventKey         String   // birthday / anniversary / joining / promotion / confirmation / leave_approved / attendance / payroll / payslip / loan / compliance / festival / holiday / announcement / custom
+  festivalKey      String   @default("") // festival/holiday sub-event (diwali, christmas, …); "" otherwise
+  hrmateTemplateId Int?     // chosen company template (communication_templates.id); null = NOT configured
+  whatsappEnabled  Boolean  @default(true)
+  emailEnabled     Boolean  @default(false)
+  enabled          Boolean  @default(false) // is this event's automation switched on
+  ruleId           Int?     // the canonical automation_rule kept in sync with this mapping
+  createdBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([companyId, eventKey, festivalKey])
+  @@index([companyId])
+  @@map("communication_event_mappings")
 }
 
 model CommunicationSchedule {
@@ -2232,6 +2288,9 @@ model Loan {
   deductionStartMonth String   @default("January")
   deductionStartYear  Int      @default(2026)
   approvalAuthority  String?
+  // Reason / purpose the money is requested for (esp. Salary Advances). Distinct
+  // from `remarks`, which is internal HR/Finance commentary.
+  purpose            String?   @db.Text
   remarks            String?   @db.Text
   attachments        String?   @db.Text // JSON array of {name,data,mimeType}
   // Workflow: Draft → Pending Approval → Approved → (Rejected) → Disbursed →
@@ -2254,6 +2313,29 @@ model Loan {
   @@index([companyId, status])
   @@index([employeeId])
   @@map("loans")
+}
+
+// ── Employee Card Designer templates ─────────────────────────────────────────
+// Relation-less, companyId-scoped (no Company FK) so it never touches the maxed
+// Company model. Each row is a full portable card design spec (front+back). Built
+// -in templates ship in the frontend; only custom/edited ones persist here.
+model CardTemplate {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  category    String   @default("Custom")
+  size        String   @default("CR80")
+  orientation String   @default("portrait")
+  builtinId   String?  // origin builtin id when duplicated/edited
+  spec        Json     // { theme, frontBg, backBg, elements[] }
+  isDefault   Boolean  @default(false)
+  shared      Boolean  @default(false) // Super-Admin: visible to all companies
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("card_templates")
 }
 
 model LoanInstallment {
@@ -2356,4 +2438,49 @@ model ComplianceFilingAudit {
   @@index([companyId])
   @@index([filingId])
   @@map("compliance_filing_audits")
+}
+
+// Finance & Compliance → Documents. An isolated statutory-document repository
+// (Loan/Advance agreements, PF/ESI/PT/LWF challans, GST/TDS returns, Bonus &
+// Gratuity registers, custom docs). Deliberately SEPARATE from the generic
+// `Document` model so it never mixes with the general Documents module. File is
+// stored base64 in fileData (like Document/challans). `history` is an append-only
+// JSON audit ([{action, by, at, note}]). `source`/`sourceRef` let future payroll/
+// loan/compliance flows auto-file a document here (e.g. a generated PF challan).
+model ComplianceDocument {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  branchId       Int? // optional branch scope
+  name           String
+  category       String // Employee Loan Agreement / PF Challan / ESI Challan / …
+  complianceType String? // PF / ESI / PT / LWF / GST / TDS / Bonus / Gratuity (optional tag)
+  employeeId     Int?
+  employeeName   String?
+  department     String?
+  fileName       String?
+  fileData       String?  @db.LongText // base64-encoded uploaded file
+  mimeType       String?
+  size           String?
+  url            String?  @db.Text // optional external link instead of/along with a file
+  issueDate      String? // ISO yyyy-mm-dd
+  expiryDate     String? // ISO yyyy-mm-dd — drives "Expiring Soon" / "Expired"
+  description    String?  @db.Text
+  tags           String? // comma-separated tags
+  status         String   @default("Pending") // Pending / Verified / Active / Rejected / Expired / Archived
+  source         String   @default("Manual") // Manual / Loan / Advance / Payroll / Compliance
+  sourceRef      String? // originating record id (loanId / filingId / payrollId) for auto-filed docs
+  uploadedBy     String?
+  uploadedOn     String?
+  verifiedBy     String?
+  verifiedOn     String?
+  editedBy       String?
+  editedOn       String?
+  history        Json? // append-only [{action, by, at, note}]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, category])
+  @@index([companyId, status])
+  @@map("compliance_documents")
 }

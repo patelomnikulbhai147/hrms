@@ -14,6 +14,7 @@ const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default:
 const InvoiceManagement = React.lazy(() => import('@/pages/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
 const LoanManagement = React.lazy(() => import('@/pages/LoanManagement').then(m => ({ default: m.LoanManagement })));
 const CompliancePage = React.lazy(() => import('@/pages/CompliancePage').then(m => ({ default: m.CompliancePage })));
+const FinanceCompliance = React.lazy(() => import('@/pages/FinanceCompliance').then(m => ({ default: m.FinanceCompliance })));
 const BonusManagement = React.lazy(() => import('@/pages/BonusManagement').then(m => ({ default: m.BonusManagement })));
 const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ default: m.Companies })));
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
@@ -66,6 +67,7 @@ const pageTitles: Record<PageId, string> = {
   leaves: 'Leave Management',
   payroll: 'Payroll',
   'invoice-management': 'Invoice Management',
+  'finance-compliance': 'Finance & Compliance',
   'loan-management': 'Employee Loan Management',
   'compliance-management': 'Compliance Management',
   bonus: 'Bonus Management',
@@ -87,7 +89,7 @@ const pageTitles: Record<PageId, string> = {
 // Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
-  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'loan-management', 'compliance-management', 'bonus', 'attendance',
+  'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
   'attendance-integration', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'communication', 'select-workspace',
 ] as const;
@@ -1040,6 +1042,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         : currentPage === 'attendance-integration' ? 'attendance'
         : currentPage === 'bonus' ? 'payroll'
         : currentPage === 'invoice-management' ? 'invoicing'
+        // Finance & Compliance aggregates loans + compliance: allow if the user
+        // can view EITHER (resolve to whichever key they actually hold).
+        : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
         : currentPage === 'loan-management' ? 'loans'
         : currentPage === 'compliance-management' ? 'compliance'
         : currentPage) as AppModules;
@@ -1085,6 +1090,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'attendance-integration' ? 'attendance'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage === 'invoice-management' ? 'invoicing'
+      // Finance & Compliance aggregates loans + compliance: allow if the user
+      // can view EITHER (resolve to whichever key they actually hold).
+      : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
       : currentPage === 'loan-management' ? 'loans'
       : currentPage === 'compliance-management' ? 'compliance'
       : currentPage) as AppModules;
@@ -1311,6 +1319,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       case 'invoice-management':
         return (
           <InvoiceManagement
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+          />
+        );
+      case 'finance-compliance':
+        return (
+          <FinanceCompliance
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}

@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   LayoutDashboard, HandCoins, FilePlus2, ListChecks, Tags, BarChart3, Plus, Search, Eye,
   CheckCircle2, XCircle, Send, Banknote, Clock, AlertTriangle, TrendingUp, IndianRupee,
-  Trash2, Download, Printer, Ban, Calculator, Bell,
+  Trash2, Download, Printer, Ban, Calculator, Bell, Wallet, ShieldCheck, ArrowRight,
+  Pencil, Copy, Files,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -13,8 +14,18 @@ import { DevelopmentBanner } from '@/components/ui/DevelopmentBanner';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDate } from '@/utils/formatDate';
+import { RecordAttachments } from '@/components/finance/RecordAttachments';
 
 interface Props { role?: string; activeCompanyId?: string; companies?: any[]; }
+
+// Attachment types a loan / salary advance record can carry. Files stay attached
+// to THAT record only (enterprise document architecture — no central dumping
+// ground). Covers both loan and advance document sets.
+const LOAN_ATTACHMENT_CATEGORIES = [
+  'Loan Agreement', 'Employee Consent', 'EMI Schedule', 'Approval Letter',
+  'Advance Approval Letter', 'Employee Request', 'Recovery Schedule', 'HR Approval',
+  'Supporting Document',
+];
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const inr = (n: any) => '₹' + Math.round(Number(n) || 0).toLocaleString('en-IN');
@@ -29,6 +40,7 @@ const statusBadge = (s: string) => <Badge variant={STATUS_VARIANT[s] || 'gray'}>
 const TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'create', label: 'New Loan', icon: FilePlus2 },
+  { id: 'drafts', label: 'Drafts', icon: Files },
   { id: 'loans', label: 'All Loans', icon: ListChecks },
   { id: 'types', label: 'Loan Types', icon: Tags },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
@@ -41,7 +53,12 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
   const canManage = ['Company Head', 'Finance'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
   const [detailId, setDetailId] = useState<number | null>(null);
+  // When set, the New Loan tab opens that draft for continued editing instead of a
+  // blank form. Cleared whenever a fresh loan is started.
+  const [editLoanId, setEditLoanId] = useState<number | null>(null);
   const activeCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
+  const startNewLoan = () => { setEditLoanId(null); setTab('create'); };
+  const editLoan = (id: number) => { setEditLoanId(id); setTab('create'); };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -53,7 +70,7 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
         </div>
         <div className="flex items-center gap-2">
           {canEdit && <Button size="sm" variant="outline" icon={<Bell size={14} />} onClick={async () => { try { const r = await api.loans.runReminders(); ui.toast.success(`EMI reminders sent: ${r.sent} of ${r.checked} loan(s).`); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }}>Send Reminders</Button>}
-          {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setTab('create')}>New Loan</Button>}
+          {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={startNewLoan}>New Loan</Button>}
         </div>
       </div>
 
@@ -75,13 +92,16 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
         })}
       </div>
 
-      {tab === 'dashboard' && <DashboardTab onOpen={(id) => setDetailId(id)} onNew={() => setTab('create')} />}
-      {tab === 'create' && <NewLoanTab canEdit={canEdit} companyId={activeCompanyId} onDone={() => setTab('loans')} />}
-      {tab === 'loans' && <LoansTab canEdit={canEdit} canApprove={canApprove} canManage={canManage} onOpen={(id) => setDetailId(id)} />}
+      {tab === 'dashboard' && <DashboardTab onOpen={(id) => setDetailId(id)} onNew={startNewLoan} />}
+      {tab === 'create' && <NewLoanTab canEdit={canEdit} companyId={activeCompanyId} editId={editLoanId}
+        onDone={() => { const wasEdit = editLoanId != null; setEditLoanId(null); setTab(wasEdit ? 'drafts' : 'loans'); }}
+        onManageTypes={() => setTab('types')} />}
+      {tab === 'drafts' && <LoansTab canEdit={canEdit} canApprove={canApprove} canManage={canManage} onOpen={(id) => setDetailId(id)} onEdit={editLoan} initialStatus="Draft" lockStatus emptyLabel="No drafts yet — click “New Loan”, fill the form and choose “Save as Draft”." />}
+      {tab === 'loans' && <LoansTab canEdit={canEdit} canApprove={canApprove} canManage={canManage} onOpen={(id) => setDetailId(id)} onEdit={editLoan} />}
       {tab === 'types' && <TypesTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'reports' && <ReportsTab company={activeCompany} />}
 
-      {detailId != null && <LoanDetailModal id={detailId} onClose={() => setDetailId(null)} />}
+      {detailId != null && <LoanDetailModal id={detailId} onClose={() => setDetailId(null)} canEdit={canEdit} canManage={canManage} />}
     </div>
   );
 };
@@ -98,63 +118,220 @@ const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ chi
   <div className={`rounded-2xl border border-slate-200 bg-white p-4 ${className}`}>{children}</div>
 );
 
+// ── Dashboard building blocks ─────────────────────────────────────────────────
+const SectionTitle: React.FC<{ icon: React.ReactNode; children: React.ReactNode; hint?: string }> = ({ icon, children, hint }) => (
+  <div className="flex items-center gap-2">
+    <span className="text-slate-400">{icon}</span>
+    <h3 className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">{children}</h3>
+    {hint && <span className="text-[11px] font-medium text-slate-300">· {hint}</span>}
+  </div>
+);
+// A single row inside a Recent-Activity card (loan / advance / compliance filing).
+const ActivityCard: React.FC<{ icon: React.ReactNode; title: string; empty?: string; children?: React.ReactNode }> = ({ icon, title, empty, children }) => (
+  <Card className="!p-0 overflow-hidden">
+    <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+      <span className="text-slate-400">{icon}</span>
+      <p className="text-xs font-extrabold text-slate-700">{title}</p>
+    </div>
+    <div className="divide-y divide-slate-50">
+      {children || <p className="px-4 py-6 text-center text-[11px] text-slate-400">{empty || 'Nothing yet.'}</p>}
+    </div>
+  </Card>
+);
+const QuickAction: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
+  <button onClick={onClick} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#4F7CFF] hover:shadow-sm">
+    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EDF4FF] text-[#4F7CFF] transition group-hover:bg-[#4F7CFF] group-hover:text-white">{icon}</span>
+    <span className="text-xs font-bold text-slate-700">{label}</span>
+  </button>
+);
+
 // ── Dashboard ─────────────────────────────────────────────────────────────────
-const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }> = ({ onOpen, onNew }) => {
+// A salary advance is a loan whose type name contains "advance" (same rule the
+// Salary Advances workspace uses), so the loan feed already carries both.
+const isAdvance = (name?: string) => /advance/i.test(String(name || ''));
+
+export type FinanceNav = 'loans' | 'advances' | 'compliance' | 'reports' | 'approvals';
+
+export const DashboardTab: React.FC<{
+  onOpen: (id: number) => void;
+  onNew: () => void;
+  onNavigate?: (target: FinanceNav) => void;
+  showCompliance?: boolean;
+}> = ({ onOpen, onNew, onNavigate, showCompliance }) => {
   const [d, setD] = useState<any>(null);
+  const [comp, setComp] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { (async () => { try { setD(await api.loans.dashboard()); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } })(); }, []);
-  const k = d?.kpis || {};
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Kpi label="Active Loans" value={loading ? '—' : k.totalActiveLoans ?? 0} icon={<HandCoins size={16} />} />
-        <Kpi label="Pending Approvals" value={loading ? '—' : k.pendingApprovals ?? 0} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
-        <Kpi label="Completed Loans" value={loading ? '—' : k.completedLoans ?? 0} icon={<CheckCircle2 size={16} />} tone="bg-emerald-50 text-emerald-600" />
-        <Kpi label="Total Outstanding" value={loading ? '—' : inr(k.totalOutstanding)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
-      </div>
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-        <Kpi label="EMI Deducted (This Month)" value={loading ? '—' : inr(k.emiThisMonth)} icon={<IndianRupee size={16} />} tone="bg-indigo-50 text-indigo-600" />
-        <Kpi label="Overdue Loans" value={loading ? '—' : k.overdueLoans ?? 0} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
-        <Kpi label="Closing This Month" value={loading ? '—' : k.closingThisMonth ?? 0} icon={<Clock size={16} />} tone="bg-sky-50 text-sky-600" />
-        <Kpi label="Total Disbursed" value={loading ? '—' : inr(k.totalDisbursed)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
-      </div>
+  // Compliance data is optional context — fetched only when the workspace grants
+  // compliance access, and silently skipped otherwise (no error, no coupling).
+  useEffect(() => { if (!showCompliance) return; (async () => { try { setComp(await api.compliance.dashboard()); } catch { /* compliance optional */ } })(); }, [showCompliance]);
 
-      <Card>
-        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Recent Loans</h3>
-        <div className="space-y-1">
-          {(d?.recent || []).map((l: any) => (
-            <button key={l.id} onClick={() => onOpen(l.id)} className="w-full flex items-center justify-between text-xs py-1.5 px-2 rounded-lg hover:bg-slate-50">
-              <span className="font-semibold text-slate-700 truncate">{l.loanNumber} · {l.employeeName} · {l.loanTypeName}</span>
-              <span className="flex items-center gap-2 shrink-0">{inr(l.principalAmount)} · EMI {inr(l.emiAmount)} {statusBadge(l.status)}</span>
+  const k = d?.kpis || {};
+  const recent: any[] = d?.recent || [];
+  const recentLoans = recent.filter((l) => !isAdvance(l.loanTypeName));
+  const recentAdvances = recent.filter((l) => isAdvance(l.loanTypeName));
+  const overdueCount = k.overdueLoans ?? 0;
+  const pendingCount = k.pendingApprovals ?? 0;
+  const emiThisMonth = k.emiThisMonth ?? 0;
+  const complianceUpcoming = comp?.kpis?.upcoming ?? 0;
+  const complianceFilings: any[] = (comp?.recentOverdue?.length ? comp.recentOverdue : comp?.upcoming) || [];
+
+  // Section 2 — only surface items that genuinely need action.
+  const actions = [
+    pendingCount > 0 && { key: 'appr', tone: 'bg-amber-50 text-amber-600', icon: <Clock size={15} />, label: 'Pending Loan Approvals', desc: `${pendingCount} request${pendingCount > 1 ? 's' : ''} awaiting a decision`, count: pendingCount, go: () => onNavigate?.('approvals') },
+    overdueCount > 0 && { key: 'over', tone: 'bg-rose-50 text-rose-600', icon: <AlertTriangle size={15} />, label: 'Overdue EMI', desc: `${overdueCount} active loan${overdueCount > 1 ? 's' : ''} with a past-due installment`, count: overdueCount, go: () => onNavigate?.('loans') },
+    showCompliance && complianceUpcoming > 0 && { key: 'comp', tone: 'bg-indigo-50 text-indigo-600', icon: <ShieldCheck size={15} />, label: 'Upcoming Compliance Filings', desc: `${complianceUpcoming} filing${complianceUpcoming > 1 ? 's' : ''} due within 30 days`, count: complianceUpcoming, go: () => onNavigate?.('compliance') },
+  ].filter(Boolean) as { key: string; tone: string; icon: React.ReactNode; label: string; desc: string; count: number; go: () => void }[];
+
+  const loanRow = (l: any) => (
+    <button key={l.id} onClick={() => onOpen(l.id)} className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-xs hover:bg-slate-50">
+      <span className="min-w-0 truncate font-semibold text-slate-700">{l.loanNumber} · {l.employeeName}</span>
+      <span className="flex shrink-0 items-center gap-2 text-slate-500">{inr(l.principalAmount)} {statusBadge(l.status)}</span>
+    </button>
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* ── Section 1 · Primary KPIs (4) ─────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionTitle icon={<LayoutDashboard size={14} />}>Primary KPIs</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Kpi label="Active Loans" value={loading ? '—' : k.totalActiveLoans ?? 0} icon={<HandCoins size={16} />} />
+          <Kpi label="Pending Approvals" value={loading ? '—' : pendingCount} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
+          <Kpi label="Total Outstanding" value={loading ? '—' : inr(k.totalOutstanding)} icon={<TrendingUp size={16} />} tone="bg-orange-50 text-orange-600" />
+          <Kpi label="EMI Deducted (This Month)" value={loading ? '—' : inr(emiThisMonth)} icon={<IndianRupee size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        </div>
+      </section>
+
+      {/* ── Intelligent alert · replaces the "Overdue Loans" KPI (hidden at 0) ─── */}
+      {overdueCount > 0 && (
+        <button onClick={() => onNavigate?.('loans')} className="flex w-full items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-left transition hover:bg-rose-100/70">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600"><AlertTriangle size={18} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-extrabold text-rose-700">Overdue Loan Cases</span>
+            <span className="block text-[11px] text-rose-600/80">{overdueCount} loan{overdueCount > 1 ? 's' : ''} require immediate attention.</span>
+          </span>
+          {onNavigate && <span className="flex shrink-0 items-center gap-1 text-[11px] font-bold text-rose-600">View Details <ArrowRight size={13} /></span>}
+        </button>
+      )}
+
+      {/* ── Section 2 · Action Required (only what needs action) ─────────────── */}
+      <section className="space-y-2">
+        <SectionTitle icon={<ListChecks size={14} />}>Action Required</SectionTitle>
+        <Card className="!p-0 divide-y divide-slate-100">
+          {loading ? (
+            <p className="px-4 py-6 text-center text-[11px] text-slate-400">Loading…</p>
+          ) : actions.length === 0 ? (
+            <div className="flex items-center gap-2 px-4 py-6 text-xs text-slate-400"><CheckCircle2 size={15} className="text-emerald-500" /> You're all caught up — nothing needs attention right now.</div>
+          ) : actions.map((a) => (
+            <button key={a.key} onClick={a.go} className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50">
+              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${a.tone}`}>{a.icon}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-bold text-slate-700">{a.label}</span>
+                <span className="block text-[11px] text-slate-400">{a.desc}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-extrabold text-slate-600">{a.count}</span>
+                {onNavigate && <ArrowRight size={14} className="text-slate-300" />}
+              </span>
             </button>
           ))}
-          {(!d?.recent || d.recent.length === 0) && <p className="text-xs text-slate-400 py-6 text-center">No loans yet. <button onClick={onNew} className="text-[#4F7CFF] font-bold">Create one</button>.</p>}
+        </Card>
+      </section>
+
+      {/* ── Section 3 · Recent Activities ───────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionTitle icon={<Clock size={14} />}>Recent Activities</SectionTitle>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <ActivityCard icon={<HandCoins size={14} />} title="Recent Loans" empty="No loans yet.">
+            {recentLoans.length > 0 ? recentLoans.map(loanRow) : undefined}
+          </ActivityCard>
+          <ActivityCard icon={<Wallet size={14} />} title="Recent Salary Advances" empty="No salary advances yet.">
+            {recentAdvances.length > 0 ? recentAdvances.map(loanRow) : undefined}
+          </ActivityCard>
+          <ActivityCard icon={<IndianRupee size={14} />} title="Recent EMI Deductions" empty="No EMI deducted this month.">
+            {emiThisMonth > 0 ? (
+              <div className="flex items-center justify-between px-4 py-2.5 text-xs">
+                <span className="font-semibold text-slate-700">Deducted from payroll this month</span>
+                <span className="font-extrabold text-slate-800">{inr(emiThisMonth)}</span>
+              </div>
+            ) : undefined}
+          </ActivityCard>
+          {showCompliance && (
+            <ActivityCard icon={<ShieldCheck size={14} />} title="Recent Compliance Actions" empty="No recent compliance activity.">
+              {complianceFilings.length > 0 ? complianceFilings.slice(0, 6).map((f: any, i: number) => (
+                <div key={f.id ?? i} className="flex items-center justify-between gap-2 px-4 py-2.5 text-xs">
+                  <span className="min-w-0 truncate font-semibold text-slate-700">{f.title || f.formName || f.name || f.category || 'Filing'}</span>
+                  <span className="shrink-0 text-slate-400">{f.dueDate ? formatDate(f.dueDate) : (f.category || '')}</span>
+                </div>
+              )) : undefined}
+            </ActivityCard>
+          )}
         </div>
-      </Card>
+      </section>
+
+      {/* ── Section 4 · Quick Actions ───────────────────────────────────────── */}
+      <section className="space-y-2">
+        <SectionTitle icon={<Plus size={14} />}>Quick Actions</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <QuickAction icon={<HandCoins size={18} />} label="New Loan" onClick={onNew} />
+          {onNavigate && <QuickAction icon={<Wallet size={18} />} label="Salary Advance" onClick={() => onNavigate('advances')} />}
+          {onNavigate && showCompliance && <QuickAction icon={<ShieldCheck size={18} />} label="Compliance Filing" onClick={() => onNavigate('compliance')} />}
+          {onNavigate && <QuickAction icon={<BarChart3 size={18} />} label="Reports" onClick={() => onNavigate('reports')} />}
+        </div>
+      </section>
     </div>
   );
 };
 
 // ── New Loan (request + live EMI preview) ─────────────────────────────────────
-const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; onDone: () => void }> = ({ canEdit, companyId, onDone }) => {
+const blankLoanForm = () => {
   const now = new Date();
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [types, setTypes] = useState<any[]>([]);
-  const [form, setForm] = useState<any>({
+  return {
     employeeId: '', loanTypeId: '', loanTypeName: 'Loan',
     principalAmount: '', tenureMonths: 12, interestType: 'Flat', interestRate: 0,
     deductionStartMonth: MONTHS[now.getMonth()], deductionStartYear: now.getFullYear(),
-    approvalAuthority: '', remarks: '',
-  });
+    approvalAuthority: '', remarks: '', purpose: '',
+  };
+};
+
+export const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; editId?: number | null; onDone: () => void; onManageTypes?: () => void }> = ({ canEdit, companyId, editId = null, onDone, onManageTypes }) => {
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [types, setTypes] = useState<any[]>([]);
+  const [typesLoaded, setTypesLoaded] = useState(false);
+  const [form, setForm] = useState<any>(blankLoanForm);
+  const [editStatus, setEditStatus] = useState<string | null>(null); // status of the loan being edited
   const [preview, setPreview] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
-      try { const e = await api.employees.getAll(); setEmployees(Array.isArray(e) ? e : (e?.employees || e?.data || [])); } catch { /* ignore */ }
-      try { setTypes(await api.loans.listTypes() || []); } catch { /* ignore */ }
+      try { const e = await api.employees.getAll(); setEmployees(Array.isArray(e) ? e : (e?.employees || e?.data || [])); } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not load employees.')); }
+      // Surface real failures instead of silently showing an empty dropdown.
+      try { setTypes(await api.loans.listTypes() || []); } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not load loan types.')); } finally { setTypesLoaded(true); }
     })();
   }, []);
+
+  // Continue-editing: hydrate the form from an existing draft (or reset to blank
+  // when starting a new loan). Only Draft / Pending Approval loans are editable.
+  useEffect(() => {
+    if (!editId) { setForm(blankLoanForm()); setEditStatus(null); return; }
+    (async () => {
+      try {
+        const l = await api.loans.get(editId);
+        setForm({
+          employeeId: String(l.employeeId || ''), loanTypeId: l.loanTypeId ? String(l.loanTypeId) : '', loanTypeName: l.loanTypeName || 'Loan',
+          principalAmount: l.principalAmount ?? '', tenureMonths: l.tenureMonths ?? 12, interestType: l.interestType || 'Flat', interestRate: l.interestRate ?? 0,
+          deductionStartMonth: l.deductionStartMonth || MONTHS[new Date().getMonth()], deductionStartYear: l.deductionStartYear ?? new Date().getFullYear(),
+          approvalAuthority: l.approvalAuthority || '', remarks: l.remarks || '', purpose: l.purpose || '',
+        });
+        setEditStatus(l.status);
+      } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not load the draft.')); }
+    })();
+  }, [editId]);
+
+  // Only ACTIVE loan types are selectable when creating a loan.
+  const activeTypes = useMemo(() => types.filter((t) => t.active !== false), [types]);
 
   // Live EMI preview (debounced) whenever terms change.
   useEffect(() => {
@@ -181,23 +358,42 @@ const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; onDone: () =>
     if (!(Number(form.principalAmount) > 0)) return ui.toast.warning('Enter a loan amount greater than zero.');
     setSaving(true);
     try {
-      await api.loans.create({ ...form, companyId, submit: !asDraft, status: asDraft ? 'Draft' : 'Pending Approval' });
-      ui.toast.success(asDraft ? 'Loan saved as draft.' : 'Loan submitted for approval.');
+      if (editId) {
+        // Save the edited terms first, then submit if requested (Draft → Pending).
+        await api.loans.update(editId, { ...form });
+        if (!asDraft && editStatus === 'Draft') await api.loans.setStatus(editId, 'submit');
+        ui.toast.success(asDraft ? 'Draft updated.' : 'Loan submitted for approval.');
+      } else {
+        await api.loans.create({ ...form, companyId, submit: !asDraft, status: asDraft ? 'Draft' : 'Pending Approval' });
+        ui.toast.success(asDraft ? 'Loan saved as draft.' : 'Loan submitted for approval.');
+      }
       onDone();
     } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not save the loan.')); } finally { setSaving(false); }
   };
+  const isPending = editId && editStatus === 'Pending Approval';
 
   if (!canEdit) return <Card><p className="text-xs text-slate-400">You do not have permission to create loans.</p></Card>;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       <Card className="lg:col-span-2 space-y-3">
-        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Loan Details</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">{editId ? 'Edit Loan' : 'Loan Details'}</h3>
+          {editId && editStatus && <span className="flex items-center gap-1.5 text-[11px] text-slate-400">Editing {statusBadge(editStatus)}</span>}
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select label="Employee" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })}
             options={[{ value: '', label: 'Select employee…' }, ...employees.map((e) => ({ value: String(e.id), label: `${e.name}${e.employeeId ? ` (${e.employeeId})` : ''}` }))]} />
-          <Select label="Loan Type" value={form.loanTypeId} onChange={(e) => onType(e.target.value)}
-            options={[{ value: '', label: 'Select type…' }, ...types.map((t) => ({ value: String(t.id), label: t.name }))]} />
+          {typesLoaded && activeTypes.length === 0 ? (
+            <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><AlertTriangle size={13} /> No loan types available</p>
+              <p className="text-[11px] text-amber-600 mt-0.5">Configure at least one active loan type before creating a loan.</p>
+              {onManageTypes && <button type="button" onClick={onManageTypes} className="mt-1.5 text-[11px] font-bold text-[#4F7CFF] hover:underline">Go to Loan Type Settings →</button>}
+            </div>
+          ) : (
+            <Select label="Loan Type" value={form.loanTypeId} onChange={(e) => onType(e.target.value)}
+              options={[{ value: '', label: 'Select type…' }, ...activeTypes.map((t) => ({ value: String(t.id), label: t.name }))]} />
+          )}
           <Input label="Loan Amount (₹)" type="number" value={form.principalAmount} onChange={(e) => setForm({ ...form, principalAmount: e.target.value })} />
           <Input label="No. of Installments (months)" type="number" value={form.tenureMonths} onChange={(e) => setForm({ ...form, tenureMonths: e.target.value })} />
           <Select label="Interest Type" value={form.interestType} onChange={(e) => setForm({ ...form, interestType: e.target.value })}
@@ -210,8 +406,9 @@ const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; onDone: () =>
           <Input label="Remarks" value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} />
         </div>
         <div className="flex gap-2 pt-1">
-          <Button size="sm" variant="outline" loading={saving} onClick={() => submit(true)}>Save as Draft</Button>
-          <Button size="sm" icon={<Send size={13} />} loading={saving} onClick={() => submit(false)}>Submit for Approval</Button>
+          <Button size="sm" variant="outline" loading={saving} onClick={() => submit(true)}>{isPending ? 'Save Changes' : editId ? 'Save Draft' : 'Save as Draft'}</Button>
+          {!isPending && <Button size="sm" icon={<Send size={13} />} loading={saving} onClick={() => submit(false)}>Submit for Approval</Button>}
+          <Button size="sm" variant="ghost" onClick={onDone}>Cancel</Button>
         </div>
       </Card>
 
@@ -245,10 +442,22 @@ const Row: React.FC<{ label: string; value: React.ReactNode; strong?: boolean }>
 );
 
 // ── All Loans (table + workflow actions) ──────────────────────────────────────
-const LoansTab: React.FC<{ canEdit: boolean; canApprove: boolean; canManage: boolean; onOpen: (id: number) => void }> = ({ canEdit, canApprove, canManage, onOpen }) => {
+export const LoansTab: React.FC<{
+  canEdit: boolean; canApprove: boolean; canManage: boolean; onOpen: (id: number) => void;
+  /** Open a Draft / Pending loan in the form to continue editing. */
+  onEdit?: (id: number) => void;
+  /** Seed the status filter (e.g. 'Pending Approval' for the Approvals view). */
+  initialStatus?: string;
+  /** Hide the status dropdown and pin the list to `initialStatus` (e.g. the Drafts list). */
+  lockStatus?: boolean;
+  /** Client-side filter: only show loans whose type name contains this (e.g. 'advance'). */
+  typeContains?: string;
+  /** Optional empty-state message override. */
+  emptyLabel?: string;
+}> = ({ canEdit, canApprove, canManage, onOpen, onEdit, initialStatus = '', lockStatus, typeContains, emptyLabel }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState(initialStatus);
   const [q, setQ] = useState('');
 
   const load = useCallback(async () => {
@@ -257,6 +466,11 @@ const LoansTab: React.FC<{ canEdit: boolean; canApprove: boolean; canManage: boo
   }, [status, q]);
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
 
+  const shown = useMemo(
+    () => typeContains ? rows.filter((l) => String(l.loanTypeName || '').toLowerCase().includes(typeContains.toLowerCase())) : rows,
+    [rows, typeContains],
+  );
+
   const act = async (id: number, action: string) => {
     let extra: any = {};
     if (action === 'reject') { const reason = await ui.prompt({ title: 'Reject loan', message: 'Reason for rejection:', confirmText: 'Reject' }); if (reason == null) return; extra.reason = reason; }
@@ -264,15 +478,18 @@ const LoansTab: React.FC<{ canEdit: boolean; canApprove: boolean; canManage: boo
     try { await api.loans.setStatus(id, action, extra); ui.toast.success('Loan updated.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
   const del = async (id: number) => { if (!(await ui.confirm({ message: 'Delete this loan? This can only be done for Draft/Rejected loans.', variant: 'danger', confirmText: 'Delete' }))) return; try { await api.loans.remove(id); ui.toast.success('Loan deleted.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
+  const dup = async (id: number) => { try { await api.loans.duplicate(id); ui.toast.success('Draft copy created.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or loan #…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#4F7CFF] outline-none" /></div>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
-          <option value="">All statuses</option>
-          {['Draft', 'Pending Approval', 'Approved', 'Rejected', 'Disbursed', 'Running', 'Completed', 'Closed'].map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        {!lockStatus && (
+          <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
+            <option value="">All statuses</option>
+            {['Draft', 'Pending Approval', 'Approved', 'Rejected', 'Disbursed', 'Running', 'Completed', 'Closed'].map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
       </div>
       <Card className="!p-0 overflow-x-auto">
         <table className="w-full text-xs">
@@ -281,8 +498,8 @@ const LoansTab: React.FC<{ canEdit: boolean; canApprove: boolean; canManage: boo
           </tr></thead>
           <tbody>
             {loading ? <tr><td colSpan={8} className="p-6 text-center text-slate-400">Loading…</td></tr>
-              : rows.length === 0 ? <tr><td colSpan={8} className="p-6 text-center text-slate-400">No loans found.</td></tr>
-                : rows.map((l) => (
+              : shown.length === 0 ? <tr><td colSpan={8} className="p-6 text-center text-slate-400">{emptyLabel || 'No loans found.'}</td></tr>
+                : shown.map((l) => (
                   <tr key={l.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="p-2.5 font-semibold text-slate-700">{l.loanNumber}</td>
                     <td className="p-2.5">{l.employeeName}</td>
@@ -294,7 +511,9 @@ const LoansTab: React.FC<{ canEdit: boolean; canApprove: boolean; canManage: boo
                     <td className="p-2.5">
                       <div className="flex items-center gap-1">
                         <IconBtn title="View" onClick={() => onOpen(l.id)}><Eye size={14} /></IconBtn>
+                        {canEdit && onEdit && ['Draft', 'Pending Approval'].includes(l.status) && <IconBtn title={l.status === 'Draft' ? 'Continue editing' : 'Edit'} onClick={() => onEdit(l.id)}><Pencil size={14} className="text-indigo-600" /></IconBtn>}
                         {canEdit && l.status === 'Draft' && <IconBtn title="Submit" onClick={() => act(l.id, 'submit')}><Send size={14} className="text-blue-600" /></IconBtn>}
+                        {canEdit && <IconBtn title="Duplicate" onClick={() => dup(l.id)}><Copy size={14} className="text-violet-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Approve" onClick={() => act(l.id, 'approve')}><CheckCircle2 size={14} className="text-emerald-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Reject" onClick={() => act(l.id, 'reject')}><XCircle size={14} className="text-rose-600" /></IconBtn>}
                         {(canApprove || canEdit) && l.status === 'Approved' && <IconBtn title="Disburse" onClick={() => act(l.id, 'disburse')}><Banknote size={14} className="text-emerald-600" /></IconBtn>}
@@ -315,7 +534,7 @@ const IconBtn: React.FC<{ title: string; onClick: () => void; children: React.Re
 );
 
 // ── Loan Types ────────────────────────────────────────────────────────────────
-const TypesTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+export const TypesTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<any | null>(null);
@@ -373,7 +592,7 @@ const REPORT_KEYS = [
   { key: 'completed', label: 'Completed Loans' },
   { key: 'interest', label: 'Interest Report' },
 ];
-const ReportsTab: React.FC<{ company?: any }> = ({ company }) => {
+export const ReportsTab: React.FC<{ company?: any }> = ({ company }) => {
   const [key, setKey] = useState('summary');
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -426,11 +645,12 @@ const ReportsTab: React.FC<{ company?: any }> = ({ company }) => {
 };
 
 // ── Loan detail (schedule + audit) ────────────────────────────────────────────
-const LoanDetailModal: React.FC<{ id: number; onClose: () => void }> = ({ id, onClose }) => {
+export const LoanDetailModal: React.FC<{ id: number; onClose: () => void; canEdit?: boolean; canManage?: boolean }> = ({ id, onClose, canEdit = false, canManage = false }) => {
   const [loan, setLoan] = useState<any>(null);
   useEffect(() => { (async () => { try { setLoan(await api.loans.get(id)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); onClose(); } })(); }, [id]);
   if (!loan) return null;
   const d = loan.derived || {};
+  const isAdvance = /advance/i.test(loan.loanTypeName || '');
   return (
     <Modal open onClose={onClose} title={`${loan.loanNumber} · ${loan.employeeName}`} subtitle={`${loan.loanTypeName} · ${loan.status}`} size="lg"
       footer={<Button size="sm" onClick={onClose}>Close</Button>}>
@@ -466,7 +686,23 @@ const LoanDetailModal: React.FC<{ id: number; onClose: () => void }> = ({ id, on
           </div>
         </div>
 
+        {loan.purpose && <p className="text-xs text-slate-500"><b>{isAdvance ? 'Reason' : 'Purpose'}:</b> {loan.purpose}</p>}
         {loan.remarks && <p className="text-xs text-slate-500"><b>Remarks:</b> {loan.remarks}</p>}
+
+        {/* Attachments — files that belong to THIS loan/advance only. */}
+        <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+          <RecordAttachments
+            source={isAdvance ? 'Advance' : 'Loan'}
+            altSources={isAdvance ? ['Loan'] : ['Advance']}
+            sourceRef={loan.id}
+            canEdit={canEdit}
+            canDelete={canManage}
+            categories={LOAN_ATTACHMENT_CATEGORIES}
+            employeeId={loan.employeeId}
+            employeeName={loan.employeeName}
+            title={isAdvance ? 'Advance Attachments' : 'Loan Attachments'}
+          />
+        </div>
 
         <div>
           <p className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">Activity</p>

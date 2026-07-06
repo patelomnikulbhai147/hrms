@@ -494,12 +494,23 @@ export const api = {
     get: async (id: any) => apiFetch(`${BASE_URL}/loans/${id}`, { headers: getHeaders() }),
     create: async (data: any) => apiFetch(`${BASE_URL}/loans`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     update: async (id: any, data: any) => apiFetch(`${BASE_URL}/loans/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    duplicate: async (id: any) => apiFetch(`${BASE_URL}/loans/${id}/duplicate`, { method: 'POST', headers: getHeaders(), body: '{}' }),
     setStatus: async (id: any, action: string, extra: any = {}) => apiFetch(`${BASE_URL}/loans/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, ...extra }) }),
     remove: async (id: any) => apiFetch(`${BASE_URL}/loans/${id}`, { method: 'DELETE', headers: getHeaders() }),
     // Employee portal + reports
     myLoans: async () => apiFetch(`${BASE_URL}/loans/portal/me`, { headers: getHeaders() }),
     report: async (key: string, params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/loans/reports/${key}${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
     runReminders: async () => apiFetch(`${BASE_URL}/loans/run-reminders`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+  },
+
+  // Employee Card Designer — per-company custom/edited card templates.
+  cardTemplates: {
+    list: async () => apiFetch(`${BASE_URL}/card-templates`, { headers: getHeaders() }),
+    get: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}`, { headers: getHeaders() }),
+    save: async (data: any) => apiFetch(`${BASE_URL}/card-templates`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    remove: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    setDefault: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}/default`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    setShared: async (id: any, shared: boolean) => apiFetch(`${BASE_URL}/card-templates/${id}/share`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ shared }) }),
   },
 
   // Compliance Management — statutory filing calendar / due-date tracker.
@@ -514,6 +525,19 @@ export const api = {
     setFilingStatus: async (id: any, action: string, extra: any = {}) => apiFetch(`${BASE_URL}/compliance-mgmt/filings/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, ...extra }) }),
     uploadChallan: async (id: any, data: any) => apiFetch(`${BASE_URL}/compliance-mgmt/filings/${id}/challan`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteFiling: async (id: any) => apiFetch(`${BASE_URL}/compliance-mgmt/filings/${id}`, { method: 'DELETE', headers: getHeaders() }),
+  },
+
+  // Finance & Compliance → Documents. Isolated statutory document repository
+  // (its own compliance_documents table; never mixed with the general Documents
+  // module). List omits the base64 blob; getOne returns it for view/download.
+  complianceDocuments: {
+    list: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/compliance-documents${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    summary: async () => apiFetch(`${BASE_URL}/compliance-documents/summary`, { headers: getHeaders() }),
+    categories: async () => apiFetch(`${BASE_URL}/compliance-documents/categories`, { headers: getHeaders() }),
+    getOne: async (id: any) => apiFetch(`${BASE_URL}/compliance-documents/${id}`, { headers: getHeaders() }),
+    create: async (data: any) => apiFetch(`${BASE_URL}/compliance-documents`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    update: async (id: any, data: any) => apiFetch(`${BASE_URL}/compliance-documents/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    remove: async (id: any) => apiFetch(`${BASE_URL}/compliance-documents/${id}`, { method: 'DELETE', headers: getHeaders() }),
   },
 
   // Bonus Management (Phase 1 — Bonus Configuration). Separate bonus
@@ -791,6 +815,22 @@ export const api = {
     audit: {
       list: async (eventType?: string) => apiFetch(`${BASE_URL}/communication/audit${eventType ? `?eventType=${encodeURIComponent(eventType)}` : ''}`, { headers: getHeaders() }),
       log: async (data: any) => apiFetch(`${BASE_URL}/communication/audit`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    },
+    // ── Enterprise Communication Workflow ────────────────────────────────────
+    eventMappings: async () => apiFetch(`${BASE_URL}/communication/event-mappings`, { headers: getHeaders() }),
+    saveEventMapping: async (eventKey: string, data: any) => apiFetch(`${BASE_URL}/communication/event-mappings/${encodeURIComponent(eventKey)}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    mappingValidation: async () => apiFetch(`${BASE_URL}/communication/event-mappings/validation`, { headers: getHeaders() }),
+    health: async () => apiFetch(`${BASE_URL}/communication/health`, { headers: getHeaders() }),
+    copyFromMaster: async (masterId: any) => apiFetch(`${BASE_URL}/communication/templates/copy-from-master/${masterId}`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+    setLibraryState: async (id: any, libraryState: string) => apiFetch(`${BASE_URL}/communication/templates/${id}/library-state`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ libraryState }) }),
+    master: {
+      list: async (category?: string) => apiFetch(`${BASE_URL}/communication-master${category ? `?category=${encodeURIComponent(category)}` : ''}`, { headers: getHeaders() }),
+      categories: async () => apiFetch(`${BASE_URL}/communication-master/categories`, { headers: getHeaders() }),
+      stats: async () => apiFetch(`${BASE_URL}/communication-master/stats`, { headers: getHeaders() }),
+      seed: async (force?: boolean) => apiFetch(`${BASE_URL}/communication-master/seed${force ? '?force=true' : ''}`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({}) }),
+      create: async (data: any) => apiFetch(`${BASE_URL}/communication-master`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      update: async (id: any, data: any) => apiFetch(`${BASE_URL}/communication-master/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      remove: async (id: any) => apiFetch(`${BASE_URL}/communication-master/${id}`, { method: 'DELETE', headers: getHeaders() }),
     },
   },
 
