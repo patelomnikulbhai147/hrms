@@ -30,7 +30,25 @@ const WHATSAPP_PLACEHOLDERS = [
   { token: '{{today_date}}', label: "Today's Date", sample: 'today' },
   { token: '{{employee_id}}', label: 'Employee ID', sample: 'EMP-1024' },
   { token: '{{branch_name}}', label: 'Branch Name', sample: 'Head Office' },
+  // Enterprise workflow tokens (additive).
+  { token: '{{years_completed}}', label: 'Years Completed', sample: '3' },
+  { token: '{{manager_name}}', label: 'Manager Name', sample: 'Priya Mehta' },
+  { token: '{{festival_name}}', label: 'Festival Name', sample: 'Diwali' },
+  { token: '{{current_year}}', label: 'Current Year', sample: String(new Date().getFullYear()) },
 ];
+
+// Whole years elapsed since a date (for {{years_completed}}). '' on bad input.
+const yearsSince = (value) => {
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const now = new Date();
+    let y = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && now.getDate() < d.getDate())) y -= 1;
+    return y >= 0 ? String(y) : '';
+  } catch { return ''; }
+};
 
 // Best-effort date formatting that never throws (formatDate handles bad input,
 // but guard anyway so the engine is pure and safe).
@@ -60,6 +78,11 @@ const buildContext = (employee = {}, company = {}) => {
     today_date: safeDate(new Date()),
     employee_id: emp.employeeId || emp.empId || emp.code || '',
     branch_name: emp.branchName || (emp.branch && (emp.branch.name || emp.branch.branchName)) || '',
+    // Enterprise workflow tokens (additive).
+    years_completed: yearsSince(emp.joinDate || emp.joiningDate || emp.dateOfJoining),
+    manager_name: emp.managerName || (emp.manager && (emp.manager.name || emp.manager)) || emp.reportingManager || '',
+    festival_name: emp.festivalName || co.festivalName || '',
+    current_year: String(new Date().getFullYear()),
   };
 };
 

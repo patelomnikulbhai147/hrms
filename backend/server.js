@@ -108,6 +108,10 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
 app.use('/api/company-profile', pii('CompanyProfile'), require('./src/routes/companyProfileRoutes'));
 app.use('/api/communication', require('./src/routes/communicationRoutes'));
+// Master Template Library (Super-Admin governed platform catalog; company users
+// browse to copy). Separate mount so Super Admin — blocked from the company module
+// — can still manage the master catalog.
+app.use('/api/communication-master', require('./src/routes/communicationMasterRoutes'));
 // Public Meta WhatsApp webhook (no auth — Meta calls it; company resolved by phone_number_id).
 app.use('/api/whatsapp', require('./src/routes/whatsappWebhookRoutes'));
 app.use('/api/branches', branchRoutes);
@@ -129,6 +133,12 @@ app.use('/api/payroll', pii('Payroll'), payrollRoutes);
 app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payrollComponentRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
 app.use('/api/invoicing', require('./src/routes/invoiceRoutes'));
+app.use('/api/loans', require('./src/routes/loanRoutes'));
+app.use('/api/compliance-mgmt', require('./src/routes/complianceMgmtRoutes'));
+// Employee Card Designer — per-company card templates (isolated card_templates).
+app.use('/api/card-templates', require('./src/routes/cardTemplateRoutes'));
+// Finance & Compliance → Documents — isolated statutory document repository.
+app.use('/api/compliance-documents', pii('Documents'), require('./src/routes/complianceDocumentRoutes'));
 app.use('/api/attendance', pii('Attendance'), attendanceRoutes);
 app.use('/api/attendance-summary', pii('Attendance'), attendanceSummaryRoutes);
 app.use('/api/attendance-vendors', pii('Attendance'), attendanceVendorRoutes);
@@ -191,6 +201,16 @@ app.use((req, res) => {
       rawPayload: raw, note: 'HTTP_UNMATCHED_PATH (reached server, no matching route)',
     });
   }
+  // For API calls, be self-describing: a bare "Not found" hides WHICH route was
+  // missing (e.g. a controller not yet loaded on a stale server), making it look
+  // like a resource-not-found instead of an unmatched route. Naming the method +
+  // path turns "❌ Not found" into an immediately diagnosable message.
+  if (req.originalUrl && req.originalUrl.startsWith('/api/')) {
+    return res.status(404).json({
+      error: `API route not found: ${req.method} ${req.originalUrl}`,
+      code: 'ROUTE_NOT_FOUND',
+    });
+  }
   res.status(404).json({ error: 'Not found' });
 });
 
@@ -220,6 +240,10 @@ const server = app.listen(PORT, () => {
   // ETIME_SYNC_SCHEDULER=off.
   try { require('./src/services/etimeoffice/etimeScheduler').start(); }
   catch (e) { console.error('[etime][scheduler] failed to start:', e.message); }
+  // Start the compliance/loan auto-reminder scheduler (30/15/7/1-day + overdue
+  // alerts → in-app + email). Disable with REMINDER_SCHEDULER=off.
+  try { require('./src/services/reminderScheduler').start(); }
+  catch (e) { console.error('[reminders][scheduler] failed to start:', e.message); }
 });
 
 // ── Phase 6 diagnostics: capture NON-HTTP traffic on the HTTP port ───────────

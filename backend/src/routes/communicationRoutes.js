@@ -47,6 +47,18 @@ router.post('/templates', canWrite, readOnly, ctrl.createTemplate);
 router.put('/templates/:id', canWrite, readOnly, ctrl.updateTemplate);
 router.delete('/templates/:id', canWrite, readOnly, ctrl.deleteTemplate);
 
+// ── Enterprise Workflow: Company Library + Event → Template Mapping ────────────
+const wf = require('../controllers/communicationWorkflowController');
+// Company Template Library management
+router.post('/templates/copy-from-master/:masterId', canWrite, readOnly, wf.copyTemplateFromMaster);
+router.put('/templates/:id/library-state', canWrite, readOnly, wf.setTemplateLibraryState);
+// Event → Template Mapping (the workflow spine)
+router.get('/event-mappings', wf.listEventMappings);
+router.get('/event-mappings/validation', wf.getEventMappingValidation);
+router.put('/event-mappings/:eventKey', canWrite, readOnly, wf.saveEventMapping);
+// Communication Health card
+router.get('/health', wf.getCommunicationHealth);
+
 // Scheduled messages (stored only)
 router.get('/schedules', ctrl.listSchedules);
 router.post('/schedules', canWrite, readOnly, ctrl.createSchedule);

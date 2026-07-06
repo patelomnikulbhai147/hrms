@@ -10,6 +10,7 @@ import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { type UserAccount } from '@/pages/Login';
 import { api } from '@/api/apiClient';
 import { formatDateTime } from '@/utils/formatDate';
+import { resolveBranding, isRasterImage, assetKind } from '@/services/brandingService';
 import { templateForKey, type TemplateDef } from '@/components/reports/templateRegistry';
 import { ReportTemplateViewer } from '@/components/reports/ReportTemplateViewer';
 import { isStatutoryReport } from '@/components/reports/reportClassification';
@@ -497,14 +498,21 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     const doc = new jsPDF({ orientation: report.columns.length > 7 ? 'landscape' : 'portrait' });
     const W = doc.internal.pageSize.getWidth();
     const m = report.meta || {};
+    // Single source of truth: pull branding from Company Profile via resolveBranding,
+    // and only draw the logo when it is a jsPDF-safe raster (PNG/JPEG/WebP) — an SVG
+    // or empty asset is skipped gracefully instead of corrupting/throwing.
+    const brand = resolveBranding(m);
+    const logoOk = brand.hasLogo && isRasterImage(brand.logo);
+    const logoFmt = assetKind(brand.logo) === 'jpeg' ? 'JPEG' : assetKind(brand.logo) === 'webp' ? 'WEBP' : 'PNG';
+    const tx = logoOk ? 34 : 14;
     let y = 12;
-    if (m.logoImage) { try { doc.addImage(m.logoImage, 'PNG', 14, 8, 16, 16); } catch { /* ignore bad image */ } }
-    doc.setFontSize(13); doc.setTextColor(20); doc.text(m.name || 'Company', m.logoImage ? 34 : 14, y); y += 5;
-    if (m.branchName) { doc.setFontSize(10); doc.setTextColor(40); doc.text(String(m.branchName), m.logoImage ? 34 : 14, y); y += 4; }
+    if (logoOk) { try { doc.addImage(brand.logo, logoFmt, 14, 8, 16, 16); } catch { /* ignore bad image */ } }
+    doc.setFontSize(13); doc.setTextColor(20); doc.text(m.name || brand.companyName || 'Company', tx, y); y += 5;
+    if (m.branchName) { doc.setFontSize(10); doc.setTextColor(40); doc.text(String(m.branchName), tx, y); y += 4; }
     doc.setFontSize(8); doc.setTextColor(90);
-    if (m.address) { doc.text(String(m.address).slice(0, 110), m.logoImage ? 34 : 14, y); y += 4; }
+    if (m.address) { doc.text(String(m.address).slice(0, 110), tx, y); y += 4; }
     const ids = [m.cinNumber && `CIN: ${m.cinNumber}`, m.gstNumber && `GST: ${m.gstNumber}`, m.panNumber && `PAN: ${m.panNumber}`].filter(Boolean).join('   ');
-    if (ids) { doc.text(ids, m.logoImage ? 34 : 14, y); y += 4; }
+    if (ids) { doc.text(ids, tx, y); y += 4; }
     doc.setDrawColor(200); doc.line(14, y, W - 14, y); y += 5;
     doc.setFontSize(11); doc.setTextColor(20); doc.text(report.reportName, 14, y);
     doc.setFontSize(8); doc.setTextColor(90); doc.text(`Generated: ${new Date(report.generatedAt).toLocaleString('en-IN')}`, W - 14, y, { align: 'right' }); y += 3;
@@ -524,8 +532,13 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     });
     const endY = (doc as any).lastAutoTable?.finalY || y + 20;
     const sy = Math.min(endY + 18, doc.internal.pageSize.getHeight() - 16);
+    // Authorized signature image (when a jsPDF-safe raster is set), drawn above the line.
+    if (brand.hasSignature && isRasterImage(brand.signature)) {
+      const sigFmt = assetKind(brand.signature) === 'jpeg' ? 'JPEG' : assetKind(brand.signature) === 'webp' ? 'WEBP' : 'PNG';
+      try { doc.addImage(brand.signature, sigFmt, W - 62, sy - 14, 40, 12); } catch { /* ignore bad image */ }
+    }
     doc.setDrawColor(150); doc.line(W - 70, sy, W - 14, sy);
-    doc.setFontSize(8); doc.setTextColor(60); doc.text(m.signatureText || 'Authorized Signatory', W - 14, sy + 5, { align: 'right' });
+    doc.setFontSize(8); doc.setTextColor(60); doc.text(brand.signatureText || m.signatureText || 'Authorized Signatory', W - 14, sy + 5, { align: 'right' });
     doc.save(`${report.reportName.replace(/[^a-z0-9]+/gi, '_')}.pdf`);
     api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format: 'PDF', companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {});
   };
@@ -533,6 +546,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const printReport = () => {
     if (!report?.rows?.length) return;
     const m = report.meta || {};
+    const brand = resolveBranding(m);
     const esc = (v: any) => String(v ?? '').replace(/[&<>"]/g, (c: string) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
     const ids = [m.cinNumber && `CIN: ${m.cinNumber}`, m.gstNumber && `GST: ${m.gstNumber}`, m.panNumber && `PAN: ${m.panNumber}`].filter(Boolean).map(esc).join(' &nbsp; ');
     const head = report.columns.map((c: any) => `<th>${esc(c.label)}</th>`).join('');
@@ -553,15 +567,15 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         .sign{margin-top:48px;text-align:right;font-size:11px}
         @media print{body{margin:10mm}}
       </style></head><body>
-      <div class="hdr">${m.logoImage ? `<img src="${esc(m.logoImage)}" alt="logo"/>` : ''}
-        <div><p class="co">${esc(m.name || 'Company')}</p>
+      <div class="hdr">${brand.hasLogo ? `<img src="${esc(brand.logo)}" alt="logo"/>` : ''}
+        <div><p class="co">${esc(m.name || brand.companyName || 'Company')}</p>
         ${m.branchName ? `<div class="meta" style="font-weight:700;color:#1f2937;font-size:11px">${esc(m.branchName)}</div>` : ''}
         ${m.address ? `<div class="meta">${esc(m.address)}</div>` : ''}
         ${ids ? `<div class="meta">${ids}</div>` : ''}</div>
       </div>
       <div class="rt">${esc(report.reportName)}</div>
       <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
-      <div class="sign">______________________<br/>${esc(m.signatureText || 'Authorized Signatory')}</div>
+      <div class="sign">${brand.hasSignature ? `<img src="${esc(brand.signature)}" alt="signature" style="height:36px;object-fit:contain;display:block;margin-left:auto"/>` : ''}______________________<br/>${esc(brand.signatureText || m.signatureText || 'Authorized Signatory')}</div>
       <div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;font-size:10px;color:#475569">${genLine} &nbsp;·&nbsp; ${report.rows.length} record(s)</div>
       <script>window.onload=function(){window.print();}</script>
       </body></html>`;

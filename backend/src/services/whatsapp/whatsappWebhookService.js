@@ -18,6 +18,11 @@ const RANK = { Pending: 0, Queued: 0, Simulated: 0, Processing: 1, Sent: 2, Deli
 const META_TO_STATUS = { sent: 'Sent', delivered: 'Delivered', read: 'Read', failed: 'Failed' };
 const TS_FIELD = { Sent: 'sentAt', Delivered: 'deliveredAt', Read: 'readAt', Failed: 'failedAt' };
 
+// Delivery-log statuses strictly BELOW a target status by lifecycle rank. A guarded
+// updateMany keyed on `status IN statusesBelow(target)` upgrades atomically and can
+// never regress: if a higher state already committed, the WHERE matches zero rows.
+const statusesBelow = (target) => Object.keys(RANK).filter((s) => RANK[s] < (RANK[target] || 0));
+
 const toDate = (ts) => { const n = Number(ts); return Number.isFinite(n) && n > 0 ? new Date(n * 1000) : new Date(); };
 
 // GET verification — Meta sends hub.mode/hub.verify_token/hub.challenge. We accept
@@ -68,18 +73,42 @@ const applyStatusEvent = async ({ companyId, wamid, metaStatus, recipient, event
     throw e;
   }
 
-  // 2) Update the delivery log for this wamid (latest row), upgrading status only.
-  const log = await prisma.whatsAppDeliveryLog.findFirst({ where: { companyId, metaMessageId: wamid }, orderBy: { id: 'desc' } });
-  if (log) {
-    const data = { metaStatus: status, [TS_FIELD[status]]: eventAt };
-    if (status === 'Failed') { data.status = 'Failed'; data.failureReason = errorTitle || (errorCode ? `Meta error ${errorCode}` : 'Delivery failed'); if (errorCode) data.errorCode = String(errorCode); }
-    else if ((RANK[status] || 0) > (RANK[log.status] || 0)) { data.status = status; } // upgrade only
-    await prisma.whatsAppDeliveryLog.update({ where: { id: log.id }, data });
+  // 2) ATOMIC upgrade-only update of the delivery log(s) for this wamid.
+  //    The status comparison lives INSIDE the SQL WHERE (`status IN below`), so the
+  //    guard and the write are a single row-locked statement — no read-modify-write.
+  //    Two concurrent events (e.g. Delivered + Read) can therefore never overwrite
+  //    each other: whichever commits second only applies if the current status is
+  //    still strictly lower, so status/metaStatus only ever move UP the ladder
+  //    (Sent → Delivered → Read; Failed is terminal-highest).
+  const tsField = TS_FIELD[status];
+  const upgradeData = { status, metaStatus: status };
+  if (tsField) upgradeData[tsField] = eventAt;
+  if (status === 'Failed') {
+    upgradeData.failureReason = errorTitle || (errorCode ? `Meta error ${errorCode}` : 'Delivery failed');
+    if (errorCode) upgradeData.errorCode = String(errorCode);
+  }
+  const upgraded = await prisma.whatsAppDeliveryLog.updateMany({
+    where: { companyId, metaMessageId: wamid, status: { in: statusesBelow(status) } },
+    data: upgradeData,
+  });
+
+  // 2b) Out-of-order event that is NOT an upgrade (e.g. a late Delivered arriving
+  //     after Read already committed): leave the higher status/metaStatus untouched
+  //     but still record THIS event's own timestamp if unset — preserving the full
+  //     lifecycle timeline without ever regressing status. Null-guarded so an
+  //     existing timestamp is never overwritten.
+  let timestamped = 0;
+  if (upgraded.count === 0 && tsField) {
+    const r = await prisma.whatsAppDeliveryLog.updateMany({
+      where: { companyId, metaMessageId: wamid, [tsField]: null },
+      data: { [tsField]: eventAt },
+    });
+    timestamped = r.count;
   }
 
   // 3) Stamp webhook health on the company settings.
   await prisma.whatsAppSettings.update({ where: { companyId }, data: { lastWebhookAt: new Date(), webhookVerified: true } }).catch(() => {});
-  return { ok: true, status, matchedLog: !!log };
+  return { ok: true, status, upgraded: upgraded.count > 0, matchedLog: upgraded.count > 0 || timestamped > 0 };
 };
 
 // Process a full Meta webhook POST body. Returns a per-event summary (never throws

@@ -64,6 +64,25 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     edit: ['Company Head', 'Finance', 'HR'],
     export: ['Company Head', 'Finance', 'HR'],
   },
+  // Employee Loan Management. Company Head, HR & Finance manage loans; approve
+  // (folded into EDIT) is enforced role-side to Company Head/Finance in the
+  // backend. Manager may VIEW. Employees see their OWN loans via the portal
+  // (not the matrix). Mirrors backend utils/loanScope.js.
+  loans: {
+    view: ['Company Head', 'HR', 'Finance', 'Manager'],
+    create: ['Company Head', 'HR', 'Finance'],
+    edit: ['Company Head', 'HR', 'Finance'],
+    export: ['Company Head', 'HR', 'Finance'],
+  },
+  // Compliance Management = statutory filing calendar / due-date tracker.
+  // Company Head, HR & Finance manage filings; Manager may VIEW. Waive/delete
+  // stays with Company Head/Finance (role-side). Mirrors utils/complianceScope.js.
+  compliance: {
+    view: ['Company Head', 'HR', 'Finance', 'Manager'],
+    create: ['Company Head', 'HR', 'Finance'],
+    edit: ['Company Head', 'HR', 'Finance'],
+    export: ['Company Head', 'HR', 'Finance'],
+  },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
   NEW_MODULE_ROLE_DEFAULTS[module]?.[action]?.includes(role) ?? false;

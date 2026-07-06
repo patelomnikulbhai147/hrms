@@ -42,6 +42,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // — the same source the permission matrices use — so the sidebar and the
   // matrices can never drift out of sync.
   const visibleItems = MODULE_REGISTRY.filter(item => {
+    // Modules folded into a parent sidebar entry (e.g. Loans & Compliance now
+    // live under "Finance & Compliance") stay out of the nav, but remain in the
+    // permission matrices via their registry rows.
+    if (item.hideInSidebar) {
+      return false;
+    }
+
     // Hide specific modules from Super Admin navigation only
     if (role === 'Super Admin') {
       const excludedIds: string[] = ['tasks', 'attendance-integration', 'audit', 'gallery'];
@@ -61,8 +68,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // The registry's `permission` key already folds sub-features onto their
     // parent module (Employee Cards → employees, Attendance Devices → attendance),
     // so gating is identical to before — no dedicated matrix row needed for them.
-    const permKey = item.permission as AppModules;
-    return canView(permKey) && item.roles.includes(role as Role);
+    // A module may aggregate several sub-modules — show it if the user can VIEW
+    // ANY of its `anyPermission` keys (OR-logic); otherwise fall back to the
+    // single governing `permission` key.
+    const permKeys = (item.anyPermission ?? [item.permission]) as AppModules[];
+    const canSee = permKeys.some(k => canView(k));
+    return canSee && item.roles.includes(role as Role);
   });
 
   return (
@@ -165,12 +176,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 : 'text-[#6B7280] group-hover:text-[#4F7CFF]'
             )}>{item.icon}</span>
             {!collapsed && (
-              <span className="flex-1 text-left">
+              <span className="flex-1 text-left min-w-0">
                 {item.id === 'payroll' && role === 'Employee' ? 'My Payslips'
                   : item.label}
               </span>
             )}
-            {!collapsed && currentPage === item.id && <ChevronRight size={14} className="text-[#4F7CFF]/80" />}
+            {/* Development-status badge — informational only, not clickable. Driven by
+                the registry `beta` flag so it stays in sync with the module's in-page
+                "Work in Progress" banner and vanishes automatically once the flag is
+                removed at production-readiness. Hidden when the rail is collapsed. */}
+            {!collapsed && item.beta && (
+              <span
+                aria-label="Under active development"
+                title="Under active development"
+                className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full border border-amber-300/60 bg-amber-100 px-1.5 py-[1px] text-[9px] font-bold leading-none text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-300"
+              >
+                <span aria-hidden>🚧</span>Beta
+              </span>
+            )}
+            {!collapsed && currentPage === item.id && <ChevronRight size={14} className="flex-shrink-0 text-[#4F7CFF]/80" />}
           </button>
         ))}
       </nav>

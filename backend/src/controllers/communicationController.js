@@ -87,7 +87,7 @@ exports.getDashboard = async (req, res) => {
       prisma.communicationTemplate.count({ where: { companyId, status: 'Draft' } }),
       prisma.communicationSchedule.count({ where: { companyId, status: 'Scheduled' } }),
       prisma.communicationAnnouncement.count({ where: { companyId } }),
-      prisma.communicationDeliveryLog.count({ where: { companyId, status: 'Sent', createdAt: { gte: new Date(today) } } }),
+      prisma.whatsAppDeliveryLog.count({ where: { companyId, status: 'Sent', createdAt: { gte: new Date(today) } } }),
     ]);
 
     // Upcoming birthdays / work anniversaries — summary counts only (no PII), and
@@ -299,12 +299,14 @@ exports.deleteAnnouncement = async (req, res) => {
   } catch (e) { sendError(res, e, 'communication.deleteAnnouncement'); }
 };
 
-// ── Delivery logs (read-only — empty in Phase 1, no sending happens) ───────────
+// ── Delivery logs (read-only) ─────────────────────────────────────────────────
+// Reads the real per-message WhatsApp delivery ledger (whatsAppDeliveryLog).
+// The legacy communicationDeliveryLog table was never written to and is retired.
 exports.listDeliveryLogs = async (req, res) => {
   try {
     const companyId = await resolveCompanyId(req);
     if (!companyId) return res.json([]);
-    res.json(await prisma.communicationDeliveryLog.findMany({ where: { companyId }, orderBy: { id: 'desc' }, take: 200 }));
+    res.json(await prisma.whatsAppDeliveryLog.findMany({ where: { companyId }, orderBy: { id: 'desc' }, take: 200 }));
   } catch (e) { sendError(res, e, 'communication.listDeliveryLogs'); }
 };
 

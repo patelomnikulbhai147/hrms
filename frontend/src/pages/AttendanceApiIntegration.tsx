@@ -6,6 +6,7 @@ import { ui } from '@/components/ui/feedback';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDateTime } from '@/utils/formatDate';
+import { DevelopmentBanner } from '@/components/ui/DevelopmentBanner';
 import type { Role } from '@/data/mockData';
 import {
   Fingerprint, RefreshCw, Wifi, WifiOff, CheckCircle2, XCircle, AlertTriangle,
@@ -221,6 +222,13 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
           )}
         </div>
       </div>
+
+      {/* Development-status banner — permanent & non-dismissible by design.
+          Remove this <DevelopmentBanner /> from the JSX when the module ships. */}
+      <DevelopmentBanner
+        status="development"
+        message="Attendance API Integration is under active development. Additional biometric vendors, synchronization improvements, diagnostics, and monitoring tools are still being added. Existing functionality is safe to use."
+      />
 
       {/* Connection status banner */}
       <div className={`rounded-2xl border p-4 flex items-center gap-3 ${connected ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
