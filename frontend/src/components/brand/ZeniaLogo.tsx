@@ -1,0 +1,82 @@
+import React from 'react';
+import { cn } from '@/utils/cn';
+
+/**
+ * ZeniaHR brand mark.
+ *
+ * The geometry is fixed — do not restyle it. The diagonal is drawn first so the
+ * two white bars overlay its ends, which is what makes the "Z" read cleanly.
+ */
+
+export const BRAND_NAME = 'ZeniaHR';
+export const BRAND_TAGLINE = 'Enterprise HRMS';
+
+interface LogoProps {
+  /** Rendered edge length in px. */
+  size?: number;
+  className?: string;
+  /** Corner rounding in px, on the 1024-unit grid. 0 = hard square. */
+  radius?: number;
+}
+
+export const ZeniaLogo: React.FC<LogoProps> = ({ size = 32, className, radius = 180 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 1024 1024"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    role="img"
+    aria-label={`${BRAND_NAME} logo`}
+    className={cn('flex-shrink-0', className)}
+  >
+    <defs>
+      <linearGradient id="zenia-field" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#7C4DF5" />
+        <stop offset="1" stopColor="#4C1FD4" />
+      </linearGradient>
+    </defs>
+
+    <rect width="1024" height="1024" rx={radius} fill="url(#zenia-field)" />
+
+    {/* Diagonal stroke of the Z — sits beneath the bars. */}
+    <line
+      x1="682" y1="422" x2="332" y2="678"
+      stroke="#C4B5FD" strokeWidth="68" strokeLinecap="round"
+    />
+
+    {/* Upper and lower bars of the Z. */}
+    <rect x="298" y="388" width="418" height="68" rx="34" fill="#FFFFFF" />
+    <rect x="298" y="644" width="418" height="68" rx="34" fill="#FFFFFF" />
+
+    {/* The tittle. */}
+    <circle cx="511" cy="240" r="74" fill="#FFFFFF" />
+  </svg>
+);
+
+interface LockupProps {
+  size?: number;
+  className?: string;
+  /** Hide the wordmark (collapsed sidebar, mobile). */
+  markOnly?: boolean;
+  subtitle?: string;
+}
+
+/** Logo + wordmark, for sidebar headers, login and splash screens. */
+export const ZeniaLockup: React.FC<LockupProps> = ({ size = 36, className, markOnly, subtitle }) => (
+  <div className={cn('flex items-center gap-2.5', className)}>
+    <ZeniaLogo size={size} radius={220} className="shadow-[0_4px_12px_rgba(108,60,240,0.25)] rounded-[22%]" />
+    {!markOnly && (
+      <div className="min-w-0 leading-tight">
+        <div className="font-heading font-bold tracking-tight text-ink truncate" style={{ fontSize: size * 0.44 }}>
+          {BRAND_NAME}
+        </div>
+        {subtitle && (
+          <div className="text-ink-muted font-medium truncate" style={{ fontSize: size * 0.28 }}>
+            {subtitle}
+          </div>
+        )}
+      </div>
+    )}
+  </div>
+);

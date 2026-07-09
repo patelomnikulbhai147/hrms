@@ -15,4 +15,7 @@ router.get('/google-maps', protect, requireSuperAdmin, ctrl.getGoogleMaps);
 router.put('/google-maps', protect, requireSuperAdmin, ctrl.updateGoogleMaps);
 router.post('/google-maps/test', protect, requireSuperAdmin, ctrl.testGoogleMaps);
 
+router.get('/security', protect, requireSuperAdmin, ctrl.getSecuritySettings);
+router.put('/security', protect, requireSuperAdmin, ctrl.updateSecuritySettings);
+
 module.exports = router;

@@ -120,13 +120,13 @@ export const ApplyBonusModal: React.FC<ApplyBonusModalProps> = ({ open, onClose,
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">{isPercent ? 'Percentage of Salary (%)' : 'Bonus Amount (₹)'}</label>
             <input type="number" min="0" value={value} onChange={e => setValue(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 outline-none"
               placeholder={isPercent ? 'e.g. 10' : 'e.g. 5000'} />
           </div>
           <div>
             <label className="block text-[11px] font-semibold text-slate-500 mb-1">Reason / Note <span className="text-slate-400">(e.g. Diwali, performance)</span></label>
             <input type="text" value={reason} onChange={e => setReason(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 outline-none"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-brand-400 focus:ring-1 focus:ring-brand-400 outline-none"
               placeholder="Optional" />
           </div>
         </div>
@@ -144,7 +144,7 @@ export const ApplyBonusModal: React.FC<ApplyBonusModalProps> = ({ open, onClose,
             <div className="flex items-center justify-between mb-1">
               <label className="block text-[11px] font-semibold text-slate-500">Employees ({selectedIds.size} selected)</label>
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-indigo-400" />
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs outline-none focus:border-brand-400" />
             </div>
             <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
               {filteredEmployees.length === 0 ? (

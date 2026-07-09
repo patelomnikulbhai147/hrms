@@ -152,6 +152,13 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [statusFilter, setStatusFilter] = useState('');
   const [branchFilter, setBranchFilter] = useState('');
 
+  // Server-Side Pagination State
+  const [page, setPage] = useState(1);
+  const limit = 15;
+  const [paginatedData, setPaginatedData] = useState<Employee[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+
   // Kind-aware: a plain find returns the parent company when a branch shares
   // its id, which would wrongly flip isBranchWorkspace to false and mis-scope
   // the whole page. resolveActiveWorkspace honours the active workspace kind.
@@ -470,13 +477,6 @@ export const Employees: React.FC<EmployeesProps> = ({
   // save, document upload and submit-for-approval flow, calling back to refresh
   // the list. The Temporary table's quick "Submit for Approval" action below
   // remains for records that are already complete.
-
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
-
-  useEffect(() => {
-    setPage(1);
-  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
   const [offboardEmp, setOffboardEmp] = useState<Employee | null>(null);
 
@@ -915,6 +915,47 @@ export const Employees: React.FC<EmployeesProps> = ({
       // Default ordering: Employee ID ascending (Company → Branch → numeric seq).
       .sort(byEmployeeCode(e => e.employeeId));
   }, [companyEmployees, search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+
+  // Fetch server-side paginated data for the current table view
+  useEffect(() => {
+    // We only paginate the real employee table tabs, not temporary/approvals
+    if (activeMainTab === 'temporary' || activeMainTab === 'approvals') return;
+    
+    let isMounted = true;
+    const fetchPaginated = async () => {
+      setIsTableLoading(true);
+      try {
+        const params: Record<string, any> = {
+          page,
+          limit,
+          companyId: activeCompanyId,
+          tab: activeMainTab
+        };
+        if (search) params.search = search;
+        if (deptFilter) params.department = deptFilter;
+        if (statusFilter) params.status = statusFilter;
+        if (branchFilter) params.branch = branchFilter;
+        
+        const res = await api.employees.getPaginated(params) as any;
+        if (isMounted && res && Array.isArray(res.data)) {
+          setPaginatedData(res.data);
+          setTotalRows(res.total || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching paginated employees:", err);
+      } finally {
+        if (isMounted) setIsTableLoading(false);
+      }
+    };
+    
+    fetchPaginated();
+    return () => { isMounted = false; };
+  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
@@ -1605,7 +1646,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             {isHR && (
               <button
                 onClick={() => setActiveMainTab('approvals')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'approvals' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-indigo-700'} ${countAudit.pendingApproval ? 'relative' : ''}`}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'approvals' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-brand-700'} ${countAudit.pendingApproval ? 'relative' : ''}`}
               >
                 Pending Approvals ({countAudit.pendingApproval})
               </button>
@@ -1645,7 +1686,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               </Button>
               {addMenuOpen && (
                 <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-                  <button onClick={() => { setAddMenuOpen(false); handleStartAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-blue-50 hover:text-blue-700"><UserPlus size={15} className="text-blue-600" /> Add Full Employee</button>
+                  <button onClick={() => { setAddMenuOpen(false); handleStartAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-brand-50 hover:text-brand-700"><UserPlus size={15} className="text-brand-600" /> Add Full Employee</button>
                   <div className="h-px bg-slate-100" />
                   <button onClick={() => { setAddMenuOpen(false); openQuickAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
                 </div>
@@ -1671,9 +1712,9 @@ export const Employees: React.FC<EmployeesProps> = ({
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" />
+        <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" />
         <StatCard label="Active Personnel" value={countAudit.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
-        <StatCard label="Verified Payroll " value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-cyan-600" />} color="bg-cyan-50" />
+        <StatCard label="Verified Payroll " value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-brand-600" />} color="bg-brand-50" />
         <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
 
@@ -1744,10 +1785,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Td className="px-2 py-1.5">
                       <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                         {editable && canEdit && (
-                          <button onClick={() => setEditTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition" title="Complete profile"><Edit2 size={13} /></button>
+                          <button onClick={() => setEditTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition" title="Complete profile"><Edit2 size={13} /></button>
                         )}
                         {editable && canEdit && (
-                          <button onClick={() => handleSubmitTemp(t)} disabled={tempBusy || !mand.ok} className="p-1 hover:bg-indigo-50 rounded text-indigo-600 transition disabled:opacity-30" title={mand.ok ? 'Submit for approval' : 'Complete all mandatory fields & documents first'}><Send size={13} /></button>
+                          <button onClick={() => handleSubmitTemp(t)} disabled={tempBusy || !mand.ok} className="p-1 hover:bg-brand-50 rounded text-brand-600 transition disabled:opacity-30" title={mand.ok ? 'Submit for approval' : 'Complete all mandatory fields & documents first'}><Send size={13} /></button>
                         )}
                         {!terminal && canEdit && (
                           <button onClick={() => handleRejectTemp(t)} disabled={tempBusy} className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 transition disabled:opacity-40" title="Reject"><XCircle size={13} /></button>
@@ -1768,12 +1809,12 @@ export const Employees: React.FC<EmployeesProps> = ({
       {/* ── Pending Approvals queue (HR / Company Head / Super Admin) ── */}
       {activeMainTab === 'approvals' && (
         <Card padding={false}>
-          <div className="px-4 py-3 border-b border-indigo-100 bg-indigo-50/50 flex items-center justify-between">
+          <div className="px-4 py-3 border-b border-brand-100 bg-brand-50/50 flex items-center justify-between">
             <div>
-              <p className="text-xs font-bold text-indigo-800">Pending Approvals</p>
-              <p className="text-[11px] text-indigo-600">Temporary employees who completed their profile &amp; documents and are awaiting activation. Approving generates the official Employee ID and creates the Active record.</p>
+              <p className="text-xs font-bold text-brand-800">Pending Approvals</p>
+              <p className="text-[11px] text-brand-600">Temporary employees who completed their profile &amp; documents and are awaiting activation. Approving generates the official Employee ID and creates the Active record.</p>
             </div>
-            <span className="text-[11px] font-semibold text-indigo-700 bg-white border border-indigo-200 rounded-full px-2.5 py-1">{pendingApprovals.length} awaiting</span>
+            <span className="text-[11px] font-semibold text-brand-700 bg-white border border-brand-200 rounded-full px-2.5 py-1">{pendingApprovals.length} awaiting</span>
           </div>
           <Table>
             <Thead>
@@ -1791,7 +1832,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               {pendingApprovals.length === 0 ? (
                 <tr><td colSpan={7} className="text-center py-10 text-xs text-gray-400">No employees awaiting approval. Completed temporary profiles appear here automatically.</td></tr>
               ) : pendingApprovals.map(t => (
-                <Tr key={t.id} className="hover:bg-indigo-50/30">
+                <Tr key={t.id} className="hover:bg-brand-50/30">
                   <Td className="px-2 py-1.5"><span className="text-[11px] font-bold text-amber-700">{t.tempEmployeeId}</span></Td>
                   <Td className="px-2 py-1.5"><span className="text-[11px] font-semibold text-slate-800">{t.name}</span><span className="block text-[9px] text-slate-400">{t.mobile} · {t.designation || '—'}</span></Td>
                   <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-600">{t.branchLocation || '—'}</span></Td>
@@ -1799,13 +1840,13 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Td className="px-2 py-1.5"><span className="text-[11px] text-slate-500">{t.submittedAt ? formatDate(t.submittedAt) : '—'}</span>{t.submittedBy && <span className="block text-[9px] text-slate-400">by {t.submittedBy}</span>}</Td>
                   <Td className="px-2 py-1.5">
                     <div className="flex items-center gap-1.5">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden min-w-[40px]"><div className="h-full bg-indigo-500 rounded-full" style={{ width: `${t.profileCompletion || 0}%` }} /></div>
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden min-w-[40px]"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${t.profileCompletion || 0}%` }} /></div>
                       <span className="text-[10px] font-bold text-slate-600 w-8 text-right">{t.profileCompletion || 0}%</span>
                     </div>
                   </Td>
                   <Td className="px-2 py-1.5">
                     <div className="flex items-center justify-center gap-1 whitespace-nowrap">
-                      <button onClick={() => setReviewTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-indigo-600 transition" title="Review profile & documents"><Eye size={13} /></button>
+                      <button onClick={() => setReviewTemp({ ...t })} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition" title="Review profile & documents"><Eye size={13} /></button>
                       {canCreate && (
                         <button onClick={() => openAssign(t)} disabled={tempBusy} className="p-1 hover:bg-emerald-50 rounded text-emerald-600 transition disabled:opacity-40" title="Approve & activate"><ThumbsUp size={13} /></button>
                       )}
@@ -1851,12 +1892,14 @@ export const Employees: React.FC<EmployeesProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-gray-400">No synchronized employee profiles found</td></tr>
+              {isTableLoading ? (
+                <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-slate-500"><div className="flex flex-col items-center gap-2"><div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-600"></div>Loading...</div></td></tr>
+              ) : totalRows === 0 ? (
+                <tr><td colSpan={7 + (activeMainTab !== 'active' ? 1 : 0) + (showBiometric ? 1 : 0)} className="text-center py-10 text-xs text-gray-400">No employees found.</td></tr>
               ) : (
-                filtered.slice((page - 1) * pageSize, page * pageSize).map((emp, idx) => (
+                paginatedData.map((emp, idx) => (
                   <Tr key={emp.id} className="hover:bg-slate-50/50">
-                    <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * pageSize + idx + 1}</span></Td>
+                    <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * limit + idx + 1}</span></Td>
                     <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
                     <Td className="px-2 py-1">
                       <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
@@ -1864,7 +1907,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                           {emp.avatar || 'EM'}
                         </div>
                         <div className="min-w-0">
-                          <p className="text-[11px] font-semibold text-slate-900 hover:text-blue-600 truncate">{emp.name}</p>
+                          <p className="text-[11px] font-semibold text-slate-900 hover:text-brand-600 truncate">{emp.name}</p>
                           <p className="text-[9px] text-gray-400 truncate">{emp.email}</p>
                         </div>
                       </div>
@@ -1878,7 +1921,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                       <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                         <button
                           onClick={() => setViewEmp(emp)}
-                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                          className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
                           title="View Master File"
                         >
                           <Eye size={13} />
@@ -1889,7 +1932,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <>
                             <button
                               onClick={() => handleStartEdit(emp)}
-                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-blue-600 transition"
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
                               title="Edit File"
                             >
                               <Edit2 size={13} />
@@ -1923,30 +1966,35 @@ export const Employees: React.FC<EmployeesProps> = ({
           </Table>
 
           {/* Pagination Controls */}
-          {filtered.length > pageSize && (
-            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl">
+          {totalRows > 0 && (
+            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl flex-wrap gap-3">
               <span className="text-xs text-slate-500 font-medium">
-                Showing <span className="font-bold text-slate-700">{(page - 1) * pageSize + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * pageSize, filtered.length)}</span> of <span className="font-bold text-slate-700">{filtered.length}</span> entries
+                Showing <span className="font-bold text-slate-700">{(page - 1) * limit + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * limit, totalRows)}</span> of <span className="font-bold text-slate-700">{totalRows}</span> employees
               </span>
-              <div className="flex gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="text-xs py-1 px-3"
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage(p => Math.min(Math.ceil(filtered.length / pageSize), p + 1))}
-                  disabled={page >= Math.ceil(filtered.length / pageSize)}
-                  className="text-xs py-1 px-3"
-                >
-                  Next
-                </Button>
+              <div className="flex items-center gap-4">
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="text-xs py-1 px-3"
+                  >
+                    &lt;&lt; Previous
+                  </Button>
+                  <div className="hidden sm:flex items-center px-2">
+                    <span className="text-xs text-slate-500">Page {page} of {Math.max(1, Math.ceil(totalRows / limit))}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(Math.ceil(totalRows / limit), p + 1))}
+                    disabled={page >= Math.ceil(totalRows / limit)}
+                    className="text-xs py-1 px-3"
+                  >
+                    Next &gt;&gt;
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -2008,10 +2056,10 @@ export const Employees: React.FC<EmployeesProps> = ({
       <Modal open={!!reviewTemp} onClose={() => setReviewTemp(null)} title={reviewTemp ? `Review for Approval — ${reviewTemp.tempEmployeeId}` : ''} size="md">
         {reviewTemp && (
           <div className="space-y-3 text-left text-xs">
-            <div className="flex items-center justify-between rounded-lg bg-indigo-50 border border-indigo-100 px-3 py-2">
+            <div className="flex items-center justify-between rounded-lg bg-brand-50 border border-brand-100 px-3 py-2">
               <div>
-                <p className="text-[12px] font-bold text-indigo-900">{reviewTemp.name}</p>
-                <p className="text-[10px] text-indigo-600">{reviewTemp.designation || '—'} · {reviewTemp.department || '—'} · {reviewTemp.branchLocation || '—'}</p>
+                <p className="text-[12px] font-bold text-brand-900">{reviewTemp.name}</p>
+                <p className="text-[10px] text-brand-600">{reviewTemp.designation || '—'} · {reviewTemp.department || '—'} · {reviewTemp.branchLocation || '—'}</p>
               </div>
               <Badge variant={tempStatusBadge(reviewTemp.status) as any} className="text-[9px] px-1.5 py-0">{reviewTemp.status}</Badge>
             </div>
@@ -2050,7 +2098,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                       <span className={`text-[11px] font-semibold flex items-center gap-1 ${present ? 'text-emerald-700' : 'text-slate-400'}`}>{present ? <CheckCircle2 size={12} /> : <XCircle size={12} />}{d.label}</span>
                       {present && src && (
                         <span className="flex items-center gap-1.5">
-                          <a href={src} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-indigo-600 hover:underline flex items-center gap-0.5"><Eye size={11} />View</a>
+                          <a href={src} target="_blank" rel="noreferrer" className="text-[10px] font-semibold text-brand-600 hover:underline flex items-center gap-0.5"><Eye size={11} />View</a>
                           <a href={src} download={fname} className="text-[10px] font-semibold text-slate-500 hover:underline flex items-center gap-0.5"><Download size={11} />Download</a>
                         </span>
                       )}
@@ -2096,13 +2144,13 @@ export const Employees: React.FC<EmployeesProps> = ({
       >
         {assignTemp && (
           <div className="space-y-5">
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-3 text-[11px] text-indigo-800">
+            <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3 text-[11px] text-brand-800">
               The employee completed their personal &amp; verification profile. As HR, assign the official employment details below — these are company-controlled and were not entered by the employee. Approving generates the permanent Employee ID and moves them to <strong>Active Employees</strong> (payroll, attendance &amp; leave then apply as for any active employee).
             </div>
 
             {/* Organization */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Building2 size={16} className="text-indigo-600" /> Organization</h3>
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Building2 size={16} className="text-brand-600" /> Organization</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Company</label>
@@ -2120,7 +2168,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {/* Employment */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-indigo-600" /> Employment</h3>
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-brand-600" /> Employment</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Select label="Employment Type" value={assignForm.employmentType} onChange={e => setAssignForm((f: any) => ({ ...f, employmentType: e.target.value }))}
                   options={['Permanent', 'Contract', 'Probation', 'Internship', 'Temporary'].map(s => ({ value: s, label: s }))} />
@@ -2135,7 +2183,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {/* Payroll */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><IndianRupee size={16} className="text-indigo-600" /> Payroll</h3>
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><IndianRupee size={16} className="text-brand-600" /> Payroll</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Input label="Monthly Salary (₹)" value={assignForm.salary} onChange={e => setAssignForm((f: any) => ({ ...f, salary: e.target.value.replace(/[^\d.]/g, '') }))} placeholder="e.g. 25000" />
                 <Input label="Basic Salary (₹)" value={assignForm.basicSalary} onChange={e => setAssignForm((f: any) => ({ ...f, basicSalary: e.target.value.replace(/[^\d.]/g, '') }))} />
@@ -2152,7 +2200,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {/* Attendance */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Clock size={16} className="text-indigo-600" /> Attendance &amp; Leave</h3>
+              <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Clock size={16} className="text-brand-600" /> Attendance &amp; Leave</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Input label="Shift" value={assignForm.shift} onChange={e => setAssignForm((f: any) => ({ ...f, shift: e.target.value }))} placeholder="e.g. General (9–6)" />
                 <Input label="Weekly Off" value={assignForm.weeklyOff} onChange={e => setAssignForm((f: any) => ({ ...f, weeklyOff: e.target.value }))} placeholder="e.g. Sunday" />
@@ -2178,7 +2226,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             )}
             {/* Upper Badge */}
             <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="h-10 w-10 rounded-full bg-blue-100 text-blue-800 font-bold flex items-center justify-center text-sm ring-2 ring-blue-200">
+              <div className="h-10 w-10 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-sm ring-2 ring-brand-200">
                 {viewEmp.avatar}
               </div>
               <div>
@@ -2192,14 +2240,14 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {/* Sub-Tabs Navigation */}
             <div className="flex border-b border-gray-200 gap-2.5 text-xs overflow-x-auto pb-1">
-              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Details</button>
-              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment Details</button>
-              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Payroll & Banking</button>
-              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Bonus</button>
-              <button onClick={() => setActiveTab('compliance')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'compliance' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance IDs</button>
-              <button onClick={() => setActiveTab('documents')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'documents' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
-              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Nominees</button>
-              <button onClick={() => setActiveTab('leaves')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'leaves' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>Leave History</button>
+              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Personal Details</button>
+              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Employment Details</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'banking' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Payroll & Banking</button>
+              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Bonus</button>
+              <button onClick={() => setActiveTab('compliance')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'compliance' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Compliance IDs</button>
+              <button onClick={() => setActiveTab('documents')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'documents' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Documents</button>
+              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'nominees' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Nominees</button>
+              <button onClick={() => setActiveTab('leaves')} className={`pb-1.5 font-bold whitespace-nowrap transition ${activeTab === 'leaves' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>Leave History</button>
             </div>
 
             {/* Nominees tab — dedicated nominee management (separate tables) */}
@@ -2424,7 +2472,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3 p-1">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   {/* Photo Card */}
-                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-brand-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Passport Photo</span>
@@ -2449,18 +2497,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.photoUpload ? (
                         <>
-                          <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
                           {canEdit && (
-                            <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                            <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
                         canEdit && (
-                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
@@ -2470,7 +2518,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* Aadhaar Card */}
-                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-brand-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Aadhaar Card</span>
@@ -2484,7 +2532,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         {viewEmp.aadhaarUpload ? (
                           <div className="text-center text-emerald-600 py-2">
                             <ShieldCheck size={20} className="mx-auto text-emerald-500" />
-                            <a href={viewEmp.aadhaarUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
+                            <a href={viewEmp.aadhaarUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-brand-600 hover:underline block mt-1">View Document PDF</a>
                           </div>
                         ) : (
                           <div className="text-center text-slate-500 py-2">
@@ -2498,18 +2546,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.aadhaarUpload ? (
                         <>
-                          <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
                           {canEdit && (
-                            <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                            <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
                         canEdit && (
-                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
@@ -2519,7 +2567,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* PAN Card */}
-                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-brand-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">PAN Card</span>
@@ -2533,7 +2581,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         {viewEmp.panUpload ? (
                           <div className="text-center text-emerald-600 py-2">
                             <ShieldCheck size={20} className="mx-auto text-emerald-500" />
-                            <a href={viewEmp.panUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-blue-600 hover:underline block mt-1">View Document PDF</a>
+                            <a href={viewEmp.panUpload} target="_blank" rel="noreferrer" className="text-[9px] font-bold text-brand-600 hover:underline block mt-1">View Document PDF</a>
                           </div>
                         ) : (
                           <div className="text-center text-slate-500 py-2">
@@ -2547,18 +2595,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.panUpload ? (
                         <>
-                          <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
                           {canEdit && (
-                            <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                            <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
                         canEdit && (
-                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
@@ -2568,7 +2616,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   </div>
 
                   {/* Signature Scan */}
-                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-blue-500/30 transition-all shadow-sm">
+                  <div className="bg-slate-900/20 border border-slate-700/50 rounded-xl p-3 flex flex-col justify-between hover:shadow-md hover:border-brand-500/30 transition-all shadow-sm">
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Signature</span>
@@ -2593,18 +2641,18 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="flex justify-between items-center gap-1.5 pt-2 border-t border-slate-700/50">
                       {viewEmp.signatureUpload ? (
                         <>
-                          <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                          <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
                           {canEdit && (
-                            <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-blue-500/50 text-slate-200 rounded text-[9px] font-bold transition">
+                            <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
                         canEdit && (
-                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
+                          <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
@@ -2620,7 +2668,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="space-y-3 p-1 font-sans">
                 <div className="flex items-center justify-between border-b border-slate-150 pb-2">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Absence Dossier Log</span>
-                  <span className="text-[9px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-bold font-mono">
+                  <span className="text-[9px] bg-brand-50 text-brand-700 px-2 py-0.5 rounded font-bold font-mono">
                     Total recorded: {empLeavesHistory.length}
                   </span>
                 </div>
@@ -2714,7 +2762,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       {/* Bulk Excel Import Dialog */}
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Enterprise Excel Importer" size="md">
         <div className="space-y-4 text-left text-xs font-sans">
-          <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-lg">
+          <div className="p-3 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg">
             <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">Excel Master Import Protocol</h4>
             <p className="mt-1 leading-relaxed">
               Drop your real employee master dataset (`.xlsx`) to parse all location sheets (AHMEDABAD, BHAVNAGAR, RAJKOT, SIDDHPUR) and synchronise them dynamically.
@@ -2729,7 +2777,7 @@ export const Employees: React.FC<EmployeesProps> = ({
             onDragLeave={() => setIsDragOver(false)}
             onDrop={handleExcelDrop}
             onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all shadow-sm ${isDragOver ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700/50 hover:border-blue-500/50 bg-slate-900/20 hover:bg-slate-800/40'
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all shadow-sm ${isDragOver ? 'border-brand-500 bg-brand-500/10' : 'border-slate-700/50 hover:border-brand-500/50 bg-slate-900/20 hover:bg-slate-800/40'
               }`}
           >
             <input type="file" ref={fileInputRef} onChange={handleExcelSelect} accept=".xlsx,.xls" className="hidden" />
@@ -2744,7 +2792,7 @@ export const Employees: React.FC<EmployeesProps> = ({
               <p className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">Parser execution logs:</p>
               <div className="bg-slate-900 text-slate-200 font-mono p-3 rounded text-[10px] max-h-36 overflow-y-auto leading-relaxed">
                 {importLogs.map((log, i) => (
-                  <p key={i} className="flex items-start gap-1"><ChevronRight size={10} className="mt-0.5 text-blue-400 shrink-0" /> {log}</p>
+                  <p key={i} className="flex items-start gap-1"><ChevronRight size={10} className="mt-0.5 text-brand-400 shrink-0" /> {log}</p>
                 ))}
               </div>
             </div>
@@ -2825,13 +2873,13 @@ export const Employees: React.FC<EmployeesProps> = ({
           )}
           {/* Tabs header in dialog */}
           <div className="flex border-b border-gray-200 gap-3 text-xs">
-            <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
-            <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
-            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
-            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
-            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
-            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
+            <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
+            <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
+            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
+            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
+            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
+            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
+            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
           </div>
 
           {/* Validation summary — lists this step's missing/invalid fields; click to jump */}
@@ -2883,7 +2931,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 ) : (
                   <div className="space-y-1">
                     {wizardNominees.map((n, i) => (
-                      <div key={i} className="flex items-center justify-between"><span className="text-slate-700">{n.fullName} <span className="text-slate-400">· {n.relationship}</span></span><strong className="text-indigo-600">{Number(n.percentage)}%</strong></div>
+                      <div key={i} className="flex items-center justify-between"><span className="text-slate-700">{n.fullName} <span className="text-slate-400">· {n.relationship}</span></span><strong className="text-brand-600">{Number(n.percentage)}%</strong></div>
                     ))}
                     <div className="flex items-center justify-between pt-1 mt-1 border-t border-slate-200"><span className="font-bold text-slate-600">Total allocation</span><strong className={wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0) === 100 ? 'text-emerald-600' : 'text-amber-600'}>{wizardNominees.reduce((s, n) => s + Number(n.percentage || 0), 0)}%</strong></div>
                   </div>
@@ -2900,11 +2948,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <label className="block text-[11px] font-bold text-gray-600 mb-1">Employee Code *</label>
                   <div className="flex gap-2 mb-1.5">
                     <button type="button" onClick={() => setForm({ ...form, codeMode: 'auto', employeeId: '[ Auto Generated ]' })}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'auto' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'auto' ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                       Auto Generate
                     </button>
                     <button type="button" onClick={() => setForm({ ...form, codeMode: 'custom', employeeId: '' })}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'custom' ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition ${form.codeMode === 'custom' ? 'bg-brand-600 border-brand-600 text-white' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                       Custom Code
                     </button>
                   </div>
@@ -3044,12 +3092,12 @@ export const Employees: React.FC<EmployeesProps> = ({
         {editEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
             <div className="flex border-b border-gray-200 gap-3 text-xs">
-              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
-              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
-              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
-              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
-              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
+              <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
+              <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
+              <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
+              <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
+              <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
+              <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
             </div>
 
             {activeTab === 'nominees' && (
@@ -3223,8 +3271,8 @@ export const Employees: React.FC<EmployeesProps> = ({
                   const isActive = wizardStep === step.id;
                   const isPast = wizardStep > step.id;
                   return (
-                    <li key={step.id} className={`flex items-center gap-3 text-sm font-medium ${isActive ? 'text-blue-600' : isPast ? 'text-emerald-600' : 'text-slate-400'}`}>
-                      <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${isActive ? 'border-blue-600 bg-blue-50' : isPast ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <li key={step.id} className={`flex items-center gap-3 text-sm font-medium ${isActive ? 'text-brand-600' : isPast ? 'text-emerald-600' : 'text-slate-400'}`}>
+                      <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${isActive ? 'border-brand-600 bg-brand-50' : isPast ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
                         {isPast ? <CheckCircle2 size={16} /> : step.icon}
                       </div>
                       {step.label}
@@ -3262,9 +3310,9 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-slate-800">Access Revocation</h3>
                   <p className="text-sm text-slate-500">Revoke system access, biometric attendance, and workspace emails.</p>
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-                    <Lock className="text-blue-500 shrink-0 mt-0.5" size={20} />
-                    <p className="text-sm text-blue-800 font-medium">System login and active attendance will be disabled.</p>
+                  <div className="bg-brand-50 border border-brand-200 rounded-lg p-4 flex items-start gap-3">
+                    <Lock className="text-brand-500 shrink-0 mt-0.5" size={20} />
+                    <p className="text-sm text-brand-800 font-medium">System login and active attendance will be disabled.</p>
                   </div>
                   <Button onClick={() => handleWizardStepComplete(3)} className="w-full mt-4" icon={<CheckCircle2 size={16} />}>Revoke Access</Button>
                 </div>
@@ -3277,7 +3325,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <label className="text-sm font-medium text-slate-700">HR Remarks</label>
                     <textarea className="w-full mt-2 border border-slate-200 rounded-md p-2 text-sm" rows={3} placeholder="Optional remarks..."></textarea>
                   </div>
-                  <Button onClick={() => handleWizardStepComplete(4)} className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white border-0" icon={<CheckCircle2 size={16} />}>Approve Final Sign-off</Button>
+                  <Button onClick={() => handleWizardStepComplete(4)} className="w-full mt-4 bg-brand-600 hover:bg-brand-700 text-white border-0" icon={<CheckCircle2 size={16} />}>Approve Final Sign-off</Button>
                 </div>
               )}
               {wizardStep === 5 && (

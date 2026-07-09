@@ -1,3 +1,5 @@
+import { resolveActiveWorkspace } from '@/types';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BrandingService — the SINGLE source of truth for company branding assets.
 //
@@ -97,6 +99,57 @@ export function resolveBranding(source: BrandingSource): Branding {
     hasReportHeader: !!reportHeader,
     hasReportFooter: !!reportFooter,
     hasWatermark: !!(watermarkImage || watermarkText),
+  };
+}
+
+/** Shown when a company record carries no usable name. */
+export const UNNAMED_COMPANY = 'Unnamed Company';
+
+export interface WorkspaceBranding {
+  /** Display name of the owning company (never empty). */
+  name: string;
+  /** Logo data-URI/URL, or '' when the company has not uploaded one. */
+  logo: string;
+  hasLogo: boolean;
+  primaryColor: string;
+  /** The branch's own name when the active workspace is a branch, else ''. */
+  branchName: string;
+}
+
+/**
+ * Branding for whatever workspace is active, resolved to the OWNING COMPANY.
+ *
+ * Branch ids overlap company ids, so the workspace has to be resolved by kind
+ * before we can look up its parent. A branch inherits its parent's logo/name
+ * unless it carries its own logo — the sidebar is company-level chrome, and the
+ * branch is already named in the workspace switcher.
+ *
+ * Single source of truth for the sidebar and the topbar; do not re-derive.
+ */
+export function resolveWorkspaceBranding(
+  companies: any[] | undefined,
+  activeCompanyId: any,
+): WorkspaceBranding {
+  const list = companies || [];
+  const ws = resolveActiveWorkspace(list, activeCompanyId) || list.find(c => String(c.id) === String(activeCompanyId));
+
+  const parent = ws?.parentCompanyId
+    ? list.find(c => String(c.id) === String(ws.parentCompanyId))
+    : null;
+
+  const company = parent || ws;
+  const b = resolveBranding(company);
+
+  return {
+    // `name` before `headerText`: headerText is a document-letterhead override
+    // (often the long legal name) and would make the sidebar disagree with the
+    // workspace switcher, which shows `name`.
+    name: (b.companyName || b.headerText || '').trim() || UNNAMED_COMPANY,
+    // A branch may override the parent's logo; otherwise inherit it.
+    logo: resolveBranding(ws).logo || b.logo,
+    hasLogo: !!(resolveBranding(ws).logo || b.logo),
+    primaryColor: b.primaryColor,
+    branchName: parent ? String(ws?.name || '') : '',
   };
 }
 

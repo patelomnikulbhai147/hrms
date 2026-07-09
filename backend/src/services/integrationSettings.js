@@ -13,13 +13,33 @@ const FILE = path.join(DATA_DIR, 'integrations.json');
 
 const DEFAULTS = {
   googleMaps: { apiKey: '', status: 'not_configured', lastVerified: null },
+  security: {
+    captchaEnabled: true,
+    // true  → CAPTCHA on every login attempt.
+    // false → CAPTCHA appears only after `failedAttemptsLimit` failures.
+    // Toggle in Settings → Security.
+    alwaysEnabled: true,
+    failedAttemptsLimit: 3,
+    lockoutLimit: 5,
+    lockoutDuration: 10, // minutes
+    captchaType: 'internal', // 'google_v2' | 'google_v3' | 'internal'
+    googleV2SiteKey: '',
+    googleV2SecretKey: '',
+    googleV3SiteKey: '',
+    googleV3SecretKey: ''
+  }
 };
 
 function readAll() {
   try {
     const raw = fs.readFileSync(FILE, 'utf8');
     const parsed = JSON.parse(raw);
-    return { ...DEFAULTS, ...parsed, googleMaps: { ...DEFAULTS.googleMaps, ...(parsed.googleMaps || {}) } };
+    return {
+      ...DEFAULTS,
+      ...parsed,
+      googleMaps: { ...DEFAULTS.googleMaps, ...(parsed.googleMaps || {}) },
+      security: { ...DEFAULTS.security, ...(parsed.security || {}) }
+    };
   } catch (_) {
     return JSON.parse(JSON.stringify(DEFAULTS));
   }
@@ -62,6 +82,23 @@ function setGoogleMaps({ apiKey, status, lastVerified }) {
   return getGoogleMaps();
 }
 
+// ── Security Settings (CAPTCHA & Lockout) ───────────────────────────────────
+function getSecuritySettings() {
+  const all = readAll();
+  return all.security || DEFAULTS.security;
+}
+
+function setSecuritySettings(settings) {
+  const all = readAll();
+  all.security = {
+    ...DEFAULTS.security,
+    ...(all.security || {}),
+    ...settings
+  };
+  writeAll(all);
+  return all.security;
+}
+
 // First 4 + last 4 characters, middle masked — safe to show an administrator.
 function maskKey(key) {
   const k = String(key || '');
@@ -70,4 +107,10 @@ function maskKey(key) {
   return `${k.slice(0, 4)}••••••${k.slice(-4)}`;
 }
 
-module.exports = { getGoogleMaps, setGoogleMaps, maskKey };
+module.exports = {
+  getGoogleMaps,
+  setGoogleMaps,
+  getSecuritySettings,
+  setSecuritySettings,
+  maskKey
+};

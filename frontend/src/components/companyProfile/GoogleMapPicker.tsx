@@ -316,7 +316,7 @@ export const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({ open, onClose,
                   onChange={e => { setFallbackUrl(e.target.value); setFallbackError(''); }}
                   onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); fetchFromUrl(); } }}
                   placeholder="https://maps.google.com/..."
-                  className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#4F7CFF] focus:ring-2 focus:ring-[#4F7CFF]/10"
+                  className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6C3CF0] focus:ring-2 focus:ring-[#6C3CF0]/10"
                 />
               </div>
               <Button size="sm" onClick={fetchFromUrl} loading={fetching} disabled={fetching || !fallbackUrl.trim()} icon={<Search size={14} />}>
@@ -340,11 +340,11 @@ export const GoogleMapPicker: React.FC<GoogleMapPickerProps> = ({ open, onClose,
                 placeholder="Search a company, address, landmark, building or PIN code…"
                 defaultValue=""
                 disabled={status !== 'ready'}
-                className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#4F7CFF] focus:ring-2 focus:ring-[#4F7CFF]/10 disabled:bg-slate-50"
+                className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 py-2.5 text-sm text-slate-800 outline-none focus:border-[#6C3CF0] focus:ring-2 focus:ring-[#6C3CF0]/10 disabled:bg-slate-50"
               />
             </div>
             <button type="button" onClick={useCurrentLocation} disabled={status !== 'ready'}
-              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:text-[#4F7CFF] hover:border-[#4F7CFF]/40 disabled:opacity-40 disabled:cursor-not-allowed transition">
+              className="shrink-0 inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:text-[#6C3CF0] hover:border-[#6C3CF0]/40 disabled:opacity-40 disabled:cursor-not-allowed transition">
               <LocateFixed size={15} /> Current
             </button>
           </div>

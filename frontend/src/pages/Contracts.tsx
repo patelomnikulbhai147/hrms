@@ -207,10 +207,10 @@ const ContractsOverview: React.FC<{
   return (
     <div className="space-y-6">
       {/* Simplified Filters Section */}
-      <Card className="p-5 bg-white border border-[#DBEAFE] rounded-[14px] shadow-sm">
+      <Card className="p-5 bg-white border border-[#E6E0FE] rounded-[14px] shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <Filter size={16} className="text-indigo-600" />
+            <Filter size={16} className="text-brand-600" />
             <h3 className="text-sm font-bold text-slate-800">Overview Filtering</h3>
           </div>
           <div className="flex items-center gap-2">
@@ -235,8 +235,8 @@ const ContractsOverview: React.FC<{
       </Card>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#DBEAFE] rounded-[14px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+        <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#E6E0FE] rounded-[14px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-2"></div>
           <p className="text-sm text-slate-500 font-semibold">Loading platform contract intelligence...</p>
         </div>
       ) : (
@@ -247,7 +247,7 @@ const ContractsOverview: React.FC<{
             <div>
               <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Company Insights</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPI label="Total Companies" value={stats.totalCompanies} tone="border-indigo-100 text-indigo-700 hover:border-indigo-300" icon={Building2} />
+                <KPI label="Total Companies" value={stats.totalCompanies} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={Building2} />
                 <KPI label="Companies Having Contracts" value={stats.companiesHaving} tone="border-emerald-100 text-emerald-700 hover:border-emerald-300" icon={CheckCircle2} />
                 <KPI label="Companies Without Contracts" value={stats.companiesWithout} tone="border-rose-100 text-rose-700 hover:border-rose-300" icon={AlertTriangle} />
               </div>
@@ -257,15 +257,15 @@ const ContractsOverview: React.FC<{
             <div>
               <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Contract Pipeline</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPI label="Total Contracts" value={stats.totalContracts} tone="border-indigo-100 text-indigo-700 hover:border-indigo-300" icon={FileSignature} />
-                <KPI label="Active Contracts" value={stats.activeContracts} tone="border-sky-100 text-sky-700 hover:border-sky-300" icon={TrendingUp} />
+                <KPI label="Total Contracts" value={stats.totalContracts} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={FileSignature} />
+                <KPI label="Active Contracts" value={stats.activeContracts} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={TrendingUp} />
                 <KPI label="Running Contracts" value={stats.runningContracts} tone="border-emerald-100 text-emerald-700 hover:border-emerald-300" icon={CheckCircle2} />
               </div>
             </div>
           </div>
 
           {/* Company-wise Simplified Summary Table */}
-          <Card className="p-5 bg-white border border-[#DBEAFE] rounded-[14px] shadow-sm">
+          <Card className="p-5 bg-white border border-[#E6E0FE] rounded-[14px] shadow-sm">
             <div className="border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-sm font-extrabold text-slate-800">Company-wise Contract Performance</h3>
               <p className="text-xs text-slate-400 mt-0.5">Click any company to enter masquerade mode and manage its specific contracts, sites, and deployments.</p>
@@ -285,7 +285,7 @@ const ContractsOverview: React.FC<{
                 </Thead>
                 <Tbody>
                   {companySummary.map(comp => (
-                    <Tr key={comp.id} className="hover:bg-indigo-50/20 cursor-pointer" onClick={() => handleCompanyClick(comp.id)}>
+                    <Tr key={comp.id} className="hover:bg-brand-50/20 cursor-pointer" onClick={() => handleCompanyClick(comp.id)}>
                       <Td className="font-semibold text-slate-800 flex items-center gap-2 py-3.5">
                         <Building2 size={13} className="text-slate-400" />
                         {comp.name}
@@ -295,7 +295,7 @@ const ContractsOverview: React.FC<{
                       <Td><Badge variant="green">{comp.running}</Badge></Td>
                       <Td className="text-xs text-slate-400">{comp.lastUpdated ? formatDate(comp.lastUpdated) : '—'}</Td>
                       <Td className="text-right">
-                        <button className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center gap-1.5 ml-auto shadow-sm transition-colors">
+                        <button className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg flex items-center gap-1.5 ml-auto shadow-sm transition-colors">
                           Open Company <ArrowRight size={10} />
                         </button>
                       </Td>
@@ -359,10 +359,10 @@ export const Contracts: React.FC<ContractsProps> = ({
   return (
     <div className="space-y-4">
       {/* Custom Title Card */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-5 py-4 flex justify-between items-center">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm px-5 py-4 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <FileSignature size={18} className="text-indigo-600" />
+            <FileSignature size={18} className="text-brand-600" />
             {isSuperAdmin ? 'Contract Overview' : 'Contract Management'}
           </h2>
           <p className="text-xs text-slate-500">
@@ -381,10 +381,10 @@ export const Contracts: React.FC<ContractsProps> = ({
       ) : (
         <>
           {/* Tabs header */}
-          <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm flex flex-wrap gap-1 px-3 py-2">
+          <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm flex flex-wrap gap-1 px-3 py-2">
             {TABS.map(s => (
               <button key={s.id} onClick={() => setTab(s.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === s.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{s.icon}{s.label}</button>
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === s.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{s.icon}{s.label}</button>
             ))}
           </div>
 
@@ -396,10 +396,10 @@ export const Contracts: React.FC<ContractsProps> = ({
                 <KPI label="Expiring Contracts" value={kpis.expiring} tone="border-amber-200 bg-gradient-to-br from-amber-50 to-white text-amber-700" />
                 <KPI label="Expired Contracts" value={kpis.expired} tone="border-rose-200 bg-gradient-to-br from-rose-50 to-white text-rose-700" />
                 <KPI label="Closed Contracts" value={kpis.closed} tone="border-slate-200 bg-gradient-to-br from-slate-50 to-white text-slate-600" />
-                <KPI label="Total Contract Value" value={`₹${kpis.totalValue.toLocaleString('en-IN')}`} tone="border-indigo-200 bg-gradient-to-br from-indigo-50 to-white text-indigo-700" />
-                <KPI label="Active Sites" value={kpis.activeSites} tone="border-sky-200 bg-gradient-to-br from-sky-50 to-white text-sky-700" />
+                <KPI label="Total Contract Value" value={`₹${kpis.totalValue.toLocaleString('en-IN')}`} tone="border-brand-200 bg-gradient-to-br from-brand-50 to-white text-brand-700" />
+                <KPI label="Active Sites" value={kpis.activeSites} tone="border-brand-200 bg-gradient-to-br from-brand-50 to-white text-brand-700" />
               </div>
-              <div className="bg-white rounded-xl border border-[#DBEAFE] p-4">
+              <div className="bg-white rounded-xl border border-[#E6E0FE] p-4">
                 <p className="text-sm font-bold text-slate-800 mb-2">Execution Lifecycle</p>
                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
                   {['Contract', 'Sites', 'Deploy', 'Attendance', 'Payroll', 'Renew / Close'].map((s, i, a) => (

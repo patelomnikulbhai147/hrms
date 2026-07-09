@@ -49,7 +49,7 @@ const Toggle: React.FC<{ checked: boolean; onChange: (v: boolean) => void; disab
 const themeOf = (t: any) => { try { const l = typeof t?.layout === 'string' ? JSON.parse(t.layout) : t?.layout; return (l && l.theme) || {}; } catch { return {}; } };
 const Swatch: React.FC<{ t: any }> = ({ t }) => {
   const th = themeOf(t);
-  return <span className="inline-flex h-5 w-8 items-center justify-center rounded text-[11px]" style={{ background: th.background || 'linear-gradient(135deg,#e2e8f0,#cbd5e1)', color: th.text || '#1e293b' }}>{th.emoji || '🎉'}</span>;
+  return <span className="inline-flex h-5 w-8 items-center justify-center rounded text-[11px]" style={{ background: th.background || 'linear-gradient(135deg,#e5e7eb,#d1d5db)', color: th.text || '#1e293b' }}>{th.emoji || '🎉'}</span>;
 };
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -69,7 +69,7 @@ export const CommunicationHealthCard: React.FC<{ onConfigure?: () => void }> = (
   return (
     <div className={`rounded-2xl border bg-white p-4 ${healthy === false ? 'border-rose-200' : 'border-slate-200'}`}>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#4F7CFF]" /> Communication Health</h3>
+        <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#6C3CF0]" /> Communication Health</h3>
         {!loading && (healthy ? <Badge variant="green">All configured</Badge> : <Badge variant="red">Action needed</Badge>)}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -79,7 +79,7 @@ export const CommunicationHealthCard: React.FC<{ onConfigure?: () => void }> = (
         <Item label="Automation Disabled" value={h?.automationDisabled ?? 0} tone="text-slate-500" />
         <Item label="WhatsApp" value={h?.whatsappConnected ? 'Connected' : 'Not Connected'} tone={h?.whatsappConnected ? 'text-emerald-600' : 'text-rose-600'} />
         <Item label="Email" value={h?.emailConnected ? 'Connected' : 'Not Connected'} tone={h?.emailConnected ? 'text-emerald-600' : 'text-slate-500'} />
-        <Item label="Upcoming Events" value={h?.upcomingEvents ?? 0} tone="text-indigo-600" />
+        <Item label="Upcoming Events" value={h?.upcomingEvents ?? 0} tone="text-brand-600" />
         <Item label="Events Covered" value={`${(h?.automationEnabled ?? 0)}/${h?.totalEvents ?? 15}`} />
       </div>
       {!loading && (h?.missingTemplates ?? 0) > 0 && (
@@ -168,7 +168,7 @@ export const EventMappingTab: React.FC = () => {
         </div>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500" title="WhatsApp channel"><MessageCircle size={13} className="text-emerald-600" /><Toggle checked={m.whatsappEnabled ?? true} disabled={!editable || busy} onChange={(v) => save(eventKey, { whatsappEnabled: v }, festivalKey)} /></label>
-          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500" title="Email channel"><Mail size={13} className="text-blue-600" /><Toggle checked={!!m.emailEnabled} disabled={!editable || busy} onChange={(v) => save(eventKey, { emailEnabled: v }, festivalKey)} /></label>
+          <label className="flex items-center gap-1 text-[11px] font-semibold text-slate-500" title="Email channel"><Mail size={13} className="text-brand-600" /><Toggle checked={!!m.emailEnabled} disabled={!editable || busy} onChange={(v) => save(eventKey, { emailEnabled: v }, festivalKey)} /></label>
           <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600" title="Automation on/off"><span>{m.enabled ? 'On' : 'Off'}</span><Toggle checked={!!m.enabled} disabled={!editable || busy} onChange={(v) => save(eventKey, { enabled: v }, festivalKey)} /></label>
         </div>
       </div>
@@ -179,8 +179,8 @@ export const EventMappingTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
-        <p className="flex items-center gap-2 text-xs font-bold text-violet-800"><Sparkles size={16} /> Choose ONE template per event, once. Enabled events send automatically through your existing WhatsApp automation — no manual template picking, ever.</p>
+      <div className="rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-bold text-brand-800"><Sparkles size={16} /> Choose ONE template per event, once. Enabled events send automatically through your existing WhatsApp automation — no manual template picking, ever.</p>
       </div>
 
       {issues.length > 0 ? (
@@ -260,14 +260,14 @@ export const MasterLibraryTab: React.FC = () => {
     const already = copiedMasterIds.has(m.id);
     return (
       <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <div className="flex h-20 items-center justify-center text-2xl" style={{ background: th.background || 'linear-gradient(135deg,#eef2ff,#e2e8f0)', color: th.text || '#1e293b' }}>{th.emoji || '🎉'}</div>
+        <div className="flex h-20 items-center justify-center text-2xl" style={{ background: th.background || 'linear-gradient(135deg,#eef2ff,#e5e7eb)', color: th.text || '#1e293b' }}>{th.emoji || '🎉'}</div>
         <div className="flex flex-1 flex-col gap-1 p-2.5">
           <div className="text-xs font-bold text-slate-800 line-clamp-1">{m.title}</div>
           <div className="flex items-center gap-1"><Badge variant="gray">{m.category}</Badge>{m.festivalKey && <Badge variant="amber">{m.festivalKey}</Badge>}</div>
           <div className="mt-auto pt-1.5">
             {already
               ? <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600"><CheckCircle2 size={13} /> In your library</span>
-              : <button disabled={!editable || busy === m.id} onClick={() => copy(m)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#4F7CFF] px-2 py-1 text-[11px] font-bold text-[#4F7CFF] hover:bg-blue-50 disabled:opacity-50"><Copy size={12} /> {busy === m.id ? 'Copying…' : 'Copy to my library'}</button>}
+              : <button disabled={!editable || busy === m.id} onClick={() => copy(m)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#6C3CF0] px-2 py-1 text-[11px] font-bold text-[#6C3CF0] hover:bg-brand-50 disabled:opacity-50"><Copy size={12} /> {busy === m.id ? 'Copying…' : 'Copy to my library'}</button>}
           </div>
         </div>
       </div>
@@ -278,8 +278,8 @@ export const MasterLibraryTab: React.FC = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-xs font-bold">
-          <button onClick={() => setView('master')} className={`rounded-lg px-3 py-1.5 ${view === 'master' ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500'}`}>Master Library ({masters.length})</button>
-          <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 ${view === 'mine' ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500'}`}>My Templates ({mine.length})</button>
+          <button onClick={() => setView('master')} className={`rounded-lg px-3 py-1.5 ${view === 'master' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>Master Library ({masters.length})</button>
+          <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 ${view === 'mine' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>My Templates ({mine.length})</button>
         </div>
         {view === 'master' && (
           <div className="flex flex-wrap items-center gap-2">

@@ -60,7 +60,72 @@ exports.getEmployees = async (req, res) => {
       whereClause.status = { notIn: OFFBOARDED_STATUSES };
     }
 
-    const employees = await prisma.employee.findMany({ where: whereClause });
+    // Pagination & Filters (Server-Side)
+    const { page, limit, search, department, status, branch, sortField, sortOrder, tab } = req.query;
+    
+    // Frontend isOffboarded includes 'Archived', 'Resigned', 'Terminated', 'Inactive', 'Offboarded'
+    if (tab === 'active') {
+      whereClause.status = { notIn: OFFBOARDED_STATUSES };
+    } else if (tab === 'previous') {
+      whereClause.status = { in: OFFBOARDED_STATUSES };
+    }
+    
+    if (search) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        OR: [
+          { name: { contains: search } },
+          { employeeId: { contains: search } },
+          { designation: { contains: search } }
+        ]
+      });
+    }
+    
+    if (department) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        OR: [
+          { department: department },
+          { designation: department }
+        ]
+      });
+    }
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    if (branch) {
+      whereClause.branchLocation = branch;
+    }
+
+    let orderBy = {};
+    if (sortField) {
+      orderBy[sortField] = sortOrder === 'desc' ? 'desc' : 'asc';
+    } else {
+      orderBy = { employeeId: 'asc' };
+    }
+
+    if (page && limit) {
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const [employees, total] = await Promise.all([
+        prisma.employee.findMany({ where: whereClause, skip, take: limitNum, orderBy }),
+        prisma.employee.count({ where: whereClause })
+      ]);
+
+      return res.json({
+        data: employees,
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      });
+    }
+
+    const employees = await prisma.employee.findMany({ where: whereClause, orderBy });
     res.json(employees);
   } catch (error) {
     return respondError(res, error);

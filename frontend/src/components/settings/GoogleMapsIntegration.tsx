@@ -85,7 +85,7 @@ export const GoogleMapsIntegration: React.FC = () => {
     <Card>
       <div className="p-6">
         <div className="flex items-start gap-4">
-          <div className="w-11 h-11 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+          <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
             <MapPin size={22} />
           </div>
           <div className="flex-1 min-w-0">
@@ -130,7 +130,7 @@ export const GoogleMapsIntegration: React.FC = () => {
                     onChange={e => setApiKey(e.target.value)}
                     placeholder={cfg?.configured ? 'Enter a new key to replace the existing one' : 'Paste the Google Maps API key'}
                     autoComplete="off"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10"
                   />
                 </div>
 

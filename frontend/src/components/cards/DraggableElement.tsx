@@ -19,7 +19,7 @@ type Handle = 'move' | 'rotate' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 
 
 const HANDLE: React.CSSProperties = {
   position: 'absolute', width: 10, height: 10, background: '#fff',
-  border: '1.5px solid #4F7CFF', borderRadius: 2, zIndex: 5,
+  border: '1.5px solid #6C3CF0', borderRadius: 2, zIndex: 5,
 };
 
 export const DraggableElement: React.FC<Props> = ({ el, scale, selected, onSelect, onChange, children }) => {
@@ -71,7 +71,7 @@ export const DraggableElement: React.FC<Props> = ({ el, scale, selected, onSelec
       style={{
         position: 'absolute', left: el.x, top: el.y, width: el.w, height: el.h,
         transform: `rotate(${el.rotation || 0}deg)`, transformOrigin: 'center center',
-        cursor: 'move', outline: selected ? '1.5px solid #4F7CFF' : '1px dashed rgba(79,124,255,0.35)',
+        cursor: 'move', outline: selected ? '1.5px solid #6C3CF0' : '1px dashed rgba(79,124,255,0.35)',
         outlineOffset: 1, boxSizing: 'border-box',
       }}
     >
@@ -87,8 +87,8 @@ export const DraggableElement: React.FC<Props> = ({ el, scale, selected, onSelec
           <div onPointerDown={(e) => begin('e', e)} style={corner('e', { right: -5, top: '50%', marginTop: -5 })} />
           <div onPointerDown={(e) => begin('w', e)} style={corner('w', { left: -5, top: '50%', marginTop: -5 })} />
           <div onPointerDown={(e) => begin('rotate', e)}
-            style={{ position: 'absolute', left: '50%', marginLeft: -6, top: -26, width: 12, height: 12, borderRadius: '50%', background: '#4F7CFF', border: '2px solid #fff', cursor: 'grab', zIndex: 6 }} />
-          <div style={{ position: 'absolute', left: '50%', top: -14, width: 1, height: 14, background: '#4F7CFF' }} />
+            style={{ position: 'absolute', left: '50%', marginLeft: -6, top: -26, width: 12, height: 12, borderRadius: '50%', background: '#6C3CF0', border: '2px solid #fff', cursor: 'grab', zIndex: 6 }} />
+          <div style={{ position: 'absolute', left: '50%', top: -14, width: 1, height: 14, background: '#6C3CF0' }} />
         </>
       )}
     </div>

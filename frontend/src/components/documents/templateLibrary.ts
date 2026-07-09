@@ -39,13 +39,13 @@ export interface DocTemplate {
 export const DOC_LIBRARY_VERSION = 2;
 
 // 8 distinct brand themes (colour per variant index).
-const PALETTE = ['#4f46e5', '#2563eb', '#0d9488', '#059669', '#7c3aed', '#db2777', '#d97706', '#0f766e'];
+const PALETTE = ['#5b2de6', '#2563eb', '#0d9488', '#059669', '#7c3aed', '#db2777', '#d97706', '#0f766e'];
 // Generic 8-style naming used for categories the spec didn't name explicitly.
 const GENERIC_STYLES = ['Standard', 'Professional', 'Executive', 'Corporate', 'Formal', 'Modern', 'Premium', 'Enterprise'];
 
 // Exact placeholder-span markup the editor/compiler already understands.
 const tok = (key: string, label: string) =>
-  `<span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="${key}" contenteditable="false">👤 ${label}</span>`;
+  `<span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-brand-50 border border-brand-200 text-brand-700 select-none" data-token="${key}" contenteditable="false">👤 ${label}</span>`;
 
 const NAME = tok('employee_name', 'Employee Name');
 const DESIG = tok('designation', 'Designation');

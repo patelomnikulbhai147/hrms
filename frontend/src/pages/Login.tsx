@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { User, Lock, Mail, Eye, EyeOff, ShieldCheck, Users, Building2, BarChart3, Shield, KeyRound } from 'lucide-react';
+import { User, Lock, Mail, Eye, EyeOff, ShieldCheck, Users, Building2, BarChart3, Shield, KeyRound, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Company } from '@/data/mockData';
 import { api } from '@/api/apiClient';
 import { authStorage } from '@/utils/authStorage';
 import { validateEmail } from '@/utils/validation';
+import { ZeniaLogo } from '@/components/brand/ZeniaLogo';
 
 export interface ModulePermissions {
   // Canonical 3-action model surfaced in the permission matrix.
@@ -65,6 +66,14 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   const [devOtp, setDevOtp] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Security CAPTCHA & Lockout States
+  const [captchaInfo, setCaptchaInfo] = useState<any>(null);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaSvg, setCaptchaSvg] = useState('');
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [recaptchaWidgetId, setRecaptchaWidgetId] = useState<any>(null);
+
   const resetForgotFlow = () => {
     setForgotStep('email');
     setForgotEmail('');
@@ -75,9 +84,113 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
     setError('');
   };
 
+  const loadInternalCaptcha = async () => {
+    try {
+      const res = await api.auth.getInternalCaptcha();
+      setCaptchaId(res.captchaId);
+      setCaptchaSvg(res.captchaSvg);
+      setCaptchaAnswer('');
+    } catch (err) {
+      console.error('Failed to load internal CAPTCHA:', err);
+    }
+  };
+
+  const loadGoogleRecaptcha = (info: any) => {
+    const siteKey = info.captchaType === 'google_v2' ? info.googleV2SiteKey : info.googleV3SiteKey;
+    if (!siteKey) return;
+
+    if (info.captchaType === 'google_v3') {
+      const id = 'recaptcha-v3-script';
+      if (!document.getElementById(id)) {
+        const script = document.createElement('script');
+        script.id = id;
+        script.src = `https://www.google.com/recaptcha/api.js?render=${siteKey}`;
+        script.async = true;
+        script.defer = true;
+        document.body.appendChild(script);
+      }
+    } else {
+      const id = 'recaptcha-v2-script';
+      if (!document.getElementById(id)) {
+        const script = document.createElement('script');
+        script.id = id;
+        script.src = `https://www.google.com/recaptcha/api.js?onload=onRecaptchaLoadCallback&render=explicit`;
+        script.async = true;
+        script.defer = true;
+        (window as any).onRecaptchaLoadCallback = () => {
+          renderRecaptchaV2(siteKey);
+        };
+        document.body.appendChild(script);
+      } else if ((window as any).grecaptcha) {
+        renderRecaptchaV2(siteKey);
+      }
+    }
+  };
+
+  const renderRecaptchaV2 = (siteKey: string) => {
+    setTimeout(() => {
+      const container = document.getElementById('recaptcha-v2-container');
+      if (container && (window as any).grecaptcha) {
+        try {
+          if (recaptchaWidgetId !== null) {
+            (window as any).grecaptcha.reset(recaptchaWidgetId);
+          } else {
+            const widgetId = (window as any).grecaptcha.render('recaptcha-v2-container', {
+              sitekey: siteKey,
+              callback: (token: string) => {
+                setCaptchaToken(token);
+              },
+              'expired-callback': () => {
+                setCaptchaToken('');
+              }
+            });
+            setRecaptchaWidgetId(widgetId);
+          }
+        } catch (e) {
+          console.warn('reCAPTCHA render exception:', e);
+        }
+      }
+    }, 300);
+  };
+
+  // `forceNew` regenerates the image even if one is already on screen. Pass it
+  // after a failed login (the server consumes each captchaId once), but not on
+  // email blur — that would wipe a CAPTCHA the user has already typed.
+  const checkCaptchaStatus = async (emailAddress: string, forceNew = false) => {
+    try {
+      const info = await api.auth.getCaptchaStatus({ email: emailAddress.trim() });
+      setCaptchaInfo(info);
+
+      if (info.lockedOut) {
+        setError(`Too many failed login attempts. Please try again after 10 minutes.`);
+      } else {
+        if (error.includes('Too many failed login attempts')) {
+          setError('');
+        }
+
+        if (info.captchaRequired) {
+          if (info.captchaType === 'internal') {
+            if (forceNew || !captchaId) loadInternalCaptcha();
+          } else {
+            loadGoogleRecaptcha(info);
+          }
+        } else {
+          setCaptchaAnswer('');
+          setCaptchaId('');
+          setCaptchaSvg('');
+          setCaptchaToken('');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check CAPTCHA status:', err);
+    }
+  };
+
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'light');
     localStorage.setItem('hrms_theme', 'light');
+    // Query default captcha status on mount (alwaysEnabled check)
+    checkCaptchaStatus('');
   }, []);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -92,10 +205,50 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
       return;
     }
 
+    if (captchaInfo?.lockedOut) {
+      setError(`Too many failed login attempts. Please try again after 10 minutes.`);
+      return;
+    }
+
+    let captchaTokenToSend = captchaToken;
+
+    if (captchaInfo?.captchaRequired) {
+      if (captchaInfo.captchaType === 'internal') {
+        if (!captchaAnswer.trim()) {
+          setError('Please enter the CAPTCHA code.');
+          return;
+        }
+      } else if (captchaInfo.captchaType === 'google_v2') {
+        if (!captchaToken) {
+          setError('Please complete the CAPTCHA verification.');
+          return;
+        }
+      } else if (captchaInfo.captchaType === 'google_v3') {
+        const siteKey = captchaInfo.googleV3SiteKey;
+        if (siteKey && (window as any).grecaptcha) {
+          try {
+            captchaTokenToSend = await (window as any).grecaptcha.execute(siteKey, { action: 'login' });
+          } catch (e) {
+            setError('Google reCAPTCHA verification failed. Please try again.');
+            return;
+          }
+        } else {
+          setError('Google reCAPTCHA is loading. Please wait a moment.');
+          return;
+        }
+      }
+    }
+
     setSubmitting(true);
 
     try {
-      const response = await api.auth.login({ email: trimmedEmail, password });
+      const response = await api.auth.login({
+        email: trimmedEmail,
+        password,
+        captchaAnswer: captchaInfo?.captchaRequired && captchaInfo.captchaType === 'internal' ? captchaAnswer : undefined,
+        captchaId: captchaInfo?.captchaRequired && captchaInfo.captchaType === 'internal' ? captchaId : undefined,
+        captchaToken: captchaInfo?.captchaRequired && captchaInfo.captchaType !== 'internal' ? captchaTokenToSend : undefined
+      });
 
       if (!response || !response.token || !response.user) {
         setError('Login failed. Invalid response from server.');
@@ -134,6 +287,9 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
       onLogin(matched, '');
     } catch (err: any) {
       setError(err.message || 'Incorrect access password or user not found. Please try again.');
+      // Refresh CAPTCHA requirements after a failed login. The previous captchaId
+      // has been consumed server-side, so a new image is mandatory here.
+      checkCaptchaStatus(trimmedEmail, true);
     } finally {
       setSubmitting(false);
     }
@@ -220,7 +376,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             borderRadius: ["30% 70% 70% 30% / 30% 30% 70% 70%", "60% 40% 30% 70% / 60% 30% 70% 40%", "30% 70% 70% 30% / 30% 30% 70% 70%"]
           }}
           transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
-          className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-gradient-to-tr from-blue-300/50 to-indigo-400/50 blur-[80px]"
+          className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-gradient-to-tr from-brand-300/50 to-brand-500/40 blur-[80px]"
         />
         <motion.div 
           animate={{ 
@@ -230,7 +386,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             borderRadius: ["60% 40% 30% 70% / 60% 30% 70% 40%", "30% 70% 70% 30% / 30% 30% 70% 70%", "60% 40% 30% 70% / 60% 30% 70% 40%"]
           }}
           transition={{ repeat: Infinity, duration: 30, ease: "easeInOut" }}
-          className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-gradient-to-bl from-purple-300/50 to-fuchsia-300/50 blur-[100px]"
+          className="absolute bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] bg-gradient-to-bl from-brand-200/60 to-brand-400/40 blur-[100px]"
         />
         <motion.div 
           animate={{ 
@@ -240,7 +396,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             scale: [1, 1.2, 1]
           }}
           transition={{ repeat: Infinity, duration: 35, ease: "easeInOut" }}
-          className="absolute top-[20%] left-[40%] w-[40vw] h-[40vw] rounded-full bg-gradient-to-r from-cyan-300/40 to-blue-300/40 blur-[90px]"
+          className="absolute top-[20%] left-[40%] w-[40vw] h-[40vw] rounded-full bg-gradient-to-r from-brand-100/50 to-brand-300/40 blur-[90px]"
         />
         
         {/* Subtle glowing center to ensure contrast */}
@@ -256,7 +412,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
           {/* Node Diagram Illustration */}
           <div className="relative w-64 h-64 mb-10 flex items-center justify-center">
             {/* Connecting Lines */}
-            <svg className="absolute inset-0 w-full h-full text-indigo-200" viewBox="0 0 100 100">
+            <svg className="absolute inset-0 w-full h-full text-brand-200" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2,2"/>
               <line x1="50" y1="50" x2="20" y2="20" stroke="currentColor" strokeWidth="1"/>
               <line x1="50" y1="50" x2="80" y2="20" stroke="currentColor" strokeWidth="1"/>
@@ -270,13 +426,13 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             </svg>
             
             {/* Center Logo */}
-            <div className="w-24 h-24 bg-[#4F7CFF] rounded-3xl flex items-center justify-center shadow-[0_8px_30px_rgba(79,124,255,0.4)] z-10 relative">
-              <span className="text-white font-extrabold text-4xl tracking-tight font-heading">HM</span>
+            <div className="z-10 relative">
+              <ZeniaLogo size={96} radius={220} className="rounded-[22%] shadow-[0_8px_30px_rgba(108,60,240,0.40)]" />
             </div>
 
             {/* Orbiting Nodes */}
-            <div className="absolute top-2 left-2 w-10 h-10 bg-[#E0E7FF] rounded-full flex items-center justify-center shadow-sm z-10">
-              <Users size={18} className="text-[#4338CA]" />
+            <div className="absolute top-2 left-2 w-10 h-10 bg-[#EDE9FE] rounded-full flex items-center justify-center shadow-sm z-10">
+              <Users size={18} className="text-[#5B2DE6]" />
             </div>
             <div className="absolute top-2 right-2 w-10 h-10 bg-[#D1FAE5] rounded-full flex items-center justify-center shadow-sm z-10">
               <Building2 size={18} className="text-[#059669]" />
@@ -289,12 +445,12 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             </div>
           </div>
           
-          <h1 className="text-[32px] font-extrabold text-[#0F172A] tracking-tight font-heading mb-1">
-            HR<span className="text-[#4F7CFF]">Mate</span>
+          <h1 className="text-[32px] font-bold text-[#111827] tracking-tight font-heading mb-1">
+            Zenia<span className="text-[#6C3CF0]">HR</span>
           </h1>
-          
-          <h2 className="text-[13px] font-bold text-[#1E293B] mb-4 uppercase tracking-wider">Smart HR Management Simplified</h2>
-          <p className="text-[#64748B] text-sm leading-relaxed max-w-xs mb-8 mx-auto">
+
+          <h2 className="text-[13px] font-semibold text-[#6B7280] mb-4 uppercase tracking-wider">Smart HR Management Simplified</h2>
+          <p className="text-[#6B7280] text-sm leading-relaxed max-w-xs mb-8 mx-auto">
             Manage your employees, payroll, attendance, and more from a single powerful platform.
           </p>
           
@@ -310,8 +466,8 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             {!isForgotPassword ? (
               <>
                 <div className="mb-8">
-                  <h3 className="text-[26px] font-extrabold text-[#0F172A] mb-1.5 font-heading tracking-tight">Welcome Back!</h3>
-                  <p className="text-[#64748B] text-[13px] font-medium">Sign in to your super admin account</p>
+                  <h3 className="text-[26px] font-extrabold text-[#111827] mb-1.5 font-heading tracking-tight">Welcome Back!</h3>
+                  <p className="text-[#6B7280] text-[13px] font-medium">Sign in to your super admin account</p>
                 </div>
 
                 <form onSubmit={handleLoginSubmit} className="space-y-5">
@@ -334,7 +490,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                   <div className="space-y-4">
                     <div>
                       <div className="relative flex items-center">
-                        <span className="absolute left-4 text-[#94A3B8]">
+                        <span className="absolute left-4 text-[#9CA3AF]">
                           <User size={18} strokeWidth={2} />
                         </span>
                         <input
@@ -343,14 +499,15 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                           placeholder="Email address"
                           value={email}
                           onChange={e => setEmail(e.target.value)}
-                          className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#0F172A] focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all font-medium"
+                          onBlur={() => checkCaptchaStatus(email)}
+                          className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                         />
                       </div>
                     </div>
 
                     <div>
                       <div className="relative flex items-center">
-                        <span className="absolute left-4 text-[#94A3B8]">
+                        <span className="absolute left-4 text-[#9CA3AF]">
                           <Lock size={18} strokeWidth={2} />
                         </span>
                         <input
@@ -359,24 +516,75 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                           placeholder="Password"
                           value={password}
                           onChange={e => setPassword(e.target.value)}
-                          className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#0F172A] focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all font-medium"
+                          className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 text-[#94A3B8] hover:text-[#64748B] transition-colors"
+                          className="absolute right-4 text-[#9CA3AF] hover:text-[#6B7280] transition-colors"
                         >
                           {showPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                         </button>
                       </div>
                     </div>
+
+                    {captchaInfo?.captchaRequired && (
+                      <div className="space-y-3 pt-1">
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                            CAPTCHA
+                          </label>
+                          <div className="flex items-center gap-4 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                            {captchaInfo.captchaType === 'internal' ? (
+                              <>
+                                <div
+                                  dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                                  className="shrink-0 rounded-lg overflow-hidden border border-slate-200"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={loadInternalCaptcha}
+                                  aria-label="Get a new CAPTCHA code"
+                                  className="text-xs font-bold text-[#6C3CF0] hover:text-[#8F6BF5] flex items-center gap-1.5 transition-colors"
+                                >
+                                  <RefreshCw size={14} strokeWidth={2.5} />
+                                  Refresh
+                                </button>
+                              </>
+                            ) : captchaInfo.captchaType === 'google_v2' ? (
+                              <div id="recaptcha-v2-container" className="w-full flex justify-center" />
+                            ) : (
+                              <div className="text-[10px] text-slate-400 leading-tight">
+                                Protected by Google reCAPTCHA v3
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {captchaInfo.captchaType === 'internal' && (
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                              Enter CAPTCHA
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              placeholder="Enter the characters above"
+                              value={captchaAnswer}
+                              onChange={e => setCaptchaAnswer(e.target.value)}
+                              className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl px-4 py-3 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-semibold uppercase tracking-wider"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-end pt-1">
                     <button
                       type="button"
                       onClick={() => { setError(''); setSuccessMsg(''); resetForgotFlow(); setForgotEmail(email.trim()); setIsForgotPassword(true); }}
-                      className="text-[13px] text-[#4F7CFF] font-medium hover:text-[#6AA8FF] transition-colors"
+                      className="text-[13px] text-[#6C3CF0] font-medium hover:text-[#8F6BF5] transition-colors"
                     >
                       Forgot password?
                     </button>
@@ -385,7 +593,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                   <div className="pt-2">
                     <button
                       type="submit"
-                      className="w-full py-3.5 bg-[#4F7CFF] hover:bg-[#6AA8FF] text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]"
+                      className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]"
                     >
                       Sign In
                     </button>
@@ -393,20 +601,20 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 </form>
 
                 <div className="text-center pt-8">
-                  <p className="text-[13px] text-[#64748B] font-medium">
-                    Don't have an account? <a href="#" className="text-[#4F7CFF] font-bold hover:underline">Contact Support</a>
+                  <p className="text-[13px] text-[#6B7280] font-medium">
+                    Don't have an account? <a href="#" className="text-[#6C3CF0] font-bold hover:underline">Contact Support</a>
                   </p>
                 </div>
               </>
             ) : (
               <>
                 <div className="mb-8">
-                  <h3 className="text-[26px] font-extrabold text-[#0F172A] mb-1.5 font-heading tracking-tight">
+                  <h3 className="text-[26px] font-extrabold text-[#111827] mb-1.5 font-heading tracking-tight">
                     {forgotStep === 'email' && 'Forgot Password'}
                     {forgotStep === 'otp' && 'Verify Code'}
                     {forgotStep === 'reset' && 'Set New Password'}
                   </h3>
-                  <p className="text-[#64748B] text-[13px] font-medium">
+                  <p className="text-[#6B7280] text-[13px] font-medium">
                     {forgotStep === 'email' && 'Enter your email to receive a verification code.'}
                     {forgotStep === 'otp' && `We sent a 6-digit code to ${forgotEmail}.`}
                     {forgotStep === 'reset' && 'Choose a strong new password (min 8 characters).'}
@@ -419,7 +627,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     const order = { email: 0, otp: 1, reset: 2 };
                     const active = order[forgotStep] >= i;
                     return (
-                      <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${active ? 'bg-[#4F7CFF]' : 'bg-[#E2E8F0]'}`} />
+                      <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${active ? 'bg-[#6C3CF0]' : 'bg-[#E5E7EB]'}`} />
                     );
                   })}
                 </div>
@@ -444,21 +652,21 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 {forgotStep === 'email' && (
                   <form onSubmit={handleRequestOtp} className="space-y-5">
                     <div className="relative flex items-center">
-                      <span className="absolute left-4 text-[#94A3B8]"><Mail size={18} strokeWidth={2} /></span>
+                      <span className="absolute left-4 text-[#9CA3AF]"><Mail size={18} strokeWidth={2} /></span>
                       <input
                         type="email"
                         required
                         placeholder="Email address"
                         value={forgotEmail}
                         onChange={e => setForgotEmail(e.target.value)}
-                        className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#0F172A] focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all font-medium"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                       />
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#4F7CFF] hover:bg-[#6AA8FF] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
                         {submitting ? 'Sending…' : 'Send Verification Code'}
                       </button>
-                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#64748B] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Back to Sign In
                       </button>
                     </div>
@@ -469,7 +677,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 {forgotStep === 'otp' && (
                   <form onSubmit={handleVerifyOtp} className="space-y-5">
                     <div className="relative flex items-center">
-                      <span className="absolute left-4 text-[#94A3B8]"><KeyRound size={18} strokeWidth={2} /></span>
+                      <span className="absolute left-4 text-[#9CA3AF]"><KeyRound size={18} strokeWidth={2} /></span>
                       <input
                         type="text"
                         required
@@ -478,17 +686,17 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         placeholder="6-digit code"
                         value={otp}
                         onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#0F172A] tracking-[0.4em] font-semibold focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] tracking-[0.4em] font-semibold focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all"
                       />
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#4F7CFF] hover:bg-[#6AA8FF] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
                         {submitting ? 'Verifying…' : 'Verify Code'}
                       </button>
-                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setOtp(''); handleRequestOtp(new Event('submit') as any); }} className="w-full text-[13px] text-[#4F7CFF] font-semibold hover:text-[#6AA8FF] transition-colors">
+                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setOtp(''); handleRequestOtp(new Event('submit') as any); }} className="w-full text-[13px] text-[#6C3CF0] font-semibold hover:text-[#8F6BF5] transition-colors">
                         Resend code
                       </button>
-                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setForgotStep('email'); }} className="w-full py-3 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[14px] font-bold text-[#64748B] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setForgotStep('email'); }} className="w-full py-3 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[14px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Back
                       </button>
                     </div>
@@ -499,24 +707,24 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 {forgotStep === 'reset' && (
                   <form onSubmit={handleResetPassword} className="space-y-5">
                     <div className="relative flex items-center">
-                      <span className="absolute left-4 text-[#94A3B8]"><ShieldCheck size={18} strokeWidth={2} /></span>
+                      <span className="absolute left-4 text-[#9CA3AF]"><ShieldCheck size={18} strokeWidth={2} /></span>
                       <input
                         type={showPassword ? 'text' : 'password'}
                         required
                         placeholder="New password"
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full bg-white border border-[#E2E8F0] focus:border-[#4F7CFF] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#0F172A] focus:outline-none focus:ring-[3px] focus:ring-[#4F7CFF]/10 placeholder-[#94A3B8] transition-all font-medium"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                       />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 text-[#94A3B8] hover:text-[#64748B] transition-colors">
+                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 text-[#9CA3AF] hover:text-[#6B7280] transition-colors">
                         {showPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                       </button>
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#4F7CFF] hover:bg-[#6AA8FF] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
                         {submitting ? 'Resetting…' : 'Reset Password'}
                       </button>
-                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#64748B] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Cancel
                       </button>
                     </div>

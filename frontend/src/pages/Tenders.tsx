@@ -206,10 +206,10 @@ const TendersOverview: React.FC<{
   return (
     <div className="space-y-6">
       {/* Simplified Filters Section */}
-      <Card className="p-5 bg-white border border-[#DBEAFE] rounded-[14px] shadow-sm">
+      <Card className="p-5 bg-white border border-[#E6E0FE] rounded-[14px] shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <Filter size={16} className="text-indigo-600" />
+            <Filter size={16} className="text-brand-600" />
             <h3 className="text-sm font-bold text-slate-800">Overview Filtering</h3>
           </div>
           <div className="flex items-center gap-2">
@@ -234,8 +234,8 @@ const TendersOverview: React.FC<{
       </Card>
 
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#DBEAFE] rounded-[14px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+        <div className="flex flex-col items-center justify-center py-20 bg-white border border-[#E6E0FE] rounded-[14px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-2"></div>
           <p className="text-sm text-slate-500 font-semibold">Loading platform tender intelligence...</p>
         </div>
       ) : (
@@ -246,7 +246,7 @@ const TendersOverview: React.FC<{
             <div>
               <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Company Insights</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPI label="Total Companies" value={stats.totalCompanies} tone="border-indigo-100 text-indigo-700 hover:border-indigo-300" icon={Building2} />
+                <KPI label="Total Companies" value={stats.totalCompanies} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={Building2} />
                 <KPI label="Companies with Active Tenders" value={stats.companiesWithActive} tone="border-emerald-100 text-emerald-700 hover:border-emerald-300" icon={CheckCircle2} />
                 <KPI label="Companies without Active Tenders" value={stats.companiesWithoutActive} tone="border-rose-100 text-rose-700 hover:border-rose-300" icon={AlertTriangle} />
               </div>
@@ -256,15 +256,15 @@ const TendersOverview: React.FC<{
             <div>
               <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-3">Tender Pipeline</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <KPI label="Total Tenders" value={stats.totalTenders} tone="border-indigo-100 text-indigo-700 hover:border-indigo-300" icon={Briefcase} />
-                <KPI label="Live Tenders" value={stats.liveTenders} tone="border-sky-100 text-sky-700 hover:border-sky-300" icon={TrendingUp} />
+                <KPI label="Total Tenders" value={stats.totalTenders} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={Briefcase} />
+                <KPI label="Live Tenders" value={stats.liveTenders} tone="border-brand-100 text-brand-700 hover:border-brand-300" icon={TrendingUp} />
                 <KPI label="Awarded (Allocated) Tenders" value={stats.awardedTenders} tone="border-emerald-100 text-emerald-700 hover:border-emerald-300" icon={CheckCircle2} />
               </div>
             </div>
           </div>
 
           {/* Company-wise Simplified Summary Table */}
-          <Card className="p-5 bg-white border border-[#DBEAFE] rounded-[14px] shadow-sm">
+          <Card className="p-5 bg-white border border-[#E6E0FE] rounded-[14px] shadow-sm">
             <div className="border-b border-slate-100 pb-3 mb-4">
               <h3 className="text-sm font-extrabold text-slate-800">Company-wise Tender Performance</h3>
               <p className="text-xs text-slate-400 mt-0.5">Click any company to enter masquerade mode and manage its specific tenders.</p>
@@ -284,7 +284,7 @@ const TendersOverview: React.FC<{
                 </Thead>
                 <Tbody>
                   {companySummary.map(comp => (
-                    <Tr key={comp.id} className="hover:bg-indigo-50/20 cursor-pointer" onClick={() => handleCompanyClick(comp.id)}>
+                    <Tr key={comp.id} className="hover:bg-brand-50/20 cursor-pointer" onClick={() => handleCompanyClick(comp.id)}>
                       <Td className="font-semibold text-slate-800 flex items-center gap-2 py-3.5">
                         <Building2 size={13} className="text-slate-400" />
                         {comp.name}
@@ -294,7 +294,7 @@ const TendersOverview: React.FC<{
                       <Td><Badge variant="green">{comp.awarded}</Badge></Td>
                       <Td className="text-xs text-slate-400">{comp.lastUpdated ? formatDate(comp.lastUpdated) : '—'}</Td>
                       <Td className="text-right">
-                        <button className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center gap-1.5 ml-auto shadow-sm transition-colors">
+                        <button className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-lg flex items-center gap-1.5 ml-auto shadow-sm transition-colors">
                           Open Company <ArrowRight size={10} />
                         </button>
                       </Td>
@@ -323,10 +323,10 @@ export const Tenders: React.FC<TendersProps> = ({
   return (
     <div className="space-y-4">
       {/* Custom Title Card */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-5 py-4 flex justify-between items-center">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm px-5 py-4 flex justify-between items-center">
         <div>
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Briefcase size={18} className="text-indigo-600" /> 
+            <Briefcase size={18} className="text-brand-600" /> 
             {isSuperAdmin ? 'Tender Overview' : 'Tender Management'}
           </h2>
           <p className="text-xs text-slate-500">

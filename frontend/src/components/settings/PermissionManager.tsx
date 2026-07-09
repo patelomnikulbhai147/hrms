@@ -138,7 +138,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-xs text-slate-500">
-        <ShieldCheck size={14} className="text-indigo-600" />
+        <ShieldCheck size={14} className="text-brand-600" />
         Manage permissions for users {role === 'Super Admin' ? 'across all companies' : 'within your company'}. Changes are audited.
       </div>
       {toast && <div className={`px-3 py-2 rounded-lg text-xs font-semibold ${toast.kind === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{toast.msg}</div>}
@@ -152,7 +152,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
             {!loading && filtered.length === 0 && <p className="text-xs text-slate-400 py-3 text-center">No manageable users.</p>}
             {filtered.map(u => (
               <button key={u.id} onClick={() => selectUser(u)}
-                className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${String(selectedId) === String(u.id) ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'}`}>
+                className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${String(selectedId) === String(u.id) ? 'bg-brand-50 border border-brand-200' : 'hover:bg-slate-50 border border-transparent'}`}>
                 <p className="text-xs font-bold text-slate-800">{u.name}</p>
                 <p className="text-[10px] text-slate-500">{u.role} · {u.branchName ? `${u.branchName} Branch` : 'Company-wide'} · {u.companyName || '—'}</p>
               </button>
@@ -182,7 +182,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                   <thead>
                     <tr className="text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                       <th className="py-2.5 pr-2 w-[34%]">Module</th>
-                      <th className="py-2.5 px-2 text-center w-[12%] text-indigo-500">All</th>
+                      <th className="py-2.5 px-2 text-center w-[12%] text-brand-500">All</th>
                       {ACTIONS.map(a => <th key={a} className="py-2.5 px-2 text-center w-[18%]">{a}</th>)}
                     </tr>
                   </thead>
@@ -193,7 +193,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                         <td className="py-2.5 px-2 text-center">
                           <input
                             type="checkbox"
-                            className="accent-indigo-600 h-5 w-5 align-middle cursor-pointer"
+                            className="accent-brand-600 h-5 w-5 align-middle cursor-pointer"
                             checked={allChecked(m.key)}
                             onChange={() => toggleAll(m.key)}
                             title="Select View, Edit and Export for this module"
@@ -203,7 +203,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
                           <td key={a} className="py-2.5 px-2 text-center">
                             <input
                               type="checkbox"
-                              className="accent-indigo-600 h-5 w-5 align-middle cursor-pointer"
+                              className="accent-brand-600 h-5 w-5 align-middle cursor-pointer"
                               checked={!!perms[m.key]?.[a]}
                               onChange={() => toggle(m.key, a)}
                               title={`${a.charAt(0).toUpperCase() + a.slice(1)} — ${m.label}`}

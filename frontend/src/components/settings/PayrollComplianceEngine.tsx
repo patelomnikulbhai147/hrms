@@ -192,7 +192,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
       <div className="flex border-b border-slate-200 bg-slate-900 text-white p-4 items-center justify-between">
         <div>
           <h3 className="text-sm font-bold flex items-center gap-2 text-white">
-            <Database size={16} className="text-blue-400" />
+            <Database size={16} className="text-brand-400" />
             Enterprise Payroll Rules & Compliance Engine
           </h3>
           <p className="text-xs text-slate-400 mt-1">Multi-Company Scalable Architecture • Fully Database-Driven • No Hardcoded Components</p>
@@ -201,7 +201,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
           <Button variant="outline" size="sm" onClick={exportSettings} className="flex items-center gap-1 border-slate-600 text-slate-200 hover:bg-slate-800"><Download size={14}/> Export Config</Button>
           <Button variant="outline" size="sm" onClick={() => ui.toast.info('Import functionality opens file dialogue.')} className="flex items-center gap-1 border-slate-600 text-slate-200 hover:bg-slate-800"><Upload size={14}/> Import Excel</Button>
           {isSuperOrHead && (
-            <Button size="sm" onClick={saveToDb} disabled={saving} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 border-none">
+            <Button size="sm" onClick={saveToDb} disabled={saving} className="flex items-center gap-1 bg-brand-600 hover:bg-brand-700 border-none">
               <Save size={14}/> {saving ? 'Syncing...' : 'Sync with Database'}
             </Button>
           )}
@@ -213,22 +213,22 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
         <div className="w-full md:w-64 border-r border-slate-200 bg-white flex flex-col p-2 gap-1 overflow-y-auto max-h-[650px] shadow-sm z-10">
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-2 mb-1">Core Architecture</div>
           {sections.slice(0, 4).map(s => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-all text-left ${activeSection === s.id ? 'bg-blue-50 text-blue-700 border border-blue-100 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
-              <s.icon size={15} className={activeSection === s.id ? "text-blue-600" : "text-slate-400"} /> {s.label}
+            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 border border-brand-100 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
+              <s.icon size={15} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
           ))}
           
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-1">Statutory Compliance</div>
           {sections.slice(4, 9).map(s => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
-              <s.icon size={14} className={activeSection === s.id ? "text-blue-600" : "text-slate-400"} /> {s.label}
+            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 shadow-sm border border-brand-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
+              <s.icon size={14} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
           ))}
 
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-1">System Administration</div>
           {sections.slice(9).map(s => (
-            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
-              <s.icon size={14} className={activeSection === s.id ? "text-blue-600" : "text-slate-400"} /> {s.label}
+            <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 shadow-sm border border-brand-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
+              <s.icon size={14} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
           ))}
         </div>
@@ -288,7 +288,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                 <div className="flex-1 space-y-2">
                   <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3">Drag & Drop Document Sections</h5>
                   {engineState.templateSections.map((s: any, idx: number) => (
-                    <div key={s.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-blue-300 transition-colors cursor-grab">
+                    <div key={s.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-sm hover:border-brand-300 transition-colors cursor-grab">
                       <GripVertical size={16} className="text-slate-400" />
                       <div className="flex-1 font-semibold text-sm text-slate-700">{s.name}</div>
                       <div className="flex items-center gap-2">
@@ -297,7 +297,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                           const next = [...engineState.templateSections];
                           next[idx].visible = e.target.checked;
                           setEngineState({...engineState, templateSections: next});
-                        }} className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4" />
+                        }} className="rounded text-brand-600 focus:ring-brand-500 w-4 h-4" />
                       </div>
                     </div>
                   ))}
@@ -335,7 +335,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                   { name: 'Attendance Register (Form T)', desc: 'Daily tracking mapped to payroll' },
                 ].map((r, i) => (
                   <div key={i} className="p-4 bg-white border border-slate-200 rounded-xl hover:shadow-md transition-shadow">
-                    <BarChart3 size={24} className="text-blue-500 mb-3" />
+                    <BarChart3 size={24} className="text-brand-500 mb-3" />
                     <h5 className="font-bold text-slate-800 text-sm">{r.name}</h5>
                     <p className="text-[10px] text-slate-500 mt-1 mb-4">{r.desc}</p>
                     <div className="flex gap-2">
@@ -380,7 +380,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
                       <tr key={idx} className="hover:bg-slate-50">
                         <td className="p-3 whitespace-nowrap text-slate-500">{log.time}</td>
                         <td className="p-3 font-semibold text-slate-700">{log.user} <span className="block text-[10px] text-slate-400 font-normal">{log.role}</span></td>
-                        <td className="p-3 text-blue-700 font-medium">{log.action}</td>
+                        <td className="p-3 text-brand-700 font-medium">{log.action}</td>
                         <td className="p-3"><span className="bg-slate-100 px-2 py-1 rounded">{log.module}</span></td>
                         <td className="p-3 text-slate-400 font-mono">{log.ip}</td>
                       </tr>

@@ -555,14 +555,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(report.reportName)}</title>
       <style>
         *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;margin:24px;font-size:12px}
-        .hdr{display:flex;align-items:center;gap:12px;border-bottom:1px solid #cbd5e1;padding-bottom:10px;margin-bottom:6px}
+        .hdr{display:flex;align-items:center;gap:12px;border-bottom:1px solid #d1d5db;padding-bottom:10px;margin-bottom:6px}
         .hdr img{width:46px;height:46px;object-fit:contain}
         .co{font-size:16px;font-weight:700;margin:0}
         .meta{font-size:10px;color:#475569;margin-top:2px}
         .rt{font-size:13px;font-weight:700;margin:10px 0 8px}
         table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #cbd5e1;padding:4px 6px;text-align:left;font-size:10px}
-        thead th{background:#4f46e5;color:#fff}
+        th,td{border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px}
+        thead th{background:#5b2de6;color:#fff}
         tfoot td{border:none;font-size:10px;color:#475569;padding-top:10px}
         .sign{margin-top:48px;text-align:right;font-size:11px}
         @media print{body{margin:10mm}}
@@ -576,7 +576,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
       <div class="rt">${esc(report.reportName)}</div>
       <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
       <div class="sign">${brand.hasSignature ? `<img src="${esc(brand.signature)}" alt="signature" style="height:36px;object-fit:contain;display:block;margin-left:auto"/>` : ''}______________________<br/>${esc(brand.signatureText || m.signatureText || 'Authorized Signatory')}</div>
-      <div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;font-size:10px;color:#475569">${genLine} &nbsp;·&nbsp; ${report.rows.length} record(s)</div>
+      <div style="margin-top:14px;border-top:1px solid #e5e7eb;padding-top:6px;font-size:10px;color:#475569">${genLine} &nbsp;·&nbsp; ${report.rows.length} record(s)</div>
       <script>window.onload=function(){window.print();}</script>
       </body></html>`;
     const w = window.open('', '_blank');
@@ -794,13 +794,13 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(report.reportName)}</title>
       <style>
         *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;color:#1f2937;margin:24px;font-size:12px}
-        .hdr{border-bottom:1px solid #cbd5e1;padding-bottom:10px;margin-bottom:6px}
+        .hdr{border-bottom:1px solid #d1d5db;padding-bottom:10px;margin-bottom:6px}
         .co{font-size:16px;font-weight:700;margin:0}
         .rt{font-size:13px;font-weight:700;margin:10px 0 8px}
         table{width:100%;border-collapse:collapse}
-        th,td{border:1px solid #cbd5e1;padding:4px 6px;text-align:left;font-size:10px}
-        thead th{background:#4f46e5;color:#fff}
-        .co-hdr td{background:#e2e8f0;font-size:11px}
+        th,td{border:1px solid #d1d5db;padding:4px 6px;text-align:left;font-size:10px}
+        thead th{background:#5b2de6;color:#fff}
+        .co-hdr td{background:#e5e7eb;font-size:11px}
         .sub-hdr td{background:#f8fafc;font-size:10px}
         .grand-hdr td{background:#eef2ff;font-size:11px;border-top:2px double #818cf8}
         @media print{body{margin:10mm}}
@@ -810,7 +810,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         <div class="rt">${esc(report.reportName)}</div>
       </div>
       <table><thead><tr>${head}</tr></thead><tbody>${bodyHtml}</tbody></table>
-      <div style="margin-top:14px;border-top:1px solid #e2e8f0;padding-top:6px;font-size:10px;color:#475569">${genLine} &nbsp;·&nbsp; ${report.rows.length} record(s)</div>
+      <div style="margin-top:14px;border-top:1px solid #e5e7eb;padding-top:6px;font-size:10px;color:#475569">${genLine} &nbsp;·&nbsp; ${report.rows.length} record(s)</div>
       <script>window.onload=function(){window.print();}</script>
       </body></html>`;
       
@@ -865,10 +865,10 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   };
 
   const STAT_TILES = (m: typeof metrics) => ([
-    { label: 'Total Reports', value: m.total, icon: <FileText size={15} />, color: 'bg-indigo-500' },
+    { label: 'Total Reports', value: m.total, icon: <FileText size={15} />, color: 'bg-brand-500' },
     { label: 'Available', value: m.available, icon: <CheckCircle2 size={15} />, color: 'bg-emerald-500' },
-    { label: 'Generated Today', value: m.generatedToday, icon: <Zap size={15} />, color: 'bg-blue-500' },
-    { label: 'Compliance', value: m.compliance, icon: <ShieldCheck size={15} />, color: 'bg-violet-500' },
+    { label: 'Generated Today', value: m.generatedToday, icon: <Zap size={15} />, color: 'bg-brand-500' },
+    { label: 'Compliance', value: m.compliance, icon: <ShieldCheck size={15} />, color: 'bg-brand-500' },
     { label: 'Recent', value: m.recent.length, icon: <History size={15} />, color: 'bg-slate-500' },
     { label: 'Favourites', value: favReports.length, icon: <Star size={15} />, color: 'bg-amber-500' },
   ]);
@@ -891,15 +891,15 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm px-5 py-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><BarChart3 size={18} className="text-indigo-600" /> Reports</h2>
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><BarChart3 size={18} className="text-brand-600" /> Reports</h2>
           <p className="text-xs text-slate-500">{catalog.length} reports across {Object.keys(grouped).length} categories — browse sample templates, or generate live from your HRMS data.</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-            <button onClick={() => setMode('gallery')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'gallery' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><LayoutGrid size={13} /> Template Gallery</button>
-            <button onClick={() => setMode('generate')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'generate' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><Zap size={13} /> Generate</button>
+            <button onClick={() => setMode('gallery')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'gallery' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><LayoutGrid size={13} /> Template Gallery</button>
+            <button onClick={() => setMode('generate')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'generate' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><Zap size={13} /> Generate</button>
           </div>
         </div>
       </div>
@@ -911,7 +911,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             {STAT_TILES(metrics).map(t => (
-              <div key={t.label} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3 flex items-center gap-3">
+              <div key={t.label} className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm p-3 flex items-center gap-3">
                 <span className={`w-9 h-9 rounded-xl text-white flex items-center justify-center ${t.color}`}>{t.icon}</span>
                 <div className="min-w-0">
                   <p className="text-lg font-bold text-slate-800 leading-none">{t.value}</p>
@@ -926,7 +926,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><History size={15} className="text-slate-500" /> Recently Generated</h3>
               <div className="flex flex-wrap gap-2">
                 {metrics.recent.map(rc => (
-                  <button key={rc.key} onClick={() => isSuperAdmin ? openConfigForReport(rc.key, 'generate') : goGenerate(rc.key)} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-indigo-50 hover:text-indigo-700 border border-slate-200 rounded-full px-3 py-1.5 transition-colors">
+                  <button key={rc.key} onClick={() => isSuperAdmin ? openConfigForReport(rc.key, 'generate') : goGenerate(rc.key)} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-brand-50 hover:text-brand-700 border border-slate-200 rounded-full px-3 py-1.5 transition-colors">
                     <FileText size={11} /> {rc.label}
                   </button>
                 ))}
@@ -941,14 +941,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
             </Card>
           )}
 
-          <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-2.5 flex items-center gap-2">
+          <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm p-2.5 flex items-center gap-2">
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search reports by name, category or keyword — e.g. Salary, Bonus, PF, Attendance…"
-                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+                className="w-full pl-9 pr-9 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300"
               />
               {search && (
                 <button onClick={() => setSearch('')} title="Clear search" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={15} /></button>
@@ -962,7 +962,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="py-12 text-center">
                 <Search size={28} className="mx-auto text-slate-300 mb-2" />
                 <p className="text-sm font-bold text-slate-600">No matching reports found.</p>
-                <p className="text-[11px] text-slate-400 mt-1">Try a different name, category, or keyword{search ? <> — or <button onClick={() => setSearch('')} className="text-indigo-600 font-semibold hover:underline">clear the search</button></> : '.'}</p>
+                <p className="text-[11px] text-slate-400 mt-1">Try a different name, category, or keyword{search ? <> — or <button onClick={() => setSearch('')} className="text-brand-600 font-semibold hover:underline">clear the search</button></> : '.'}</p>
               </div>
             </Card>
           ) : (
@@ -970,15 +970,15 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               {visibleCats.map(({ cat, reports, total }) => {
                 const open = isCatOpen(cat);
                 return (
-                  <div key={cat} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
+                  <div key={cat} className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm overflow-hidden">
                     <button
                       onClick={() => toggleCat(cat)}
                       aria-expanded={open}
                       className="w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50/70 transition-colors"
                     >
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                        <ChevronDown size={16} className={`text-indigo-600 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
-                        <FileText size={15} className="text-indigo-600" /> {cat}
+                        <ChevronDown size={16} className={`text-brand-600 transition-transform duration-200 ${open ? '' : '-rotate-90'}`} />
+                        <FileText size={15} className="text-brand-600" /> {cat}
                         <span className="text-[10px] font-bold text-slate-400">({q ? `${reports.length}/${total}` : total})</span>
                       </span>
                       {!open && <span className="text-[10px] font-semibold text-slate-400">{reports.length} report{reports.length === 1 ? '' : 's'}</span>}
@@ -1011,7 +1011,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                 <div className="space-y-0.5">
                   {grouped[cat].map(r => (
                     <button key={r.key} disabled={!r.available} onClick={() => { setSelectedKey(r.key); setReport(null); }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${selectedKey === r.key ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 font-semibold' : r.available ? 'hover:bg-slate-50 border border-transparent text-slate-700' : 'text-slate-300 cursor-not-allowed'}`}>
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${selectedKey === r.key ? 'bg-brand-50 border border-brand-200 text-brand-700 font-semibold' : r.available ? 'hover:bg-slate-50 border border-transparent text-slate-700' : 'text-slate-300 cursor-not-allowed'}`}>
                       <span className="flex items-center gap-1.5"><FileText size={12} />{r.label}</span>
                       {r.available ? <ChevronRight size={12} /> : <span className="text-[9px] font-bold text-amber-500">SOON</span>}
                     </button>
@@ -1030,8 +1030,8 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="flex items-center gap-2">
                 {!report.isMultiCompany && (
                   <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-                    <button onClick={() => setPreviewMode('document')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'document' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Document</button>
-                    <button onClick={() => setPreviewMode('data')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'data' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Data</button>
+                    <button onClick={() => setPreviewMode('document')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'document' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Document</button>
+                    <button onClick={() => setPreviewMode('data')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'data' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Data</button>
                   </div>
                 )}
                 {(previewMode === 'data' || report.isMultiCompany) && (
@@ -1048,12 +1048,12 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
           {/* Filters Area */}
           {isSuperAdmin ? (
-            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 mb-4 text-xs shadow-sm">
-              <p className="font-bold text-indigo-950 flex items-center gap-1.5 mb-2">
-                <ShieldCheck size={14} className="text-indigo-600" /> Executive Report Scope
+            <div className="bg-brand-50/50 border border-brand-100 rounded-xl p-4 mb-4 text-xs shadow-sm">
+              <p className="font-bold text-brand-900 flex items-center gap-1.5 mb-2">
+                <ShieldCheck size={14} className="text-brand-600" /> Executive Report Scope
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-700">
-                <div className="space-y-1 bg-white p-2.5 rounded-lg border border-indigo-100/50">
+                <div className="space-y-1 bg-white p-2.5 rounded-lg border border-brand-100/50">
                   <p className="text-[10px] font-extrabold text-slate-400 uppercase">Tenant Scope</p>
                   <p className="font-semibold text-slate-800">
                     {coMode === 'single' 
@@ -1068,7 +1068,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                     </p>
                   )}
                 </div>
-                <div className="space-y-1 bg-white p-2.5 rounded-lg border border-indigo-100/50">
+                <div className="space-y-1 bg-white p-2.5 rounded-lg border border-brand-100/50">
                   <p className="text-[10px] font-extrabold text-slate-400 uppercase">Period &amp; Date Range</p>
                   <p className="font-semibold text-slate-800 capitalize">{dtPreset.replace('_', ' ')}</p>
                   <p className="text-[10px] text-slate-500">{customStart} to {customEnd}</p>
@@ -1076,7 +1076,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               </div>
               
               {(cfgDept || cfgEmpId || cfgDesig || cfgStatus || cfgPayrollMonth || cfgLeaveType || cfgContract || cfgTender) && (
-                <div className="mt-2.5 bg-white p-2.5 rounded-lg border border-indigo-100/50 space-y-1">
+                <div className="mt-2.5 bg-white p-2.5 rounded-lg border border-brand-100/50 space-y-1">
                   <p className="text-[10px] font-extrabold text-slate-400 uppercase">Applied Filters</p>
                   <div className="flex flex-wrap gap-2 text-[10px] font-semibold text-slate-600">
                     {cfgDept && <span>Dept: {cfgDept}</span>}
@@ -1093,13 +1093,13 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="mt-3 flex gap-2">
                 <button 
                   onClick={() => openConfigForReport(selectedKey || catalog[0]?.key, 'generate')}
-                  className="flex-1 text-[10px] h-8 bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-50/50 font-bold rounded-lg px-3 flex items-center justify-center gap-1.5 transition-colors"
+                  className="flex-1 text-[10px] h-8 bg-white border border-brand-200 text-brand-700 hover:bg-brand-50/50 font-bold rounded-lg px-3 flex items-center justify-center gap-1.5 transition-colors"
                 >
                   Modify Scope &amp; Filters
                 </button>
                 <button 
                   onClick={handleGenerateConfigured}
-                  className="flex-1 text-[10px] h-8 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg px-3 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                  className="flex-1 text-[10px] h-8 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg px-3 flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                 >
                   Regenerate Report
                 </button>
@@ -1142,14 +1142,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                   <span>
                     <strong>{report.rows.length}</strong> record(s) across <strong>{Object.keys(groupedRows).length}</strong> companies · generated {formatDateTime(report.generatedAt)}{report.generatedBy ? ` · by ${report.generatedBy}` : ''}
                   </span>
-                  <span className="font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-full text-[10px] tracking-wider uppercase">
+                  <span className="font-bold text-brand-700 bg-brand-50 border border-brand-100 px-2.5 py-0.5 rounded-full text-[10px] tracking-wider uppercase">
                     Executive Multi-Company View
                   </span>
                 </div>
-                <div className="overflow-x-auto max-h-[480px] border border-[#DBEAFE] rounded-xl shadow-sm bg-white">
+                <div className="overflow-x-auto max-h-[480px] border border-[#E6E0FE] rounded-xl shadow-sm bg-white">
                   <Table>
                     <Thead>
-                      <Tr className="bg-indigo-600">
+                      <Tr className="bg-brand-600">
                         {report.columns.map((c: any) => <Th key={c.key} className="text-white font-bold text-xs py-3">{c.label}</Th>)}
                       </Tr>
                     </Thead>
@@ -1161,7 +1161,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                             <Tr className="bg-slate-100 font-bold border-t border-b border-slate-200/80">
                               <Td colSpan={report.columns.length} className="py-2.5 px-3 text-slate-800 font-extrabold text-xs">
                                 <div className="flex items-center gap-2">
-                                  <span className="w-1.5 h-3.5 bg-indigo-600 rounded"></span>
+                                  <span className="w-1.5 h-3.5 bg-brand-600 rounded"></span>
                                   Company: {coName}
                                 </div>
                               </Td>
@@ -1190,9 +1190,9 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                         );
                       })}
                       
-                      <Tr className="bg-indigo-50 font-bold border-t-2 border-double border-indigo-200">
+                      <Tr className="bg-brand-50 font-bold border-t-2 border-double border-brand-200">
                         {report.columns.map((c: any, idx: number) => (
-                          <Td key={c.key} className="text-xs font-extrabold text-indigo-950 py-3.5">
+                          <Td key={c.key} className="text-xs font-extrabold text-brand-900 py-3.5">
                             {idx === 0 
                               ? 'Grand Total' 
                               : (grandTotal[c.key] !== '' && typeof grandTotal[c.key] === 'number' ? grandTotal[c.key].toLocaleString('en-IN') : grandTotal[c.key])}
@@ -1309,7 +1309,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                   name="coMode" 
                   checked={coMode === 'single'} 
                   onChange={() => { setCoMode('single'); setSelectedCoIds([]); setSelectedBrs([]); }} 
-                  className="text-indigo-600 focus:ring-indigo-500" 
+                  className="text-brand-600 focus:ring-brand-500" 
                 />
                 Single Company
               </label>
@@ -1319,7 +1319,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                   name="coMode" 
                   checked={coMode === 'selected'} 
                   onChange={() => { setCoMode('selected'); setSingleCoId(''); setSelectedBrs([]); }} 
-                  className="text-indigo-600 focus:ring-indigo-500" 
+                  className="text-brand-600 focus:ring-brand-500" 
                 />
                 Selected Companies
               </label>
@@ -1329,7 +1329,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                   name="coMode" 
                   checked={coMode === 'all'} 
                   onChange={() => { setCoMode('all'); setSingleCoId(''); setSelectedCoIds([]); setSelectedBrs([]); }} 
-                  className="text-indigo-600 focus:ring-indigo-500" 
+                  className="text-brand-600 focus:ring-brand-500" 
                 />
                 All Companies
               </label>
@@ -1362,7 +1362,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                         value={coSearch}
                         onChange={e => setCoSearch(e.target.value)}
                         placeholder="Search company by name or code..."
-                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 bg-white"
                         onClick={e => e.stopPropagation()}
                       />
                     </div>
@@ -1379,7 +1379,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                         ).map(c => (
                           <div
                             key={c.id}
-                            className={`px-3 py-2 text-xs hover:bg-indigo-50 cursor-pointer flex justify-between items-center transition-colors ${String(c.id) === String(singleCoId) ? 'bg-indigo-50 font-bold text-indigo-700' : 'text-slate-700'}`}
+                            className={`px-3 py-2 text-xs hover:bg-brand-50 cursor-pointer flex justify-between items-center transition-colors ${String(c.id) === String(singleCoId) ? 'bg-brand-50 font-bold text-brand-700' : 'text-slate-700'}`}
                             onClick={() => {
                               setSingleCoId(String(c.id));
                               setCoOpen(false);
@@ -1424,7 +1424,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                         value={coSearch}
                         onChange={e => setCoSearch(e.target.value)}
                         placeholder="Search company by name or code..."
-                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                        className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 bg-white"
                         onClick={e => e.stopPropagation()}
                       />
                     </div>
@@ -1457,7 +1457,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                                 type="checkbox"
                                 checked={isChecked}
                                 onChange={() => {}}
-                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                               />
                               <div className="flex-1 flex justify-between items-center">
                                 <span>{c.name}</span>
@@ -1478,11 +1478,11 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                     const co = activeCompanies.find(c => String(c.id) === String(id));
                     if (!co) return null;
                     return (
-                      <span key={id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs px-2.5 py-0.5 rounded-full border border-indigo-150 font-bold shadow-sm">
+                      <span key={id} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 text-xs px-2.5 py-0.5 rounded-full border border-brand-100 font-bold shadow-sm">
                         <span>{co.name}</span>
                         <button 
                           onClick={() => setSelectedCoIds(selectedCoIds.filter(x => x !== id))}
-                          className="hover:text-indigo-900 hover:bg-indigo-100 rounded-full p-0.5 transition-colors"
+                          className="hover:text-brand-900 hover:bg-brand-100 rounded-full p-0.5 transition-colors"
                         >
                           <X size={10} />
                         </button>
@@ -1501,7 +1501,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="border border-slate-200 rounded-lg p-3 bg-slate-50 max-h-48 overflow-y-auto space-y-3 shadow-inner">
                 {Object.entries(branchesByCompany).map(([coName, brs]) => (
                   <div key={coName} className="space-y-1 bg-white p-2.5 rounded-lg border border-slate-200 shadow-sm">
-                    <p className="text-[9px] font-extrabold text-indigo-600 uppercase tracking-widest border-b border-indigo-50 pb-1 mb-1.5">{coName}</p>
+                    <p className="text-[9px] font-extrabold text-brand-600 uppercase tracking-widest border-b border-brand-50 pb-1 mb-1.5">{coName}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {brs.map(br => {
                         const name = br.branchName || br.name;
@@ -1518,7 +1518,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                                   setSelectedBrs(selectedBrs.filter(x => x !== name));
                                 }
                               }}
-                              className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                             />
                             <span className="font-semibold">{name}</span>
                           </label>
@@ -1539,7 +1539,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                 <button
                   key={preset}
                   onClick={() => handlePresetChange(preset)}
-                  className={`px-3 py-1.5 rounded-full border text-[11px] font-bold transition-all shadow-sm ${dtPreset === preset ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                  className={`px-3 py-1.5 rounded-full border text-[11px] font-bold transition-all shadow-sm ${dtPreset === preset ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
                   {preset.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                 </button>
@@ -1664,7 +1664,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
             </button>
             <button
               onClick={handleGenerateConfigured}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center gap-1"
+              className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-lg transition-colors shadow-sm flex items-center gap-1"
             >
               <Zap size={14} /> {configMode === 'preview' ? 'Confirm & Preview' : 'Confirm & Generate'}
             </button>

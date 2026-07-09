@@ -586,7 +586,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     subject: '',
     body: '',
     companyName: '',
-    primaryColor: '#3b82f6',
+    primaryColor: '#6c3cf0',
     logoText: '',
     signatureText: '',
     footerText: '',
@@ -1102,7 +1102,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         subject: activeTemplate.subject,
         body: activeTemplate.body,
         companyName: activeTemplate.branding?.companyName || currentCompany.name,
-        primaryColor: activeTemplate.branding?.primaryColor || currentCompany.primaryColor || '#3b82f6',
+        primaryColor: activeTemplate.branding?.primaryColor || currentCompany.primaryColor || '#6c3cf0',
         logoText: activeTemplate.branding?.logoText || currentCompany.name.slice(0, 2).toUpperCase(),
         signatureText: activeTemplate.branding?.signatureText || 'Authorized Signatory',
         footerText: activeTemplate.branding?.footerText || `${currentCompany.name} · Confidential document`,
@@ -1113,9 +1113,9 @@ export const Documents: React.FC<DocumentsProps> = ({
         id: `custom-${Date.now()}`,
         templateName: `Custom ${currentCategory} Format`,
         subject: `Ref: Custom ${currentCategory}`,
-        body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are excited to invite you to join our team at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Sincerely,</p><p>HR Management</p>`,
+        body: `<p>Dear <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-brand-50 border border-brand-200 text-brand-700 select-none" data-token="employee_name" contenteditable="false">👤 Employee Name</span>,</p><p>We are excited to invite you to join our team at <span class="mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-brand-50 border border-brand-200 text-brand-700 select-none" data-token="company_name" contenteditable="false">👤 Company Name</span>.</p><p>Sincerely,</p><p>HR Management</p>`,
         companyName: currentCompany.name,
-        primaryColor: currentCompany.primaryColor || '#3b82f6',
+        primaryColor: currentCompany.primaryColor || '#6c3cf0',
         logoText: currentCompany.name.slice(0, 2).toUpperCase(),
         signatureText: 'Authorized HR Operations Signatory',
         footerText: `${currentCompany.name} · Confidential Document`,
@@ -1256,7 +1256,7 @@ export const Documents: React.FC<DocumentsProps> = ({
     editor.focus();
 
     const span = document.createElement('span');
-    span.className = 'mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700 select-none cursor-default font-sans';
+    span.className = 'mx-1 inline-flex items-center px-2 py-0.5 rounded-lg text-[10px] font-bold bg-brand-50 border border-brand-200 text-brand-700 select-none cursor-default font-sans';
     span.setAttribute('data-token', tokenKey);
     span.setAttribute('contenteditable', 'false');
     span.innerHTML = `👤 ${tokenLabel}`;
@@ -1287,7 +1287,7 @@ export const Documents: React.FC<DocumentsProps> = ({
   };
 
   // Derived colors
-  const primaryColorHex = activeTemplate?.branding?.primaryColor || currentCompany.primaryColor || '#3b82f6';
+  const primaryColorHex = activeTemplate?.branding?.primaryColor || currentCompany.primaryColor || '#6c3cf0';
 
   // Universal Company/Branch hierarchy for THIS document — dynamically resolved
   // (Employee → Branch → Company) for every tenant, no hardcoding. Company is the
@@ -1376,7 +1376,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         <button
           onClick={() => setActiveTab('compliance')}
           className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === 'compliance' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            activeTab === 'compliance' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
           <Award size={14} />
@@ -1385,7 +1385,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         <button
           onClick={() => setActiveTab('letters')}
           className={`px-4 py-2.5 text-xs font-bold border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === 'letters' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            activeTab === 'letters' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
           <FileText size={14} />
@@ -1471,7 +1471,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                             <div className="h-8 w-8 shrink-0 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-xs font-bold text-slate-700">{emp.name.slice(0, 2).toUpperCase()}</div>
                             <div className="min-w-0">
                               <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
-                              <p className="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">{emp.employeeId} · {emp.department || '—'}</p>
+                              <p className="text-[10px] text-brand-600 font-bold mt-0.5 truncate">{emp.employeeId} · {emp.department || '—'}</p>
                             </div>
                           </div>
                         </Td>
@@ -1484,7 +1484,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         <Td><span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">{formatDate(pendingSince)}</span></Td>
                         <Td className="text-center pr-4">
                           <div className="flex items-center justify-center gap-1.5">
-                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"><Eye size={14} /></button>
+                            <button onClick={() => setSelectedReviewEmp(emp)} title="Review documents" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-brand-600 hover:text-brand-700 hover:bg-brand-50 hover:border-brand-200 transition"><Eye size={14} /></button>
                             {canEdit && (role === 'Company Head' || role === 'HR' || role === 'Super Admin') && (
                               <>
                                 <button onClick={() => handleQuickVerify(emp.id)} title="Approve / Verify pending" className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200 transition"><Check size={14} /></button>
@@ -1505,12 +1505,12 @@ export const Documents: React.FC<DocumentsProps> = ({
               {/* Sticky header with Counters */}
               <div className="sticky top-0 bg-white/95 backdrop-blur-sm border-b border-slate-100 p-4 z-10 flex flex-wrap gap-4 items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-indigo-50 text-indigo-700 rounded-xl">
+                  <div className="p-2 bg-brand-50 text-brand-700 rounded-xl">
                     <Sliders size={16} />
                   </div>
                   <div>
                     <h3 className="text-sm font-extrabold text-slate-800 tracking-tight flex items-center gap-1.5">
-                      <ShieldCheck size={15} className="text-indigo-600" /> Compliance Verification Vault
+                      <ShieldCheck size={15} className="text-brand-600" /> Compliance Verification Vault
                     </h3>
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       One row per employee · {TOTAL_REQUIRED} required documents tracked per the company checklist
@@ -1524,9 +1524,9 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <span className="text-[11px] font-extrabold text-slate-800">{companyEmployees.length}</span>
                     <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Total</span>
                   </div>
-                  <div className="px-3 py-1 bg-sky-50 border border-sky-150 rounded-xl flex flex-col items-center min-w-[64px]">
-                    <span className="text-[11px] font-extrabold text-sky-700">{dossiers.filter(d => d.totalDocs > 0).length}</span>
-                    <span className="text-[8px] text-sky-600 font-bold uppercase tracking-wider">With Uploads</span>
+                  <div className="px-3 py-1 bg-brand-50 border border-brand-100 rounded-xl flex flex-col items-center min-w-[64px]">
+                    <span className="text-[11px] font-extrabold text-brand-700">{dossiers.filter(d => d.totalDocs > 0).length}</span>
+                    <span className="text-[8px] text-brand-600 font-bold uppercase tracking-wider">With Uploads</span>
                   </div>
                   <div className="px-3 py-1 bg-amber-50 border border-amber-150 rounded-xl flex flex-col items-center min-w-[64px]">
                     <span className="text-[11px] font-extrabold text-amber-700">{dossiers.filter(d => d.pendingDocs > 0).length}</span>
@@ -1560,7 +1560,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                         setDossierSearch(e.target.value);
                         setDossierPage(1);
                       }}
-                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                      className="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-4 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-brand-500/50"
                     />
                   </div>
 
@@ -1570,7 +1570,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                       setDossierStatusFilter(e.target.value as any);
                       setDossierPage(1);
                     }}
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 min-w-[150px]"
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-brand-500/50 min-w-[150px]"
                   >
                     <option value="">All Verification Status</option>
                     <option value="Verified">Verified</option>
@@ -1624,7 +1624,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 </div>
                                 <div className="min-w-0">
                                   <p className="text-xs font-extrabold text-slate-900 truncate">{emp.name}</p>
-                                  <p className="text-[10px] text-indigo-600 font-bold tracking-tight mt-0.5 truncate">{emp.employeeId}</p>
+                                  <p className="text-[10px] text-brand-600 font-bold tracking-tight mt-0.5 truncate">{emp.employeeId}</p>
                                 </div>
                               </div>
                             </Td>
@@ -1648,7 +1648,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                     className={`h-full rounded-full transition-all duration-300 ${
                                       status === 'Verified' ? 'bg-emerald-500'
                                         : status === 'Action Required' ? 'bg-rose-500'
-                                        : status === 'Partially Verified' ? 'bg-indigo-500'
+                                        : status === 'Partially Verified' ? 'bg-brand-500'
                                         : 'bg-amber-500'
                                     }`}
                                     style={{ width: `${Math.min(100, (uploaded / TOTAL_REQUIRED) * 100)}%` }}
@@ -1664,7 +1664,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 <span className={`w-1.5 h-1.5 rounded-full ${
                                   status === 'Verified' ? 'bg-emerald-500'
                                     : status === 'Action Required' ? 'bg-rose-500'
-                                    : status === 'Partially Verified' ? 'bg-indigo-500'
+                                    : status === 'Partially Verified' ? 'bg-brand-500'
                                     : 'bg-amber-500'
                                 }`}></span>
                                 {status}
@@ -1678,7 +1678,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                               <div className="flex items-center justify-center gap-1.5">
                                 <button
                                   onClick={() => setSelectedReviewEmp(emp)}
-                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-brand-600 hover:text-brand-700 hover:bg-brand-50 hover:border-brand-200 transition"
                                   title="View document workspace"
                                 >
                                   <Eye size={14} />
@@ -1686,7 +1686,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 {canEdit && (
                                   <button
                                     onClick={() => openBulkUpload(emp.id)}
-                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 hover:border-indigo-200 transition"
+                                    className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-brand-600 hover:text-brand-700 hover:bg-brand-50 hover:border-brand-200 transition"
                                     title="Upload documents"
                                   >
                                     <Upload size={14} />
@@ -1704,7 +1704,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                                 <button
                                   onClick={() => handleDownloadEmployeeDocs(emp.id)}
                                   disabled={totalDocs === 0}
-                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-sky-600 hover:text-sky-700 hover:bg-sky-50 hover:border-sky-200 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:border-slate-200"
+                                  className="w-7 h-7 inline-flex items-center justify-center rounded-lg border border-slate-200 text-brand-600 hover:text-brand-700 hover:bg-brand-50 hover:border-brand-200 transition disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:border-slate-200"
                                   title={totalDocs === 0 ? 'No files to download' : 'Download all documents'}
                                 >
                                   <Download size={14} />
@@ -1759,12 +1759,12 @@ export const Documents: React.FC<DocumentsProps> = ({
           {/* Document category navigator — grouped, scales to the full library */}
           <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <FileText size={15} className="text-indigo-600" /> Document Category
+              <FileText size={15} className="text-brand-600" /> Document Category
             </div>
             <select
               value={currentCategory}
               onChange={e => setCurrentCategory(e.target.value)}
-              className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border border-slate-200 text-[12px] font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300"
+              className="flex-1 min-w-[220px] px-3 py-2 rounded-xl border border-slate-200 text-[12px] font-semibold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300"
             >
               {DOC_GROUPS.map(g => (
                 <optgroup key={g.group} label={g.group}>
@@ -1776,7 +1776,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             </select>
             <span className="text-[11px] font-semibold text-slate-500">
               {DOC_GROUPS.find(g => g.categories.includes(currentCategory))?.group || 'Documents'} ·{' '}
-              <span className="text-indigo-600">{templates.filter(t => t.category === currentCategory).length} templates</span>
+              <span className="text-brand-600">{templates.filter(t => t.category === currentCategory).length} templates</span>
             </span>
           </div>
 
@@ -1788,7 +1788,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <button
                   key={g.group}
                   onClick={() => setCurrentCategory(g.categories[0])}
-                  className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all ${active ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                  className={`px-3 py-1.5 text-[11px] font-bold rounded-full border transition-all ${active ? 'bg-brand-600 text-white border-brand-600 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 >
                   {g.group}
                 </button>
@@ -1805,7 +1805,7 @@ export const Documents: React.FC<DocumentsProps> = ({
               <Card className="border border-slate-150 rounded-3xl p-4 shadow-sm bg-white">
                 <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
-                    <Palette size={14} className="text-indigo-500" />
+                    <Palette size={14} className="text-brand-500" />
                     Select Document Style
                   </h3>
                   <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold">{currentCategory}</span>
@@ -1824,18 +1824,18 @@ export const Documents: React.FC<DocumentsProps> = ({
                           key={t.id}
                           onClick={() => setSelectedTemplateId(t.id)}
                           className={`border-2 rounded-2xl p-3 cursor-pointer transition-all flex flex-col justify-between hover:shadow bg-slate-50/50 relative hover:bg-white ${
-                            isActive ? 'border-indigo-600 bg-white ring-1 ring-indigo-600/30' : 'border-slate-200 hover:border-slate-300'
+                            isActive ? 'border-brand-600 bg-white ring-1 ring-brand-600/30' : 'border-slate-200 hover:border-slate-300'
                           }`}
                         >
                           {/* Layout-accurate thumbnail — shows the real structure, not a recolour */}
                           <div className="mb-2">
-                            <LayoutThumbnail layout={t.layout} color={t.branding?.primaryColor || '#3b82f6'} />
+                            <LayoutThumbnail layout={t.layout} color={t.branding?.primaryColor || '#6c3cf0'} />
                           </div>
 
                           <h4 className="text-[10px] font-bold text-slate-800 truncate">{t.templateName}</h4>
                           
                           {isActive && (
-                            <span className="absolute top-2 right-2 w-3.5 h-3.5 bg-indigo-600 text-white rounded-full flex items-center justify-center text-[8px] font-bold">
+                            <span className="absolute top-2 right-2 w-3.5 h-3.5 bg-brand-600 text-white rounded-full flex items-center justify-center text-[8px] font-bold">
                               ✓
                             </span>
                           )}
@@ -1859,7 +1859,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                       onClick={handleDuplicateTemplate}
                       className="py-1.5 px-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 rounded-xl text-[10px] font-extrabold text-slate-700 transition-all flex items-center justify-center gap-1 shadow-xs"
                     >
-                      <Plus size={11} className="text-indigo-600" />
+                      <Plus size={11} className="text-brand-600" />
                       Duplicate
                     </button>
                     <button
@@ -1879,7 +1879,7 @@ export const Documents: React.FC<DocumentsProps> = ({
               <Card className="border border-slate-150 rounded-3xl p-4 shadow-sm bg-white">
                 <div className="flex items-center justify-between mb-3.5 pb-2 border-b border-slate-100">
                   <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1">
-                    <Sliders size={14} className="text-indigo-500" />
+                    <Sliders size={14} className="text-brand-500" />
                     Auto Employee Details
                   </h3>
                   <span className="text-[10px] text-slate-400">Instantly binds values</span>
@@ -1961,8 +1961,8 @@ export const Documents: React.FC<DocumentsProps> = ({
                   </div>
 
                   {currentCategory === 'Payslip Template' && (
-                    <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-2xl text-[10px] space-y-1 text-slate-700 shadow-xs">
-                      <div className="flex justify-between font-bold text-indigo-900 border-b border-indigo-100 pb-1 mb-1">
+                    <div className="p-3 bg-brand-50/50 border border-brand-100 rounded-2xl text-[10px] space-y-1 text-slate-700 shadow-xs">
+                      <div className="flex justify-between font-bold text-brand-900 border-b border-brand-100 pb-1 mb-1">
                         <span>Statutory Rules (Active Company)</span>
                         <span>Deductions</span>
                       </div>
@@ -1999,7 +1999,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     <Button
                       onClick={handlePrint}
                       disabled={isPrinting}
-                      className="flex-1 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1 shadow disabled:opacity-60"
+                      className="flex-1 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center gap-1 shadow disabled:opacity-60"
                     >
                       <Download size={13} />
                       {isPrinting ? 'Generating…' : 'Download PDF'}
@@ -2182,11 +2182,11 @@ export const Documents: React.FC<DocumentsProps> = ({
               onDragOver={e => { e.preventDefault(); if (canEdit) setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={e => { if (canEdit) onDropFile(e); }}
-              className={`mt-1 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${isDragging ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-900/30'}`}
+              className={`mt-1 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${isDragging ? 'border-brand-500 bg-brand-500/10' : 'border-slate-700 bg-slate-900/30'}`}
             >
               {uploadFile ? (
                 <div className="flex items-center justify-center gap-2 text-xs text-slate-200">
-                  <FileText size={16} className="text-blue-400" />
+                  <FileText size={16} className="text-brand-400" />
                   <span className="font-semibold">{uploadFile.fileName}</span>
                   <span className="text-slate-500">({uploadFile.size})</span>
                   <button type="button" onClick={() => setUploadFile(null)} className="ml-1 text-slate-400 hover:text-rose-400"><X size={14} /></button>
@@ -2197,7 +2197,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                   <p className="text-[11px] text-slate-400">Drag &amp; drop a file here, or</p>
                   <div className="flex items-center justify-center gap-2 mt-2">
                     <button type="button" disabled={!canEdit} onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center gap-1 disabled:opacity-40"><Paperclip size={12} /> Select File</button>
+                      className="text-[11px] px-3 py-1 rounded-lg bg-brand-600 hover:bg-brand-700 text-white font-bold flex items-center gap-1 disabled:opacity-40"><Paperclip size={12} /> Select File</button>
                     <button type="button" disabled={!canEdit} onClick={() => cameraInputRef.current?.click()}
                       className="text-[11px] px-3 py-1 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold flex items-center gap-1 disabled:opacity-40"><Camera size={12} /> Camera</button>
                   </div>
@@ -2321,7 +2321,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                 <Button
                   variant="outline"
                   onClick={() => handleSaveTemplate(true)}
-                  className="border-indigo-200 text-indigo-700 bg-indigo-50 hover:bg-indigo-100 hover:border-indigo-300 font-bold"
+                  className="border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100 hover:border-brand-300 font-bold"
                 >
                   Save as New Template
                 </Button>
@@ -2330,7 +2330,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             <div className="flex gap-2">
               <Button variant="outline" className="font-bold" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
               {canEdit && (
-                <Button onClick={() => handleSaveTemplate(false)} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow">
+                <Button onClick={() => handleSaveTemplate(false)} className="bg-brand-600 hover:bg-brand-700 text-white font-bold shadow">
                   Save Changes
                 </Button>
               )}
@@ -2344,7 +2344,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           <div className="lg:col-span-4 space-y-4 max-h-[580px] overflow-auto pr-1">
             <div className="p-3 bg-slate-50 border border-slate-150 rounded-2xl space-y-3.5">
               <h4 className="text-[11px] font-extrabold text-slate-800 border-b pb-1.5 flex items-center gap-1.5 uppercase tracking-wider">
-                <Sliders size={13} className="text-indigo-500" />
+                <Sliders size={13} className="text-brand-500" />
                 Template Info
               </h4>
               
@@ -2367,7 +2367,7 @@ export const Documents: React.FC<DocumentsProps> = ({
 
             <div className="p-3 bg-slate-50 border border-slate-150 rounded-2xl space-y-3.5">
               <h4 className="text-[11px] font-extrabold text-slate-800 border-b pb-1.5 flex items-center gap-1.5 uppercase tracking-wider">
-                <Palette size={13} className="text-indigo-500" />
+                <Palette size={13} className="text-brand-500" />
                 Branding & Design
               </h4>
 
@@ -2438,12 +2438,12 @@ export const Documents: React.FC<DocumentsProps> = ({
           <div className="lg:col-span-8 space-y-4">
             
             {/* Clickable Auto Details Chips (Canva Google Docs feel) */}
-            <div className="p-3 bg-indigo-50/40 border border-indigo-100 rounded-3xl space-y-2">
-              <h5 className="text-[10px] font-extrabold text-indigo-900 flex items-center gap-1.5 uppercase tracking-wider">
-                <Sparkles size={12} className="text-indigo-600 animate-pulse" />
+            <div className="p-3 bg-brand-50/40 border border-brand-100 rounded-3xl space-y-2">
+              <h5 className="text-[10px] font-extrabold text-brand-900 flex items-center gap-1.5 uppercase tracking-wider">
+                <Sparkles size={12} className="text-brand-600 animate-pulse" />
                 Insert Employee Information (Auto Employee Details)
               </h5>
-              <p className="text-[10px] text-indigo-700 leading-normal">
+              <p className="text-[10px] text-brand-700 leading-normal">
                 Click any chip below to insert a smart placeholder at your current text editor cursor:
               </p>
               
@@ -2486,7 +2486,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                     key={chip.key}
                     disabled={!canEdit}
                     onClick={() => insertDataChipNode(chip.key, chip.label)}
-                    className="inline-flex items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold bg-white hover:bg-indigo-600 border border-indigo-150 text-indigo-700 hover:text-white transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1 py-1 px-2.5 rounded-xl text-[10px] font-bold bg-white hover:bg-brand-600 border border-brand-100 text-brand-700 hover:text-white transition-all shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <User size={10} className="opacity-70" />
                     {chip.label}
@@ -2569,7 +2569,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                   className="p-1.5 hover:bg-slate-200 rounded text-slate-700 flex items-center gap-1 text-[9.5px] font-bold"
                   title="Insert Table Grid"
                 >
-                  <Table2 size={13} className="text-indigo-600" />
+                  <Table2 size={13} className="text-brand-600" />
                   + Table
                 </button>
 
@@ -2605,7 +2605,7 @@ export const Documents: React.FC<DocumentsProps> = ({
                   }}
                   className="p-1 px-2 hover:bg-slate-200 rounded text-slate-700 flex items-center gap-1 text-[9px] font-extrabold border border-slate-200 shadow-xs"
                 >
-                  <Tag size={11} className="text-purple-600" />
+                  <Tag size={11} className="text-brand-600" />
                   + Sign Box
                 </button>
               </div>
@@ -2627,7 +2627,7 @@ export const Documents: React.FC<DocumentsProps> = ({
             </div>
 
             <div className="flex items-center gap-2 text-[10px] text-slate-400 italic">
-              <Info size={11} className="text-indigo-500" />
+              <Info size={11} className="text-brand-500" />
               <span>Double-click or drag variables inside the editor. Changes sync with the live preview instantly.</span>
             </div>
 

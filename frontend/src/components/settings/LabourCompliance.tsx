@@ -92,14 +92,14 @@ export const LabourCompliance: React.FC<Props> = ({ companyId, branchNames, canE
   return (
     <Card>
       <div className="flex items-center justify-between mb-3 pb-1.5 border-b border-gray-100">
-        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5"><ShieldCheck size={14} className="text-indigo-600" /> Labour Compliance — State-Wise Minimum Wages</h3>
+        <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5"><ShieldCheck size={14} className="text-brand-600" /> Labour Compliance — State-Wise Minimum Wages</h3>
         {!canEdit && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full flex items-center gap-1"><Lock size={10} /> View Only</span>}
       </div>
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-4">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.icon}{t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.icon}{t.label}</button>
         ))}
       </div>
 
@@ -124,7 +124,7 @@ export const LabourCompliance: React.FC<Props> = ({ companyId, branchNames, canE
                     {canEdit && (
                       <Td>
                         <div className="flex items-center gap-1">
-                          <button onClick={() => openEdit(r)} title="Edit" className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-indigo-600"><Edit3 size={13} /></button>
+                          <button onClick={() => openEdit(r)} title="Edit" className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-brand-600"><Edit3 size={13} /></button>
                           <button onClick={() => toggleActive(r)} title={r.active ? 'Deactivate' : 'Activate'} className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-amber-600"><ShieldCheck size={13} /></button>
                           <button onClick={() => removeState(r)} title="Remove" className="p-1.5 rounded-md border border-slate-200 text-slate-400 hover:text-rose-600"><Trash2 size={13} /></button>
                         </div>
@@ -185,17 +185,17 @@ export const LabourCompliance: React.FC<Props> = ({ companyId, branchNames, canE
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 cursor-pointer">
-              <input type="checkbox" disabled={!canEdit} checked={settings.enforceCompliance} onChange={e => setToggle('enforceCompliance', e.target.checked)} className="mt-0.5 accent-indigo-600" />
+              <input type="checkbox" disabled={!canEdit} checked={settings.enforceCompliance} onChange={e => setToggle('enforceCompliance', e.target.checked)} className="mt-0.5 accent-brand-600" />
               <span><span className="text-xs font-bold text-slate-800 block">Enforce minimum-wage compliance</span><span className="text-[11px] text-slate-500">Show a warning when an entered wage is below the state minimum.</span></span>
             </label>
             <label className="flex items-start gap-2 rounded-xl border border-slate-200 p-3 cursor-pointer">
-              <input type="checkbox" disabled={!canEdit} checked={settings.allowBelowMinimumOverride} onChange={e => setToggle('allowBelowMinimumOverride', e.target.checked)} className="mt-0.5 accent-indigo-600" />
+              <input type="checkbox" disabled={!canEdit} checked={settings.allowBelowMinimumOverride} onChange={e => setToggle('allowBelowMinimumOverride', e.target.checked)} className="mt-0.5 accent-brand-600" />
               <span><span className="text-xs font-bold text-slate-800 block">Allow override with reason</span><span className="text-[11px] text-slate-500">Permit saving a below-minimum wage when an authorized user records a reason (logged).</span></span>
             </label>
           </div>
 
           <div>
-            <p className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5"><MapPin size={13} className="text-indigo-600" /> Branch → State mapping</p>
+            <p className="text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5"><MapPin size={13} className="text-brand-600" /> Branch → State mapping</p>
             <p className="text-[11px] text-slate-500 mb-2">Branches don't store a state, so map each to its labour-law state. The registration wage panel uses this to auto-fetch the minimum wage.</p>
             {branchNames.length === 0 ? (
               <p className="text-[11px] text-slate-400">No branches in this company.</p>
@@ -227,7 +227,7 @@ export const LabourCompliance: React.FC<Props> = ({ companyId, branchNames, canE
           </div>
           <div className="grid grid-cols-2 gap-3 items-end">
             <Input label="Effective Date" type="date" disabled={!canEdit} value={form.effectiveDate} onChange={e => setForm({ ...form, effectiveDate: e.target.value })} />
-            <label className="flex items-center gap-2 pb-2 cursor-pointer"><input type="checkbox" disabled={!canEdit} checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} className="accent-indigo-600" /><span className="text-xs font-semibold text-slate-700">Active rule</span></label>
+            <label className="flex items-center gap-2 pb-2 cursor-pointer"><input type="checkbox" disabled={!canEdit} checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} className="accent-brand-600" /><span className="text-xs font-semibold text-slate-700">Active rule</span></label>
           </div>
           {editing && <p className="text-[10px] text-slate-400">Changed rates are recorded in the Wage Revision History with the effective date.</p>}
         </div>

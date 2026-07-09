@@ -125,31 +125,50 @@ exports.updateBranding = async (req, res) => {
 
     // Permission scope: Super Admin → any company; everyone else → ONLY their own
     // top-level company. We compare against the user's resolved primary company
-    // (not the merged accessibleCompanyIds) so that branch ids — which overlap
-    // company ids — can never let a user edit a different company's branding.
     if (role !== 'Super Admin') {
-      let userCompanyId = req.user.companyId;
-      if (userCompanyId) {
-        const uc = await prisma.company.findUnique({ where: { id: userCompanyId } });
+      let isAllowed = false;
+      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      
+      for (const id of allowedIds) {
+        let cid = id;
+        const searchId = typeof cid === 'number' ? cid : (Number(cid) || cid);
+        const uc = await prisma.company.findUnique({ where: { id: searchId } }).catch(() => null);
         if (!uc) {
-          const ub = await prisma.branch.findUnique({ where: { id: userCompanyId } }).catch(() => null);
-          if (ub) userCompanyId = ub.companyId;
+          const ub = await prisma.branch.findUnique({ where: { id: searchId } }).catch(() => null);
+          if (ub) cid = ub.companyId;
         } else if (uc.parentCompanyId) {
-          userCompanyId = uc.parentCompanyId;
+          cid = uc.parentCompanyId;
+        }
+        
+        if (String(cid) === String(companyId)) {
+          isAllowed = true;
+          break;
         }
       }
-      if (!userCompanyId || companyId !== userCompanyId) {
+
+      const brandingCompanyId = companyId;
+      const currentUser = req.user;
+      
+      const cpPerms = currentUser.permissions?.['company-profile'] || {};
+      const allowEdit = cpPerms.edit === true;
+
+      console.log({
+          userId: currentUser.id,
+          role: currentUser.role,
+          companyId: currentUser.companyId,
+          branchId: currentUser.branchId,
+          brandingCompanyId: brandingCompanyId,
+          profileCompanyId: rawId,
+          permissions: currentUser.permissions
+      });
+      console.log("Permission Check Result", allowEdit);
+
+      if (!isAllowed) {
         return res.status(403).json({ error: 'You can only edit branding for your own company.' });
       }
-      if (role === 'HR') {
-        const perms = req.user.permissions || {};
-        const moduleAccess = perms.moduleAccess || {};
-        const granular = perms.permissions || {};
-        const allowedBranding = moduleAccess.settings !== false &&
-          (granular.settings?.manage === true || granular.settings?.edit === true);
-        if (!allowedBranding) {
-          return res.status(403).json({ error: 'Company branding management is not enabled for your account.' });
-        }
+
+      if (!allowEdit && currentUser.role !== 'Super Admin' && currentUser.role !== 'Company Head') {
+        return res.status(403).json({ error: 'Company branding management is not enabled for your account.' });
       }
     }
 

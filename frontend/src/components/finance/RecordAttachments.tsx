@@ -122,15 +122,15 @@ export const RecordAttachments: React.FC<Props> = ({ source, altSources = [], so
           onDragLeave={() => setDrag(false)}
           onDrop={onDrop}
           onClick={() => fileInput.current?.click()}
-          className={`mb-2 cursor-pointer rounded-xl border border-dashed px-3 py-3 text-center transition ${drag ? 'border-[#4F7CFF] bg-[#EDF4FF]' : 'border-slate-200 hover:border-[#4F7CFF]/60'}`}>
-          <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5"><UploadCloud size={14} className="text-[#4F7CFF]" /> Drag &amp; drop a file here, or click to browse (PDF, DOCX, XLSX, JPG, PNG)</p>
+          className={`mb-2 cursor-pointer rounded-xl border border-dashed px-3 py-3 text-center transition ${drag ? 'border-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 hover:border-[#6C3CF0]/60'}`}>
+          <p className="text-[11px] text-slate-500 flex items-center justify-center gap-1.5"><UploadCloud size={14} className="text-[#6C3CF0]" /> Drag &amp; drop a file here, or click to browse (PDF, DOCX, XLSX, JPG, PNG)</p>
         </div>
       )}
 
       {/* Pending upload form */}
       {pending && (
-        <div className="mb-2 rounded-xl border border-[#DBEAFE] bg-[#F7FAFF] p-3 space-y-2">
-          <div className="flex items-center gap-2 text-xs text-slate-600"><FileText size={14} className="text-[#4F7CFF]" /> <span className="font-semibold truncate">{pending.file.fileName}</span> <span className="text-slate-400">· {pending.file.size}</span>
+        <div className="mb-2 rounded-xl border border-[#E6E0FE] bg-[#F3F0FF] p-3 space-y-2">
+          <div className="flex items-center gap-2 text-xs text-slate-600"><FileText size={14} className="text-[#6C3CF0]" /> <span className="font-semibold truncate">{pending.file.fileName}</span> <span className="text-slate-400">· {pending.file.size}</span>
             <button className="ml-auto text-slate-400 hover:text-rose-500" onClick={() => setPending(null)}><X size={14} /></button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">

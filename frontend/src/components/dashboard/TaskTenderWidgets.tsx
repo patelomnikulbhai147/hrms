@@ -40,12 +40,12 @@ export const TaskTenderWidgets: React.FC<Props> = ({ activeCompanyId, onNavigate
       {/* Task Manager widget — spans all 3 cols when the tender panel is hidden */}
       <div className={`${canViewTenders ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white rounded-2xl border border-slate-100 shadow-sm p-5`}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><ClipboardList size={16} className="text-indigo-600" /> Task Manager</h3>
-          <button onClick={() => onNavigate('tasks')} className="text-[11px] font-semibold text-indigo-600 hover:underline flex items-center gap-0.5">Open <ChevronRight size={13} /></button>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><ClipboardList size={16} className="text-brand-600" /> Task Manager</h3>
+          <button onClick={() => onNavigate('tasks')} className="text-[11px] font-semibold text-brand-600 hover:underline flex items-center gap-0.5">Open <ChevronRight size={13} /></button>
         </div>
         <div className="grid grid-cols-4 gap-3 mb-4">
           <div className="rounded-xl bg-amber-50 p-3 text-center"><Clock size={15} className="text-amber-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-amber-700">{pending}</p><p className="text-[10px] font-bold text-amber-500 uppercase">Pending</p></div>
-          <div className="rounded-xl bg-blue-50 p-3 text-center"><ClipboardList size={15} className="text-blue-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-blue-700">{inProgress}</p><p className="text-[10px] font-bold text-blue-500 uppercase">Active</p></div>
+          <div className="rounded-xl bg-brand-50 p-3 text-center"><ClipboardList size={15} className="text-brand-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-brand-700">{inProgress}</p><p className="text-[10px] font-bold text-brand-500 uppercase">Active</p></div>
           <div className="rounded-xl bg-emerald-50 p-3 text-center"><CheckCircle2 size={15} className="text-emerald-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-emerald-700">{completed}</p><p className="text-[10px] font-bold text-emerald-500 uppercase">Done</p></div>
           <div className="rounded-xl bg-rose-50 p-3 text-center"><AlertTriangle size={15} className="text-rose-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-rose-700">{overdue}</p><p className="text-[10px] font-bold text-rose-500 uppercase">Overdue</p></div>
         </div>
@@ -64,12 +64,12 @@ export const TaskTenderWidgets: React.FC<Props> = ({ activeCompanyId, onNavigate
       {canViewTenders && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Briefcase size={16} className="text-indigo-600" /> Tender Information</h3>
-            <button onClick={() => onNavigate('tenders')} className="text-[11px] font-semibold text-indigo-600 hover:underline flex items-center gap-0.5">Open <ChevronRight size={13} /></button>
+            <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Briefcase size={16} className="text-brand-600" /> Tender Information</h3>
+            <button onClick={() => onNavigate('tenders')} className="text-[11px] font-semibold text-brand-600 hover:underline flex items-center gap-0.5">Open <ChevronRight size={13} /></button>
           </div>
-          <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-white border border-indigo-100 p-4 text-center flex-1 flex flex-col justify-center">
-            <p className="text-[10px] font-extrabold text-indigo-400 uppercase tracking-wider">Live Tenders</p>
-            <p className="text-4xl font-extrabold text-indigo-700 my-1">{liveTenders}</p>
+          <div className="rounded-xl bg-gradient-to-br from-brand-50 to-white border border-brand-100 p-4 text-center flex-1 flex flex-col justify-center">
+            <p className="text-[10px] font-extrabold text-brand-400 uppercase tracking-wider">Live Tenders</p>
+            <p className="text-4xl font-extrabold text-brand-700 my-1">{liveTenders}</p>
             {liveTenders === 0 && <p className="text-[11px] text-slate-400">No live tenders right now</p>}
           </div>
           <p className="text-[10px] text-slate-400 mt-3 text-center">Open Tender Management for full details</p>

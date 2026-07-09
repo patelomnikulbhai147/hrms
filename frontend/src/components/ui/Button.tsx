@@ -6,20 +6,21 @@ type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 
 type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-gradient-to-r from-[#4F7CFF] to-[#6AA8FF] text-white hover:opacity-90 hover:shadow-lg hover:shadow-[#4F7CFF]/20 border-transparent',
-  'primary-light-blue': 'bg-gradient-to-r from-[#4F7CFF] to-[#6AA8FF] text-white hover:opacity-90 hover:shadow-lg hover:shadow-[#4F7CFF]/20 border-transparent',
-  secondary: 'bg-[#F1F5F9] text-[#475569] hover:bg-[#E2E8F0] hover:text-[#1E293B] border-transparent shadow-sm',
-  danger: 'bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-700 hover:border-rose-300 shadow-sm',
-  ghost: 'bg-transparent text-[#64748B] hover:bg-[#F1F5F9] hover:text-[#1E293B] border-transparent',
-  outline: 'bg-white border border-[#E2E8F0] text-[#475569] hover:bg-[#F8FAFC] hover:text-[#1E293B] hover:border-[#CBD5E1] shadow-sm',
-  success: 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white hover:opacity-90 hover:shadow-lg hover:shadow-emerald-500/15 border-transparent',
+  primary: 'bg-gradient-to-r from-brand-600 to-brand-500 text-white border-transparent shadow-[0_2px_8px_rgba(108,60,240,0.24)] hover:from-brand-700 hover:to-brand-600 hover:shadow-[0_6px_20px_rgba(108,60,240,0.32)]',
+  // Retained for API compatibility — callers still pass this variant name.
+  'primary-light-blue': 'bg-gradient-to-r from-brand-600 to-brand-500 text-white border-transparent shadow-[0_2px_8px_rgba(108,60,240,0.24)] hover:from-brand-700 hover:to-brand-600 hover:shadow-[0_6px_20px_rgba(108,60,240,0.32)]',
+  secondary: 'bg-brand-50 text-brand-700 hover:bg-brand-100 border-transparent',
+  danger: 'bg-white border border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300',
+  ghost: 'bg-transparent text-ink-secondary hover:bg-[var(--surface-hover)] hover:text-brand-600 border-transparent',
+  outline: 'bg-surface border border-hairline text-ink-secondary hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50',
+  success: 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-transparent shadow-[0_2px_8px_rgba(22,163,74,0.24)] hover:shadow-[0_6px_20px_rgba(22,163,74,0.30)]',
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
-  xs: 'px-2.5 py-1 text-[11px] rounded-lg',
-  sm: 'px-3 py-1.5 text-xs rounded-xl',
-  md: 'px-4.5 py-2 text-xs rounded-xl',
-  lg: 'px-5.5 py-2.5 text-sm rounded-2xl',
+  xs: 'h-7  px-2.5 text-[11px] rounded-lg',
+  sm: 'h-8  px-3   text-xs    rounded-lg',
+  md: 'h-9.5 px-4  text-[13px] rounded-[10px]',
+  lg: 'h-11 px-5   text-sm    rounded-xl',
 };
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -39,7 +40,9 @@ export const Button: React.FC<ButtonProps> = ({
       {...props as any}
       disabled={disabled || loading}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 font-bold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed select-none',
+        'inline-flex items-center justify-center gap-1.5 font-semibold whitespace-nowrap transition-all duration-200',
+        'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25',
+        'disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none select-none',
         variantClasses[variant],
         sizeClasses[size],
         className

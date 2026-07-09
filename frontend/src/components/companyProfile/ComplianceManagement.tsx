@@ -410,7 +410,7 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
   if (loading) return <p className="text-sm text-slate-400 p-6">Loading compliance data…</p>;
 
   const cards = [
-    { label: 'Total Documents', value: summary.total, color: 'bg-blue-500' },
+    { label: 'Total Documents', value: summary.total, color: 'bg-brand-500' },
     { label: 'Active', value: summary.active, color: 'bg-emerald-500' },
     { label: 'Expiring in 45 Days', value: summary.expiring45, color: 'bg-amber-500' },
     { label: 'Expired', value: summary.expired, color: 'bg-rose-500' },
@@ -434,15 +434,15 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search all company documents…" className="pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 w-60 focus:outline-none focus:border-[#4F7CFF]" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search all company documents…" className="pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 w-60 focus:outline-none focus:border-[#6C3CF0]" />
           </div>
-          <select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="py-2 px-3 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-[#4F7CFF]">
+          <select value={catFilter} onChange={e => setCatFilter(e.target.value)} className="py-2 px-3 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-[#6C3CF0]">
             <option value="All">All Categories</option>
             {renderCats.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
           </select>
           <div className="flex items-center gap-1 flex-wrap">
             {VISIBLE_STATUS_FILTERS.map(f => (
-              <button key={f} onClick={() => setFilter(f)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg transition-colors ${filter === f ? 'bg-[#EDF4FF] text-[#4F7CFF]' : 'text-slate-500 hover:bg-slate-100'}`}>{f}</button>
+              <button key={f} onClick={() => setFilter(f)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg transition-colors ${filter === f ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'text-slate-500 hover:bg-slate-100'}`}>{f}</button>
             ))}
           </div>
         </div>
@@ -494,10 +494,10 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
                     </div>
                     {/* Actions — do NOT trigger the row click. */}
                     <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => previewFile(i.record)} className="text-slate-400 hover:text-[#4F7CFF]" title="View document"><Eye size={15} /></button>
-                      {i.record?.fileData && <button onClick={() => downloadFile(i.record.fileData, i.record.fileName)} className="text-slate-400 hover:text-[#4F7CFF]" title="Download certificate"><Download size={15} /></button>}
-                      {i.record?.versionHistory && i.record.versionHistory !== '[]' && <button onClick={() => setVersionsFor(i.record)} className="text-slate-400 hover:text-indigo-500" title="Version history"><History size={15} /></button>}
-                      {editable && <button onClick={() => openEditor(i)} className="text-slate-400 hover:text-indigo-500" title={i.record ? 'Edit' : 'Add'}>{i.record ? <Edit size={15} /> : <Plus size={15} />}</button>}
+                      <button onClick={() => previewFile(i.record)} className="text-slate-400 hover:text-[#6C3CF0]" title="View document"><Eye size={15} /></button>
+                      {i.record?.fileData && <button onClick={() => downloadFile(i.record.fileData, i.record.fileName)} className="text-slate-400 hover:text-[#6C3CF0]" title="Download certificate"><Download size={15} /></button>}
+                      {i.record?.versionHistory && i.record.versionHistory !== '[]' && <button onClick={() => setVersionsFor(i.record)} className="text-slate-400 hover:text-brand-500" title="Version history"><History size={15} /></button>}
+                      {editable && <button onClick={() => openEditor(i)} className="text-slate-400 hover:text-brand-500" title={i.record ? 'Edit' : 'Add'}>{i.record ? <Edit size={15} /> : <Plus size={15} />}</button>}
                       {editable && i.record && <button onClick={() => remove(i)} className="text-slate-400 hover:text-rose-500" title="Delete"><Trash2 size={15} /></button>}
                     </div>
                   </div>
@@ -527,7 +527,7 @@ export const ComplianceManagement: React.FC<Props> = ({ companyId, company, edit
               <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                 <Button variant="outline" size="sm" icon={<Upload size={14} />} onClick={() => fileRef.current?.click()}>{draft.fileData ? 'Replace' : 'Upload'}</Button>
                 {draft.fileName && <span className="text-xs text-slate-500">{draft.fileName} {draft.fileSize ? `(${draft.fileSize})` : ''}</span>}
-                {draft.fileData && <button onClick={() => downloadFile(draft.fileData, draft.fileName)} className="text-slate-400 hover:text-[#4F7CFF]"><Download size={14} /></button>}
+                {draft.fileData && <button onClick={() => downloadFile(draft.fileData, draft.fileName)} className="text-slate-400 hover:text-[#6C3CF0]"><Download size={14} /></button>}
                 <input ref={fileRef} type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx" onChange={e => pickFile(e.target.files?.[0])} />
               </div>
             </div>
@@ -566,7 +566,7 @@ const VersionList: React.FC<{ record: any; onDownload: (f?: string, n?: string) 
       {versions.map((v, idx) => (
         <div key={idx} className="flex items-center justify-between rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
           <span className="text-xs font-semibold text-slate-600">{v.fileName || `version ${versions.length - idx}`} {v.uploadedOn ? `· ${v.uploadedOn}` : ''} {v.fileSize ? `· ${v.fileSize}` : ''}</span>
-          <button onClick={() => onDownload(v.fileData, v.fileName)} className="text-slate-400 hover:text-[#4F7CFF]"><Download size={14} /></button>
+          <button onClick={() => onDownload(v.fileData, v.fileName)} className="text-slate-400 hover:text-[#6C3CF0]"><Download size={14} /></button>
         </div>
       ))}
     </div>

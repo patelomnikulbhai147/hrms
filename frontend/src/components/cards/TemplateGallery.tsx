@@ -57,18 +57,18 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search templates…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#4F7CFF] outline-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search templates…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none" />
         </div>
         <div className="flex flex-wrap gap-1">
           {cats.map((c) => (
-            <button key={c} onClick={() => setCat(c)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border ${cat === c ? 'bg-[#4F7CFF] text-white border-[#4F7CFF]' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-700'}`}>{c}</button>
+            <button key={c} onClick={() => setCat(c)} className={`px-2.5 py-1.5 text-[11px] font-bold rounded-lg border ${cat === c ? 'bg-[#6C3CF0] text-white border-[#6C3CF0]' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-700'}`}>{c}</button>
           ))}
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {shown.map((t) => (
-          <div key={t.id} className={`rounded-2xl border bg-white p-3 transition ${activeId === t.id ? 'border-[#4F7CFF] ring-1 ring-[#4F7CFF]/30' : 'border-slate-200 hover:border-slate-300'}`}>
+          <div key={t.id} className={`rounded-2xl border bg-white p-3 transition ${activeId === t.id ? 'border-[#6C3CF0] ring-1 ring-[#6C3CF0]/30' : 'border-slate-200 hover:border-slate-300'}`}>
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="min-w-0">
                 <p className="text-sm font-extrabold text-slate-800 truncate flex items-center gap-1.5">{t.name}{t.isDefault && <Star size={12} className="text-amber-500 fill-amber-400" />}</p>

@@ -49,7 +49,7 @@ interface Props {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const inputCls = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+const inputCls = 'w-full rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500';
 
 const Field: React.FC<{ label: string; required?: boolean; error?: string; hint?: string; children: React.ReactNode }> = ({ label, required, error, hint, children }) => (
   <div>
@@ -64,7 +64,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wide col-span-full mt-1 mb-0.5 pb-1 border-b border-slate-100">{children}</p>
 );
 
-const EMPTY: DeptFormValue = { name: '', code: '', description: '', status: 'Active', color: '#4F7CFF', icon: '', order: null, branchId: '', parent: '', reportsTo: '', head: '', allowEmployees: true, email: '', phone: '' };
+const EMPTY: DeptFormValue = { name: '', code: '', description: '', status: 'Active', color: '#6C3CF0', icon: '', order: null, branchId: '', parent: '', reportsTo: '', head: '', allowEmployees: true, email: '', phone: '' };
 
 export const DepartmentFormModal: React.FC<Props> = ({ open, onClose, initial, existingNames, existingCodes, branches, allDepartments, onSubmit }) => {
   const [form, setForm] = useState<DeptFormValue>(EMPTY);
@@ -148,8 +148,8 @@ export const DepartmentFormModal: React.FC<Props> = ({ open, onClose, initial, e
         </Field>
         <Field label="Colour">
           <div className="flex items-center gap-2">
-            <input type="color" value={form.color || '#4F7CFF'} onChange={e => set('color', e.target.value)} className="h-8 w-10 rounded border border-slate-200 p-0" />
-            <input className={`${inputCls} font-mono`} value={form.color || ''} onChange={e => set('color', e.target.value)} placeholder="#4F7CFF" />
+            <input type="color" value={form.color || '#6C3CF0'} onChange={e => set('color', e.target.value)} className="h-8 w-10 rounded border border-slate-200 p-0" />
+            <input className={`${inputCls} font-mono`} value={form.color || ''} onChange={e => set('color', e.target.value)} placeholder="#6C3CF0" />
           </div>
         </Field>
         <Field label="Icon (emoji or name)">
@@ -185,7 +185,7 @@ export const DepartmentFormModal: React.FC<Props> = ({ open, onClose, initial, e
           <input className={inputCls} value={form.phone || ''} onChange={e => set('phone', e.target.value)} placeholder="+91 …" />
         </Field>
         <div className="flex items-center gap-2 pt-5">
-          <input type="checkbox" id="allowEmployees" className="accent-blue-600 h-4 w-4" checked={form.allowEmployees !== false} onChange={e => set('allowEmployees', e.target.checked)} />
+          <input type="checkbox" id="allowEmployees" className="accent-brand-600 h-4 w-4" checked={form.allowEmployees !== false} onChange={e => set('allowEmployees', e.target.checked)} />
           <label htmlFor="allowEmployees" className="text-xs font-semibold text-slate-700 cursor-pointer">Allow employees in this department</label>
         </div>
       </div>

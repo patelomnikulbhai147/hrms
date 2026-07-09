@@ -160,8 +160,8 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
   if (isEmployee) {
     return (
       <div className="space-y-4">
-        <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-5 py-4">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Gift size={18} className="text-indigo-600" /> My Bonus</h2>
+        <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm px-5 py-4">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Gift size={18} className="text-brand-600" /> My Bonus</h2>
           <p className="text-xs text-slate-500">Your bonus payments (read-only).</p>
         </div>
         <Card>
@@ -191,22 +191,22 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm">
-        <div className="px-5 py-4 border-b border-[#DBEAFE]">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Gift size={18} className="text-indigo-600" /> Bonus Management</h2>
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
+        <div className="px-5 py-4 border-b border-[#E6E0FE]">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Gift size={18} className="text-brand-600" /> Bonus Management</h2>
           <p className="text-xs text-slate-500">Configuration · eligibility · statutory calculation · approval workflow · payments — a separate, audited bonus transaction system.</p>
         </div>
         {/* Dashboard widgets */}
         {dash && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-5 py-3 border-b border-[#DBEAFE]">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 px-5 py-3 border-b border-[#E6E0FE]">
             {[['Total Bonus Budget', inr(dash.totalBudget)], ['Employees Eligible', dash.employeesEligible], ['Pending Approvals', dash.pendingApprovals], ['Bonus Paid', inr(dash.bonusPaid)], ['Upcoming Cycle', dash.upcomingCycle ? `${dash.upcomingCycle.financialYear} (${dash.upcomingCycle.status})` : '—']].map(([k, v]) => (
-              <div key={k as string} className="rounded-xl border border-[#DBEAFE] bg-white p-3"><p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{k}</p><p className="text-lg font-extrabold text-slate-700 mt-0.5">{v}</p></div>
+              <div key={k as string} className="rounded-xl border border-[#E6E0FE] bg-white p-3"><p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{k}</p><p className="text-lg font-extrabold text-slate-700 mt-0.5">{v}</p></div>
             ))}
           </div>
         )}
         <div className="px-3 pt-2 flex flex-wrap gap-1">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${tab === t.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t.icon}{t.label}</button>
+            <button key={t.key} onClick={() => setTab(t.key)} className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${tab === t.key ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t.icon}{t.label}</button>
           ))}
         </div>
       </div>
@@ -220,7 +220,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
           {configs.length === 0 ? <div className="py-12 text-center"><Inbox className="mx-auto text-slate-300 mb-2" size={28} /><p className="text-sm font-semibold text-slate-500">No bonus configurations yet</p></div> : (
             <div className="overflow-x-auto"><Table><Thead><Tr><Th>Type</Th><Th>FY</Th><Th>Min %</Th><Th>Max %</Th><Th>Ceiling</Th><Th>Min Days</Th><Th>Leave</Th><Th>OT</Th><Th>Status</Th><Th>Actions</Th></Tr></Thead>
               <Tbody>{configs.map(c => (<Tr key={c.id}><Td><Badge variant="indigo">{c.bonusType}</Badge></Td><Td className="font-semibold">{c.financialYear}</Td><Td>{c.minBonusPercent}%</Td><Td>{c.maxBonusPercent}%</Td><Td>{c.salaryCeiling != null ? inr(c.salaryCeiling) : '—'}</Td><Td>{c.minWorkingDays}</Td><Td>{c.includeLeaveDays ? 'Yes' : 'No'}</Td><Td>{c.includeOvertime ? 'Yes' : 'No'}</Td><Td><Badge variant={c.isActive ? 'green' : 'gray'}>{c.isActive ? 'Active' : 'Inactive'}</Badge></Td>
-                <Td><div className="flex gap-1.5">{canManageConfig && <button onClick={() => openCfgEdit(c)} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600"><Edit2 size={13} /></button>}{canManageConfig && <button onClick={() => removeCfg(c)} className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600"><Trash2 size={13} /></button>}</div></Td></Tr>))}</Tbody></Table></div>
+                <Td><div className="flex gap-1.5">{canManageConfig && <button onClick={() => openCfgEdit(c)} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600"><Edit2 size={13} /></button>}{canManageConfig && <button onClick={() => removeCfg(c)} className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600"><Trash2 size={13} /></button>}</div></Td></Tr>))}</Tbody></Table></div>
           )}
         </Card>
       )}
@@ -277,7 +277,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
           {lines.length === 0 ? <div className="py-10 text-center text-sm text-slate-400">No data. Generate a cycle in Processing.</div> : (
             <div className="overflow-x-auto"><Table><Thead><Tr><Th>Emp ID</Th><Th>Name</Th><Th>Eligible Salary</Th><Th>Bonus %</Th><Th>Bonus Amount</Th><Th>Override</Th>{canApprove && <Th>Action</Th>}</Tr></Thead>
               <Tbody>{lines.map(r => (<Tr key={r.employeeId}><Td className="font-mono text-[11px]">{r.code}</Td><Td className="font-semibold">{r.name}</Td><Td>{inr(r.eligibleSalary)}</Td><Td>{r.bonusPercent}%</Td><Td className="font-bold">{inr(r.bonusAmount)}</Td><Td>{r.isManualOverride ? <Badge variant="amber">Manual</Badge> : <span className="text-slate-400 text-xs">Auto</span>}</Td>
-                {canApprove && <Td>{selectedCycle && ['Draft', 'Calculated'].includes(selectedCycle.status) && r.eligibilityStatus === 'Eligible' && <button onClick={() => overrideLine(r)} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600"><Edit2 size={13} /></button>}</Td>}</Tr>))}</Tbody></Table></div>
+                {canApprove && <Td>{selectedCycle && ['Draft', 'Calculated'].includes(selectedCycle.status) && r.eligibilityStatus === 'Eligible' && <button onClick={() => overrideLine(r)} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600"><Edit2 size={13} /></button>}</Td>}</Tr>))}</Tbody></Table></div>
           )}
         </Card>
       )}

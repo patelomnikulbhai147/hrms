@@ -21,7 +21,7 @@ import {
 // ── Small shared primitives ──────────────────────────────────────────────────
 
 const inputCls =
-  'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500';
+  'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:bg-slate-50 disabled:text-slate-500';
 
 // A labelled control with contextual help + inline error. Wrap any input/select.
 const Field: React.FC<{ label: string; hint?: string; error?: string; children: React.ReactNode }> = ({ label, hint, error, children }) => (
@@ -87,7 +87,7 @@ export const ConfigModuleShell: React.FC<ConfigModuleShellProps> = ({
       {/* Module header */}
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Icon size={20} /></div>
+          <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><Icon size={20} /></div>
           <div>
             <div className="flex items-center gap-2">
               <h4 className="font-bold text-slate-800 text-lg leading-tight">{title}</h4>
@@ -102,7 +102,7 @@ export const ConfigModuleShell: React.FC<ConfigModuleShellProps> = ({
       <div className="flex flex-wrap gap-1 mt-3 mb-4">
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center ${tab === t ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center ${tab === t ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
             {TAB_LABEL[t]}{badgeFor(t)}
           </button>
         ))}
@@ -178,7 +178,7 @@ export const HistoryTab: React.FC<{ history: any[]; canEdit: boolean; onRollback
               <td className="p-3 text-slate-600">{h.reason || '—'}</td>
               <td className="p-3 text-right">
                 {canEdit && idx !== 0 && (
-                  <button className="text-[11px] font-bold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1" onClick={() => onRollback(h)}>
+                  <button className="text-[11px] font-bold text-brand-600 hover:text-brand-800 inline-flex items-center gap-1" onClick={() => onRollback(h)}>
                     <RotateCcw size={12} /> Rollback
                   </button>
                 )}
@@ -199,7 +199,7 @@ export const RulesTab: React.FC<{ rules: any[]; canEdit: boolean; onChange: (rul
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-slate-500 flex items-center gap-1.5"><Info size={13} className="text-blue-500" /> Rules are evaluated top-to-bottom; the first match decides applicability.</p>
+        <p className="text-xs text-slate-500 flex items-center gap-1.5"><Info size={13} className="text-brand-500" /> Rules are evaluated top-to-bottom; the first match decides applicability.</p>
         {canEdit && <Button size="sm" variant="outline" icon={<Plus size={13} />} onClick={add}>Add Rule</Button>}
       </div>
       {(!rules || rules.length === 0) && <div className="text-center py-8 text-slate-400 text-sm border border-dashed border-slate-200 rounded-xl">No rules defined. The base configuration applies to everyone.</div>}
@@ -366,7 +366,7 @@ export const EsicSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, on
           {tab === 'configuration' && (
             <div className="space-y-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
+                <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
                 <span className="text-xs font-semibold text-slate-700">Enable ESIC deductions for this company</span>
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -411,11 +411,11 @@ export const EsicSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, on
               </Field>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <PreviewStat label="Employee" value={inr(preview.employee)} tone="text-rose-600" />
-                <PreviewStat label="Employer" value={inr(preview.employer)} tone="text-blue-600" />
+                <PreviewStat label="Employer" value={inr(preview.employer)} tone="text-brand-600" />
                 <PreviewStat label="Total Deduction" value={inr(preview.total)} tone="text-slate-900" />
                 <PreviewStat label="Applicable" value={preview.applicable ? 'Yes' : 'No'} tone={preview.applicable ? 'text-emerald-600' : 'text-slate-400'} />
               </div>
-              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-blue-500" /> {preview.note}</p>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-brand-500" /> {preview.note}</p>
             </div>
           )}
           {tab === 'history' && <HistoryTab history={history} canEdit={canEdit} onRollback={onRollback} />}
@@ -449,7 +449,7 @@ export const PtSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, onSa
           {tab === 'configuration' && (
             <div className="space-y-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
+                <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
                 <span className="text-xs font-semibold text-slate-700">Enable Professional Tax deductions</span>
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -471,7 +471,7 @@ export const PtSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, onSa
                   </select>
                 </Field>
                 <label className="flex items-center gap-2 cursor-pointer md:col-span-2">
-                  <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!cfg.genderRules} disabled={!canEdit} onChange={e => onChange({ genderRules: e.target.checked })} />
+                  <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!cfg.genderRules} disabled={!canEdit} onChange={e => onChange({ genderRules: e.target.checked })} />
                   <span className="text-xs font-semibold text-slate-700">Apply gender-based exemptions (where the state allows)</span>
                 </label>
               </div>
@@ -487,7 +487,7 @@ export const PtSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, onSa
                 <PreviewStat label="Frequency" value={cfg.frequency || 'Monthly'} />
                 <PreviewStat label="State" value={cfg.state || '—'} />
               </div>
-              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-blue-500" /> {preview.note}</p>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-brand-500" /> {preview.note}</p>
             </div>
           )}
           {tab === 'history' && <HistoryTab history={history} canEdit={canEdit} onRollback={onRollback} />}
@@ -520,7 +520,7 @@ export const LwfSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, onS
           {tab === 'configuration' && (
             <div className="space-y-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
+                <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
                 <span className="text-xs font-semibold text-slate-700">Enable Labour Welfare Fund deductions</span>
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -550,10 +550,10 @@ export const LwfSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange, onS
             <div className="space-y-4">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <PreviewStat label="Employee Share" value={inr(preview.employee)} tone="text-rose-600" />
-                <PreviewStat label="Employer Share" value={inr(preview.employer)} tone="text-blue-600" />
+                <PreviewStat label="Employer Share" value={inr(preview.employer)} tone="text-brand-600" />
                 <PreviewStat label={`Total / ${cfg.frequency || 'cycle'}`} value={inr(preview.total)} tone="text-slate-900" />
               </div>
-              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-blue-500" /> {preview.note}</p>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5"><Calculator size={13} className="text-brand-500" /> {preview.note}</p>
             </div>
           )}
           {tab === 'history' && <HistoryTab history={history} canEdit={canEdit} onRollback={onRollback} />}
@@ -589,7 +589,7 @@ export const OvertimeSettings: React.FC<ModuleProps> = ({ cfg, canEdit, onChange
           {tab === 'configuration' && (
             <div className="space-y-4">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
+                <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!cfg.enabled} disabled={!canEdit} onChange={e => onChange({ enabled: e.target.checked })} />
                 <span className="text-xs font-semibold text-slate-700">Enable overtime pay computation</span>
               </label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

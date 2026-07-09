@@ -28,10 +28,10 @@ interface Props { isSuperOrHead: boolean; performedBy?: string; }
 const TYPE_META: Record<string, { icon: React.FC<any>; cls: string }> = {
   'Allowance': { icon: Wallet, cls: 'bg-emerald-100 text-emerald-700' },
   'Deduction': { icon: MinusCircle, cls: 'bg-rose-100 text-rose-700' },
-  'Reimbursement': { icon: Receipt, cls: 'bg-sky-100 text-sky-700' },
+  'Reimbursement': { icon: Receipt, cls: 'bg-brand-100 text-brand-700' },
   'Bonus': { icon: Gift, cls: 'bg-amber-100 text-amber-700' },
-  'Incentive': { icon: TrendingUp, cls: 'bg-violet-100 text-violet-700' },
-  'Employer Contribution': { icon: Building2, cls: 'bg-indigo-100 text-indigo-700' },
+  'Incentive': { icon: TrendingUp, cls: 'bg-brand-100 text-brand-700' },
+  'Employer Contribution': { icon: Building2, cls: 'bg-brand-100 text-brand-700' },
   'Loan': { icon: Landmark, cls: 'bg-orange-100 text-orange-700' },
   'Recovery': { icon: Undo2, cls: 'bg-pink-100 text-pink-700' },
   'Custom': { icon: Settings2, cls: 'bg-slate-100 text-slate-700' },
@@ -181,7 +181,7 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
       {/* Header + Add */}
       <div className="flex flex-wrap justify-between items-end gap-3 border-b border-slate-200 pb-3">
         <div>
-          <h4 className="font-bold text-slate-800 text-lg flex items-center gap-2"><Layers size={18} className="text-blue-600" /> Payroll Component Builder</h4>
+          <h4 className="font-bold text-slate-800 text-lg flex items-center gap-2"><Layers size={18} className="text-brand-600" /> Payroll Component Builder</h4>
           <p className="text-xs text-slate-500 mt-1">Create and manage every Allowance, Deduction, Reimbursement, Bonus, Incentive, Contribution, Loan &amp; Recovery. {items.length} components · {activeCount} active.</p>
         </div>
         {isSuperOrHead && <Button size="sm" onClick={openCreate} className="flex items-center gap-1"><Plus size={14} /> Add Component</Button>}
@@ -191,18 +191,18 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name / code…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-blue-500 focus:outline-none" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name / code…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-brand-500 focus:outline-none" />
         </div>
-        <select value={fType} onChange={(e) => setFType(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none">
+        <select value={fType} onChange={(e) => setFType(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
           {opt(meta.types, 'All Types').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none">
+        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
           {opt(meta.categories, 'All Categories').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none">
+        <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
           {['All', 'Active', 'Inactive', 'Archived'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
         </select>
-        <select value={`${sortBy}:${sortDir}`} onChange={(e) => { const [b, d] = e.target.value.split(':'); setSortBy(b); setSortDir(d); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none">
+        <select value={`${sortBy}:${sortDir}`} onChange={(e) => { const [b, d] = e.target.value.split(':'); setSortBy(b); setSortDir(d); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
           <option value="displayOrder:asc">Sort: Display Order</option>
           <option value="componentName:asc">Sort: Name (A→Z)</option>
           <option value="componentName:desc">Sort: Name (Z→A)</option>
@@ -254,10 +254,10 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
                     <td className="p-3 text-slate-600 text-xs whitespace-nowrap">{c.effectiveFrom ? formatDate(c.effectiveFrom) : '—'}</td>
                     <td className="p-3">
                       <div className="flex items-center justify-end gap-0.5">
-                        <button className={`${iconBtn} hover:text-blue-600 hover:bg-blue-50`} title="View" onClick={() => openView(c)}><Eye size={15} /></button>
+                        <button className={`${iconBtn} hover:text-brand-600 hover:bg-brand-50`} title="View" onClick={() => openView(c)}><Eye size={15} /></button>
                         {isSuperOrHead && <>
-                          <button className={`${iconBtn} hover:text-indigo-600 hover:bg-indigo-50`} title="Edit" disabled={busy || c.status === 'Archived'} onClick={() => openEdit(c)}><Edit size={15} /></button>
-                          <button className={`${iconBtn} hover:text-violet-600 hover:bg-violet-50`} title="Clone" disabled={busy} onClick={() => clone(c)}><Copy size={15} /></button>
+                          <button className={`${iconBtn} hover:text-brand-600 hover:bg-brand-50`} title="Edit" disabled={busy || c.status === 'Archived'} onClick={() => openEdit(c)}><Edit size={15} /></button>
+                          <button className={`${iconBtn} hover:text-brand-600 hover:bg-brand-50`} title="Clone" disabled={busy} onClick={() => clone(c)}><Copy size={15} /></button>
                           <button className={`${iconBtn} ${c.status === 'Active' ? 'hover:text-amber-600 hover:bg-amber-50' : 'hover:text-emerald-600 hover:bg-emerald-50'}`} title={c.status === 'Active' ? 'Deactivate' : 'Activate'} disabled={busy || c.status === 'Archived'} onClick={() => toggle(c)}><Power size={15} /></button>
                           <button className={`${iconBtn} hover:text-slate-700 hover:bg-slate-100`} title={c.status === 'Archived' ? 'Restore' : 'Archive'} disabled={busy} onClick={() => archive(c)}>{c.status === 'Archived' ? <Undo2 size={15} /> : <Archive size={15} />}</button>
                           <button className={`${iconBtn} hover:text-rose-600 hover:bg-rose-50`} title={c.inUse ? 'In use — archive instead' : 'Delete'} disabled={busy} onClick={() => remove(c)}><Trash2 size={15} /></button>
@@ -287,7 +287,7 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
               </div>
               <div className="mt-3">
                 <label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label>
-                <textarea value={draft.description} onChange={(e) => setField('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-blue-500 focus:outline-none" placeholder="What is this component for?" />
+                <textarea value={draft.description} onChange={(e) => setField('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none" placeholder="What is this component for?" />
               </div>
             </Section>
 
@@ -307,7 +307,7 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
                 {draft.calculationMethod === 'Formula Builder' && (
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-500">Formula</label>
-                    <textarea value={draft.formula} onChange={(e) => setField('formula', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs font-mono text-slate-700 focus:border-blue-500 focus:outline-none" placeholder="e.g. BASIC * 0.10 + 500" />
+                    <textarea value={draft.formula} onChange={(e) => setField('formula', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs font-mono text-slate-700 focus:border-brand-500 focus:outline-none" placeholder="e.g. BASIC * 0.10 + 500" />
                     <p className="mt-1 text-[10px] text-slate-400">Use variables (BASIC, GROSS, CTC) and other component Short Codes with + − * / ( ). Circular references are rejected on save.</p>
                   </div>
                 )}
@@ -326,7 +326,7 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
               <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
                 {STATUTORY.map((s) => (
                   <label key={s.key} className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 border border-slate-200 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-slate-50">
-                    <input type="checkbox" className="accent-blue-600 h-4 w-4" checked={!!draft[s.key]} onChange={(e) => setField(s.key, e.target.checked)} />
+                    <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={!!draft[s.key]} onChange={(e) => setField(s.key, e.target.checked)} />
                     {s.label}
                   </label>
                 ))}

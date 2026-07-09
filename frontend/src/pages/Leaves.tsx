@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Search, Calendar, Clock, CheckCircle2, ChevronDown, ChevronUp, BarChart3, Award } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, CheckCircle2, ChevronDown, ChevronUp, BarChart3, Award, ClipboardList, Building2, UserRound, CheckCheck, Stethoscope, Coffee, Plane, Layers, History } from 'lucide-react';
+import { InfoCard } from '@/components/ui/InfoCard';
 import {
   type Employee,
   type LeaveRequest,
@@ -446,7 +447,7 @@ export const Leaves: React.FC<LeavesProps> = ({
             rows={() => filtered}
           />
           {isHR && canCreate && (
-            <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-indigo-500/25">
+            <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-brand-500/25">
               Log Leave Absence
             </Button>
           )}
@@ -455,44 +456,52 @@ export const Leaves: React.FC<LeavesProps> = ({
 
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Total Requests" value={totalCount} icon={<Calendar size={20} className="text-blue-400" />} color="bg-blue-500/10 border border-blue-500/20" />
+        <StatCard label="Total Requests" value={totalCount} icon={<Calendar size={20} className="text-brand-600" />} color="bg-brand-500/10 border border-brand-500/20" />
         <StatCard label="Sick Leave Days" value={sickDaysTotal} icon={<Clock size={20} className="text-rose-400" />} color="bg-rose-500/10 border border-rose-500/20" />
         <StatCard label="Casual Leave Days" value={casualDaysTotal} icon={<CheckCircle2 size={20} className="text-emerald-400" />} color="bg-emerald-500/10 border border-emerald-500/20" />
-        <StatCard label="On Leave Today" value={onLeaveTodayCount} icon={<Calendar size={20} className="text-purple-400" />} color="bg-purple-500/10 border border-purple-500/20" />
+        <StatCard label="On Leave Today" value={onLeaveTodayCount} icon={<Calendar size={20} className="text-brand-600" />} color="bg-brand-500/10 border border-brand-500/20" />
       </div>
 
       {/* Leave Analytics Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <Card className="p-5 border border-white/5 bg-slate-900/40 backdrop-blur-xl shadow-2xl">
+        <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
-            <BarChart3 size={16} className="text-indigo-400" />
-            <h3 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Leave Analytics Summary</h3>
+            <BarChart3 size={16} className="text-brand-600" />
+            <h3 className="text-xs font-semibold text-ink uppercase tracking-wide">Leave Analytics Summary</h3>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
-              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Most Used Leave Category</p>
-              <p className="font-bold text-white mt-1.5">{analytics.mostUsedType}</p>
-            </div>
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
-              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Top High-Absence Department</p>
-              <p className="font-bold text-white mt-1.5">{analytics.topDept}</p>
-            </div>
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
-              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Highest Absence Employee</p>
-              <p className="font-bold text-white mt-1.5">{analytics.topEmployee}</p>
-            </div>
-            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm transition-all hover:bg-slate-800">
-              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Cycle Approved Count</p>
-              <p className="font-bold text-white mt-1.5">{analytics.monthlySummary}</p>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <InfoCard
+              tone="purple"
+              icon={<ClipboardList size={14} />}
+              label="Most Used Leave Category"
+              value={analytics.mostUsedType}
+            />
+            <InfoCard
+              tone="amber"
+              icon={<Building2 size={14} />}
+              label="Top High-Absence Department"
+              value={analytics.topDept}
+            />
+            <InfoCard
+              tone="red"
+              icon={<UserRound size={14} />}
+              label="Highest Absence Employee"
+              value={analytics.topEmployee}
+            />
+            <InfoCard
+              tone="green"
+              icon={<CheckCheck size={14} />}
+              label="Cycle Approved Count"
+              value={analytics.monthlySummary}
+            />
           </div>
         </Card>
 
         {/* Dynamic Allowed Rules details panel */}
-        <Card className="p-5 border border-white/5 bg-slate-900/40 backdrop-blur-xl shadow-2xl">
+        <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
             <Award size={16} className="text-emerald-400" />
-            <h3 className="text-xs font-extrabold text-slate-300 uppercase tracking-wider">Corporate Allowed Leave Caps</h3>
+            <h3 className="text-xs font-semibold text-ink uppercase tracking-wide">Corporate Allowed Leave Caps</h3>
           </div>
           <div className="space-y-2.5 text-xs">
             <div className="flex items-center justify-between py-1 border-b border-white/5">
@@ -580,8 +589,8 @@ export const Leaves: React.FC<LeavesProps> = ({
                       </Td>
                       <Td>
                         <div onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)} className="cursor-pointer group">
-                          <p className="text-xs font-bold text-white group-hover:text-indigo-400 transition-colors">{l.employeeName}</p>
-                          <p className="text-[10px] text-slate-450 mt-0.5">{empCode ? `${empCode} · ` : ''}{l.department}</p>
+                          <p className="text-xs font-bold text-white group-hover:text-brand-600 transition-colors">{l.employeeName}</p>
+                          <p className="text-[10px] text-ink-secondary mt-0.5">{empCode ? `${empCode} · ` : ''}{l.department}</p>
                         </div>
                       </Td>
                       <Td><Badge variant={l.leaveType === 'Sick' ? 'danger' : l.leaveType === 'Casual' ? 'success' : 'blue'}>{l.leaveType}</Badge></Td>
@@ -604,7 +613,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                             <>
                               <button
                                 onClick={() => setEditLeave(l)}
-                                className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg transition-colors cursor-pointer"
+                                className="px-2.5 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 border border-brand-500/20 text-brand-600 font-bold rounded-lg transition-colors cursor-pointer"
                                 title="Edit Request Details"
                               >
                                 Edit
@@ -640,29 +649,39 @@ export const Leaves: React.FC<LeavesProps> = ({
                     </Tr>
                     {/* Expandable leave breakdown and statistics card row */}
                     {expandedRowId === l.id && (
-                      <tr className="bg-slate-900/30">
-                        <td colSpan={9} className="px-6 py-4 border-b border-white/5">
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-left text-xs">
-                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
-                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Sick Leaves Used</p>
-                              <p className="text-xs font-bold text-rose-400 mt-1.5">{empSummary?.sickUsed || 0} / {ALLOWED_SICK} days</p>
-                            </div>
-                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
-                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Casual Leaves Used</p>
-                              <p className="text-xs font-bold text-emerald-400 mt-1.5">{empSummary?.casualUsed || 0} / {ALLOWED_CASUAL} days</p>
-                            </div>
-                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
-                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Annual Leaves Used</p>
-                              <p className="text-xs font-bold text-blue-400 mt-1.5">{empSummary?.annualUsed || 0} / {ALLOWED_ANNUAL} days</p>
-                            </div>
-                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
-                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Dynamic Absence Pool</p>
-                              <p className="text-xs font-bold text-white mt-1.5">Used: {empSummary?.totalUsed || 0} | Rem: {empSummary?.remaining || 0} days</p>
-                            </div>
-                            <div className="bg-slate-800/50 p-3 rounded-xl border border-white/5 shadow-sm">
-                              <p className="text-[9px] text-slate-450 font-extrabold uppercase tracking-wider">Last Absence Taken</p>
-                              <p className="text-xs font-semibold text-slate-300 mt-1.5">{empSummary?.lastLeave || 'None'}</p>
-                            </div>
+                      <tr className="bg-surface-muted">
+                        <td colSpan={9} className="px-6 py-4 border-b border-hairline">
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-left">
+                            <InfoCard
+                              tone="red"
+                              icon={<Stethoscope size={14} />}
+                              label="Sick Leaves Used"
+                              value={`${empSummary?.sickUsed || 0} / ${ALLOWED_SICK} days`}
+                            />
+                            <InfoCard
+                              tone="green"
+                              icon={<Coffee size={14} />}
+                              label="Casual Leaves Used"
+                              value={`${empSummary?.casualUsed || 0} / ${ALLOWED_CASUAL} days`}
+                            />
+                            <InfoCard
+                              tone="blue"
+                              icon={<Plane size={14} />}
+                              label="Annual Leaves Used"
+                              value={`${empSummary?.annualUsed || 0} / ${ALLOWED_ANNUAL} days`}
+                            />
+                            <InfoCard
+                              tone="purple"
+                              icon={<Layers size={14} />}
+                              label="Dynamic Absence Pool"
+                              value={`Used: ${empSummary?.totalUsed || 0} | Rem: ${empSummary?.remaining || 0} days`}
+                            />
+                            <InfoCard
+                              tone="purple"
+                              icon={<History size={14} />}
+                              label="Last Absence Taken"
+                              value={empSummary?.lastLeave}
+                            />
                           </div>
                         </td>
                       </tr>
@@ -783,7 +802,7 @@ export const Leaves: React.FC<LeavesProps> = ({
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-bold text-slate-800">{emp.name}</span>
-                        <span className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono font-bold">{emp.employeeId}</span>
+                        <span className="text-[10px] bg-brand-50 text-brand-700 px-1.5 py-0.5 rounded font-mono font-bold">{emp.employeeId}</span>
                       </div>
                       <div className="text-[10px] text-slate-500 mt-0.5 flex gap-2">
                         <span>{emp.designation}</span>
@@ -816,11 +835,11 @@ export const Leaves: React.FC<LeavesProps> = ({
                   </div>
                   <div className={`bg-white p-2 rounded border text-center ${Number(pl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
                     <p className="text-[9px] text-gray-400 font-medium">Privilege (PL)</p>
-                    <p className={`font-bold mt-0.5 ${Number(pl) <= 0 ? 'text-red-600' : 'text-blue-600'}`}>{pl}d</p>
+                    <p className={`font-bold mt-0.5 ${Number(pl) <= 0 ? 'text-red-600' : 'text-brand-600'}`}>{pl}d</p>
                   </div>
                   <div className={`bg-white p-2 rounded border text-center ${Number(sl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
                     <p className="text-[9px] text-gray-400 font-medium">Sick (SL)</p>
-                    <p className={`font-bold mt-0.5 ${Number(sl) <= 0 ? 'text-red-600' : 'text-purple-700'}`}>{sl}d</p>
+                    <p className={`font-bold mt-0.5 ${Number(sl) <= 0 ? 'text-red-600' : 'text-brand-700'}`}>{sl}d</p>
                   </div>
                 </div>
                 <p className="text-[10px] text-slate-500">Zero-balance categories are disabled. Take leave beyond balance as <strong>Unpaid (LWP)</strong>.</p>
@@ -852,7 +871,7 @@ export const Leaves: React.FC<LeavesProps> = ({
           </div>
 
           <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/60 mb-2">
-            <p className="text-xs text-slate-300">Total Duration: <strong className="text-blue-400">{calcDays(form.fromDate, form.toDate)} days</strong></p>
+            <p className="text-xs text-slate-300">Total Duration: <strong className="text-brand-600">{calcDays(form.fromDate, form.toDate)} days</strong></p>
           </div>
 
           <Textarea label="Reason for Leave *" disabled={!canEdit} placeholder="Please explain leave reason..." value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />
@@ -899,7 +918,7 @@ export const Leaves: React.FC<LeavesProps> = ({
             </div>
 
             <div className="bg-slate-900/40 p-2.5 rounded-lg border border-slate-800/60 mb-2">
-              <p className="text-xs text-slate-300">Total Duration: <strong className="text-blue-400">{calcDays(editForm.fromDate, editForm.toDate)} days</strong></p>
+              <p className="text-xs text-slate-300">Total Duration: <strong className="text-brand-600">{calcDays(editForm.fromDate, editForm.toDate)} days</strong></p>
             </div>
 
             <Select label="Workflow Status *" disabled={!canEdit} value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value as LeaveStatus })}

@@ -72,7 +72,7 @@ export const AuditTrail: React.FC<{ role?: string }> = ({ role }) => {
     <div className="space-y-4 font-sans">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center">
             <ShieldCheck size={20} />
           </div>
           <div>

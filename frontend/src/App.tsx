@@ -129,7 +129,7 @@ export const SAFE_COMPANY_FALLBACK: any = {
   overtimeRate: 1.5,
   address: '',
   email: '',
-  primaryColor: '#3b82f6',
+  primaryColor: '#6c3cf0',
   headerText: 'GLOBAL SYSTEM INTEGRATION',
   footerText: 'Powering Enterprise Productivity',
   signatureText: 'Authorized Signatory',
@@ -782,6 +782,21 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.removeItem('hrms_current_page');
     localStorage.removeItem('hrms_active_company_id');
     localStorage.removeItem('hrms_is_masquerading');
+    // Scoping hint that apiClient sends as a header — a stale 'branch' would be
+    // applied to the NEXT user's requests.
+    localStorage.removeItem('hrms_active_workspace_kind');
+
+    // This is a single-page app: React state survives logout. Without this purge
+    // the next tenant to sign in on this tab renders the previous tenant's
+    // companies (and therefore their name/logo) until the refetch lands.
+    setCompanies([]);
+    setEmployees([]);
+    setAttendance([]);
+    setLeaves([]);
+    setPayroll([]);
+    setDocuments([]);
+    setSuperAdminStats(null);
+
     setStoredAuthProfile(null);
     setIsMasquerading(false);
     setSessionMessage(
@@ -1069,7 +1084,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
   if (!isAuthenticated || !authProfile) {
     return (
-      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
         <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} sessionMessage={sessionMessage} />
       </React.Suspense>
     );
@@ -1077,7 +1092,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
   if (!activeCompanyId && authProfile.role !== 'Super Admin') {
     return (
-      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
         <SelectWorkspace companies={userAccessibleCompanies} user={authProfile} onSelect={handleCompanyChange} isLoading={isHydrating} />
       </React.Suspense>
     );
@@ -1174,7 +1189,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
                 available to <span className="font-bold" style={{ color: '#2563eb' }}>Super Admin</span> accounts.
                 Please contact your system administrator if you require elevated access.
               </p>
-              <div className="mt-6 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>
+              <div className="mt-6 px-4 py-2 rounded-lg text-sm font-semibold" style={{ background: '#f3f0ff', color: '#4c1fd4', border: '1px solid #bfdbfe' }}>
                 Your role: {permissionRole}
               </div>
             </div>
@@ -1438,14 +1453,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   return (
     <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies} activeCompanyId={resolvedCompanyId}>
       {/* Global Wavy Background (Second Image Style) */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#F8FBFF]">
-        {/* Soft floating circles */}
-        <div className="absolute top-[20%] left-[35%] w-16 h-16 bg-[#E0F2FE] rounded-full opacity-60"></div>
-        <div className="absolute bottom-[10%] right-[10%] w-[350px] h-[350px] bg-[#E0F2FE] rounded-full opacity-70"></div>
-        <div className="absolute top-[-10%] right-[15%] w-[250px] h-[250px] bg-[#E0F2FE] rounded-full opacity-40"></div>
-        
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-canvas">
+        {/* Soft floating circles — brand tint, faint enough to read in either theme. */}
+        <div className="absolute top-[20%] left-[35%] w-16 h-16 bg-brand-500/10 rounded-full"></div>
+        <div className="absolute bottom-[10%] right-[10%] w-[350px] h-[350px] bg-brand-500/10 rounded-full"></div>
+        <div className="absolute top-[-10%] right-[15%] w-[250px] h-[250px] bg-brand-500/[0.07] rounded-full"></div>
+
         {/* Wavy shape at bottom */}
-        <svg className="absolute bottom-0 left-0 w-full text-[#E0F2FE]/50" viewBox="0 0 1440 320" preserveAspectRatio="none" style={{ height: '40vh' }}>
+        <svg className="absolute bottom-0 left-0 w-full text-brand-500/[0.06]" viewBox="0 0 1440 320" preserveAspectRatio="none" style={{ height: '40vh' }}>
           <path fill="currentColor" d="M0,160L48,170.7C96,181,192,203,288,197.3C384,192,480,160,576,149.3C672,139,768,149,864,170.7C960,192,1056,224,1152,213.3C1248,203,1344,149,1392,122.7L1440,96L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
         </svg>
       </div>
@@ -1475,12 +1490,19 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           theme={theme}
           toggleTheme={toggleTheme}
           authProfile={authProfile}
+          companies={companies}
+          activeCompanyId={activeCompanyId}
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
           role={resolvedRole}
           onRoleChange={(newRole) => setRole(newRole)}
+          // Without this, Topbar silently used its own fallback: it cleared only
+          // the auth keys and hard-reloaded, leaving the previous tenant's
+          // workspace id/kind in localStorage (apiClient sends both as scoping
+          // headers) and skipping the logout broadcast.
+          onLogout={handleLogout}
           activeCompanyId={resolvedCompanyId}
           onCompanyChange={handleCompanyChange}
           isMasquerading={isMasquerading}
@@ -1517,7 +1539,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
               >
-                <React.Suspense fallback={<div className="flex items-center justify-center h-full min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div>}>
+                <React.Suspense fallback={<div className="flex items-center justify-center h-full min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
                   {renderPage()}
                 </React.Suspense>
               </motion.div>

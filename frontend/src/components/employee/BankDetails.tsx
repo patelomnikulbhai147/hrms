@@ -126,7 +126,7 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
 
       {/* Manual fallback — only after a failed lookup */}
       {status === 'error' && !manual && !disabled && (
-        <button type="button" onClick={() => setManual(true)} className="text-[11px] font-semibold text-blue-600 hover:underline">
+        <button type="button" onClick={() => setManual(true)} className="text-[11px] font-semibold text-brand-600 hover:underline">
           Enter Bank Details Manually
         </button>
       )}

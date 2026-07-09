@@ -163,7 +163,7 @@ export const ContractForm: React.FC<Props> = ({ editing, activeCompanyId, onCanc
   return (
     <div className="space-y-4 animate-fade-in">
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-        <button onClick={onCancel} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to contracts</button>
+        <button onClick={onCancel} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 transition"><ChevronLeft size={15} /> Back to contracts</button>
         <h3 className="text-base font-extrabold text-slate-800">{editing ? 'Edit Contract' : 'Create Contract'}</h3>
         <Button icon={<Save size={14} />} loading={busy} onClick={submit}>{editing ? 'Update Contract' : 'Save Contract'}</Button>
       </div>
@@ -172,7 +172,7 @@ export const ContractForm: React.FC<Props> = ({ editing, activeCompanyId, onCanc
       <div className="flex flex-wrap gap-1">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
             {t.label}{t.id === 'documents' && documents.length ? <span className="ml-1 opacity-80">({documents.length})</span> : null}
           </button>
         ))}
@@ -289,7 +289,7 @@ export const ContractForm: React.FC<Props> = ({ editing, activeCompanyId, onCanc
                 onDragOver={e => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
                 onDrop={onDrop}
-                className={`rounded-xl border-2 border-dashed p-6 text-center transition ${dragOver ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-300 bg-white'}`}>
+                className={`rounded-xl border-2 border-dashed p-6 text-center transition ${dragOver ? 'border-brand-400 bg-brand-50/50' : 'border-slate-300 bg-white'}`}>
                 <Paperclip className="mx-auto text-slate-300 mb-1" size={22} />
                 <p className="text-xs text-slate-500">Drag & drop files here, or use “Choose Files”.</p>
                 <p className="text-[10px] text-slate-400 mt-1">PDF, images, Word, Excel, CSV, PPT · up to 8 MB each</p>
@@ -307,14 +307,14 @@ export const ContractForm: React.FC<Props> = ({ editing, activeCompanyId, onCanc
                       {list.map(d => (
                         <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <FileText size={15} className="text-indigo-500 shrink-0" />
+                            <FileText size={15} className="text-brand-500 shrink-0" />
                             <div className="min-w-0">
                               <p className="text-xs font-semibold text-slate-700 truncate">{d.name}</p>
                               <p className="text-[10px] text-slate-400">{prettySize(d.size)} · v{d.version || 1} · {formatDate(d.uploadedAt)}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
-                            <button onClick={() => download(d)} title="Download" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600"><Download size={13} /></button>
+                            <button onClick={() => download(d)} title="Download" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600"><Download size={13} /></button>
                             <button onClick={() => removeDoc(d.id)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600"><Trash2 size={13} /></button>
                           </div>
                         </div>

@@ -22,7 +22,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDateTime } from '@/utils/formatDate';
 
 const statusVariant = (st: string): any => ({ Sent: 'blue', Delivered: 'purple', Read: 'green', Failed: 'red', Pending: 'amber', Processing: 'blue', Simulated: 'gray', Queued: 'gray' } as any)[st] || 'gray';
-const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#4F7CFF] focus:outline-none';
+const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none';
 const fmt = (d: any) => (d ? formatDateTime(d) : '—');
 
 const HealthPill: React.FC<{ label: string; ok: boolean; value?: string }> = ({ label, ok, value }) => (
@@ -110,7 +110,7 @@ export const WhatsAppHealthTab: React.FC = () => {
 
       {/* Production Readiness checklist */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><ListChecks size={14} className="text-indigo-600" /> Production Readiness Checklist</p>
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><ListChecks size={14} className="text-brand-600" /> Production Readiness Checklist</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {(hd?.checklist || []).map((c: any) => (
             <div key={c.key} className="flex items-center gap-2 text-[12px]">
@@ -123,7 +123,7 @@ export const WhatsAppHealthTab: React.FC = () => {
 
       {/* Webhook Diagnostics */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Webhook size={14} className="text-cyan-600" /> Webhook Diagnostics</p>
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Webhook size={14} className="text-brand-600" /> Webhook Diagnostics</p>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <HealthPill label="Verification Handshake" ok={!!h.webhookConnected} value={h.webhookConnected ? 'Verified' : 'Pending'} />
           <HealthPill label="Receiving Events" ok={!!h.webhookReceiving} />
@@ -234,18 +234,18 @@ export const WhatsAppExplorerTab: React.FC = () => {
       {/* Delivery analytics (today) */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <StatCard label="Messages Today" value={analytics ? a.messages ?? 0 : '—'} icon={<MessageCircle size={16} />} tone="bg-emerald-50 text-emerald-600" />
-        <StatCard label="Delivered" value={analytics ? a.delivered ?? 0 : '—'} icon={<CheckCircle2 size={16} />} tone="bg-purple-50 text-purple-600" />
+        <StatCard label="Delivered" value={analytics ? a.delivered ?? 0 : '—'} icon={<CheckCircle2 size={16} />} tone="bg-brand-50 text-brand-600" />
         <StatCard label="Read" value={analytics ? a.read ?? 0 : '—'} icon={<Eye size={16} />} tone="bg-teal-50 text-teal-600" />
         <StatCard label="Failed" value={analytics ? a.failed ?? 0 : '—'} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
         <StatCard label="Pending" value={analytics ? analytics.pending ?? 0 : '—'} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
-        <StatCard label="Success Rate" value={analytics ? `${a.successRate ?? 0}%` : '—'} icon={<Gauge size={16} />} tone="bg-blue-50 text-blue-600" />
-        <StatCard label="Read Rate" value={analytics ? `${a.readRate ?? 0}%` : '—'} icon={<Activity size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        <StatCard label="Success Rate" value={analytics ? `${a.successRate ?? 0}%` : '—'} icon={<Gauge size={16} />} tone="bg-brand-50 text-brand-600" />
+        <StatCard label="Read Rate" value={analytics ? `${a.readRate ?? 0}%` : '—'} icon={<Activity size={16} />} tone="bg-brand-50 text-brand-600" />
         <StatCard label="Avg Delivery" value={analytics ? (a.avgDeliverySeconds != null ? `${a.avgDeliverySeconds}s` : '—') : '—'} icon={<Zap size={16} />} tone="bg-slate-100 text-slate-500" />
       </div>
 
       {/* Search */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Search size={14} className="text-[#4F7CFF]" /> Message Search</p>
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Search size={14} className="text-[#6C3CF0]" /> Message Search</p>
         <div className="flex flex-wrap items-end gap-2">
           {([['employee', 'Employee'], ['mobile', 'Mobile'], ['wamid', 'Meta Message ID'], ['template', 'Template']] as const).map(([k, label]) => (
             <div key={k} className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>

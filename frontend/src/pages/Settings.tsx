@@ -21,6 +21,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { PayrollComplianceEngine } from '@/components/settings/PayrollComplianceEngine';
 import { LabourCompliance } from '@/components/settings/LabourCompliance';
 import { GoogleMapsIntegration } from '@/components/settings/GoogleMapsIntegration';
+import { SecuritySettings } from '@/components/settings/SecuritySettings';
 import { Scale } from 'lucide-react';
 import { ui } from '@/components/ui/feedback';
 
@@ -292,7 +293,7 @@ export const Settings: React.FC<SettingsProps> = ({
         </div>
         <Card>
           <div className="p-6 flex items-start gap-4">
-            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+            <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">
               <ShieldCheck size={22} />
             </div>
             <div>
@@ -319,10 +320,13 @@ export const Settings: React.FC<SettingsProps> = ({
         </Card>
 
         {/* Third Party Integrations — global, installation-wide configuration. */}
-        <div className="pt-1">
-          <h3 className="text-sm font-semibold text-gray-900">Third Party Integrations</h3>
-          <p className="text-xs text-gray-500 mt-0.5 mb-3">Configure once for the whole installation. Every company uses these automatically.</p>
+        <div className="space-y-6 pt-1">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Third Party Integrations</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Configure once for the whole installation. Every company uses these automatically.</p>
+          </div>
           <GoogleMapsIntegration />
+          <SecuritySettings />
         </div>
       </div>
     );
@@ -341,7 +345,7 @@ export const Settings: React.FC<SettingsProps> = ({
         <button
           onClick={() => setActiveSubTab('payroll')}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'payroll' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            activeSubTab === 'payroll' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
           <BadgeCent size={13} />
@@ -350,7 +354,7 @@ export const Settings: React.FC<SettingsProps> = ({
         <button
           onClick={() => setActiveSubTab('departments')}
           className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-            activeSubTab === 'departments' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            activeSubTab === 'departments' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
           <Briefcase size={13} />
@@ -360,7 +364,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             onClick={() => setActiveSubTab('roles')}
             className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeSubTab === 'roles' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+              activeSubTab === 'roles' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
             <ShieldCheck size={13} />
@@ -371,7 +375,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <button
             onClick={() => setActiveSubTab('labour')}
             className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
-              activeSubTab === 'labour' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+              activeSubTab === 'labour' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
             }`}
           >
             <Scale size={13} />
@@ -427,7 +431,7 @@ export const Settings: React.FC<SettingsProps> = ({
             <>
             <Card>
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1 pb-1.5 border-b border-gray-100 flex items-center gap-1.5">
-                <Briefcase size={14} className="text-blue-600" />
+                <Briefcase size={14} className="text-brand-600" />
                 Custom Corporate Department Management
               </h3>
               <p className="text-xs text-gray-550 mb-4 leading-relaxed">
@@ -443,7 +447,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     checked={profileForm.inheritParentDepartments}
                     disabled={!isSuperOrHead}
                     onChange={e => setProfileForm({ ...profileForm, inheritParentDepartments: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 cursor-pointer"
                   />
                   <label htmlFor="inheritParentDepartments" className="text-xs font-semibold text-gray-700 cursor-pointer">
                     Inherit parent company department structure
@@ -469,13 +473,13 @@ export const Settings: React.FC<SettingsProps> = ({
                     value={deptSearch}
                     onChange={e => setDeptSearch(e.target.value)}
                     placeholder="Search departments…"
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
                   />
                 </div>
                 {isSuperOrHead && (
                   <Button
                     onClick={openCreateDepartment}
-                    className="flex items-center gap-1 px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl"
+                    className="flex items-center gap-1 px-4 py-2 text-xs font-bold bg-brand-600 hover:bg-brand-700 text-white rounded-xl"
                   >
                     <Plus size={14} />
                     Add Department
@@ -500,7 +504,7 @@ export const Settings: React.FC<SettingsProps> = ({
                     return (
                       <div key={name} className="p-3 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: meta.color || '#94a3b8' }} />
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: meta.color || '#9ca3af' }} />
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-xs font-semibold ${inactive ? 'text-gray-400' : 'text-gray-800'}`}>{name}</span>
@@ -516,11 +520,11 @@ export const Settings: React.FC<SettingsProps> = ({
                           <div className="flex items-center gap-1 shrink-0">
                             {!deptSearch && (
                               <>
-                                <button type="button" onClick={() => handleMoveDepartment(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all" title="Move Up"><ArrowUp size={13} /></button>
-                                <button type="button" onClick={() => handleMoveDepartment(index, 'down')} disabled={index === customDepartments.length - 1} className="p-1.5 text-gray-400 hover:text-blue-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all" title="Move Down"><ArrowDown size={13} /></button>
+                                <button type="button" onClick={() => handleMoveDepartment(index, 'up')} disabled={index === 0} className="p-1.5 text-gray-400 hover:text-brand-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all" title="Move Up"><ArrowUp size={13} /></button>
+                                <button type="button" onClick={() => handleMoveDepartment(index, 'down')} disabled={index === customDepartments.length - 1} className="p-1.5 text-gray-400 hover:text-brand-600 disabled:opacity-30 rounded-lg hover:bg-slate-100 transition-all" title="Move Down"><ArrowDown size={13} /></button>
                               </>
                             )}
-                            <button type="button" onClick={() => openEditDepartment(name)} className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-slate-100 transition-all" title="Edit Department"><Edit3 size={13} /></button>
+                            <button type="button" onClick={() => openEditDepartment(name)} className="p-1.5 text-gray-400 hover:text-brand-600 rounded-lg hover:bg-slate-100 transition-all" title="Edit Department"><Edit3 size={13} /></button>
                             <button type="button" onClick={() => handleRemoveDepartment(name)} className="p-1.5 text-gray-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-all" title="Remove Department"><Trash2 size={13} /></button>
                           </div>
                         )}

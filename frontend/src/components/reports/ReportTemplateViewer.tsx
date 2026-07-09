@@ -304,15 +304,15 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <style>{`.report-notes-editable:empty:before{content:attr(data-ph);color:#cbd5e1;} .report-notes-editable:focus{background:rgba(99,102,241,0.06);border-radius:4px;}
+      <style>{`.report-notes-editable:empty:before{content:attr(data-ph);color:#d1d5db;} .report-notes-editable:focus{background:rgba(99,102,241,0.06);border-radius:4px;}
         .report-editing [data-editable]{outline:1px dashed rgba(79,70,229,0.35);outline-offset:-1px;}
         .report-editing [data-editable]:hover{background:rgba(79,70,229,0.04);}
         .report-editing [data-editable]:focus{outline:2px solid rgba(79,70,229,0.65);background:rgba(79,70,229,0.07);}
         .report-editing [data-derived="1"]{background:rgba(16,185,129,0.08);}`}</style>
       {/* Toolbar */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm px-4 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={onClose} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to Reports</button>
+          <button onClick={onClose} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 transition"><ChevronLeft size={15} /> Back to Reports</button>
           <div>
             <h2 className="text-sm font-extrabold text-slate-800">{reportName}</h2>
             <p className="text-[11px] text-slate-400">{def.description}</p>
@@ -331,12 +331,12 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
             <>
               <button
                 onClick={() => setEditMode(m => !m)}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${editMode ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition ${editMode ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
                 title={editMode ? 'Editing on — click cells to edit' : 'Turn on editing'}
               >
                 <Pencil size={13} /> {editMode ? 'Editing' : 'Edit'}
               </button>
-              <Button variant="outline" size="sm" icon={<Save size={14} />} onClick={saveChanges} disabled={!hasRows} className={dirty ? 'ring-2 ring-indigo-300' : ''}>Save Changes</Button>
+              <Button variant="outline" size="sm" icon={<Save size={14} />} onClick={saveChanges} disabled={!hasRows} className={dirty ? 'ring-2 ring-brand-300' : ''}>Save Changes</Button>
               {dirty && <button onClick={resetEdits} title="Discard edits, restore original" className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-rose-600"><RotateCcw size={12} /> Revert</button>}
             </>
           ) : (
@@ -350,7 +350,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
 
       {/* Editing hint */}
       {canEdit && editMode && hasRows && (
-        <div className="bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2 flex items-center gap-2 text-[11px] text-indigo-700">
+        <div className="bg-brand-50 border border-brand-200 rounded-xl px-4 py-2 flex items-center gap-2 text-[11px] text-brand-700">
           <Pencil size={13} className="shrink-0" /> Edit any value (dashed cells). Dependent fields — Net Pay, PF/ESI, deductions, totals & grand totals (green) — recalculate instantly, like a spreadsheet. <strong>Save Changes</strong> so Print, PDF and Excel use the edited version.
         </div>
       )}

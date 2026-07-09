@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Users, FileCheck2, CheckCircle2, Wallet, Clock, IndianRupee,
-  CalendarCheck, Calculator, ShieldCheck, FileText, Banknote, Lock,
+  CalendarCheck, Calculator, ShieldCheck, FileText, Banknote, Lock, Unlock,
   Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { byEmployeeCode } from '@/utils/employeeSort';
+import { api } from '@/api/apiClient';
 
 // ── Payment status (only Pending / Approved / Paid) ───────────────────────
 // Enterprise payroll workflow: Draft → Pending Approval → Approved → Paid.
@@ -44,6 +45,8 @@ interface Props {
   onGenerateSlips?: (records: any[]) => void;
   onLock?: (ids: string[]) => void;
   onUnlock?: (ids: string[]) => void;
+  /** Which lock action is in flight, so the button can show a spinner. */
+  lockBusy?: 'lock' | 'unlock' | null;
   onRecalculate?: (ids?: string[]) => void;
   // workflow step actions
   onGeneratePayroll: () => void;
@@ -68,12 +71,12 @@ export const PayrollWorkbench: React.FC<Props> = ({
   records, company, getEmployee, monthLabel, role, canEdit = true,
   onGeneratePayroll, onApproveAll, onGenerateSlipsAll, onExportBank, onMarkPaidAll, onLockMonth,
   onView, onOpenWorksheet, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
-  onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onUnlock, onRecalculate,
+  onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onUnlock, onRecalculate, lockBusy = null,
 }) => {
-  const [companyFilter, setCompanyFilter] = useState('');
-  const [branchFilter, setBranchFilter] = useState('');
-  const [deptFilter, setDeptFilter] = useState('');
-  const [search, setSearch] = useState('');
+  const [companyFilter, setCompanyFilter] = useState(() => sessionStorage.getItem('payroll_company') || '');
+  const [branchFilter, setBranchFilter] = useState(() => sessionStorage.getItem('payroll_branch') || '');
+  const [deptFilter, setDeptFilter] = useState(() => sessionStorage.getItem('payroll_dept') || '');
+  const [search, setSearch] = useState(() => sessionStorage.getItem('payroll_search') || '');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuWrap = useRef<HTMLDivElement>(null);
@@ -137,19 +140,93 @@ export const PayrollWorkbench: React.FC<Props> = ({
       && (!q || x.name.toLowerCase().includes(q) || x.code.toLowerCase().includes(q));
   }), [rows, companyFilter, branchFilter, deptFilter, search, company]);
 
+  // Server-Side Pagination State
+  const [page, setPage] = useState(() => Number(sessionStorage.getItem('payroll_page')) || 1);
+  const limit = 15;
+  const [paginatedData, setPaginatedData] = useState<any[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.setItem('payroll_company', companyFilter);
+    sessionStorage.setItem('payroll_branch', branchFilter);
+    sessionStorage.setItem('payroll_dept', deptFilter);
+    sessionStorage.setItem('payroll_search', search);
+    sessionStorage.setItem('payroll_page', String(page));
+  }, [companyFilter, branchFilter, deptFilter, search, page]);
+
+  const initialMount = useRef(true);
+  useEffect(() => {
+    if (initialMount.current) {
+      initialMount.current = false;
+      return;
+    }
+    setPage(1);
+  }, [search, deptFilter, branchFilter, companyFilter]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPaginated = async () => {
+      setIsTableLoading(true);
+      try {
+        const params: Record<string, any> = {
+          page, limit, month: monthLabel.split(' ')[0]
+        };
+        if (search) params.search = search;
+        if (deptFilter) params.department = deptFilter;
+        if (branchFilter) params.branch = branchFilter;
+        if (companyFilter || company?.id) params.companyId = companyFilter || company?.id;
+        
+        const res = await api.payroll.getPaginated(params) as any;
+        if (isMounted && res && Array.isArray(res.data)) {
+          setPaginatedData(res.data);
+          setTotalRows(res.total || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching paginated payroll:", err);
+      } finally {
+        if (isMounted) setIsTableLoading(false);
+      }
+    };
+    
+    fetchPaginated();
+    return () => { isMounted = false; };
+  }, [page, limit, search, deptFilter, branchFilter, companyFilter, monthLabel, company?.id]);
+
+  const paginatedRows = useMemo(() => paginatedData.map(r => {
+    const emp = getEmployee(r.employeeId);
+    return {
+      r,
+      code: emp?.employeeId || '—',
+      name: r.employeeName || emp?.name || '—',
+      branch: emp?.branchLocation || r.employee?.branchLocation || 'Head Office',
+      dept: r.department || emp?.department || '—',
+      gross: (r.basicSalary || 0) + (r.allowances || 0) + (r.bonus || 0),
+      overtime: (r as any).overtime || 0,
+      bonus: r.bonus || 0,
+      deductions: (r.deductions || 0) + (r.tax || 0),
+      net: r.netSalary || 0,
+    };
+  }), [paginatedData, getEmployee]);
+
   // ── selection ──
-  const filteredIds = filtered.map(x => x.r.id);
-  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selected.has(id));
-  const someSelected = filteredIds.some(id => selected.has(id));
+  // Clear selection when filters or pagination change
+  useEffect(() => {
+    setSelected(new Set());
+  }, [page, search, deptFilter, branchFilter, companyFilter]);
+
+  const pageIds = paginatedRows.map(x => x.r.id);
+  const allSelected = pageIds.length > 0 && pageIds.every(id => selected.has(id));
+  const someSelected = pageIds.some(id => selected.has(id));
   const toggleAll = () => setSelected(prev => {
     const n = new Set(prev);
-    if (allSelected) filteredIds.forEach(id => n.delete(id));
-    else filteredIds.forEach(id => n.add(id));
+    if (allSelected) pageIds.forEach(id => n.delete(id));
+    else pageIds.forEach(id => n.add(id));
     return n;
   });
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const selectedRecords = filtered.filter(x => selected.has(x.r.id)).map(x => x.r);
-  const selectedIds = selectedRecords.map(r => r.id);
+  const selectedRecords = paginatedRows.filter(x => selected.has(x.r.id)).map(x => x.r);
+  const selectedIds = Array.from(selected);
   const clearSel = () => setSelected(new Set());
 
   // ── Status pipeline: Draft → Generated → Approved → Paid ──────────────────
@@ -176,11 +253,11 @@ export const PayrollWorkbench: React.FC<Props> = ({
 
   const cards = [
     { label: 'Employees', value: String(m.employees), icon: <Users size={16} />, tone: 'text-slate-600 bg-slate-100' },
-    { label: 'Generated', value: String(m.generated), icon: <FileCheck2 size={16} />, tone: 'text-blue-600 bg-blue-50' },
-    { label: 'Approved', value: String(m.approved), icon: <CheckCircle2 size={16} />, tone: 'text-indigo-600 bg-indigo-50' },
+    { label: 'Generated', value: String(m.generated), icon: <FileCheck2 size={16} />, tone: 'text-brand-600 bg-brand-50' },
+    { label: 'Approved', value: String(m.approved), icon: <CheckCircle2 size={16} />, tone: 'text-brand-600 bg-brand-50' },
     { label: 'Paid', value: String(m.paid), icon: <Wallet size={16} />, tone: 'text-emerald-600 bg-emerald-50' },
     { label: 'Pending', value: String(m.pending), icon: <Clock size={16} />, tone: 'text-amber-600 bg-amber-50' },
-    { label: 'Payroll Amount', value: inrShort(m.amount), icon: <IndianRupee size={16} />, tone: 'text-violet-600 bg-violet-50' },
+    { label: 'Payroll Amount', value: inrShort(m.amount), icon: <IndianRupee size={16} />, tone: 'text-brand-600 bg-brand-50' },
   ];
 
   // ── workflow step state ────────────────────────────────────────────────
@@ -220,14 +297,14 @@ export const PayrollWorkbench: React.FC<Props> = ({
       btn: perms.generateSlips && { label: `Generate Slips${selSuffix}`, onClick: slipsAction } },
     { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
       btn: null },
-    { key: 'lock', title: 'Lock Month', icon: <Lock size={15} />, done: anyLocked,
+    { key: 'lock', title: anyLocked ? 'Unlock Month' : 'Lock Month', icon: anyLocked ? <Unlock size={15} /> : <Lock size={15} />, done: anyLocked,
       // Locking is only allowed once the month is fully Paid; before that the
       // step stays open and the button is withheld. A locked month can be
       // reopened by a Company Head / Super Admin (override authority).
       status: anyLocked ? 'Locked' : (allPaid ? 'Ready to lock' : 'Pay first'),
       btn: anyLocked
-        ? (canOverrideLock && onUnlock && { label: 'Unlock Month', onClick: () => onUnlock(lockedIds) })
-        : (perms.lock && allPaid && { label: 'Lock Month', onClick: onLockMonth }) },
+        ? (canOverrideLock && onUnlock && { label: 'Unlock Month', onClick: () => onUnlock(lockedIds), tone: 'unlock' as const })
+        : (perms.lock && allPaid && { label: 'Lock Month', onClick: onLockMonth, tone: 'lock' as const }) },
   ];
   const activeIdx = steps.findIndex(s => !s.done);
 
@@ -265,16 +342,16 @@ export const PayrollWorkbench: React.FC<Props> = ({
           {steps.map((s, i) => {
             const isActive = i === activeIdx;
             return (
-              <div key={s.key} className={`rounded-xl border p-3 flex flex-col gap-2 ${s.done ? 'border-emerald-200 bg-emerald-50/40' : isActive ? 'border-indigo-300 bg-indigo-50/40' : 'border-slate-150 bg-white'}`}>
+              <div key={s.key} className={`rounded-xl border p-3 flex flex-col gap-2 ${s.done ? 'border-emerald-200 bg-emerald-50/40' : isActive ? 'border-brand-300 bg-brand-50/40' : 'border-slate-150 bg-white'}`}>
                 <div className="flex items-center gap-2">
-                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${s.done ? 'bg-emerald-600 text-white' : isActive ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${s.done ? 'bg-emerald-600 text-white' : isActive ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                     {s.done ? '✓' : i + 1}
                   </span>
                   <span className="text-slate-500">{s.icon}</span>
                 </div>
                 <div>
                   <p className="text-[11px] font-bold text-slate-800 leading-tight">{s.title}</p>
-                  <p className={`text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-indigo-600' : 'text-slate-400'}`}>{s.status}</p>
+                  <p className={`text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-brand-600' : 'text-slate-400'}`}>{s.status}</p>
                 </div>
                 {s.key === 'pay' ? (
                   perms.markPaid && (
@@ -284,7 +361,24 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     </div>
                   )
                 ) : s.btn ? (
-                  <Button size="sm" variant={isActive ? 'primary' : 'outline'} className="mt-auto" onClick={s.btn.onClick}>{s.btn.label}</Button>
+                  // Lock/Unlock carries its own colour language: a locked month
+                  // shows a red "Unlock Month", an unlocked one a green "Lock Month".
+                  <Button
+                    size="sm"
+                    variant={(s.btn as any).tone ? 'outline' : isActive ? 'primary' : 'outline'}
+                    loading={s.key === 'lock' && lockBusy === (s.btn as any).tone}
+                    icon={(s.btn as any).tone === 'unlock' ? <Unlock size={12} /> : (s.btn as any).tone === 'lock' ? <Lock size={12} /> : undefined}
+                    className={
+                      (s.btn as any).tone === 'unlock'
+                        ? 'mt-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 hover:text-red-700'
+                        : (s.btn as any).tone === 'lock'
+                          ? 'mt-auto border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400'
+                          : 'mt-auto'
+                    }
+                    onClick={s.btn.onClick}
+                  >
+                    {s.btn.label}
+                  </Button>
                 ) : <div className="mt-auto h-[1px]" />}
               </div>
             );
@@ -296,25 +390,25 @@ export const PayrollWorkbench: React.FC<Props> = ({
       <Card padding={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">{roleLabel}</span>
+            <span className="rounded-full bg-brand-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-brand-700">{roleLabel}</span>
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employee…"
-                className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-indigo-400" />
+                className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-brand-400" />
             </div>
             {perms.filterCompany && (
-              <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-indigo-400">
+              <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
                 <option value="">All Companies</option>
                 {companies.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             )}
             {perms.filterBranch && (
-              <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-indigo-400">
+              <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             )}
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-indigo-400">
+            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
               <option value="">All Departments</option>
               {depts.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
@@ -352,9 +446,9 @@ export const PayrollWorkbench: React.FC<Props> = ({
         {/* ── Selection status (feedback only — the Payroll Workflow cards above run
             the actions, scoped to this selection). NOT a duplicate action bar. ── */}
         {someSelected && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-indigo-100 bg-indigo-50 px-4 py-2">
-            <span className="text-xs font-bold text-indigo-700">{selectedIds.length} Employee{selectedIds.length === 1 ? '' : 's'} Selected</span>
-            <span className="text-[11px] text-indigo-500">↑ Use the <strong>Payroll Workflow</strong> cards above — they now act on these {selectedIds.length}.</span>
+          <div className="flex flex-wrap items-center gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2">
+            <span className="text-xs font-bold text-brand-700">{selectedIds.length} Employee{selectedIds.length === 1 ? '' : 's'} Selected</span>
+            <span className="text-[11px] text-brand-500">↑ Use the <strong>Payroll Workflow</strong> cards above — they now act on these {selectedIds.length}.</span>
             <button onClick={clearSel} className="ml-auto text-[11px] font-semibold text-slate-500 underline hover:text-slate-700">Clear selection</button>
           </div>
         )}
@@ -380,33 +474,42 @@ export const PayrollWorkbench: React.FC<Props> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filtered.length === 0 ? (
+              {isTableLoading ? (
+                <tr>
+                  <td colSpan={13} className="px-4 py-10 text-center text-slate-500 text-sm">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-600"></div>
+                      Loading...
+                    </div>
+                  </td>
+                </tr>
+              ) : paginatedRows.length === 0 ? (
                 <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-400">No payroll records. Run “Generate Payroll” to begin.</td></tr>
-              ) : filtered.map((x, i) => {
+              ) : paginatedRows.map((x, i) => {
                 const pb = paymentBadge(x.r);
                 const sel = selected.has(x.r.id);
                 return (
-                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${sel ? 'bg-indigo-50/50' : ''}`}>
+                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${sel ? 'bg-brand-50/50' : ''}`}>
                     <td className="px-3 py-2 text-center"><input type="checkbox" checked={sel} onChange={() => toggleOne(x.r.id)} className="rounded border-slate-300" /></td>
-                    <td className="px-3 py-2 text-center text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2 text-center text-slate-400">{(page - 1) * limit + i + 1}</td>
                     <td className="px-2 py-2 font-bold text-slate-800">{x.code}</td>
                     <td className="px-2 py-2 font-semibold text-slate-900">
                       {onOpenWorksheet
-                        ? <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="text-left hover:text-indigo-600 hover:underline">{x.name}</button>
+                        ? <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="text-left hover:text-brand-600 hover:underline">{x.name}</button>
                         : x.name}
                     </td>
                     <td className="px-2 py-2 text-slate-600">{x.branch}</td>
                     <td className="px-2 py-2 text-slate-600">{x.dept}</td>
                     <td className="px-2 py-2 text-right text-slate-700">{inr(x.gross)}</td>
-                    <td className="px-2 py-2 text-right text-sky-600">{x.overtime ? inr(x.overtime) : '—'}</td>
+                    <td className="px-2 py-2 text-right text-brand-600">{x.overtime ? inr(x.overtime) : '—'}</td>
                     <td className={`px-2 py-2 text-right font-semibold ${x.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{x.bonus ? inr(x.bonus) : '—'}</td>
                     <td className="px-2 py-2 text-right text-rose-600">{inr(x.deductions)}</td>
                     <td className="px-2 py-2 text-right font-bold text-slate-900">{inr(x.net)}</td>
                     <td className="px-2 py-2"><Badge variant={pb.variant}>{pb.label}</Badge></td>
                     <td className="px-2 py-2">
                       <div className="relative flex items-center justify-center gap-1">
-                        {onOpenWorksheet && <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-violet-50 hover:text-violet-600"><FileSpreadsheet size={14} /></button>}
-                        <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"><Eye size={14} /></button>
+                        {onOpenWorksheet && <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><FileSpreadsheet size={14} /></button>}
+                        <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><Eye size={14} /></button>
                         <button title="Download PDF" onClick={() => onDownloadPdf(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"><Download size={14} /></button>
                         <button title="More" onClick={() => setOpenMenu(openMenu === x.r.id ? null : x.r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><MoreVertical size={14} /></button>
                         {openMenu === x.r.id && (
@@ -431,7 +534,41 @@ export const PayrollWorkbench: React.FC<Props> = ({
             </tbody>
           </table>
         </div>
-        <div className="border-t border-slate-100 px-4 py-2 text-[11px] text-slate-400">{filtered.length} of {rows.length} employees</div>
+        {/* Pagination Controls */}
+        {totalRows > 0 && (
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl flex-wrap gap-3">
+            <span className="text-xs text-slate-500 font-medium">
+              Showing <span className="font-bold text-slate-700">{(page - 1) * limit + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * limit, totalRows)}</span> of <span className="font-bold text-slate-700">{totalRows}</span> payroll records
+            </span>
+            <div className="flex items-center gap-4">
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className="text-xs py-1 px-3"
+                >
+                  <span className="sm:hidden">Previous</span>
+                  <span className="hidden sm:inline">&lt;&lt; Previous</span>
+                </Button>
+                <div className="flex items-center px-2">
+                  <span className="text-xs text-slate-500">Page {page} of {Math.max(1, Math.ceil(totalRows / limit))}</span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(p => Math.min(Math.ceil(totalRows / limit), p + 1))}
+                  disabled={page >= Math.ceil(totalRows / limit)}
+                  className="text-xs py-1 px-3"
+                >
+                  <span className="sm:hidden">Next</span>
+                  <span className="hidden sm:inline">Next &gt;&gt;</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   );

@@ -70,11 +70,11 @@ export function bindField(el: CardElement, ctx: BindContext): BoundValue {
     }
 
     case 'qr': {
-      const dark = (el.style?.color) || '#0f172a';
+      const dark = (el.style?.color) || '#111827';
       return { kind: 'image', src: qrDataUrl(verificationUrl(e, ctx.companyId), 260, dark, '#ffffff') };
     }
     case 'barcode': {
-      const dark = (el.style?.color) || '#0f172a';
+      const dark = (el.style?.color) || '#111827';
       return { kind: 'image', src: barcodeDataUrl(e.employeeId || e.id || '000000', dark, '#ffffff') };
     }
     default: return { kind: 'none' };

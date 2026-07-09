@@ -102,7 +102,7 @@ export const SalaryAdvancesSection: React.FC<{
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or advance #…"
-            className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#4F7CFF] outline-none" />
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
           <option value="">All statuses</option>
@@ -117,7 +117,7 @@ export const SalaryAdvancesSection: React.FC<{
         // ── Professional empty state ─────────────────────────────────────────
         <Card className="!p-0">
           <div className="flex flex-col items-center justify-center text-center px-6 py-14">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EDF4FF] text-[#4F7CFF]"><Wallet size={26} /></div>
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F3F0FF] text-[#6C3CF0]"><Wallet size={26} /></div>
             <h3 className="text-sm font-extrabold text-slate-800">No salary advances yet</h3>
             <p className="mt-1 max-w-md text-xs text-slate-500">
               Grant an employee a short-term salary advance and recover it automatically from payroll —
@@ -154,7 +154,7 @@ export const SalaryAdvancesSection: React.FC<{
                     <td className="p-2.5">
                       <div className="flex items-center gap-1">
                         <IconBtn title="View" onClick={() => onOpen(l.id)}><Eye size={14} /></IconBtn>
-                        {canEdit && l.status === 'Draft' && <IconBtn title="Submit for approval" onClick={() => act(l.id, 'submit')}><Send size={14} className="text-blue-600" /></IconBtn>}
+                        {canEdit && l.status === 'Draft' && <IconBtn title="Submit for approval" onClick={() => act(l.id, 'submit')}><Send size={14} className="text-brand-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Approve" onClick={() => act(l.id, 'approve')}><CheckCircle2 size={14} className="text-emerald-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Reject" onClick={() => act(l.id, 'reject')}><XCircle size={14} className="text-rose-600" /></IconBtn>}
                         {(canApprove || canEdit) && l.status === 'Approved' && <IconBtn title="Mark disbursed" onClick={() => act(l.id, 'disburse')}><Banknote size={14} className="text-emerald-600" /></IconBtn>}
@@ -279,8 +279,8 @@ const NewSalaryAdvanceModal: React.FC<{ companyId?: string; onClose: () => void;
         <Button size="sm" icon={<Send size={13} />} loading={saving} onClick={() => submit(false)}>Submit for Approval</Button>
       </>}>
       <div className="space-y-4">
-        <div className="flex items-start gap-2 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-[11px] text-slate-600">
-          <Info size={13} className="text-sky-500 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-[11px] text-slate-600">
+          <Info size={13} className="text-brand-500 mt-0.5 shrink-0" />
           <span>Once approved, this advance is recovered <b>automatically from payroll</b> on the schedule below and shown on the payslip — no manual deduction needed.</span>
         </div>
 
@@ -306,7 +306,7 @@ const NewSalaryAdvanceModal: React.FC<{ companyId?: string; onClose: () => void;
           <label className="block text-xs font-semibold text-slate-600 mb-1">Remarks</label>
           <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} rows={2}
             placeholder="Internal HR / Finance note (optional)"
-            className="w-full text-xs rounded-lg border border-slate-200 focus:border-[#4F7CFF] outline-none px-3 py-2 resize-none" />
+            className="w-full text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none px-3 py-2 resize-none" />
         </div>
 
         {/* Recovery preview */}

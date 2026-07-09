@@ -33,7 +33,7 @@ export const NomineeWizardStep: React.FC<Props> = ({ value, onChange }) => {
 
   return (
     <div className="space-y-3">
-      <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-[11px] text-blue-800">
+      <div className="rounded-lg bg-brand-50 border border-brand-200 px-3 py-2 text-[11px] text-brand-800">
         Add one or more nominees (optional). They are saved <strong>only after</strong> the employee is created — together, in a single transaction.{multi ? <> Total allocation should equal <strong>100%</strong>.</> : ''}
       </div>
 
@@ -69,14 +69,14 @@ export const NomineeWizardStep: React.FC<Props> = ({ value, onChange }) => {
                   <p className="text-sm font-bold text-slate-800 truncate">{n.fullName}</p>
                   <p className="text-[11px] text-slate-500">{n.relationship}{n.gender ? ` · ${n.gender}` : ''}</p>
                 </div>
-                {multi && <span className="shrink-0 text-sm font-extrabold text-indigo-600">{Number(n.percentage)}%</span>}
+                {multi && <span className="shrink-0 text-sm font-extrabold text-brand-600">{Number(n.percentage)}%</span>}
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {n.isEmergencyContact && <span className="inline-flex items-center gap-1 text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-full px-1.5 py-0.5"><ShieldAlert size={10} /> Emergency</span>}
                 {n.documents?.length > 0 && <span className="inline-flex items-center gap-1 text-[9px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.5"><FileText size={10} /> {n.documents.length} doc(s)</span>}
               </div>
               <div className="flex gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
-                <button onClick={() => setEditIdx(i)} className="flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:bg-blue-50 px-2 py-1 rounded"><Pencil size={11} /> Edit</button>
+                <button onClick={() => setEditIdx(i)} className="flex items-center gap-1 text-[10px] font-bold text-brand-700 hover:bg-brand-50 px-2 py-1 rounded"><Pencil size={11} /> Edit</button>
                 <button onClick={() => onChange(value.filter((_, j) => j !== i))} className="flex items-center gap-1 text-[10px] font-bold text-rose-700 hover:bg-rose-50 px-2 py-1 rounded ml-auto"><Trash2 size={11} /> Remove</button>
               </div>
             </div>

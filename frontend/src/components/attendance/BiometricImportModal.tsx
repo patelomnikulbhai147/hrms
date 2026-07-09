@@ -85,7 +85,7 @@ export const BiometricImportModal: React.FC<Props> = ({ open, onClose, role, com
         </div>
 
         <button type="button" onClick={() => fileRef.current?.click()}
-          className="w-full border-2 border-dashed border-slate-300 rounded-xl py-6 text-center hover:border-indigo-400 transition-colors">
+          className="w-full border-2 border-dashed border-slate-300 rounded-xl py-6 text-center hover:border-brand-400 transition-colors">
           <p className="text-xs font-semibold text-slate-600">{fileName || 'Click to choose an Excel file'}</p>
           <p className="text-[10px] text-slate-400 mt-1">Columns: Employee ID | Biometric Code</p>
           <input type="file" ref={fileRef} accept=".xlsx,.xls" className="hidden"

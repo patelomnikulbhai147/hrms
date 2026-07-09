@@ -153,3 +153,54 @@ exports.testGoogleMaps = async (req, res) => {
   }
   res.json({ ...result, ...adminView() });
 };
+
+// ── Security Settings ────────────────────────────────────────────────────────
+exports.getSecuritySettings = (req, res) => {
+  try {
+    const settings = store.getSecuritySettings();
+    // Return masked keys for security
+    res.json({
+      ...settings,
+      googleV2SecretKeyMasked: store.maskKey(settings.googleV2SecretKey),
+      googleV3SecretKeyMasked: store.maskKey(settings.googleV3SecretKey)
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to retrieve security settings.' });
+  }
+};
+
+exports.updateSecuritySettings = (req, res) => {
+  try {
+    const current = store.getSecuritySettings();
+    const payload = { ...req.body };
+    
+    // Preserve secret keys if not modified (sent as masked/empty)
+    if (payload.googleV2SecretKey === '••••' || !payload.googleV2SecretKey) {
+      payload.googleV2SecretKey = current.googleV2SecretKey;
+    }
+    if (payload.googleV3SecretKey === '••••' || !payload.googleV3SecretKey) {
+      payload.googleV3SecretKey = current.googleV3SecretKey;
+    }
+    
+    // Cast numeric fields
+    if (payload.failedAttemptsLimit !== undefined) {
+      payload.failedAttemptsLimit = Math.max(1, parseInt(payload.failedAttemptsLimit) || 3);
+    }
+    if (payload.lockoutLimit !== undefined) {
+      payload.lockoutLimit = Math.max(1, parseInt(payload.lockoutLimit) || 5);
+    }
+    if (payload.lockoutDuration !== undefined) {
+      payload.lockoutDuration = Math.max(1, parseInt(payload.lockoutDuration) || 10);
+    }
+
+    const updated = store.setSecuritySettings(payload);
+    res.json({
+      ...updated,
+      googleV2SecretKeyMasked: store.maskKey(updated.googleV2SecretKey),
+      googleV3SecretKeyMasked: store.maskKey(updated.googleV3SecretKey),
+      message: 'Security settings updated successfully.'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update security settings.' });
+  }
+};

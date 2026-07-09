@@ -1,6 +1,55 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
 
 @import "tailwindcss";
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ZeniaHR design tokens.
+
+   Everything visual resolves to a token here. `@theme` entries become real
+   Tailwind utilities (`bg-brand-500`, `text-ink-secondary`, …), so components
+   never hardcode a hex again. The semantic vars below (`--surface`, `--ink`,
+   …) flip on `data-theme` and are what makes dark mode work without the
+   per-utility override table this file used to carry.
+   ══════════════════════════════════════════════════════════════════════════ */
+@theme {
+  /* Brand — ZeniaHR purple */
+  --color-brand-50:  #F3F0FF;
+  --color-brand-100: #E6E0FE;
+  --color-brand-200: #CFC2FD;
+  --color-brand-300: #B29BFA;
+  --color-brand-400: #8F6BF5;
+  --color-brand-500: #6C3CF0;
+  --color-brand-600: #5B2DE6;
+  --color-brand-700: #4C1FD4;
+  --color-brand-800: #3D19AA;
+  --color-brand-900: #2F1480;
+
+  /* Semantic status */
+  --color-success: #16A34A;
+  --color-warning: #F59E0B;
+  --color-danger:  #EF4444;
+  --color-info:    #2563EB;
+
+  /* Surfaces & ink — resolve through the theme vars, so utilities are
+     automatically dark-mode correct. */
+  --color-canvas:        var(--surface-canvas);
+  --color-surface:       var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-hairline:      var(--surface-border);
+  --color-ink:           var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted:     var(--ink-muted);
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-card: 16px;
+
+  /* Soft, enterprise-grade elevation. */
+  --shadow-card:       0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 16px rgba(17, 24, 39, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(17, 24, 39, 0.05), 0 12px 28px rgba(17, 24, 39, 0.10);
+  --shadow-brand:      0 6px 20px rgba(108, 60, 240, 0.28);
+}
 
 /* ── Document print isolation (every template: Offer/Joining/Salary Slip/…) ────
    When a document is printed (Documents → Print <Type>), printDocument() clones
@@ -81,22 +130,40 @@
   }
 }
 
-/* Enterprise HRMS Base Styles */
+/* ── Light theme (default) ──────────────────────────────────────────────── */
 :root {
-  --font-heading: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --surface-canvas: #F8FAFC;
+  --surface-raised: #FFFFFF;
+  --surface-muted:  #F3F0FF;
+  --surface-border: #E5E7EB;
+  --surface-hover:  rgba(108, 60, 240, 0.06);
 
-  /* Default Light Mode Variables */
-  --primary-glow: rgba(59, 130, 246, 0.15);
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(203, 213, 225, 0.6);
+  --ink-primary:   #111827;
+  --ink-secondary: #6B7280;
+  --ink-muted:     #9CA3AF;
+
+  --primary-glow: rgba(108, 60, 240, 0.15);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(229, 231, 235, 0.9);
 }
 
+/* ── Dark theme ─────────────────────────────────────────────────────────────
+   Deliberately never pure black (#000). The canvas is a desaturated slate and
+   raised surfaces sit a step lighter, which keeps elevation legible. */
 :root:not([data-theme="light"]) {
-  /* Vibrant SaaS Dark Theme Variables */
-  --primary-glow: rgba(59, 130, 246, 0.15);
-  --glass-bg: rgba(15, 23, 42, 0.45);
-  --glass-border: rgba(51, 65, 85, 0.5);
+  --surface-canvas: #0F1115;
+  --surface-raised: #16181D;
+  --surface-muted:  #1F2129;
+  --surface-border: #2A2D36;
+  --surface-hover:  rgba(143, 107, 245, 0.12);
+
+  --ink-primary:   #E9EAEE;
+  --ink-secondary: #A1A5B0;
+  --ink-muted:     #7A7F8C;
+
+  --primary-glow: rgba(143, 107, 245, 0.18);
+  --glass-bg: rgba(22, 24, 29, 0.72);
+  --glass-border: rgba(42, 45, 54, 0.9);
 }
 
 * {
@@ -117,14 +184,9 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
-  color: #0f172a;
-  transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-:root:not([data-theme="light"]) body {
-  background-color: #080b11;
-  color: #f1f5f9;
+  background-color: var(--surface-canvas);
+  color: var(--ink-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1,
@@ -147,20 +209,12 @@ h6 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--surface-border);
   border-radius: 99px;
 }
 
-:root:not([data-theme="light"]) ::-webkit-scrollbar-thumb {
-  background: #1e293b;
-}
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-:root:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover {
-  background: #334155;
+  background: var(--ink-muted);
 }
 
 /* Shimmer Skeletal Loading Animation */
@@ -175,7 +229,7 @@ h6 {
 }
 
 .shimmer-skeleton {
-  background: linear-gradient(90deg, #0f172a 25%, #1e293b 50%, #0f172a 75%);
+  background: linear-gradient(90deg, var(--surface-muted) 25%, var(--surface-border) 50%, var(--surface-muted) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite linear;
 }
@@ -199,19 +253,20 @@ h6 {
 
 /* Premium Gradient Utilities */
 .bg-saas-gradient {
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 50%, #06b6d4 100%);
+  background: linear-gradient(135deg, #4C1FD4 0%, #6C3CF0 55%, #8F6BF5 100%);
 }
 
 .text-saas-gradient {
-  background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 50%, #06b6d4 100%);
+  background: linear-gradient(135deg, #4C1FD4 0%, #6C3CF0 55%, #8F6BF5 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Focus outline rings */
+/* Focus outline rings — one visible, brand-consistent focus state everywhere. */
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-brand-500);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
 /* Table hover fix */
@@ -224,404 +279,399 @@ table {
   transform: translateX(1.125rem);
 }
 
-/* ──────────────────────────────────────────────────────────────────
-   🔥 SaaS Visual Layer Overrides for Breathtaking Premium Dark Mode
-   ────────────────────────────────────────────────────────────────── */
 
-/* Text colors dark mode compatibility */
+/* ══════════════════════════════════════════════════════════════════════════
+   Legacy utility bridge.
+
+   Most screens were authored dark-first and hardcode Tailwind slate utilities
+   (`bg-slate-900/40`, `text-slate-100`, …). Rather than rewrite 70+ files, these
+   selectors remap those literals onto the semantic tokens above. Every value
+   here is a var() — the tokens are the single source of truth, and both themes
+   fall out of the same table.
+
+   New components should use the token utilities (`bg-surface`, `text-ink`,
+   `border-hairline`) directly and need nothing from this block.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Surfaces ───────────────────────────────────────────────────────────── */
+.bg-slate-900\/40,
+.bg-slate-900,
+.bg-slate-950 {
+  background-color: var(--surface-raised) !important;
+  border-color: var(--surface-border) !important;
+}
+
+.bg-slate-900\/20,
+.bg-slate-900\/30,
+.bg-slate-800\/60,
+.bg-slate-800\/50,
+.bg-slate-800\/40,
+.bg-slate-800,
+.bg-slate-900\/60 {
+  background-color: var(--surface-muted) !important;
+  border-color: var(--surface-border) !important;
+}
+
+/* `bg-slate-900/50` is deliberately absent — every use is a modal backdrop.
+   Hover variants of the same surfaces, which Tailwind emits separately. */
+.hover\:bg-slate-800:hover,
+.hover\:bg-slate-800\/40:hover,
+.hover\:bg-slate-900:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* Glass chrome (Topbar / Navbar) */
+.bg-slate-950\/45,
+.bg-slate-950\/40 {
+  background-color: var(--glass-bg) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid var(--surface-border) !important;
+}
+
+/* Light-mode-only elevation on primary cards. */
+html[data-theme="light"] .bg-slate-900\/40 {
+  box-shadow: var(--shadow-card) !important;
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
+.text-slate-100,
+.text-slate-200 {
+  color: var(--ink-primary) !important;
+}
+
+.text-slate-300,
+.text-slate-400 {
+  color: var(--ink-secondary) !important;
+}
+
+.text-slate-500,
+.placeholder-slate-500::placeholder {
+  color: var(--ink-muted) !important;
+}
+
+/* Dark-mode remap of the light-first text utilities used by newer screens. */
 :root:not([data-theme="light"]) .text-gray-900,
 :root:not([data-theme="light"]) .text-slate-900,
-:root:not([data-theme="light"]) .text-slate-905,
 :root:not([data-theme="light"]) .text-slate-950,
 :root:not([data-theme="light"]) .text-slate-800,
 :root:not([data-theme="light"]) .text-gray-800 {
-  color: #ffffff !important;
+  color: var(--ink-primary) !important;
 }
 
 :root:not([data-theme="light"]) .text-slate-700,
 :root:not([data-theme="light"]) .text-gray-700,
 :root:not([data-theme="light"]) .text-slate-600,
 :root:not([data-theme="light"]) .text-gray-600 {
-  color: #cbd5e1 !important;
+  color: var(--ink-secondary) !important;
 }
 
-:root:not([data-theme="light"]) .text-slate-500,
 :root:not([data-theme="light"]) .text-gray-500,
-:root:not([data-theme="light"]) .text-slate-400,
 :root:not([data-theme="light"]) .text-gray-400 {
-  color: #94a3b8 !important;
+  color: var(--ink-muted) !important;
 }
 
-/* Background overrides */
+/* `text-white` on a coloured surface must stay white. Only neutralise it when
+   it is NOT sitting on a gradient/brand chip. */
+html[data-theme="light"] :not(.bg-gradient-to-r):not(.from-brand-600):not(.from-emerald-600):not(.bg-brand-600) > .text-white,
+html[data-theme="light"] .text-white:not(.from-brand-600):not(.from-emerald-600):not(.bg-brand-600):not(.rounded-full) {
+  color: var(--ink-primary) !important;
+}
+
+/* ── Surfaces authored light-first (newer screens) ──────────────────────── */
 :root:not([data-theme="light"]) .bg-white,
 :root:not([data-theme="light"]) .bg-white\/75 {
-  background-color: rgba(11, 18, 32, 0.45) !important;
-  /* Premium dark midnight base #0b1220 */
-  backdrop-filter: blur(16px) !important;
-  -webkit-backdrop-filter: blur(16px) !important;
+  background-color: var(--surface-raised) !important;
 }
 
 :root:not([data-theme="light"]) .bg-slate-50,
 :root:not([data-theme="light"]) .bg-slate-50\/75,
 :root:not([data-theme="light"]) .bg-gray-50 {
-  background-color: rgba(11, 18, 32, 0.6) !important;
+  background-color: var(--surface-muted) !important;
 }
 
 :root:not([data-theme="light"]) .hover\:bg-slate-50\/50:hover,
 :root:not([data-theme="light"]) .hover\:bg-slate-50:hover,
 :root:not([data-theme="light"]) .hover\:bg-gray-50:hover {
-  background-color: rgba(99, 102, 241, 0.08) !important;
-  /* Blue-violet tint dark hover */
+  background-color: var(--surface-hover) !important;
 }
 
-/* Borders dark mode mapping */
+/* ── Borders & separators ───────────────────────────────────────────────── */
+.border-slate-800\/80,
+.border-slate-800,
+.border-slate-700\/60,
+.border-slate-700 {
+  border-color: var(--surface-border) !important;
+}
+
 :root:not([data-theme="light"]) .border-slate-100,
 :root:not([data-theme="light"]) .border-slate-200,
 :root:not([data-theme="light"]) .border-slate-200\/80,
 :root:not([data-theme="light"]) .border-gray-150,
 :root:not([data-theme="light"]) .border-gray-100,
 :root:not([data-theme="light"]) .border-gray-200 {
-  border-color: rgba(51, 65, 85, 0.5) !important;
+  border-color: var(--surface-border) !important;
 }
 
-/* Divide borders */
-:root:not([data-theme="light"]) .divide-slate-100> :not([hidden])~ :not([hidden]),
-:root:not([data-theme="light"]) .divide-gray-100> :not([hidden])~ :not([hidden]) {
-  border-color: rgba(51, 65, 85, 0.4) !important;
+.divide-slate-800\/80 > :not([hidden]) ~ :not([hidden]),
+.divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]),
+.divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+.divide-slate-700 > :not([hidden]) ~ :not([hidden]),
+:root:not([data-theme="light"]) .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+:root:not([data-theme="light"]) .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--surface-border) !important;
 }
 
-/* Form Inputs styling override */
-:root:not([data-theme="light"]) input,
-:root:not([data-theme="light"]) select,
-:root:not([data-theme="light"]) textarea {
-  background-color: rgba(15, 23, 42, 0.6) !important;
-  border-color: rgba(51, 65, 85, 0.6) !important;
-  color: #ffffff !important;
+/* ── Arbitrary-value utilities ──────────────────────────────────────────────
+   Many screens write the palette inline (`text-[#111827]`, `bg-[#F8FAFC]`).
+   Those are literal colours Tailwind cannot theme, so dark mode would otherwise
+   leave dark text on dark surfaces. Remap the ZeniaHR palette literals onto the
+   tokens. Light mode needs no rule — the literal already equals the light token. */
+:root:not([data-theme="light"]) .text-\[\#111827\],
+:root:not([data-theme="light"]) .text-\[\#1F2937\] { color: var(--ink-primary) !important; }
+
+:root:not([data-theme="light"]) .text-\[\#374151\],
+:root:not([data-theme="light"]) .text-\[\#4B5563\],
+:root:not([data-theme="light"]) .text-\[\#6B7280\] { color: var(--ink-secondary) !important; }
+
+:root:not([data-theme="light"]) .text-\[\#9CA3AF\] { color: var(--ink-muted) !important; }
+
+:root:not([data-theme="light"]) .bg-\[\#FFFFFF\],
+:root:not([data-theme="light"]) .bg-\[\#ffffff\] { background-color: var(--surface-raised) !important; }
+
+:root:not([data-theme="light"]) .bg-\[\#F8FAFC\],
+:root:not([data-theme="light"]) .bg-\[\#F8FBFF\],
+:root:not([data-theme="light"]) .bg-\[\#F9FAFB\] { background-color: var(--surface-canvas) !important; }
+
+:root:not([data-theme="light"]) .bg-\[\#F1F5F9\],
+:root:not([data-theme="light"]) .bg-\[\#F3F4F6\] { background-color: var(--surface-muted) !important; }
+
+:root:not([data-theme="light"]) .border-\[\#E5E7EB\],
+:root:not([data-theme="light"]) .border-\[\#D1D5DB\],
+:root:not([data-theme="light"]) .border-\[\#E6E0FE\] { border-color: var(--surface-border) !important; }
+
+/* Brand tints stay purple, but darken so foreground text keeps its contrast. */
+:root:not([data-theme="light"]) .bg-\[\#F3F0FF\] { background-color: rgba(108, 60, 240, 0.16) !important; }
+:root:not([data-theme="light"]) .text-\[\#6C3CF0\] { color: var(--color-brand-300) !important; }
+
+/* ── Info tiles ─────────────────────────────────────────────────────────────
+   Soft, branded summary widgets (see components/ui/InfoCard.tsx). Each tone is
+   a set of vars so the tile markup never changes and dark mode can retint by
+   swapping the vars — not by fighting a literal background. */
+.info-tile {
+  background: var(--tile-bg);
+  border: 1px solid var(--tile-border);
+  border-radius: 16px;
+  transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-:root:not([data-theme="light"]) input:focus,
-:root:not([data-theme="light"]) select:focus,
-:root:not([data-theme="light"]) textarea:focus {
-  border-color: rgba(59, 130, 246, 0.8) !important;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+.info-tile:hover {
+  background: var(--tile-bg-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(108, 60, 240, 0.10);
 }
 
-/* Accent overlays */
-:root:not([data-theme="light"]) .shadow-sm {
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.3) !important;
+.info-tile .tile-title { color: var(--tile-title); font-weight: 600; }
+.info-tile .tile-icon  { color: var(--tile-icon); }
+.info-tile .tile-value { color: var(--tile-value); font-weight: 700; }
+.info-tile .tile-empty { color: var(--ink-muted); font-weight: 500; }
+
+.tile-purple { --tile-bg: #F5F1FF; --tile-bg-hover: #EFE7FF; --tile-border: #E4D8FF; --tile-icon: #6C3CF0; --tile-title: #6C3CF0; }
+.tile-blue   { --tile-bg: #EFF6FF; --tile-bg-hover: #E0EDFF; --tile-border: #BFDBFE; --tile-icon: #2563EB; --tile-title: #1D4ED8; }
+.tile-green  { --tile-bg: #ECFDF5; --tile-bg-hover: #DCFCE7; --tile-border: #BBF7D0; --tile-icon: #16A34A; --tile-title: #15803D; }
+.tile-amber  { --tile-bg: #FFFBEB; --tile-bg-hover: #FEF3C7; --tile-border: #FDE68A; --tile-icon: #D97706; --tile-title: #B45309; }
+.tile-red    { --tile-bg: #FEF2F2; --tile-bg-hover: #FEE2E2; --tile-border: #FECACA; --tile-icon: #DC2626; --tile-title: #B91C1C; }
+
+.info-tile { --tile-value: #1F2937; }
+
+/* Dark: keep the hue, drop the luminance, lift the text. */
+:root:not([data-theme="light"]) .info-tile { --tile-value: var(--ink-primary); }
+:root:not([data-theme="light"]) .tile-purple { --tile-bg: rgba(108, 60, 240, 0.12); --tile-bg-hover: rgba(108, 60, 240, 0.20); --tile-border: rgba(143, 107, 245, 0.32); --tile-icon: #B29BFA; --tile-title: #B29BFA; }
+:root:not([data-theme="light"]) .tile-blue   { --tile-bg: rgba(37, 99, 235, 0.12);  --tile-bg-hover: rgba(37, 99, 235, 0.20);  --tile-border: rgba(96, 165, 250, 0.32); --tile-icon: #93C5FD; --tile-title: #93C5FD; }
+:root:not([data-theme="light"]) .tile-green  { --tile-bg: rgba(22, 163, 74, 0.12);  --tile-bg-hover: rgba(22, 163, 74, 0.20);  --tile-border: rgba(74, 222, 128, 0.32); --tile-icon: #86EFAC; --tile-title: #86EFAC; }
+:root:not([data-theme="light"]) .tile-amber  { --tile-bg: rgba(217, 119, 6, 0.12);  --tile-bg-hover: rgba(217, 119, 6, 0.20);  --tile-border: rgba(251, 191, 36, 0.32); --tile-icon: #FCD34D; --tile-title: #FCD34D; }
+:root:not([data-theme="light"]) .tile-red    { --tile-bg: rgba(220, 38, 38, 0.12);  --tile-bg-hover: rgba(220, 38, 38, 0.20);  --tile-border: rgba(248, 113, 113, 0.32); --tile-icon: #FCA5A5; --tile-title: #FCA5A5; }
+
+:root:not([data-theme="light"]) .info-tile:hover {
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
 }
 
-:root:not([data-theme="light"]) .hover\:shadow-md:hover {
-  box-shadow: 0 20px 40px -15px rgba(59, 130, 246, 0.1) !important;
+/* ── Tables ────────────────────────────────────────────────────────────── */
+tr {
+  border-bottom: 1px solid var(--surface-border);
+  transition: background-color 0.15s ease;
 }
 
-/* Premium Glassmorphic Gradient Avatars */
-:root:not([data-theme="light"]) .rounded-full.bg-slate-100,
-:root:not([data-theme="light"]) .rounded-full.bg-slate-200 {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
-  border: 1px solid rgba(168, 85, 247, 0.3) !important;
-  color: #c084fc !important;
-  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.15) !important;
+tbody tr:hover {
+  background-color: var(--surface-hover) !important;
+}
+
+/* ── Interactive states ─────────────────────────────────────────────────── */
+.hover\:bg-slate-800\/60:hover,
+.hover\:bg-slate-800\/90:hover,
+.hover\:bg-slate-850\/45:hover {
+  background-color: var(--surface-muted) !important;
+  color: var(--ink-primary) !important;
+}
+
+.hover\:bg-slate-900\/40:hover {
+  background-color: var(--surface-muted) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+.text-slate-400.hover\:text-white:hover,
+.text-slate-300.hover\:text-white:hover,
+.text-slate-200.hover\:text-white:hover {
+  color: var(--ink-primary) !important;
+}
+
+.hover\:border-slate-700:hover {
+  border-color: var(--color-brand-300) !important;
+}
+
+/* ── Form controls ─────────────────────────────────────────────────────── */
+input, select, textarea {
+  background-color: var(--surface-raised);
+  border-color: var(--surface-border);
+  color: var(--ink-primary);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--color-brand-500) !important;
+  box-shadow: 0 0 0 3px var(--primary-glow) !important;
+}
+
+:root:not([data-theme="light"]) option {
+  background-color: var(--surface-raised);
+  color: var(--ink-primary);
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+aside,
+aside.bg-\[\#080b11\] {
+  background-color: var(--surface-raised) !important;
+  border-right: 1px solid var(--surface-border) !important;
+}
+
+aside .border-b.border-slate-900\/60,
+aside .border-t.border-slate-900\/60 {
+  border-color: var(--surface-border) !important;
+}
+
+/* ── Avatars / chips ───────────────────────────────────────────────────── */
+.rounded-full.bg-slate-100,
+.rounded-full.bg-slate-200 {
+  background: var(--color-brand-50) !important;
+  border: 1px solid var(--color-brand-200) !important;
+  color: var(--color-brand-700) !important;
   font-weight: 700 !important;
 }
 
-:root:not([data-theme="light"]) .rounded-full.bg-blue-100 {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(6, 182, 212, 0.2) 100%) !important;
-  border: 1px solid rgba(6, 182, 212, 0.3) !important;
-  color: #22d3ee !important;
+:root:not([data-theme="light"]) .rounded-full.bg-slate-100,
+:root:not([data-theme="light"]) .rounded-full.bg-slate-200 {
+  background: rgba(108, 60, 240, 0.18) !important;
+  border: 1px solid rgba(143, 107, 245, 0.35) !important;
+  color: var(--color-brand-300) !important;
 }
 
-/* Tab selector overrides */
-:root:not([data-theme="light"]) .border-indigo-600 {
-  border-color: #6366f1 !important;
-  color: #818cf8 !important;
+/* ── Accents remapped from the old blue/indigo brand to ZeniaHR purple ──── */
+.border-indigo-600 {
+  border-color: var(--color-brand-500) !important;
+  color: var(--color-brand-600) !important;
 }
 
-/* Progress bars styling */
-:root:not([data-theme="light"]) .bg-indigo-600 {
-  background: linear-gradient(90deg, #4f46e5 0%, #6366f1 100%) !important;
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4) !important;
+.bg-indigo-600 {
+  background: linear-gradient(90deg, var(--color-brand-600) 0%, var(--color-brand-500) 100%) !important;
 }
 
-:root:not([data-theme="light"]) .bg-emerald-500 {
-  background: linear-gradient(90deg, #10b981 0%, #059669 100%) !important;
-  box-shadow: 0 0 8px rgba(9, 154, 226, 0.4) !important;
+.gradient-btn-indigo {
+  background: linear-gradient(135deg, var(--color-brand-700) 0%, var(--color-brand-500) 100%);
 }
 
-/* A4 Sheet Preview inside Letter builder */
-:root:not([data-theme="light"]) #a4-sheet-preview {
-  background-color: #0f172a !important;
-  /* Elegant dark A4 container for editing */
-  color: #f8fafc !important;
-  border: 1px solid rgba(51, 65, 85, 0.6) !important;
+.gradient-btn-indigo:hover {
+  background: linear-gradient(135deg, var(--color-brand-800) 0%, var(--color-brand-600) 100%);
+  box-shadow: var(--shadow-brand);
 }
 
-/* Modals & Dialog backdrops */
-:root:not([data-theme="light"]) .fixed.inset-0.bg-black\/50,
-:root:not([data-theme="light"]) .fixed.inset-0.bg-slate-900\/50 {
-  backdrop-filter: blur(8px) !important;
-  -webkit-backdrop-filter: blur(8px) !important;
-  background-color: rgba(8, 11, 17, 0.65) !important;
-}
-
-/* Global Row Transition Animations */
-:root:not([data-theme="light"]) tr {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-:root:not([data-theme="light"]) tr:hover {
-  transform: translateY(-0.5px) !important;
-}
-
-/* SaaS Billing Missing Utility Classes */
-:root:not([data-theme="light"]) .neon-glass-card {
+/* ── Glass / neon card utilities ───────────────────────────────────────── */
+.neon-glass-card {
   background: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--glass-border);
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-:root:not([data-theme="light"]) .neon-glass-card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.05);
+.neon-glass-card:hover {
+  border-color: var(--color-brand-300);
+  box-shadow: var(--shadow-card-hover);
 }
 
-:root:not([data-theme="light"]) .neon-glass-card-sub {
-  background: rgba(30, 41, 59, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.neon-glass-card-sub {
+  background: var(--surface-muted);
+  border: 1px solid var(--surface-border);
 }
 
-:root:not([data-theme="light"]) .glow-card-border-purple {
-  border-color: rgba(168, 85, 247, 0.4) !important;
+.glow-card-border-purple { border-color: var(--color-brand-400) !important; }
+.glow-card-border-red    { border-color: var(--color-danger) !important; }
+
+.glass-search-input {
+  background: var(--surface-muted) !important;
+  border: 1px solid var(--surface-border) !important;
+  color: var(--ink-primary) !important;
 }
 
-:root:not([data-theme="light"]) .glow-card-border-red {
-  border-color: rgba(244, 63, 94, 0.4) !important;
+.glass-search-input:focus {
+  border-color: var(--color-brand-500) !important;
+  box-shadow: 0 0 0 3px var(--primary-glow) !important;
 }
 
-:root:not([data-theme="light"]) .gradient-btn-indigo {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+/* ── Icon action buttons ───────────────────────────────────────────────── */
+.action-icon-btn { transition: background-color 0.15s, color 0.15s; }
+.action-icon-btn:hover {
+  background: var(--surface-hover) !important;
+  color: var(--color-brand-600) !important;
 }
 
-:root:not([data-theme="light"]) .gradient-btn-indigo:hover {
-  background: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
-  box-shadow: 0 4px 15px rgba(79, 70, 229, 0.25);
+.action-icon-btn-delete { transition: background-color 0.15s, color 0.15s; }
+.action-icon-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.12) !important;
+  color: var(--color-danger) !important;
 }
 
-:root:not([data-theme="light"]) .glass-search-input {
-  background: rgba(15, 23, 42, 0.6) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
+/* ── Modal backdrops ───────────────────────────────────────────────────── */
+.fixed.inset-0.bg-black\/50,
+.fixed.inset-0.bg-slate-900\/50 {
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  background-color: rgba(17, 24, 39, 0.45) !important;
 }
 
-:root:not([data-theme="light"]) .glass-search-input:focus {
-  border-color: rgba(99, 102, 241, 0.6) !important;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15) !important;
+:root:not([data-theme="light"]) .fixed.inset-0.bg-black\/50,
+:root:not([data-theme="light"]) .fixed.inset-0.bg-slate-900\/50 {
+  background-color: rgba(8, 9, 12, 0.7) !important;
 }
 
-:root:not([data-theme="light"]) .action-icon-btn {
-  transition: all 0.2s;
+/* ── Shadows ───────────────────────────────────────────────────────────── */
+:root:not([data-theme="light"]) .shadow-sm {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4) !important;
 }
 
-:root:not([data-theme="light"]) .action-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.1) !important;
-  color: #fff !important;
-}
-
-:root:not([data-theme="light"]) .action-icon-btn-delete {
-  transition: all 0.2s;
-}
-
-:root:not([data-theme="light"]) .action-icon-btn-delete:hover {
-  background: rgba(244, 63, 94, 0.15) !important;
-  color: #fb7185 !important;
-}
-
-
-
-/* ──────────────────────────────────────────────────────────────────
-   🌟 SaaS Visual Layer Overrides for Premium Enterprise Light Mode
-   ────────────────────────────────────────────────────────────────── */
-
-/* Global Body / App Background */
-html[data-theme="light"] body {
-  background-color: #f6f8fa !important;
-  color: #0f172a !important;
-}
-
-/* 1. Surfaces & Elevation */
-/* Primary Cards and Inputs (Clean white with premium soft shadows) */
-html[data-theme="light"] .bg-slate-900\/40,
-html[data-theme="light"] .bg-slate-900,
-html[data-theme="light"] .bg-slate-950 {
+/* ── A4 document preview — always a real white sheet, in either theme. ──── */
+#a4-sheet-preview {
   background-color: #ffffff !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 8px 24px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 1) !important;
-  border-color: #e2e8f0 !important;
-}
-
-/* Secondary Surfaces (Sub-cards, Table headers) */
-html[data-theme="light"] .bg-slate-900\/20,
-html[data-theme="light"] .bg-slate-800\/60,
-html[data-theme="light"] .bg-slate-800,
-html[data-theme="light"] .bg-slate-900\/60 {
-  background-color: #f1f5f9 !important;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.01) !important;
-  border-color: #e2e8f0 !important;
-}
-
-/* Glass utilities (Topbar/Navbar) */
-html[data-theme="light"] .bg-slate-950\/45,
-html[data-theme="light"] .bg-slate-950\/40 {
-  background-color: rgba(255, 255, 255, 0.8) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border-bottom: 1px solid #e2e8f0 !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
-}
-
-/* 2. Typography Hierarchy */
-/* Primary Text */
-html[data-theme="light"] .text-slate-100,
-html[data-theme="light"] .text-slate-200 {
   color: #111827 !important;
 }
 
-/* Secondary Text */
-html[data-theme="light"] .text-slate-300,
-html[data-theme="light"] .text-slate-400 {
-  color: #4b5563 !important;
+:root:not([data-theme="light"]) #a4-sheet-preview {
+  border: 1px solid var(--surface-border) !important;
 }
 
-/* Muted Text / Placeholders */
-html[data-theme="light"] .text-slate-500,
-html[data-theme="light"] .placeholder-slate-500::placeholder {
-  color: #6b7280 !important;
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
-
-/* Intelligent Text White Overrides */
-/* Only override text-white if it's NOT inside a button gradient or badge */
-html[data-theme="light"] :not(.bg-gradient-to-r):not(.from-blue-600):not(.from-emerald-600):not(.bg-indigo-600)>.text-white,
-html[data-theme="light"] .text-white:not(.from-blue-600):not(.from-emerald-600):not(.bg-indigo-600):not(.rounded-full) {
-  color: #111827 !important;
-}
-
-/* 3. Borders & Separators */
-html[data-theme="light"] .border-slate-800\/80,
-html[data-theme="light"] .border-slate-800,
-html[data-theme="light"] .border-slate-700\/60,
-html[data-theme="light"] .border-slate-700 {
-  border-color: #e5e7eb !important;
-}
-
-html[data-theme="light"] .divide-slate-800\/80> :not([hidden])~ :not([hidden]),
-html[data-theme="light"] .divide-slate-800\/60> :not([hidden])~ :not([hidden]),
-html[data-theme="light"] .divide-slate-800> :not([hidden])~ :not([hidden]),
-html[data-theme="light"] .divide-slate-700> :not([hidden])~ :not([hidden]) {
-  border-color: #e5e7eb !important;
-}
-
-/* 4. Interactive States (Hover/Focus) */
-/* Table Rows */
-html[data-theme="light"] tr {
-  border-bottom: 1px solid #f3f4f6 !important;
-}
-
-html[data-theme="light"] tr:hover {
-  background-color: rgba(59, 130, 246, 0.05) !important;
-}
-
-/* Button & Card Hovers */
-html[data-theme="light"] .hover\:bg-slate-800\/60:hover,
-html[data-theme="light"] .hover\:bg-slate-800\/90:hover,
-html[data-theme="light"] .hover\:bg-slate-850\/45:hover {
-  background-color: #e5e7eb !important;
-  border-color: #d1d5db !important;
-  color: #111827 !important;
-}
-
-html[data-theme="light"] .hover\:bg-slate-900\/40:hover {
-  background-color: #f9fafb !important;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05) !important;
-  border-color: #d1d5db !important;
-}
-
-/* Specific ghost button text hovers */
-html[data-theme="light"] .text-slate-400.hover\:text-white:hover,
-html[data-theme="light"] .text-slate-300.hover\:text-white:hover,
-html[data-theme="light"] .text-slate-200.hover\:text-white:hover {
-  color: #111827 !important;
-}
-
-html[data-theme="light"] .hover\:border-slate-700:hover {
-  border-color: #cbd5e1 !important;
-}
-
-/* Sidebar Specific Overrides */
-html[data-theme="light"] aside,
-html[data-theme="light"] aside.bg-\[\#080b11\] {
-  background-color: #ffffff !important;
-  border-right: 1px solid #e5e7eb !important;
-  box-shadow: 1px 0 10px rgba(0, 0, 0, 0.02) !important;
-}
-
-html[data-theme="light"] aside .border-b.border-slate-900\/60,
-html[data-theme="light"] aside .border-t.border-slate-900\/60 {
-  border-color: #e5e7eb !important;
-}
-
-html[data-theme="light"] aside .bg-slate-950\/20 {
-  background-color: #f8fafc !important;
-}
-
-html[data-theme="light"] aside .text-white {
-  color: #111827 !important;
-}
-
-html[data-theme="light"] aside .bg-gradient-to-tr.from-blue-600.to-indigo-600 .text-white {
-  color: #ffffff !important;
-}
-
-/* 5. Inputs & Focus Rings */
-html[data-theme="light"] input,
-html[data-theme="light"] select,
-html[data-theme="light"] textarea {
-  background-color: #ffffff !important;
-  border-color: #d1d5db !important;
-  color: #111827 !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
-}
-
-html[data-theme="light"] input:focus,
-html[data-theme="light"] select:focus,
-html[data-theme="light"] textarea:focus {
-  background-color: #ffffff !important;
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15), 0 1px 2px rgba(0, 0, 0, 0.02) !important;
-}
-
-/* Analytics Cards Subtleties */
-html[data-theme="light"] .shadow-indigo-500\/10 {
-  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.08) !important;
-}
-/* Documents — fixed-layout doc tables so all columns + actions always fit the
-   viewport (1366×768 and up) with no horizontal scrollbar. */
-.doc-tables-fit table { table-layout: fixed; width: 100%; }
-.doc-tables-fit th,
-.doc-tables-fit td { padding-left: 0.5rem; padding-right: 0.5rem; }
-.doc-tables-fit > div { overflow-x: hidden; }
-
-/* Google Places Autocomplete dropdown must float above the map picker modal
-   (Modal dialog is z-50; feedback dialogs z-120). */
-.pac-container {
-  z-index: 100000 !important;
-  border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
-  font-family: inherit;
-  margin-top: 4px;
-}
-.pac-item { padding: 6px 10px; font-size: 12px; cursor: pointer; }
-.pac-item:hover { background: #f1f5f9; }

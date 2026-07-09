@@ -46,7 +46,7 @@ export interface Company {
   // Multi-Company Branding & Custom Templates
   address?: string;
   email?: string;
-  primaryColor: string; // e.g. '#3b82f6'
+  primaryColor: string; // e.g. '#6c3cf0'
   headerText: string;
   footerText: string;
   signatureText: string;
@@ -421,7 +421,7 @@ export const companies: Company[] = [
     overtimeRate: 1.5,
     address: 'Civil Hospital Campus, Asarwa, Ahmedabad, Gujarat 380016',
     email: 'admin@gcri.in',
-    primaryColor: '#4f46e5', // Deep premium indigo theme
+    primaryColor: '#5b2de6', // Deep premium indigo theme
     headerText: 'GUJARAT CANCER RESEARCH INSTITUTE (GCRI)',
     footerText: 'Providing Quality Cancer Care',
     signatureText: 'Director, GCRI',
@@ -458,7 +458,7 @@ export const companies: Company[] = [
     overtimeRate: 1.5,
     address: 'Civil Hospital Campus, Asarwa, Ahmedabad, Gujarat 380016',
     email: 'admin@ahmedabad.gcri.in',
-    primaryColor: '#3b82f6',
+    primaryColor: '#6c3cf0',
     headerText: 'GCRI AHMEDABAD CANCER RESEARCH INSTITUTE',
     footerText: 'Providing Quality Cancer Care',
     signatureText: 'Director, GCRI Ahmedabad',
