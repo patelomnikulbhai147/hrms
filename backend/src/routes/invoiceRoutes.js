@@ -3,6 +3,7 @@ const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const inv = require('../controllers/invoiceController');
 const master = require('../controllers/invoiceMasterController');
+const layout = require('../controllers/invoiceLayoutController');
 
 // Invoice Management — isolated financial module. View = SA/Company Head/Finance/HR;
 // create+edit = Company Head/Finance/HR; delete/cancel/settings = Company Head/Finance.
@@ -28,6 +29,14 @@ router.delete('/products/:id', master.deleteProduct);
 // Settings
 router.get('/settings', master.getSettings);
 router.put('/settings', master.saveSettings);
+
+// Visual Invoice Designer — per-company named canvas layouts (additive/opt-in).
+router.get('/layouts', layout.list);
+router.get('/layouts/:id', layout.get);
+router.post('/layouts', layout.save);
+router.put('/layouts/:id', layout.save);
+router.post('/layouts/:id/default', layout.setDefault);
+router.delete('/layouts/:id', layout.remove);
 
 // Invoices
 router.get('/invoices', inv.list);

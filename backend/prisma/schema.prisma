@@ -2059,6 +2059,7 @@ model PayrollComponentAudit {
 model InvoiceCustomer {
   id            Int      @id @default(autoincrement())
   companyId     Int
+  customerCode  String?  // Client Master code e.g. CLI-000001 (assigned once, per company)
   companyName   String
   contactPerson String?
   gstin         String?
@@ -2066,9 +2067,12 @@ model InvoiceCustomer {
   email         String?
   phone         String?
   addressLine   String?  @db.Text
+  shipToAddress String?  @db.Text // default shipping address (auto-filled onto new invoices)
   city          String?
   state         String?
   country       String?  @default("India")
+  paymentTerms  String?  // default payment terms auto-filled onto new invoices
+  creditDays    Int?     // default credit period → seeds invoice due date
   isActive      Boolean  @default(true)
   notes         String?  @db.Text
   createdBy     String?
@@ -2076,6 +2080,7 @@ model InvoiceCustomer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  @@unique([companyId, customerCode])
   @@index([companyId])
   @@index([companyId, isActive])
   @@map("invoice_customers")
@@ -2109,6 +2114,7 @@ model Invoice {
   billToName    String
   billToGstin   String?
   billToAddress String?  @db.Text
+  billToShipAddress String? @db.Text // ship-to snapshot (from client master; optional, default-hidden)
   billToEmail   String?
   billToPhone   String?
   billToState   String?
@@ -2336,6 +2342,24 @@ model CardTemplate {
 
   @@index([companyId])
   @@map("card_templates")
+}
+
+// Visual drag-and-drop Invoice Designer — per-company named canvas layouts.
+// Additive & isolated: the classic flow templates (invoice_settings.designJson)
+// are untouched; an invoice only renders a canvas layout when one is set active.
+model InvoiceLayout {
+  id         Int      @id @default(autoincrement())
+  companyId  Int
+  name       String
+  layoutJson String   @db.Text // { page, blocks[] } — the canvas design spec (JSON)
+  isDefault  Boolean  @default(false) // the company's ACTIVE canvas layout (0 or 1)
+  createdBy  String?
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([companyId])
+  @@map("invoice_layouts")
 }
 
 model LoanInstallment {

@@ -12,6 +12,17 @@ const audit = (companyId, entityType, entityId, action, by, details) =>
 
 const need = (req, res) => { const c = targetCompanyId(req, req.body?.companyId); if (!c) { res.status(400).json({ error: isSuperAdmin(req) ? 'Select a company.' : 'Your account has no company.' }); return null; } return c; };
 
+// Client Master code — CLI-000001, assigned once per customer, unique per company.
+// Derives the next sequence from the highest existing CLI-###### for the company
+// (so it survives deletes/backfill without a separate counter column).
+const CLIENT_CODE_RE = /^CLI-(\d+)$/i;
+async function nextCustomerCode(companyId) {
+  const rows = await prisma.invoiceCustomer.findMany({ where: { companyId }, select: { customerCode: true } });
+  let max = 0;
+  for (const r of rows) { const m = CLIENT_CODE_RE.exec(String(r.customerCode || '')); if (m) max = Math.max(max, parseInt(m[1], 10)); }
+  return `CLI-${String(max + 1).padStart(6, '0')}`;
+}
+
 // ── CUSTOMERS ─────────────────────────────────────────────────────────────────
 exports.listCustomers = async (req, res) => {
   try {
@@ -36,20 +47,31 @@ exports.saveCustomer = async (req, res) => {
     const companyId = need(req, res); if (!companyId) return;
     const b = req.body || {};
     if (!String(b.companyName || '').trim()) return res.status(400).json({ error: 'Customer / Company Name is required.' });
+    const creditDays = (b.creditDays === '' || b.creditDays == null) ? null : Math.max(0, parseInt(b.creditDays, 10) || 0);
     const data = {
       companyName: String(b.companyName).trim(), contactPerson: b.contactPerson || null, gstin: b.gstin || null, pan: b.pan || null,
-      email: b.email || null, phone: b.phone || null, addressLine: b.addressLine || null, city: b.city || null,
-      state: b.state || null, country: b.country || 'India', isActive: b.isActive !== false, notes: b.notes || null,
+      email: b.email || null, phone: b.phone || null, addressLine: b.addressLine || null, shipToAddress: b.shipToAddress || null,
+      city: b.city || null, state: b.state || null, country: b.country || 'India',
+      paymentTerms: b.paymentTerms || null, creditDays, isActive: b.isActive !== false, notes: b.notes || null,
     };
     const id = idParam(req.params.id);
     let saved;
     if (id) {
       const existing = await prisma.invoiceCustomer.findFirst({ where: { id, companyId } });
       if (!existing) return res.status(404).json({ error: 'Customer not found.' });
-      saved = await prisma.invoiceCustomer.update({ where: { id }, data: { ...data, updatedBy: actorOf(req) } });
+      // Client code is assigned once and never changed here; backfill it if missing.
+      const code = existing.customerCode || await nextCustomerCode(companyId);
+      saved = await prisma.invoiceCustomer.update({ where: { id }, data: { ...data, customerCode: code, updatedBy: actorOf(req) } });
       audit(companyId, 'Customer', id, 'UPDATED', actorOf(req), saved.companyName);
     } else {
-      saved = await prisma.invoiceCustomer.create({ data: { ...data, companyId, createdBy: actorOf(req), updatedBy: actorOf(req) } });
+      // Assign a unique CLI-###### on create, retrying on the rare unique clash.
+      let saveErr = null;
+      for (let attempt = 0; attempt < 5 && !saved; attempt++) {
+        try {
+          saved = await prisma.invoiceCustomer.create({ data: { ...data, customerCode: await nextCustomerCode(companyId), companyId, createdBy: actorOf(req), updatedBy: actorOf(req) } });
+        } catch (err) { saveErr = err; if (err?.code !== 'P2002') throw err; }
+      }
+      if (!saved) throw saveErr || new Error('Could not assign a client code.');
       audit(companyId, 'Customer', saved.id, 'CREATED', actorOf(req), saved.companyName);
     }
     res.status(id ? 200 : 201).json(saved);

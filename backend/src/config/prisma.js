@@ -54,7 +54,7 @@ const INT_PK_MODELS = new Set([
   'EtimeConnection', 'AttendanceSyncLog',
   'PayrollComponent', 'PayrollComponentAudit',
   'InvoiceCustomer', 'InvoiceProduct', 'Invoice', 'InvoiceItem',
-  'InvoicePayment', 'InvoiceSettings', 'InvoiceAudit',
+  'InvoicePayment', 'InvoiceSettings', 'InvoiceAudit', 'InvoiceLayout',
   'LoanType', 'Loan', 'LoanInstallment', 'LoanAudit',
   'ComplianceFiling', 'ComplianceFilingAudit', 'ComplianceDocument',
   'CardTemplate',
