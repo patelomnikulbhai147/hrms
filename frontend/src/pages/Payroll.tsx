@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Search,
   Activity,
@@ -124,6 +124,19 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('June');
+  // Drives the Lock/Unlock Month button's loading state.
+  const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
+
+  // Server-Side Pagination State
+  const [page, setPage] = useState(() => Number(sessionStorage.getItem('payroll_emp_page')) || 1);
+  const limit = 15;
+  const [paginatedData, setPaginatedData] = useState<PayrollRecord[]>([]);
+  const [totalRows, setTotalRows] = useState(0);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+
+  useEffect(() => {
+    sessionStorage.setItem('payroll_emp_page', String(page));
+  }, [page]);
   const [viewPayslip, setViewPayslip] = useState<PayrollRecord | null>(null);
   const [worksheetRecord, setWorksheetRecord] = useState<PayrollRecord | null>(null);
   const [showBonusModal, setShowBonusModal] = useState(false);
@@ -296,6 +309,47 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   const stats = useMemo(() => calculatePayrollStats(scopedRecords), [scopedRecords]);
   const latestLogs = useMemo(() => Object.values(auditLogs).flat().slice(-6).reverse(), [auditLogs]);
+
+  // Reset page to 1 when filters change
+  const initialMount = useRef(true);
+  useEffect(() => {
+    if (initialMount.current) {
+      initialMount.current = false;
+      return;
+    }
+    setPage(1);
+  }, [search, statusFilter, monthFilter, activeCompanyId]);
+
+  // Fetch server-side paginated payroll data
+  useEffect(() => {
+    let isMounted = true;
+    const fetchPaginated = async () => {
+      setIsTableLoading(true);
+      try {
+        const params: Record<string, any> = {
+          page,
+          limit,
+          companyId: activeCompanyId,
+          month: monthFilter
+        };
+        if (search) params.search = search;
+        if (statusFilter) params.status = statusFilter;
+        
+        const res = await api.payroll.getPaginated(params) as any;
+        if (isMounted && res && Array.isArray(res.data)) {
+          setPaginatedData(res.data);
+          setTotalRows(res.total || 0);
+        }
+      } catch (err) {
+        console.error("Error fetching paginated payroll:", err);
+      } finally {
+        if (isMounted) setIsTableLoading(false);
+      }
+    };
+    
+    fetchPaginated();
+    return () => { isMounted = false; };
+  }, [page, limit, search, statusFilter, monthFilter, activeCompanyId]);
 
   const handlePreparePayroll = async (record: PayrollRecord) => {
     try {
@@ -560,14 +614,19 @@ export const Payroll: React.FC<PayrollProps> = ({
       message: `Lock ${paidIds.length} paid payroll record(s)?${skipped ? ` ${skipped} unpaid record(s) will be skipped.` : ''}\n\nAfter locking, only a Company Head can edit them.`,
       variant: 'warning', confirmText: 'Lock',
     }))) return;
+    setLockBusy('lock');
     try {
       const res = await api.payroll.lock(paidIds);
-      onUpdatePayroll(payroll.map(r => paidIds.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r));
+      // Re-fetch: locking also closes the month's attendance summaries server-side.
+      try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); }
+      catch { onUpdatePayroll(payroll.map(r => paidIds.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r)); }
       saveAuditLog('bulk', `Locked ${res?.locked ?? paidIds.length} paid payroll record(s).`);
-      ui.toast.success(`Locked ${res?.locked ?? paidIds.length} payroll record(s)${res?.skippedUnpaid ? ` (${res.skippedUnpaid} unpaid skipped)` : ''}.`);
+      ui.toast.success(`Payroll month locked successfully (${res?.locked ?? paidIds.length} record(s))${res?.skippedUnpaid ? ` — ${res.skippedUnpaid} unpaid skipped` : ''}.`);
     } catch (e: any) {
       console.error('Lock failed:', e);
       ui.toast.error(`Failed to lock payroll: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setLockBusy(null);
     }
   };
 
@@ -575,16 +634,49 @@ export const Payroll: React.FC<PayrollProps> = ({
   const handleUnlockPayroll = async (ids: string[]) => {
     if (!canOverrideLock) { ui.toast.error('Only a Company Head can unlock payroll.'); return; }
     if (!ids.length) { ui.toast.warning('No locked payroll selected.'); return; }
-    const reason = await ui.prompt({ message: `Unlock ${ids.length} payroll record(s) for correction. Reason (recorded in the audit log):`, defaultValue: '' });
-    if (reason === null) return;
+
+    // Payment records are never deleted by an unlock — say so up front rather
+    // than letting the user discover it after the fact.
+    const paidCount = ids.filter(id => isPaid(payroll.find(r => r.id === id))).length;
+    const paymentWarning = paidCount
+      ? `\n\nSalary payment already exists for ${paidCount} record(s). Unlocking does not delete payment records. If payroll changes, payment reconciliation may be required.`
+      : '';
+
+    if (!(await ui.confirm({
+      title: 'Unlock Payroll Month',
+      message:
+        'This will unlock the payroll month and allow attendance changes, payroll recalculation and salary regeneration.\n\n'
+        + 'Already generated salary slips and payments will require regeneration.'
+        + paymentWarning
+        + '\n\nDo you want to continue?',
+      variant: 'warning',
+      confirmText: 'Unlock Month',
+      cancelText: 'Cancel',
+    }))) return;
+
+    const reason = await ui.prompt({ message: 'Reason for unlocking (recorded in the audit log):', defaultValue: '' });
+    if (reason === null) return; // cancelled at the reason step
+
+    setLockBusy('unlock');
     try {
       const res = await api.payroll.unlock(ids, reason || undefined);
-      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'paid', lockedAt: null } as any : r));
+      // Re-fetch instead of patching locally: the server also clears
+      // payslipGenerated and reopens the attendance summaries, and it decides
+      // which rows actually changed. A local patch would leave those stale.
+      try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); }
+      catch { onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'paid', lockedAt: null, payslipGenerated: false } as any : r)); }
+
       saveAuditLog('bulk', `Unlocked ${res?.unlocked ?? ids.length} payroll record(s). Reason: ${reason || '(none)'}`);
-      ui.toast.success(`Unlocked ${res?.unlocked ?? ids.length} payroll record(s).`);
+      const slips = res?.payslipsInvalidated ?? 0;
+      ui.toast.success(
+        `Payroll month unlocked (${res?.unlocked ?? ids.length} record(s)).`
+        + (slips ? ` ${slips} salary slip(s) need regeneration.` : '')
+      );
     } catch (e: any) {
       console.error('Unlock failed:', e);
       ui.toast.error(`Failed to unlock payroll: ${e?.message || 'Unknown error'}`);
+    } finally {
+      setLockBusy(null);
     }
   };
 
@@ -824,7 +916,7 @@ export const Payroll: React.FC<PayrollProps> = ({
           </div>
           <div className="p-5">
             <PayrollWorkflowTable
-              records={filtered}
+              records={paginatedData}
               primaryColor={currentCompany.primaryColor}
               onViewPayslip={setViewPayslip}
               onPrepare={handlePreparePayroll}
@@ -835,8 +927,45 @@ export const Payroll: React.FC<PayrollProps> = ({
               onSendClick={handleSendEmail}
               role={role}
               canEdit={canEdit}
+              isLoading={isTableLoading}
             />
           </div>
+          
+          {/* Pagination Controls */}
+          {totalRows > 0 && (
+            <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 rounded-b-xl flex-wrap gap-3">
+              <span className="text-xs text-slate-500 font-medium">
+                Showing <span className="font-bold text-slate-700">{(page - 1) * limit + 1}</span> to <span className="font-bold text-slate-700">{Math.min(page * limit, totalRows)}</span> of <span className="font-bold text-slate-700">{totalRows}</span> payroll records
+              </span>
+              <div className="flex items-center gap-4">
+                <div className="flex gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="text-xs py-1 px-3"
+                  >
+                    <span className="sm:hidden">Previous</span>
+                    <span className="hidden sm:inline">&lt;&lt; Previous</span>
+                  </Button>
+                  <div className="flex items-center px-2">
+                    <span className="text-xs text-slate-500">Page {page} of {Math.max(1, Math.ceil(totalRows / limit))}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage(p => Math.min(Math.ceil(totalRows / limit), p + 1))}
+                    disabled={page >= Math.ceil(totalRows / limit)}
+                    className="text-xs py-1 px-3"
+                  >
+                    <span className="sm:hidden">Next</span>
+                    <span className="hidden sm:inline">Next &gt;&gt;</span>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Detailed payslip read-only modal for employees */}
@@ -853,7 +982,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               <div className="space-y-4 text-xs text-left font-sans">
                 {/* Header branding block */}
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-3">
-                  <div className="w-10 h-10 bg-cyan-100 text-cyan-800 font-black rounded-lg flex items-center justify-center text-sm ring-1 ring-cyan-200">
+                  <div className="w-10 h-10 bg-brand-100 text-brand-800 font-black rounded-lg flex items-center justify-center text-sm ring-1 ring-brand-200">
                     <Building2 size={20} />
                   </div>
                   <div>
@@ -863,7 +992,7 @@ export const Payroll: React.FC<PayrollProps> = ({
                   </div>
                   <div className="ml-auto text-right">
                     <p className="text-[10px] uppercase text-gray-400 font-bold">Active Cycle</p>
-                    <p className="text-sm font-extrabold text-blue-600">{viewPayslip.month} {viewPayslip.year}</p>
+                    <p className="text-sm font-extrabold text-brand-600">{viewPayslip.month} {viewPayslip.year}</p>
                   </div>
                 </div>
 
@@ -972,9 +1101,9 @@ export const Payroll: React.FC<PayrollProps> = ({
     <div className="space-y-5 font-sans">
 
       {/* ── Bonus & Wages — shared navigation grouping only (Bonus & Wage logic stay separate) ── */}
-      <div className="bg-white rounded-2xl border border-indigo-100 shadow-sm p-4">
+      <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-4">
         <div className="flex items-center justify-between mb-2.5">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale size={15} className="text-indigo-600" /> Bonus &amp; Wages</h3>
+          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale size={15} className="text-brand-600" /> Bonus &amp; Wages</h3>
           <span className="text-[10px] text-slate-400">Quick access · Bonus and Wage logic remain separate</span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
@@ -987,8 +1116,8 @@ export const Payroll: React.FC<PayrollProps> = ({
             { label: 'Minimum Wage Compliance', icon: <ShieldCheck size={15} />, onClick: () => onNavigate?.('settings') },
             { label: 'Wage Reports', icon: <BarChart3 size={15} />, onClick: () => onNavigate?.('reports') },
           ].map(it => (
-            <button key={it.label} onClick={it.onClick} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-indigo-50 hover:border-indigo-200 px-2 py-3 text-center transition-colors">
-              <span className="text-indigo-600">{it.icon}</span>
+            <button key={it.label} onClick={it.onClick} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-brand-50 hover:border-brand-200 px-2 py-3 text-center transition-colors">
+              <span className="text-brand-600">{it.icon}</span>
               <span className="text-[10px] font-semibold text-slate-700 leading-tight">{it.label}</span>
             </button>
           ))}
@@ -1038,6 +1167,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         onExportBank={handleExportBankSheet}
         onMarkPaidAll={handleMarkPaidAll}
         onLockMonth={handleLockMonth}
+        lockBusy={lockBusy}
         onView={setViewPayslip}
         onOpenWorksheet={setWorksheetRecord}
         onDownloadPdf={(r) => handleDownloadPayslip(r, 'pdf')}
@@ -1141,7 +1271,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               </div>
               <div className="text-right">
                 <p className="text-xs uppercase tracking-[0.1em] text-slate-400 font-semibold">Active Cycle</p>
-                <p className="text-sm font-bold text-blue-600">{viewPayslip.month} {viewPayslip.year}</p>
+                <p className="text-sm font-bold text-brand-600">{viewPayslip.month} {viewPayslip.year}</p>
               </div>
             </div>
 
@@ -1241,10 +1371,10 @@ export const Payroll: React.FC<PayrollProps> = ({
                 return (
                   <div className="rounded-2xl border border-slate-200 overflow-hidden">
                     <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-200">
-                      <div className="p-4 bg-blue-50">
-                        <p className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">Gross Salary</p>
-                        <p className="text-[9px] text-blue-500 mt-0.5">Basic + Allowances + Bonus</p>
-                        <p className="text-lg font-black text-blue-900 font-mono mt-1">₹{gross.toLocaleString('en-IN')}</p>
+                      <div className="p-4 bg-brand-50">
+                        <p className="text-[10px] font-bold text-brand-700 uppercase tracking-wider">Gross Salary</p>
+                        <p className="text-[9px] text-brand-500 mt-0.5">Basic + Allowances + Bonus</p>
+                        <p className="text-lg font-black text-brand-900 font-mono mt-1">₹{gross.toLocaleString('en-IN')}</p>
                       </div>
                       <div className="p-4 bg-rose-50">
                         <p className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Total Deductions</p>
@@ -1293,7 +1423,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             <button
               disabled={isConfirmingPayment}
               onClick={() => setConfirmPaymentRecord(null)}
-              className="px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F7FAFF] text-[#4B5563] text-xs font-bold rounded-xl transition-all"
+              className="px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F3F0FF] text-[#4B5563] text-xs font-bold rounded-xl transition-all"
             >
               Cancel
             </button>
@@ -1405,18 +1535,18 @@ export const Payroll: React.FC<PayrollProps> = ({
                 </div>
                 <div className="flex items-center justify-between mb-2 text-[12px]">
                   <label className="flex items-center gap-2 font-medium text-slate-700 cursor-pointer">
-                    <input type="checkbox" checked={allChecked} onChange={toggleAll} className="accent-indigo-600 w-4 h-4" />
+                    <input type="checkbox" checked={allChecked} onChange={toggleAll} className="accent-brand-600 w-4 h-4" />
                     Select all ({list.length})
                   </label>
-                  <span className="text-indigo-600 font-semibold">{genSelectedIds.size} selected</span>
+                  <span className="text-brand-600 font-semibold">{genSelectedIds.size} selected</span>
                 </div>
                 <div className="border border-slate-200 rounded-lg max-h-64 overflow-y-auto divide-y divide-slate-100">
                   {list.length === 0 && <div className="p-4 text-center text-slate-400 text-[13px]">No employees match the filters.</div>}
                   {list.map((e: any) => {
                     const id = String(e.id); const checked = genSelectedIds.has(id);
                     return (
-                      <label key={id} className={"flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 " + (checked ? "bg-indigo-50/60" : "")}>
-                        <input type="checkbox" checked={checked} onChange={() => toggle(id)} className="accent-indigo-600 w-4 h-4" />
+                      <label key={id} className={"flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 " + (checked ? "bg-brand-50/60" : "")}>
+                        <input type="checkbox" checked={checked} onChange={() => toggle(id)} className="accent-brand-600 w-4 h-4" />
                         <div className="min-w-0 flex-1">
                           <div className="text-[13px] font-medium text-slate-900 truncate">{e.name}</div>
                           <div className="text-[11px] text-slate-500 truncate">{e.designation || '—'} · {e.department || '—'}</div>
