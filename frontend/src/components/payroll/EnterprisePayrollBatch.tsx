@@ -13,8 +13,8 @@ const STAGE_LABEL: Record<PayrollStage, string> = {
 };
 const STAGE_CLASS: Record<PayrollStage, string> = {
   draft: 'bg-slate-100 text-slate-600 border-slate-200',
-  generated: 'bg-blue-50 text-blue-700 border-blue-200',
-  approved: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+  generated: 'bg-brand-50 text-brand-700 border-brand-200',
+  approved: 'bg-brand-50 text-brand-700 border-brand-200',
   bank_processing: 'bg-amber-50 text-amber-700 border-amber-200',
   paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   locked: 'bg-slate-800 text-white border-slate-700',
@@ -206,12 +206,12 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
   return (
     <div className="space-y-4">
       {/* ── Period-based Top Actions (monthly batch workflow) ──────────────── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] p-3">
-        <span className="text-[11px] font-bold text-[#1D4ED8] uppercase tracking-wider mr-1">Monthly Batch:</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#BFDBFE] bg-[#F3F0FF] p-3">
+        <span className="text-[11px] font-bold text-[#4C1FD4] uppercase tracking-wider mr-1">Monthly Batch:</span>
         <TopBtn id="Generate All Payroll" label="Generate All Payroll" onClick={() => runTop('Generate All Payroll', onGenerateAll)}
-          tone="bg-[#2563EB] text-white border-[#2563EB] hover:bg-[#1D4ED8]" />
+          tone="bg-[#2563EB] text-white border-[#2563EB] hover:bg-[#4C1FD4]" />
         <TopBtn id="Approve All" label="Approve All" onClick={approveAll}
-          tone="bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50" />
+          tone="bg-white text-brand-700 border-brand-200 hover:bg-brand-50" />
         <TopBtn id="Generate All Payslips" label="Generate All Payslips" onClick={() => runTop('Generate All Payslips', onGenerateAllPayslips)}
           tone="bg-white text-slate-700 border-slate-200 hover:bg-slate-50" />
         <TopBtn id="zip" label="Download All Payslips ZIP" onClick={() => {}} disabled
@@ -226,7 +226,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
       </div>
 
       {/* ── Payroll Month Header ───────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-[#DBEAFE] bg-gradient-to-r from-[#EFF6FF] to-white p-5">
+      <div className="rounded-2xl border border-[#E6E0FE] bg-gradient-to-r from-[#F3F0FF] to-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-[11px] font-bold text-[#2563EB] uppercase tracking-wider">Payroll Month</p>
@@ -251,10 +251,10 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
       {/* ── Compliance Summary Dashboard ───────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'Total Payroll', value: compliance.totalNet, color: 'text-blue-700 bg-blue-50 border-blue-200' },
+          { label: 'Total Payroll', value: compliance.totalNet, color: 'text-brand-700 bg-brand-50 border-brand-200' },
           { label: 'Gross', value: compliance.totalGross, color: 'text-slate-700 bg-slate-50 border-slate-200' },
-          { label: 'PF Liability', value: compliance.pf, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
-          { label: 'ESIC Liability', value: compliance.esic, color: 'text-cyan-700 bg-cyan-50 border-cyan-200' },
+          { label: 'PF Liability', value: compliance.pf, color: 'text-brand-700 bg-brand-50 border-brand-200' },
+          { label: 'ESIC Liability', value: compliance.esic, color: 'text-brand-700 bg-brand-50 border-brand-200' },
           { label: 'Professional Tax', value: compliance.pt, color: 'text-amber-700 bg-amber-50 border-amber-200' },
           { label: 'TDS', value: compliance.tds, color: 'text-rose-700 bg-rose-50 border-rose-200' },
         ].map(c => (
@@ -268,9 +268,9 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
       {/* ── Bulk Action Toolbar ────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3">
         <span className="text-xs font-bold text-slate-500 mr-1">{selected.size} selected</span>
-        <BulkBtn id="Generate Payroll" icon={<PlayCircle size={13} className="text-blue-600" />} label="Generate Payroll"
+        <BulkBtn id="Generate Payroll" icon={<PlayCircle size={13} className="text-brand-600" />} label="Generate Payroll"
           onClick={() => runBulk('Generate Payroll', { payrollStatus: 'generated', status: 'generated' }, ['draft'])} />
-        <BulkBtn id="Approve Payroll" icon={<BadgeCheck size={13} className="text-indigo-600" />} label="Approve Payroll"
+        <BulkBtn id="Approve Payroll" icon={<BadgeCheck size={13} className="text-brand-600" />} label="Approve Payroll"
           onClick={() => runBulk('Approve Payroll', { payrollStatus: 'approved', status: 'approved' }, ['generated'])} />
         <BulkBtn id="Bank Processing" icon={<Landmark size={13} className="text-amber-600" />} label="Bank Processing"
           onClick={() => runBulk('Bank Processing', { payrollStatus: 'bank_processing', status: 'bank_processing' }, ['approved'])} />
@@ -292,7 +292,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
             <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <th className="py-3 px-4 w-10">
                 <button onClick={toggleAll} disabled={selectableIds.length === 0} title="Select All">
-                  {allSelected ? <CheckSquare size={16} className="text-blue-600" /> : <Square size={16} className="text-slate-400" />}
+                  {allSelected ? <CheckSquare size={16} className="text-brand-600" /> : <Square size={16} className="text-slate-400" />}
                 </button>
               </th>
               <th className="py-3 px-3">Employee</th>
@@ -317,11 +317,11 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
               const deductions = (r.deductions || 0) + ((r as any).tax || 0);
               const isLocked = stage === 'locked';
               return (
-                <tr key={r.id} className={`hover:bg-slate-50/60 ${selected.has(r.id) ? 'bg-blue-50/40' : ''}`}>
+                <tr key={r.id} className={`hover:bg-slate-50/60 ${selected.has(r.id) ? 'bg-brand-50/40' : ''}`}>
                   <td className="py-2.5 px-4">
                     <button onClick={() => toggleOne(r.id)} disabled={isLocked} title={isLocked ? 'Locked' : 'Select'}>
                       {selected.has(r.id)
-                        ? <CheckSquare size={15} className="text-blue-600" />
+                        ? <CheckSquare size={15} className="text-brand-600" />
                         : <Square size={15} className={isLocked ? 'text-slate-200' : 'text-slate-400'} />}
                     </button>
                   </td>
@@ -337,7 +337,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
                   <td className="py-2.5 px-3 text-center font-semibold text-emerald-700">{att.present}</td>
                   <td className="py-2.5 px-3 text-center font-semibold text-rose-600">{att.absent}</td>
                   <td className="py-2.5 px-3 text-center font-semibold text-amber-600">{att.leave}</td>
-                  <td className="py-2.5 px-3 text-center font-semibold text-violet-600">{att.ot}</td>
+                  <td className="py-2.5 px-3 text-center font-semibold text-brand-600">{att.ot}</td>
                   <td className="py-2.5 px-3 text-right font-mono text-slate-700">{inr(gross)}</td>
                   <td className="py-2.5 px-3 text-right font-mono text-rose-600">{inr(deductions)}</td>
                   <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">{inr(r.netSalary || 0)}</td>

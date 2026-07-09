@@ -45,13 +45,13 @@ export interface EventConfig {
 // Literal Tailwind classes per accent (kept literal so the JIT compiler keeps them).
 const ACCENTS = {
   pink:    { icon: 'bg-pink-50 text-pink-600',     chip: 'bg-pink-50 text-pink-600',     soft: 'from-pink-50/60',    ring: 'border-pink-100' },
-  indigo:  { icon: 'bg-indigo-50 text-indigo-600', chip: 'bg-indigo-50 text-indigo-600', soft: 'from-indigo-50/60',  ring: 'border-indigo-100' },
+  indigo:  { icon: 'bg-brand-50 text-brand-600', chip: 'bg-brand-50 text-brand-600', soft: 'from-brand-50/60',  ring: 'border-brand-100' },
   orange:  { icon: 'bg-orange-50 text-orange-600', chip: 'bg-orange-50 text-orange-600', soft: 'from-orange-50/60',  ring: 'border-orange-100' },
   teal:    { icon: 'bg-teal-50 text-teal-600',     chip: 'bg-teal-50 text-teal-600',     soft: 'from-teal-50/60',    ring: 'border-teal-100' },
-  violet:  { icon: 'bg-violet-50 text-violet-600', chip: 'bg-violet-50 text-violet-600', soft: 'from-violet-50/60',  ring: 'border-violet-100' },
+  violet:  { icon: 'bg-brand-50 text-brand-600', chip: 'bg-brand-50 text-brand-600', soft: 'from-brand-50/60',  ring: 'border-brand-100' },
   emerald: { icon: 'bg-emerald-50 text-emerald-600', chip: 'bg-emerald-50 text-emerald-600', soft: 'from-emerald-50/60', ring: 'border-emerald-100' },
-  cyan:    { icon: 'bg-cyan-50 text-cyan-600',     chip: 'bg-cyan-50 text-cyan-600',     soft: 'from-cyan-50/60',    ring: 'border-cyan-100' },
-  blue:    { icon: 'bg-blue-50 text-blue-600',     chip: 'bg-blue-50 text-blue-600',     soft: 'from-blue-50/60',    ring: 'border-blue-100' },
+  cyan:    { icon: 'bg-brand-50 text-brand-600',     chip: 'bg-brand-50 text-brand-600',     soft: 'from-brand-50/60',    ring: 'border-brand-100' },
+  blue:    { icon: 'bg-brand-50 text-brand-600',     chip: 'bg-brand-50 text-brand-600',     soft: 'from-brand-50/60',    ring: 'border-brand-100' },
   amber:   { icon: 'bg-amber-50 text-amber-600',   chip: 'bg-amber-50 text-amber-600',   soft: 'from-amber-50/60',   ring: 'border-amber-100' },
 } as const;
 
@@ -443,7 +443,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <SummaryCard label={isEmployeeMode ? "Today's Birthdays".replace('Birthdays', config.recipientMode === 'employee-joindate' ? 'Anniversaries' : 'Birthdays') : "Today"} value={loading ? '—' : todays.length} icon={<Icon size={16} />} tone={accent.icon} />
-        <SummaryCard label="Upcoming (30 Days)" value={loading ? '—' : upcoming.length} icon={<CalendarClock size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        <SummaryCard label="Upcoming (30 Days)" value={loading ? '—' : upcoming.length} icon={<CalendarClock size={16} />} tone="bg-brand-50 text-brand-600" />
         <SummaryCard label="Messages Sent Today" value={loading ? '—' : sentToday} icon={<Send size={16} />} tone="bg-emerald-50 text-emerald-600" />
         <SummaryCard label="Pending Queue" value={loading ? '—' : pendingQueue} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
         <SummaryCard label="Failed Messages" value={loading ? '—' : failedTotal} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
@@ -454,7 +454,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-bold text-slate-500">Template</span>
-          <select value={tplId} onChange={e => onTemplateChange(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#4F7CFF] focus:outline-none">
+          <select value={tplId} onChange={e => onTemplateChange(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none">
             <option value="">{templates[0]?.title || 'Default template'}</option>
             {templates.map(t => <option key={t.id} value={String(t.id)}>{t.title}</option>)}
           </select>
@@ -521,7 +521,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       {/* Upcoming */}
       {isEmployeeMode || config.recipientMode === 'holiday' ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><CalendarClock size={14} className="text-indigo-500" /> Upcoming <span className="text-[10px] font-semibold text-slate-400">(next 30 days)</span></p>
+          <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><CalendarClock size={14} className="text-brand-500" /> Upcoming <span className="text-[10px] font-semibold text-slate-400">(next 30 days)</span></p>
           {loading ? <div className="py-8 text-center text-sm text-slate-500">Loading…</div>
             : upcoming.length === 0 ? <Empty icon={<CalendarClock size={22} />} title="No upcoming events in the next 30 days." />
               : (
@@ -578,7 +578,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       {/* Automation Information + Audit Trail */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Activity size={14} className="text-indigo-600" /> Automation Information</p>
+          <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Activity size={14} className="text-brand-600" /> Automation Information</p>
           <dl className="grid grid-cols-2 gap-y-2 text-[11px]">
             <Info k="Automation Status" v={automationActive ? <Badge variant="green">Active</Badge> : <Badge variant="gray">Disabled</Badge>} />
             <Info k="Auto-Scheduler" v={schedulerOn ? <Badge variant="green">Running (every min)</Badge> : <Badge variant="gray">Off</Badge>} />
@@ -668,7 +668,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
 };
 
 // Filter field wrapper + shared input class.
-const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#4F7CFF] focus:outline-none';
+const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none';
 const Filter: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>{children}</div>
 );

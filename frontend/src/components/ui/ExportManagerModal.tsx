@@ -221,7 +221,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
         {/* Data Source Selection */}
         <div>
           <h4 className="font-bold text-slate-700 uppercase tracking-wide text-[10px] mb-3 flex items-center gap-1.5">
-            <CheckSquare size={12} className="text-blue-500" /> 1. Select Data Sources
+            <CheckSquare size={12} className="text-brand-500" /> 1. Select Data Sources
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
@@ -237,16 +237,16 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
                   key={source.id}
                   onClick={() => toggleSource(source.id as DataSource)}
                   className={`border rounded-xl p-3 cursor-pointer transition-all duration-200 ${
-                    isSelected ? 'border-blue-500 bg-blue-50/50 shadow-sm shadow-blue-100 ring-1 ring-blue-200' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    isSelected ? 'border-brand-500 bg-brand-50/50 shadow-sm shadow-brand-100 ring-1 ring-brand-200' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <Icon size={16} className={isSelected ? 'text-blue-600' : 'text-slate-400'} />
-                    <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-colors ${isSelected ? 'border-blue-500 bg-blue-500' : 'border-slate-300'}`}>
+                    <Icon size={16} className={isSelected ? 'text-brand-600' : 'text-slate-400'} />
+                    <div className={`w-4 h-4 rounded-full flex items-center justify-center border transition-colors ${isSelected ? 'border-brand-500 bg-brand-500' : 'border-slate-300'}`}>
                       {isSelected && <CheckSquare size={10} className="text-white absolute opacity-0" />}
                     </div>
                   </div>
-                  <p className={`font-bold ${isSelected ? 'text-blue-900' : 'text-slate-700'}`}>{source.label}</p>
+                  <p className={`font-bold ${isSelected ? 'text-brand-900' : 'text-slate-700'}`}>{source.label}</p>
                   <p className="text-[10px] text-slate-500 mt-0.5">{source.count} records</p>
                 </div>
               );
@@ -265,7 +265,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
               <select 
                 value={branchFilter}
                 onChange={e => setBranchFilter(e.target.value)}
-                className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-sm"
+                className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-100 focus:border-brand-400 outline-none transition-all shadow-sm"
               >
                 <option value="All">All Branches</option>
                 <option value="AHMEDABAD">Ahmedabad</option>
@@ -279,7 +279,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
               <select 
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
-                className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all shadow-sm"
+                className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-100 focus:border-brand-400 outline-none transition-all shadow-sm"
               >
                 <option value="All">All Statuses</option>
                 <option value="Active">Active</option>
@@ -312,7 +312,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
                           type="checkbox" 
                           checked={isChecked}
                           onChange={() => toggleField(source, field.key)}
-                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          className="rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                         />
                         <span className={`text-[10px] ${isChecked ? 'text-slate-800 font-medium' : 'text-slate-500'}`}>
                           {field.label}
@@ -340,7 +340,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
             </button>
             <button
               onClick={() => setFormat('csv')}
-              className={`flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg border font-bold transition-all ${format === 'csv' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm ring-1 ring-blue-200' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+              className={`flex-1 flex items-center justify-center gap-2 p-2.5 rounded-lg border font-bold transition-all ${format === 'csv' ? 'border-brand-500 bg-brand-50 text-brand-700 shadow-sm ring-1 ring-brand-200' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}
             >
               <FileText size={16} /> CSV (Comma Separated)
             </button>

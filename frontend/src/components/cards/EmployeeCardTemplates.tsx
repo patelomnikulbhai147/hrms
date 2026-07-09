@@ -13,7 +13,7 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
-const QrPattern: React.FC<{ value: string; size?: number; color?: string }> = ({ value, size = 64, color = '#0f172a' }) => {
+const QrPattern: React.FC<{ value: string; size?: number; color?: string }> = ({ value, size = 64, color = '#111827' }) => {
   const cells = 21; // QR-like grid
   const seed = hashString(value || 'EMP');
   const px = size / cells;
@@ -46,7 +46,7 @@ const Barcode: React.FC<{ value: string; width?: number; height?: number }> = ({
   for (let i = 0; i < count; i++) {
     const on = ((seed >> (i % 31)) ^ (i * 17)) % 2 === 0;
     const w = (((seed >> (i % 13)) + i) % 3) + 1;
-    bars.push(<div key={i} style={{ width: w, height, background: on ? '#0f172a' : 'transparent' }} />);
+    bars.push(<div key={i} style={{ width: w, height, background: on ? '#111827' : 'transparent' }} />);
   }
   return (
     <div style={{ width }}>
@@ -67,7 +67,7 @@ const fmtINR = (n: any) => {
 
 const brandOf = (company: any) => ({
   name: company?.name || 'Enterprise',
-  color: company?.primaryColor || '#4F46E5',
+  color: company?.primaryColor || '#5B2DE6',
   logo: company?.logoImage || company?.logo || '',
   tagline: company?.tagline || company?.headerText || '',
 });
@@ -94,9 +94,9 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
   const cardStyle: React.CSSProperties = {
     width: 230, height: 366, borderRadius: 16, overflow: 'hidden',
     background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,0.12)', fontFamily: 'Inter, system-ui, sans-serif',
-    border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column',
+    border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column',
   };
-  const label: React.CSSProperties = { fontSize: 8, textTransform: 'uppercase', letterSpacing: 1, color: '#94a3b8', fontWeight: 700 };
+  const label: React.CSSProperties = { fontSize: 8, textTransform: 'uppercase', letterSpacing: 1, color: '#9ca3af', fontWeight: 700 };
   const value: React.CSSProperties = { fontSize: 11, color: '#1e293b', fontWeight: 600, marginBottom: 6 };
 
   return (
@@ -112,13 +112,13 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
         </div>
         <div style={{ padding: '16px 14px', display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
           <Photo employee={employee} size={96} color={b.color} />
-          <div style={{ fontWeight: 800, fontSize: 15, color: '#0f172a', marginTop: 10, textAlign: 'center' }}>{employee?.name}</div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: '#111827', marginTop: 10, textAlign: 'center' }}>{employee?.name}</div>
           <div style={{ fontSize: 11, color: b.color, fontWeight: 700 }}>{employee?.designation}</div>
-          <div style={{ marginTop: 4, fontSize: 10, color: '#64748b' }}>{employee?.department}</div>
+          <div style={{ marginTop: 4, fontSize: 10, color: '#6b7280' }}>{employee?.department}</div>
           {(employee?.branchLocation || employee?.location) && (
-            <div style={{ marginTop: 2, fontSize: 9, color: '#94a3b8' }}>{employee?.branchLocation || employee?.location}</div>
+            <div style={{ marginTop: 2, fontSize: 9, color: '#9ca3af' }}>{employee?.branchLocation || employee?.location}</div>
           )}
-          <div style={{ marginTop: 10, background: '#f1f5f9', borderRadius: 8, padding: '4px 10px', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
+          <div style={{ marginTop: 10, background: '#f1f5f9', borderRadius: 8, padding: '4px 10px', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: '#111827' }}>
             {employee?.employeeId}
           </div>
           <div style={{ marginTop: 'auto', paddingTop: 12 }}><QrPattern value={String(employee?.employeeId || '')} size={62} color={b.color} /></div>
@@ -140,7 +140,7 @@ export const EmployeeIdCard: React.FC<{ employee: any; company: any }> = ({ empl
           <div style={{ ...value, lineHeight: 1.35 }}>{employee?.presentAddress || employee?.permanentAddress || employee?.location || '—'}</div>
           <div style={label}>Date of Joining</div>
           <div style={value}>{formatDate(employee?.joinDate)}</div>
-          <div style={{ marginTop: 'auto', borderTop: '1px dashed #cbd5e1', paddingTop: 8, fontSize: 7.5, color: '#94a3b8', textAlign: 'center', lineHeight: 1.4 }}>
+          <div style={{ marginTop: 'auto', borderTop: '1px dashed #d1d5db', paddingTop: 8, fontSize: 7.5, color: '#9ca3af', textAlign: 'center', lineHeight: 1.4 }}>
             If found, please return to {b.name}. This card remains property of the company.
           </div>
         </div>
@@ -155,19 +155,19 @@ export const EmployeeInfoCard: React.FC<{ employee: any; company: any }> = ({ em
   const annualCtc = Number(employee?.salary) || 0;
   const Row = ({ k, v }: { k: string; v: any }) => (
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '4px 0', borderBottom: '1px solid #f1f5f9' }}>
-      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>{k}</span>
-      <span style={{ fontSize: 10, color: '#0f172a', fontWeight: 700, textAlign: 'right' }}>{v ?? '—'}</span>
+      <span style={{ fontSize: 10, color: '#6b7280', fontWeight: 600 }}>{k}</span>
+      <span style={{ fontSize: 10, color: '#111827', fontWeight: 700, textAlign: 'right' }}>{v ?? '—'}</span>
     </div>
   );
   const Stat = ({ k, v, color }: { k: string; v: string; color: string }) => (
     <div style={{ flex: 1, background: '#f8fafc', borderRadius: 8, padding: '8px 6px', textAlign: 'center' }}>
       <div style={{ fontSize: 14, fontWeight: 800, color }}>{v}</div>
-      <div style={{ fontSize: 8, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{k}</div>
+      <div style={{ fontSize: 8, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>{k}</div>
     </div>
   );
 
   return (
-    <div style={{ width: 480, borderRadius: 16, overflow: 'hidden', background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,0.12)', fontFamily: 'Inter, system-ui, sans-serif', border: '1px solid #e2e8f0' }}>
+    <div style={{ width: 480, borderRadius: 16, overflow: 'hidden', background: '#fff', boxShadow: '0 8px 24px rgba(15,23,42,0.12)', fontFamily: 'Inter, system-ui, sans-serif', border: '1px solid #e5e7eb' }}>
       <div style={{ background: b.color, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <Logo b={b} size={34} />
         <div style={{ flex: 1 }}>
@@ -179,9 +179,9 @@ export const EmployeeInfoCard: React.FC<{ employee: any; company: any }> = ({ em
         <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 14 }}>
           <Photo employee={employee} size={72} color={b.color} />
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 800, fontSize: 18, color: '#0f172a' }}>{employee?.name}</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: '#111827' }}>{employee?.name}</div>
             <div style={{ fontSize: 12, color: b.color, fontWeight: 700 }}>{employee?.designation}</div>
-            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#64748b', marginTop: 2 }}>{employee?.employeeId}</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#6b7280', marginTop: 2 }}>{employee?.employeeId}</div>
           </div>
           <span style={{ fontSize: 9, fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: (employee?.status === 'Active' ? '#dcfce7' : '#fee2e2'), color: (employee?.status === 'Active' ? '#15803d' : '#b91c1c') }}>
             {employee?.status || '—'}
@@ -190,8 +190,8 @@ export const EmployeeInfoCard: React.FC<{ employee: any; company: any }> = ({ em
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
           <Stat k="Annual CTC" v={fmtINR(annualCtc)} color={b.color} />
-          <Stat k="Monthly" v={fmtINR(Math.round(annualCtc / 12))} color="#0f172a" />
-          <Stat k="Category" v={employee?.category || '—'} color="#0f172a" />
+          <Stat k="Monthly" v={fmtINR(Math.round(annualCtc / 12))} color="#111827" />
+          <Stat k="Category" v={employee?.category || '—'} color="#111827" />
         </div>
 
         <div style={{ display: 'flex', gap: 16 }}>
@@ -210,7 +210,7 @@ export const EmployeeInfoCard: React.FC<{ employee: any; company: any }> = ({ em
         </div>
 
         <div style={{ marginTop: 16, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-          <div style={{ fontSize: 8, color: '#94a3b8', lineHeight: 1.4, maxWidth: 200 }}>
+          <div style={{ fontSize: 8, color: '#9ca3af', lineHeight: 1.4, maxWidth: 200 }}>
             Attendance &amp; leave summaries are sourced from the active payroll cycle in the live release.
           </div>
           <Barcode value={String(employee?.employeeId || '')} width={200} height={40} />

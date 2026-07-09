@@ -65,13 +65,13 @@ const ElementView: React.FC<ElementViewProps> = ({ el, ctx, theme, editing }) =>
       );
     }
     if (!editing) return null;
-    return <div style={{ width: '100%', height: '100%', border: '1px dashed rgba(100,116,139,.5)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', fontSize: 9 }}>{el.type}</div>;
+    return <div style={{ width: '100%', height: '100%', border: '1px dashed rgba(100,116,139,.5)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', fontSize: 9 }}>{el.type}</div>;
   }
 
   // Text-like fields.
   if (bound.kind === 'none') {
     if (!editing) return null;
-    return <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', color: '#cbd5e1', fontSize: Math.max(8, st.fontSize || 11), fontStyle: 'italic', fontFamily: FONT, justifyContent: st.align === 'center' ? 'center' : st.align === 'right' ? 'flex-end' : 'flex-start' }}>{el.text || bound.label || el.type}</div>;
+    return <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', color: '#d1d5db', fontSize: Math.max(8, st.fontSize || 11), fontStyle: 'italic', fontFamily: FONT, justifyContent: st.align === 'center' ? 'center' : st.align === 'right' ? 'flex-end' : 'flex-start' }}>{el.text || bound.label || el.type}</div>;
   }
 
   const value = st.uppercase ? (bound.value || '').toUpperCase() : bound.value;

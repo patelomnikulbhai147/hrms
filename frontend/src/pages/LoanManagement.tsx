@@ -63,9 +63,9 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><HandCoins size={16} className="text-[#4F7CFF]" /> Employee Loan Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><HandCoins size={16} className="text-[#6C3CF0]" /> Employee Loan Management</h2>
           <p className="text-[11px] text-slate-400">Loans &amp; advances, EMI schedules, approvals and automatic payroll deduction — {activeCompany?.name || 'your company'}.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {t.label}
             </button>
           );
@@ -109,7 +109,7 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
 // ── KPI card ────────────────────────────────────────────────────────────────
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#EDF4FF] text-[#4F7CFF]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -139,8 +139,8 @@ const ActivityCard: React.FC<{ icon: React.ReactNode; title: string; empty?: str
   </Card>
 );
 const QuickAction: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
-  <button onClick={onClick} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#4F7CFF] hover:shadow-sm">
-    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EDF4FF] text-[#4F7CFF] transition group-hover:bg-[#4F7CFF] group-hover:text-white">{icon}</span>
+  <button onClick={onClick} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#6C3CF0] hover:shadow-sm">
+    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F0FF] text-[#6C3CF0] transition group-hover:bg-[#6C3CF0] group-hover:text-white">{icon}</span>
     <span className="text-xs font-bold text-slate-700">{label}</span>
   </button>
 );
@@ -180,7 +180,7 @@ export const DashboardTab: React.FC<{
   const actions = [
     pendingCount > 0 && { key: 'appr', tone: 'bg-amber-50 text-amber-600', icon: <Clock size={15} />, label: 'Pending Loan Approvals', desc: `${pendingCount} request${pendingCount > 1 ? 's' : ''} awaiting a decision`, count: pendingCount, go: () => onNavigate?.('approvals') },
     overdueCount > 0 && { key: 'over', tone: 'bg-rose-50 text-rose-600', icon: <AlertTriangle size={15} />, label: 'Overdue EMI', desc: `${overdueCount} active loan${overdueCount > 1 ? 's' : ''} with a past-due installment`, count: overdueCount, go: () => onNavigate?.('loans') },
-    showCompliance && complianceUpcoming > 0 && { key: 'comp', tone: 'bg-indigo-50 text-indigo-600', icon: <ShieldCheck size={15} />, label: 'Upcoming Compliance Filings', desc: `${complianceUpcoming} filing${complianceUpcoming > 1 ? 's' : ''} due within 30 days`, count: complianceUpcoming, go: () => onNavigate?.('compliance') },
+    showCompliance && complianceUpcoming > 0 && { key: 'comp', tone: 'bg-brand-50 text-brand-600', icon: <ShieldCheck size={15} />, label: 'Upcoming Compliance Filings', desc: `${complianceUpcoming} filing${complianceUpcoming > 1 ? 's' : ''} due within 30 days`, count: complianceUpcoming, go: () => onNavigate?.('compliance') },
   ].filter(Boolean) as { key: string; tone: string; icon: React.ReactNode; label: string; desc: string; count: number; go: () => void }[];
 
   const loanRow = (l: any) => (
@@ -199,7 +199,7 @@ export const DashboardTab: React.FC<{
           <Kpi label="Active Loans" value={loading ? '—' : k.totalActiveLoans ?? 0} icon={<HandCoins size={16} />} />
           <Kpi label="Pending Approvals" value={loading ? '—' : pendingCount} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
           <Kpi label="Total Outstanding" value={loading ? '—' : inr(k.totalOutstanding)} icon={<TrendingUp size={16} />} tone="bg-orange-50 text-orange-600" />
-          <Kpi label="EMI Deducted (This Month)" value={loading ? '—' : inr(emiThisMonth)} icon={<IndianRupee size={16} />} tone="bg-indigo-50 text-indigo-600" />
+          <Kpi label="EMI Deducted (This Month)" value={loading ? '—' : inr(emiThisMonth)} icon={<IndianRupee size={16} />} tone="bg-brand-50 text-brand-600" />
         </div>
       </section>
 
@@ -388,7 +388,7 @@ export const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; editId
             <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
               <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><AlertTriangle size={13} /> No loan types available</p>
               <p className="text-[11px] text-amber-600 mt-0.5">Configure at least one active loan type before creating a loan.</p>
-              {onManageTypes && <button type="button" onClick={onManageTypes} className="mt-1.5 text-[11px] font-bold text-[#4F7CFF] hover:underline">Go to Loan Type Settings →</button>}
+              {onManageTypes && <button type="button" onClick={onManageTypes} className="mt-1.5 text-[11px] font-bold text-[#6C3CF0] hover:underline">Go to Loan Type Settings →</button>}
             </div>
           ) : (
             <Select label="Loan Type" value={form.loanTypeId} onChange={(e) => onType(e.target.value)}
@@ -483,7 +483,7 @@ export const LoansTab: React.FC<{
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or loan #…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#4F7CFF] outline-none" /></div>
+        <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or loan #…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none" /></div>
         {!lockStatus && (
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
             <option value="">All statuses</option>
@@ -511,9 +511,9 @@ export const LoansTab: React.FC<{
                     <td className="p-2.5">
                       <div className="flex items-center gap-1">
                         <IconBtn title="View" onClick={() => onOpen(l.id)}><Eye size={14} /></IconBtn>
-                        {canEdit && onEdit && ['Draft', 'Pending Approval'].includes(l.status) && <IconBtn title={l.status === 'Draft' ? 'Continue editing' : 'Edit'} onClick={() => onEdit(l.id)}><Pencil size={14} className="text-indigo-600" /></IconBtn>}
-                        {canEdit && l.status === 'Draft' && <IconBtn title="Submit" onClick={() => act(l.id, 'submit')}><Send size={14} className="text-blue-600" /></IconBtn>}
-                        {canEdit && <IconBtn title="Duplicate" onClick={() => dup(l.id)}><Copy size={14} className="text-violet-600" /></IconBtn>}
+                        {canEdit && onEdit && ['Draft', 'Pending Approval'].includes(l.status) && <IconBtn title={l.status === 'Draft' ? 'Continue editing' : 'Edit'} onClick={() => onEdit(l.id)}><Pencil size={14} className="text-brand-600" /></IconBtn>}
+                        {canEdit && l.status === 'Draft' && <IconBtn title="Submit" onClick={() => act(l.id, 'submit')}><Send size={14} className="text-brand-600" /></IconBtn>}
+                        {canEdit && <IconBtn title="Duplicate" onClick={() => dup(l.id)}><Copy size={14} className="text-brand-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Approve" onClick={() => act(l.id, 'approve')}><CheckCircle2 size={14} className="text-emerald-600" /></IconBtn>}
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Reject" onClick={() => act(l.id, 'reject')}><XCircle size={14} className="text-rose-600" /></IconBtn>}
                         {(canApprove || canEdit) && l.status === 'Approved' && <IconBtn title="Disburse" onClick={() => act(l.id, 'disburse')}><Banknote size={14} className="text-emerald-600" /></IconBtn>}

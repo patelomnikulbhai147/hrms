@@ -122,12 +122,12 @@ export const downloadAttendanceReport = (
     ).join('');
     win.document.write(`<!doctype html><html><head><title>${reportName}</title>
       <style>
-        body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#0f172a}
+        body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#111827}
         h1{font-size:18px;color:#2980b9;margin:0 0 2px}
-        p{font-size:11px;color:#64748b;margin:0 0 16px}
+        p{font-size:11px;color:#6b7280;margin:0 0 16px}
         table{border-collapse:collapse;width:100%;font-size:11px}
         th{background:#2980b9;color:#fff;text-align:left;padding:6px 8px}
-        td{border:1px solid #e2e8f0;padding:5px 8px}
+        td{border:1px solid #e5e7eb;padding:5px 8px}
         tr:nth-child(even) td{background:#f8fafc}
       </style></head><body>
       <h1>${reportName}</h1>

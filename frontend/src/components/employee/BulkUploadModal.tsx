@@ -203,7 +203,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
               {[
                 { label: 'Required', value: TOTAL_REQUIRED, tone: 'text-slate-800' },
                 { label: 'Uploaded', value: checklist.uploaded, tone: 'text-emerald-600' },
-                { label: 'New Selected', value: queue.length, tone: 'text-indigo-600' },
+                { label: 'New Selected', value: queue.length, tone: 'text-brand-600' },
                 { label: 'Missing', value: checklist.missing, tone: checklist.missing > 0 ? 'text-rose-600' : 'text-slate-300' },
               ].map(s => (
                 <div key={s.label} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-center">
@@ -222,7 +222,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
               {checklist.groups.map(group => (
                 <div key={group.cat}>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                    <ShieldCheck size={11} className="text-indigo-500" /> {group.cat} Documents
+                    <ShieldCheck size={11} className="text-brand-500" /> {group.cat} Documents
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {group.items.map(s => (
@@ -248,9 +248,9 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
           onClick={() => inputRef.current?.click()}
-          className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition ${dragOver ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'}`}
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition ${dragOver ? 'border-brand-400 bg-brand-50/50' : 'border-slate-200 hover:border-brand-300 hover:bg-slate-50'}`}
         >
-          <UploadCloud size={26} className="mx-auto text-indigo-500 mb-2" />
+          <UploadCloud size={26} className="mx-auto text-brand-500 mb-2" />
           <p className="text-sm font-semibold text-slate-700">Drag &amp; drop multiple files here</p>
           <p className="text-[11px] text-slate-400 mt-0.5">or click to browse · JPG, PNG, PDF, DOC, DOCX · max 5 MB each</p>
           <input ref={inputRef} type="file" multiple accept={DOC_ACCEPT} className="hidden"
@@ -260,7 +260,7 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
         {/* Overall progress */}
         {queue.length > 0 && (
           <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-            <div className="h-full bg-indigo-500 rounded-full transition-all" style={{ width: `${Math.round((doneCount / queue.length) * 100)}%` }} />
+            <div className="h-full bg-brand-500 rounded-full transition-all" style={{ width: `${Math.round((doneCount / queue.length) * 100)}%` }} />
           </div>
         )}
 
@@ -282,12 +282,12 @@ export const BulkUploadModal: React.FC<BulkUploadModalProps> = ({
                   </div>
                   <select value={item.type} onChange={e => updateItem(item.id, { type: e.target.value })}
                     disabled={busy}
-                    className="text-[11px] rounded-md border border-slate-200 px-1.5 py-1 outline-none focus:border-indigo-400 max-w-[150px]">
+                    className="text-[11px] rounded-md border border-slate-200 px-1.5 py-1 outline-none focus:border-brand-400 max-w-[150px]">
                     {DOC_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <span className="w-5 text-center shrink-0">
                     {item.status === 'done' ? <CheckCircle2 size={15} className="text-emerald-500" />
-                      : item.status === 'uploading' ? <Loader2 size={15} className="text-indigo-500 animate-spin" />
+                      : item.status === 'uploading' ? <Loader2 size={15} className="text-brand-500 animate-spin" />
                       : item.status === 'error' ? <AlertTriangle size={15} className="text-rose-500" />
                       : <button onClick={() => removeItem(item.id)} disabled={busy} title="Remove file" className="text-slate-300 hover:text-rose-500"><X size={14} /></button>}
                   </span>

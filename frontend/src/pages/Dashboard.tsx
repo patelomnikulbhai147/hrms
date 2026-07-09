@@ -92,7 +92,7 @@ interface DashboardProps {
 
 const Loading: React.FC = () => (
   <div className="flex flex-col items-center justify-center min-h-[400px] p-6 bg-white rounded-2xl shadow-sm border border-gray-100 animate-pulse text-center">
-    <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-650 rounded-full animate-spin mb-4" />
+    <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-4" />
     <p className="text-xs text-gray-500 font-bold tracking-wide">Hydrating Secure SaaS Environment...</p>
   </div>
 );
@@ -439,9 +439,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Dynamic Expiring Notification Toast Banner */}
         {expiringThisWeekCount > 0 && (
-          <div className="bg-indigo-650/5 border border-indigo-150 backdrop-blur-md rounded-2xl p-4.5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
+          <div className="bg-brand-700/5 border border-brand-100 backdrop-blur-md rounded-2xl p-4.5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-600/15 rounded-xl text-indigo-700">
+              <div className="p-2.5 bg-brand-600/15 rounded-xl text-brand-700">
                 <Bell size={18} className="animate-bounce" />
               </div>
               <div className="text-left">
@@ -458,7 +458,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 const el = document.getElementById('renewal-alerts-section');
                 if (el) el.scrollIntoView({ behavior: 'smooth' });
               }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1"
+              className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1"
             >
               Resolve Expirations
             </button>
@@ -478,7 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Companies</span>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <div className="p-2 bg-brand-50 text-brand-600 rounded-lg">
                 <Building2 size={16} />
               </div>
             </div>
@@ -493,7 +493,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Branches</span>
-              <div className="p-2 bg-sky-50 text-sky-600 rounded-lg">
+              <div className="p-2 bg-brand-50 text-brand-600 rounded-lg">
                 <Building2 size={16} />
               </div>
             </div>
@@ -508,7 +508,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Combined Employees</span>
-              <div className="p-2 bg-violet-50 text-violet-600 rounded-lg">
+              <div className="p-2 bg-brand-50 text-brand-600 rounded-lg">
                 <Users size={16} />
               </div>
             </div>
@@ -553,12 +553,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="bg-white/75 backdrop-blur-md rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-1 hover:shadow-md transition-all duration-200">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Monthly Revenue</span>
-              <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+              <div className="p-2 bg-brand-50 text-brand-600 rounded-lg">
                 <DollarSign size={16} />
               </div>
             </div>
             <div className="mt-3.5">
-              <h3 className="text-2xl font-extrabold text-indigo-650 tracking-tight font-heading">
+              <h3 className="text-2xl font-extrabold text-brand-700 tracking-tight font-heading">
                 ₹<AnimatedCounter value={monthlyRevenueVal} />
               </h3>
               <p className="text-[10px] text-slate-400 mt-1">MRR (Synced from plan prices)</p>
@@ -579,9 +579,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <h3 className="text-base font-extrabold text-gray-900">Revenue & Status Overview</h3>
                   <p className="text-xs text-gray-500 mt-0.5">SaaS monthly subscription distributions & company state</p>
                 </div>
-                <div className="text-left sm:text-right bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-1.5">
+                <div className="text-left sm:text-right bg-brand-50 border border-brand-100 rounded-xl px-3 py-1.5">
                   <div className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Total Projected MRR</div>
-                  <div className="text-sm font-extrabold text-indigo-700">₹{monthlyRevenueVal.toLocaleString('en-IN')}</div>
+                  <div className="text-sm font-extrabold text-brand-700">₹{monthlyRevenueVal.toLocaleString('en-IN')}</div>
                 </div>
               </div>
 
@@ -593,10 +593,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="h-[220px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={revenueChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                        <YAxis stroke="#94a3b8" fontSize={11} tickLine={false} axisLine={false} />
-                        <Tooltip cursor={{ fill: 'rgba(79, 70, 229, 0.04)' }} contentStyle={{ background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Bar dataKey="MRR (₹)" fill="#4f46e5" radius={[6, 6, 0, 0]} barSize={35} />
+                        <XAxis dataKey="name" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
+                        <Tooltip cursor={{ fill: 'rgba(79, 70, 229, 0.04)' }} contentStyle={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Bar dataKey="MRR (₹)" fill="#5b2de6" radius={[6, 6, 0, 0]} barSize={35} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -654,7 +654,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 <button
                   onClick={() => onNavigate('billing')}
-                  className="px-3.5 py-1.5 border border-indigo-100 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1"
+                  className="px-3.5 py-1.5 border border-brand-100 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1"
                 >
                   Subscription Panel
                 </button>
@@ -683,7 +683,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <tr key={company.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center font-bold text-white text-xs shadow-xs" style={!company.logoImage ? { backgroundColor: company.primaryColor || '#4f46e5' } : {}}>
+                              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center font-bold text-white text-xs shadow-xs" style={!company.logoImage ? { backgroundColor: company.primaryColor || '#5b2de6' } : {}}>
                                 {company.logoImage ? (
                                   <img src={company.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
                                 ) : (
@@ -717,7 +717,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                               </button>
                               <button
                                 onClick={() => handleSendReminder(company.id)}
-                                className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-100 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1"
+                                className="px-2.5 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-100 rounded-lg font-bold text-[11px] transition-all flex items-center gap-1"
                               >
                                 Remind
                               </button>
@@ -759,7 +759,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     value={latestSearch}
                     onChange={e => setLatestSearch(e.target.value)}
                     placeholder="Search company..."
-                    className="w-full pl-8.5 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 bg-gray-50/50"
+                    className="w-full pl-8.5 pr-3 py-1.5 border border-gray-200 rounded-xl text-xs outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 bg-gray-50/50"
                   />
                 </div>
 
@@ -769,7 +769,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       key={tag}
                       onClick={() => setLatestFilter(tag)}
                       className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border ${latestFilter === tag
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-xs'
+                        ? 'bg-brand-600 border-brand-600 text-white shadow-xs'
                         : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                         }`}
                     >
@@ -798,14 +798,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <div className="flex items-center gap-1.5 text-[10px] text-gray-400 mt-1">
                             <span>{c.plan}</span>
                             <span>•</span>
-                            <span className="text-indigo-650 font-semibold">{c.parentCompanyId ? employees.filter(e => isCompanyIdMatch(e.companyId, c.id, companies, e.branchLocation, e.branchId)).length : (c.employeeCount || 0)} Staff</span>
+                            <span className="text-brand-700 font-semibold">{c.parentCompanyId ? employees.filter(e => isCompanyIdMatch(e.companyId, c.id, companies, e.branchLocation, e.branchId)).length : (c.employeeCount || 0)} Staff</span>
                             <span>•</span>
                             <span>Onboard: {formatDate(c.joinDate)}</span>
                           </div>
                         </div>
                         <button
                           onClick={() => onStartMasquerade(c.id, c.parentCompanyId ? 'branch' : 'company')}
-                          className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-bold flex items-center gap-0.5 shrink-0 transition-colors"
+                          className="px-2.5 py-1 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-lg text-[10px] font-bold flex items-center gap-0.5 shrink-0 transition-colors"
                         >
                           Control
                         </button>
@@ -825,11 +825,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {toast && (
           <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4.5 py-3 rounded-xl shadow-lg border transition-all duration-300 transform translate-y-0 ${toast.type === 'success' ? 'bg-emerald-50 border-emerald-250 text-emerald-800' :
             toast.type === 'warning' ? 'bg-rose-50 border-rose-250 text-rose-800' :
-              'bg-blue-50 border-blue-250 text-blue-800'
+              'bg-brand-50 border-brand-300 text-brand-800'
             }`}>
             {toast.type === 'success' && <CheckCircle2 size={16} className="text-emerald-500 flex-shrink-0" />}
             {toast.type === 'warning' && <AlertCircle size={16} className="text-rose-500 flex-shrink-0" />}
-            {toast.type === 'info' && <Info size={16} className="text-blue-500 flex-shrink-0" />}
+            {toast.type === 'info' && <Info size={16} className="text-brand-500 flex-shrink-0" />}
             <span className="text-xs font-bold">{toast.message}</span>
           </div>
         )}
@@ -954,7 +954,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     })();
 
     // 6 & 7. Department Distribution + Top Departments = GROUP BY department.
-    const DEPT_COLORS = ['#2563EB', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#EC4899', '#64748B', '#0D9488'];
+    const DEPT_COLORS = ['#2563EB', '#8B5CF6', '#10B981', '#F59E0B', '#06B6D4', '#EC4899', '#6B7280', '#0D9488'];
     const deptDistribution = Object.entries(
       rawScopedEmployees.reduce((acc, e) => {
         const d = e.department || 'Other';
@@ -1001,7 +1001,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div>
             <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">{branchTitle}</h2>
             {isBranchWorkspace && activeParentCompany && (
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#1D4ED8] mt-0.5">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#4C1FD4] mt-0.5">
                 <span className="text-slate-500">{activeParentCompany.name}</span>
                 <ChevronRight size={13} className="text-slate-400" />
                 <span>{(currentCompany as any).branchName || currentCompany?.name} Branch</span>
@@ -1029,10 +1029,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Top KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {/* Total Employees */}
-          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+          <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
             <div className="flex justify-between items-start">
               <div className="flex gap-3 items-center">
-                <div className="w-10 h-10 rounded-full bg-blue-50 text-[#2563EB] flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-[#2563EB] flex items-center justify-center">
                   <Users size={18} strokeWidth={2.5} />
                 </div>
                 <div>
@@ -1055,7 +1055,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Present Today */}
-          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+          <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
             <div className="flex justify-between items-start">
               <div className="flex gap-3 items-center">
                 <div className="w-10 h-10 rounded-full bg-emerald-50 text-[#10B981] flex items-center justify-center">
@@ -1074,7 +1074,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Pending Leaves */}
-          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+          <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
             <div className="flex justify-between items-start">
               <div className="flex gap-3 items-center">
                 <div className="w-10 h-10 rounded-full bg-amber-50 text-[#F59E0B] flex items-center justify-center">
@@ -1093,10 +1093,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Payroll This Month */}
-          <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
+          <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
             <div className="flex justify-between items-start">
               <div className="flex gap-3 items-center">
-                <div className="w-10 h-10 rounded-full bg-purple-50 text-[#8B5CF6] flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-[#8B5CF6] flex items-center justify-center">
                   <Wallet size={18} strokeWidth={2.5} />
                 </div>
                 <div>
@@ -1124,7 +1124,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="lg:col-span-2 space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Employee Growth Chart */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
+              <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 h-[320px] flex flex-col">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-[14px] font-bold text-gray-800">Employee Growth <span className="text-gray-500 font-medium">(Last 6 Months)</span></h3>
                   <select className="text-[11px] border border-gray-200 rounded-md px-2 py-1 bg-white text-gray-600 outline-none hover:border-gray-300">
@@ -1140,9 +1140,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} dy={10} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} domain={['dataMin - 10', 'auto']} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} domain={['dataMin - 10', 'auto']} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                       <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1150,14 +1150,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Department Distribution */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5 h-[320px] flex flex-col">
+              <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 h-[320px] flex flex-col">
                 <h3 className="text-[14px] font-bold text-gray-800 mb-2">Department Distribution</h3>
                 <div className="flex-1 flex flex-col items-center justify-center relative mt-2">
                   <div className="w-full h-[180px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
-                          data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]}
+                          data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E5E7EB' }]}
                           cx="50%"
                           cy="50%"
                           innerRadius={55}
@@ -1166,11 +1166,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           dataKey="value"
                           stroke="none"
                         >
-                          {(deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E2E8F0' }]).map((entry, index) => (
+                          {(deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E5E7EB' }]).map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
                         </Pie>
-                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -1190,7 +1190,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Top Departments (Horizontal Bars) */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+              <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
                 <div className="flex justify-between items-center mb-5">
                   <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
                   <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
@@ -1216,7 +1216,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
 
               {/* Attendance Trend */}
-              <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+              <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
                   <div className="flex gap-3 text-[10px] font-semibold">
@@ -1232,9 +1232,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#64748B' }} dy={10} interval={2} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748B' }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6B7280' }} dy={10} interval={2} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} allowDecimals={false} />
+                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                       <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1246,7 +1246,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           {/* Right Column */}
           <div className="space-y-5">
             {/* Pending Approvals */}
-            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
                 <span onClick={() => onNavigate('leaves')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
@@ -1261,7 +1261,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 <div onClick={() => onNavigate('documents')} className="flex items-center justify-between cursor-pointer">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 text-[#2563EB] rounded-lg"><FileText size={16} strokeWidth={2.5} /></div>
+                    <div className="p-2 bg-brand-50 text-[#2563EB] rounded-lg"><FileText size={16} strokeWidth={2.5} /></div>
                     <span className="text-[12px] font-semibold text-gray-700">Document Requests</span>
                   </div>
                   <span className="text-[13px] font-bold text-gray-900">{pendingDocsLive.toString().padStart(2, '0')}</span>
@@ -1277,7 +1277,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Recent Activities */}
-            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
                 <span onClick={() => {
@@ -1292,8 +1292,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   let bg = 'bg-gray-50';
                   let text = 'text-gray-500';
                   let Icon = Activity;
-                  if (act.module === 'Employee' || act.module === 'CompanyContact') { bg = 'bg-blue-50'; text = 'text-[#2563EB]'; Icon = Users; }
-                  else if (act.module === 'Payroll') { bg = 'bg-purple-50'; text = 'text-[#8B5CF6]'; Icon = Wallet; }
+                  if (act.module === 'Employee' || act.module === 'CompanyContact') { bg = 'bg-brand-50'; text = 'text-[#2563EB]'; Icon = Users; }
+                  else if (act.module === 'Payroll') { bg = 'bg-brand-50'; text = 'text-[#8B5CF6]'; Icon = Wallet; }
                   else if (act.module === 'Leave') { bg = 'bg-amber-50'; text = 'text-[#F59E0B]'; Icon = Calendar; }
                   else if (act.module === 'Document' || act.module === 'Company' || act.module === 'Branch') { bg = 'bg-emerald-50'; text = 'text-[#10B981]'; Icon = FileText; }
 
@@ -1311,7 +1311,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
 
             {/* Notifications */}
-            <div className="bg-white rounded-[18px] border border-[#E2E8F0] shadow-sm p-5">
+            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
                 <span onClick={() => onNavigate('reports')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
@@ -1340,28 +1340,28 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="mt-4">
           <h3 className="text-[15px] font-bold text-gray-900 mb-4">Quick Actions</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            <button onClick={() => onNavigate('employees')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#2563EB]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-              <div className="p-2 bg-blue-50 text-[#2563EB] rounded-xl group-hover:scale-110 transition-transform"><UserPlus size={18} strokeWidth={2.5} /></div>
+            <button onClick={() => onNavigate('employees')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#2563EB]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-brand-50 text-[#2563EB] rounded-xl group-hover:scale-110 transition-transform"><UserPlus size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Add Employee</span>
             </button>
-            <button onClick={() => onNavigate('attendance')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#10B981]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+            <button onClick={() => onNavigate('attendance')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#10B981]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
               <div className="p-2 bg-emerald-50 text-[#10B981] rounded-xl group-hover:scale-110 transition-transform"><CheckCircle2 size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Mark Attendance</span>
             </button>
-            <button onClick={() => onNavigate('leaves')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#F59E0B]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+            <button onClick={() => onNavigate('leaves')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#F59E0B]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
               <div className="p-2 bg-amber-50 text-[#F59E0B] rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Approve Leave</span>
             </button>
-            <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-              <div className="p-2 bg-purple-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5} /></div>
+            <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-brand-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Run Payroll</span>
             </button>
-            <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+            <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
               <div className="p-2 bg-teal-50 text-[#0D9488] rounded-xl group-hover:scale-110 transition-transform"><FileUp size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Upload Document</span>
             </button>
-            <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E2E8F0] shadow-sm hover:shadow-md hover:border-[#4F46E5]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-              <div className="p-2 bg-indigo-50 text-[#4F46E5] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5} /></div>
+            <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#5B2DE6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-brand-50 text-[#5B2DE6] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">View Reports</span>
             </button>
           </div>
@@ -1391,8 +1391,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <StatCard
           label="Attendance Biometrics Records"
           value={<AnimatedCounter value={biometricsUploadCount} />}
-          icon={<Clock size={16} className="text-indigo-650" />}
-          color="bg-indigo-50/60"
+          icon={<Clock size={16} className="text-brand-700" />}
+          color="bg-brand-50/60"
           sub="Biometric log uploads logged"
         />
         <StatCard
@@ -1405,8 +1405,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <StatCard
           label="Payroll Active Entries"
           value={<AnimatedCounter value={activePayrollEntriesCount} />}
-          icon={<FileText size={16} className="text-sky-600" />}
-          color="bg-sky-50/60"
+          icon={<FileText size={16} className="text-brand-600" />}
+          color="bg-brand-50/60"
           sub="Current month payroll records"
         />
       </div>
@@ -1416,7 +1416,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <Card padding={false}>
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Scoped Operations Registry</h3>
-              <button onClick={() => onNavigate('documents')} className="text-[10px] text-blue-600 hover:underline font-semibold">
+              <button onClick={() => onNavigate('documents')} className="text-[10px] text-brand-600 hover:underline font-semibold">
                 Generate Letters
               </button>
             </div>
@@ -1470,7 +1470,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="space-y-3.5 text-xs text-gray-600">
             {scopedEmployees.slice(0, 3).map(e => (
               <div key={e.id} className="pb-3 border-b border-gray-55 flex items-start gap-2.5 last:pb-0 last:border-0">
-                <div className="w-6 h-6 bg-indigo-50 border border-indigo-100 rounded text-indigo-700 flex items-center justify-center font-bold text-[10px]">
+                <div className="w-6 h-6 bg-brand-50 border border-brand-100 rounded text-brand-700 flex items-center justify-center font-bold text-[10px]">
                   {e.avatar}
                 </div>
                 <div>
@@ -1482,7 +1482,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="pt-2">
               <button
                 onClick={() => onNavigate('employees')}
-                className="w-full py-1.5 bg-indigo-600 text-white rounded text-[11.5px] font-bold hover:bg-indigo-700 transition-colors shadow-xs"
+                className="w-full py-1.5 bg-brand-600 text-white rounded text-[11.5px] font-bold hover:bg-brand-700 transition-colors shadow-xs"
               >
                 Access Staff Registry
               </button>

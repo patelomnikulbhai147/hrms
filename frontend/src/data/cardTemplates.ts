@@ -156,13 +156,13 @@ function build(spec: Spec): CardTemplate {
 export const BUILTIN_TEMPLATES: CardTemplate[] = [
   // Corporate
   build({ id: 'corp-blue', name: 'Corporate Blue', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'blue', gen: gClassic }),
-  build({ id: 'corp-dark', name: 'Corporate Dark', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'black', gen: gClassic, frontBg: '#0f172a', backBg: '#0f172a' }),
+  build({ id: 'corp-dark', name: 'Corporate Dark', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'black', gen: gClassic, frontBg: '#111827', backBg: '#111827' }),
   build({ id: 'corp-white', name: 'Corporate White', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'white', gen: (d) => gClassic(d, { flat: true }) }),
   build({ id: 'executive', name: 'Executive', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'corporate', gen: gSidebar }),
   build({ id: 'premium-gold', name: 'Premium Gold', category: 'Corporate', size: 'CR80', orientation: 'portrait', theme: 'gold', gen: gMinimal, frontBg: 'linear-gradient(160deg,#fffef8,#f7ecc9)' }),
   // Modern
   build({ id: 'glass', name: 'Glassmorphism', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'slate', gen: (d) => gMinimal(d, { glass: true }), frontBg: 'linear-gradient(160deg,#334155,#0ea5e9)' }),
-  build({ id: 'grad-blue', name: 'Gradient Blue', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'blue', gen: gSidebar, frontBg: 'linear-gradient(180deg,#eff6ff,#ffffff)' }),
+  build({ id: 'grad-blue', name: 'Gradient Blue', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'blue', gen: gSidebar, frontBg: 'linear-gradient(180deg,#f3f0ff,#ffffff)' }),
   build({ id: 'grad-purple', name: 'Gradient Purple', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'purple', gen: gSidebar, frontBg: 'linear-gradient(180deg,#f5f3ff,#ffffff)' }),
   build({ id: 'minimal-white', name: 'Minimal White', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'white', gen: gMinimal }),
   build({ id: 'modern-pro', name: 'Modern Professional', category: 'Modern', size: 'CR80', orientation: 'portrait', theme: 'slate', gen: gSidebar }),

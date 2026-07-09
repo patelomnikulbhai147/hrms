@@ -108,7 +108,7 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
           const n = contracts.filter(c => t.statuses.includes(effectiveContractStatus(c))).length;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}<span className="ml-1 opacity-70">({n})</span></button>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}<span className="ml-1 opacity-70">({n})</span></button>
           );
         })}
       </div>
@@ -135,7 +135,7 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
             <Tbody>
               {rows.map(c => (
                 <Tr key={c.id}>
-                  <Td><span className="font-mono text-[11px] text-indigo-700">{c.contractNumber || '—'}</span></Td>
+                  <Td><span className="font-mono text-[11px] text-brand-700">{c.contractNumber || '—'}</span></Td>
                   <Td><span className="font-semibold text-slate-800">{c.contractName}</span></Td>
                   <Td>{c.clientName || '—'}</Td>
                   <Td>{money(c.contractValue)}</Td>
@@ -145,8 +145,8 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
                   <Td><Badge variant={contractStatusVariant(c.derivedStatus || c.status)}>{c.derivedStatus || c.status}</Badge></Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => setViewId(c.id)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shadow-sm"><Eye size={13} /></button>
-                      {canManageCommercial && <button onClick={() => openEdit(c)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Edit2 size={13} /></button>}
+                      <button onClick={() => setViewId(c.id)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Eye size={13} /></button>
+                      {canManageCommercial && <button onClick={() => openEdit(c)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Edit2 size={13} /></button>}
                       {canManageCommercial && <button onClick={() => remove(c.id)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                     </div>
                   </Td>
@@ -164,7 +164,7 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
           <div className="space-y-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={contractStatusVariant(detail.derivedStatus || detail.status)}>{detail.derivedStatus || detail.status}</Badge>
-              {detail.contractNumber && <span className="font-mono text-[11px] text-indigo-700">{detail.contractNumber}</span>}
+              {detail.contractNumber && <span className="font-mono text-[11px] text-brand-700">{detail.contractNumber}</span>}
               {dd.info?.contractType && <Badge variant="gray">{dd.info.contractType}</Badge>}
               {dd.info?.priority && <Badge variant={dd.info.priority === 'Critical' || dd.info.priority === 'High' ? 'red' : 'gray'}>{dd.info.priority} priority</Badge>}
               {dd.approval?.status && <Badge variant={dd.approval.status === 'Approved' ? 'green' : dd.approval.status === 'Rejected' ? 'red' : 'amber'}>{dd.approval.status}</Badge>}
@@ -203,10 +203,10 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
             </div>
 
             {cost && (
-              <div className="rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+              <div className="rounded-lg border border-brand-100 bg-brand-50/40 p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-[10px] text-indigo-400 uppercase font-bold">Payroll Cost (manpower) · {cost.period}</p>
-                  <p className="text-sm font-extrabold text-indigo-700">₹{Number(cost.total || 0).toLocaleString('en-IN')}</p>
+                  <p className="text-[10px] text-brand-400 uppercase font-bold">Payroll Cost (manpower) · {cost.period}</p>
+                  <p className="text-sm font-extrabold text-brand-700">₹{Number(cost.total || 0).toLocaleString('en-IN')}</p>
                 </div>
                 {Object.keys(cost.bySite || {}).length > 0 && (
                   <div className="space-y-0.5">
@@ -225,8 +225,8 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
                 <div className="space-y-1">
                   {detail.documents.map((d: any) => (
                     <div key={d.id} className="flex items-center justify-between gap-2 text-xs py-1 border-b border-slate-50">
-                      <span className="flex items-center gap-1.5 min-w-0"><FileText size={13} className="text-indigo-500 shrink-0" /><span className="truncate text-slate-700">{d.name}</span><span className="text-slate-400 shrink-0">· {d.category}</span></span>
-                      <button onClick={() => downloadDoc(d)} title="Download" className="p-1 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shrink-0"><Download size={12} /></button>
+                      <span className="flex items-center gap-1.5 min-w-0"><FileText size={13} className="text-brand-500 shrink-0" /><span className="truncate text-slate-700">{d.name}</span><span className="text-slate-400 shrink-0">· {d.category}</span></span>
+                      <button onClick={() => downloadDoc(d)} title="Download" className="p-1 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shrink-0"><Download size={12} /></button>
                     </div>
                   ))}
                 </div>

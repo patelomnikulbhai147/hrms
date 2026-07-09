@@ -134,6 +134,18 @@ export const api = {
         body: JSON.stringify(credentials)
       });
     },
+    getCaptchaStatus: async (data: { email: string }) => {
+      return await apiFetch(`${BASE_URL}/auth/captcha-status`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    getInternalCaptcha: async () => {
+      return await apiFetch(`${BASE_URL}/auth/captcha`, {
+        headers: getHeaders()
+      });
+    },
     getMe: async () => {
       return await apiFetch(`${BASE_URL}/auth/me`, {
         headers: getHeaders()
@@ -303,6 +315,15 @@ export const api = {
     // Pass '?include=all' for the Offboarding/Archive/Reports/History views.
     getAll: async (query: string = '') => {
       return await apiFetch(`${BASE_URL}/employees${query}`, { headers: getHeaders() });
+    },
+    getPaginated: async (params: Record<string, any>) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          query.append(key, String(value));
+        }
+      });
+      return await apiFetch(`${BASE_URL}/employees?${query.toString()}`, { headers: getHeaders() });
     },
     create: async (data: any) => {
       return await apiFetch(`${BASE_URL}/employees`, {
@@ -478,6 +499,12 @@ export const api = {
     deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
     recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
+    // Visual Invoice Designer — per-company named canvas layouts (additive/opt-in).
+    listLayouts: async () => apiFetch(`${BASE_URL}/invoicing/layouts`, { headers: getHeaders() }),
+    getLayout: async (id: any) => apiFetch(`${BASE_URL}/invoicing/layouts/${id}`, { headers: getHeaders() }),
+    saveLayout: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/layouts${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    setLayoutDefault: async (id: any, active: boolean) => apiFetch(`${BASE_URL}/invoicing/layouts/${id}/default`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ active }) }),
+    deleteLayout: async (id: any) => apiFetch(`${BASE_URL}/invoicing/layouts/${id}`, { method: 'DELETE', headers: getHeaders() }),
   },
 
   // Employee Loan Management — loans, EMI schedule (ledger), approval workflow,
@@ -711,6 +738,10 @@ export const api = {
       update: async (data: { apiKey: string }) => { return await apiFetch(`${BASE_URL}/system-settings/google-maps`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
       test: async (data?: { apiKey?: string }) => { return await apiFetch(`${BASE_URL}/system-settings/google-maps/test`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data || {}) }); },
     },
+    security: {
+      get: async () => { return await apiFetch(`${BASE_URL}/system-settings/security`, { headers: getHeaders() }); },
+      update: async (data: any) => { return await apiFetch(`${BASE_URL}/system-settings/security`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); }
+    }
   },
 
   // Communication Center (Phase 1 — storage only, no sending). Scoped to caller's
@@ -784,7 +815,7 @@ export const api = {
       queueMonitor: async () => apiFetch(`${BASE_URL}/communication/whatsapp/queue-monitor`, { headers: getHeaders() }),
       retryPolicy: async () => apiFetch(`${BASE_URL}/communication/whatsapp/retry-policy`, { headers: getHeaders() }),
       retry: async (logId?: any) => apiFetch(`${BASE_URL}/communication/whatsapp/retry`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(logId ? { logId } : {}) }),
-      // Image-template integration — render an HRMate gallery design and send it
+      // Image-template integration — render a ZeniaHR gallery design and send it
       // as an approved WhatsApp IMAGE template (header media).
       imagePreview: async (data: { templateId: any; employeeId?: any }) => apiFetch(`${BASE_URL}/communication/whatsapp/image/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
       imageSend: async (data: { templateId: any; employeeId?: any; toOverride?: string; useImageFallback?: boolean; automationRuleId?: any }) => apiFetch(`${BASE_URL}/communication/whatsapp/image/send`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
@@ -894,6 +925,15 @@ export const api = {
 
   payroll: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/payroll`, { headers: getHeaders() }); },
+    getPaginated: async (params: Record<string, any>) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          query.append(key, String(value));
+        }
+      });
+      return await apiFetch(`${BASE_URL}/payroll?${query.toString()}`, { headers: getHeaders() });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'DELETE', headers: getHeaders() }); },

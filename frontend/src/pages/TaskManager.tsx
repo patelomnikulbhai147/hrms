@@ -264,10 +264,10 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm">
-        <div className="px-5 py-4 flex items-center justify-between border-b border-[#DBEAFE]">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
+        <div className="px-5 py-4 flex items-center justify-between border-b border-[#E6E0FE]">
           <div>
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ClipboardList size={18} className="text-indigo-600" /> Task Manager</h2>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><ClipboardList size={18} className="text-brand-600" /> Task Manager</h2>
             <p className="text-xs text-slate-500">Assign tasks, track completion, and collaborate with comments.</p>
           </div>
           {canCreate && !isEmployee && <Button icon={<Plus size={15} />} onClick={openCreate}>Create Task</Button>}
@@ -275,7 +275,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
         <div className="flex flex-wrap gap-1 px-3 py-2">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
           ))}
         </div>
       </div>
@@ -283,9 +283,9 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
       {toast && <div className={`px-4 py-2.5 rounded-lg text-xs font-semibold ${toast.kind === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{toast.msg}</div>}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <StatCard label="Total Tasks" value={stats.total} icon={<ClipboardList size={16} />} color="bg-indigo-500" />
+        <StatCard label="Total Tasks" value={stats.total} icon={<ClipboardList size={16} />} color="bg-brand-500" />
         <StatCard label="Pending" value={stats.pending} icon={<Circle size={16} />} color="bg-amber-500" />
-        <StatCard label="In Progress" value={stats.inProgress} icon={<Clock size={16} />} color="bg-blue-500" />
+        <StatCard label="In Progress" value={stats.inProgress} icon={<Clock size={16} />} color="bg-brand-500" />
         <StatCard label="Completed" value={stats.completed} icon={<CheckCircle2 size={16} />} color="bg-emerald-500" />
         <StatCard label="Overdue" value={stats.overdue} icon={<AlertTriangle size={16} />} color="bg-rose-500" />
       </div>
@@ -307,7 +307,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
                 <Tr key={t.id}>
                   <Td>
                     <button onClick={() => setDetail(t)} className="text-left">
-                      <span className="font-semibold text-slate-800 hover:text-indigo-600">{t.title}</span>
+                      <span className="font-semibold text-slate-800 hover:text-brand-600">{t.title}</span>
                       <span className="block text-[10px] text-slate-400">by {t.createdByName}</span>
                     </button>
                   </Td>
@@ -322,7 +322,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
                   <Td><span className="text-[11px] text-slate-500">{t.dueDate || '—'}</span></Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => setDetail(t)} title="Comments" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shadow-sm"><MessageSquare size={13} /></button>
+                      <button onClick={() => setDetail(t)} title="Comments" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><MessageSquare size={13} /></button>
                       {canDelete && <button onClick={() => removeTask(t)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                     </div>
                   </Td>
@@ -383,7 +383,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
             <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1"><AtSign size={12} /> Assign / Mention Users</label>
             <div className="flex flex-wrap gap-1.5 mb-1.5 mt-1">
               {picked.map(p => (
-                <span key={p.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                <span key={p.id} className="inline-flex items-center gap-1 bg-brand-50 text-brand-700 border border-brand-200 rounded-full px-2 py-0.5 text-[11px] font-semibold">
                   @{(p.name || '').replace(/\s+/g, '')}
                   <button onClick={() => setPicked(picked.filter(x => x.id !== p.id))}><X size={11} /></button>
                 </span>
@@ -423,15 +423,15 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
                     </div>
                   ) : mentionMatches.map(u => (
                     <button key={u.id} type="button" onMouseDown={ev => ev.preventDefault()} onClick={() => { setPicked([...picked, u]); rememberRecent(u); setMentionQuery(''); }}
-                      className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-3 border-b border-slate-50 last:border-0">
+                      className="w-full text-left px-3 py-2 hover:bg-brand-50 flex items-center gap-3 border-b border-slate-50 last:border-0">
                       {u.avatar ? (
                         <img src={u.avatar} alt="" className="w-9 h-9 rounded-full object-cover flex-shrink-0" />
                       ) : (
-                        <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[11px] font-extrabold flex-shrink-0">{initials(u.name)}</div>
+                        <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[11px] font-extrabold flex-shrink-0">{initials(u.name)}</div>
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-800 truncate">{u.name}</p>
-                        <p className="text-[10px] text-indigo-600 font-semibold truncate">{roleLabel(u.role)}</p>
+                        <p className="text-[10px] text-brand-600 font-semibold truncate">{roleLabel(u.role)}</p>
                         <p className="text-[10px] text-slate-400 truncate">{u.branchName ? `${u.branchName} Branch` : 'Company-wide'} · {u.companyName || companyNameOf(u.resolvedCompanyId ?? u.companyId)}{u.email ? ` · ${u.email}` : ''}</p>
                       </div>
                     </button>
@@ -465,7 +465,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
               <div className="space-y-2 max-h-52 overflow-y-auto mb-2">
                 {comments.length === 0 && <p className="text-xs text-slate-400">No comments yet.</p>}
                 {comments.map(c => (
-                  <div key={c.id} className={`rounded-lg px-3 py-2 text-xs ${c.isStatus ? 'bg-slate-50 text-slate-500 italic' : 'bg-indigo-50/50'}`}>
+                  <div key={c.id} className={`rounded-lg px-3 py-2 text-xs ${c.isStatus ? 'bg-slate-50 text-slate-500 italic' : 'bg-brand-50/50'}`}>
                     <span className="font-bold text-slate-700">{c.userName || 'User'}</span>
                     <span className="text-[10px] text-slate-400 ml-1.5">{new Date(c.createdAt).toLocaleString('en-IN')}</span>
                     <p className="text-slate-600 mt-0.5">{c.message}</p>

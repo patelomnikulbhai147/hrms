@@ -131,9 +131,9 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
       </div>
       <Badge variant={doc.status === 'Verified' ? 'green' : doc.status === 'Rejected' ? 'red' : 'amber'} dot>{doc.status}</Badge>
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={() => onPreview(doc)} title="Preview" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><Eye size={12} /></button>
-        <button onClick={() => download(doc)} title="Download" className="w-7 h-7 rounded-lg border border-slate-200 text-sky-600 hover:text-sky-700 hover:bg-sky-50 flex items-center justify-center"><Download size={12} /></button>
-        <button onClick={() => openHistory(doc)} title="View audit history" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-violet-600 hover:bg-violet-50 flex items-center justify-center"><History size={12} /></button>
+        <button onClick={() => onPreview(doc)} title="Preview" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:bg-brand-50 flex items-center justify-center"><Eye size={12} /></button>
+        <button onClick={() => download(doc)} title="Download" className="w-7 h-7 rounded-lg border border-slate-200 text-brand-600 hover:text-brand-700 hover:bg-brand-50 flex items-center justify-center"><Download size={12} /></button>
+        <button onClick={() => openHistory(doc)} title="View audit history" className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:text-brand-600 hover:bg-brand-50 flex items-center justify-center"><History size={12} /></button>
         {canVerify && doc.status !== 'Verified' && <button onClick={() => setStatus(doc, 'Verified')} title="Verify" className="w-7 h-7 rounded-lg border border-slate-200 text-emerald-600 hover:bg-emerald-50 flex items-center justify-center"><CheckCircle2 size={12} /></button>}
         {canVerify && doc.status !== 'Rejected' && <button onClick={() => setStatus(doc, 'Rejected')} title="Reject" className="w-7 h-7 rounded-lg border border-slate-200 text-rose-600 hover:bg-rose-50 flex items-center justify-center"><XCircle size={12} /></button>}
         {canEdit && <button onClick={() => addNote(doc)} title="Add note" className="w-7 h-7 rounded-lg border border-slate-200 text-amber-600 hover:bg-amber-50 flex items-center justify-center"><StickyNote size={12} /></button>}
@@ -152,7 +152,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <button
           onClick={onClose}
-          className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"
+          className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 transition"
         >
           <ChevronLeft size={15} /> Back to all employees
         </button>
@@ -175,7 +175,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
           <div className="text-right">
             <Badge variant={complianceBadgeVariant(status)} dot>{status}</Badge>
             <div className="mt-1.5 w-40 bg-slate-100 rounded-full h-1.5 overflow-hidden ml-auto">
-              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.round((uploaded / TOTAL_REQUIRED) * 100)}%` }} />
+              <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.round((uploaded / TOTAL_REQUIRED) * 100)}%` }} />
             </div>
             <p className="text-[10px] text-slate-400 mt-1">{Math.round((uploaded / TOTAL_REQUIRED) * 100)}% complete</p>
           </div>
@@ -185,7 +185,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
         {sections.map(section => (
           <div key={section.cat}>
             <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <ShieldCheck size={12} className="text-indigo-500" /> {section.cat} Documents
+              <ShieldCheck size={12} className="text-brand-500" /> {section.cat} Documents
             </p>
             <div className="space-y-2">
               {section.slots.map(s => s.doc ? docRow(s.doc) : (
@@ -196,7 +196,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
                     <p className="text-[10px] text-rose-400">{s.present ? 'On employee record (not in vault)' : 'Required · not uploaded'}</p>
                   </div>
                   <Badge variant={s.present ? 'amber' : 'red'} dot>{s.present ? 'Pending' : 'Missing'}</Badge>
-                  {canEdit && <button onClick={() => onUpload(employee.id)} title="Upload" className="w-7 h-7 rounded-lg border border-slate-200 text-indigo-600 hover:bg-indigo-50 flex items-center justify-center"><UploadCloud size={12} /></button>}
+                  {canEdit && <button onClick={() => onUpload(employee.id)} title="Upload" className="w-7 h-7 rounded-lg border border-slate-200 text-brand-600 hover:bg-brand-50 flex items-center justify-center"><UploadCloud size={12} /></button>}
                 </div>
               ))}
               {section.extras.map(docRow)}
@@ -230,7 +230,7 @@ export const EmployeeDocWorkspace: React.FC<Props> = ({
           <div className="max-h-80 overflow-y-auto space-y-2">
             {historyLogs.map(l => (
               <div key={l.id} className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                <History size={13} className="text-violet-500 mt-0.5 shrink-0" />
+                <History size={13} className="text-brand-500 mt-0.5 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-slate-800">{(l.action || '').replace(/_/g, ' ')}</p>
                   <p className="text-[10px] text-slate-400">

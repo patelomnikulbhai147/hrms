@@ -91,7 +91,7 @@ export const CreatableSelect: React.FC<Props> = ({ label, id, value, options, pl
             }
             setOpen(false);
           }, 150)}
-          className={`w-full rounded-xl border bg-slate-900/40 backdrop-blur-md px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed ${error ? 'border-rose-500/50' : 'border-slate-800'}`}
+          className={`w-full rounded-xl border bg-slate-900/40 backdrop-blur-md px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-500/10 focus:border-brand-500 disabled:opacity-40 disabled:cursor-not-allowed ${error ? 'border-rose-500/50' : 'border-slate-800'}`}
         />
         <svg className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6" /></svg>
       </div>
@@ -100,7 +100,7 @@ export const CreatableSelect: React.FC<Props> = ({ label, id, value, options, pl
           {filtered.length === 0 && !showCreate && <div className="px-3 py-2 text-xs text-slate-500">{allowCustom ? 'No matches — keep typing to add a new one.' : 'No matches found.'}</div>}
           {filtered.map((o, i) => (
             <button key={o} type="button" onMouseDown={() => commit(o, false)}
-              className={`w-full text-left px-3 py-2 text-xs transition-colors ${i === active ? 'bg-slate-800 text-blue-300' : 'text-slate-200 hover:bg-slate-800'} ${o === value ? 'font-semibold' : ''}`}>
+              className={`w-full text-left px-3 py-2 text-xs transition-colors ${i === active ? 'bg-slate-800 text-brand-300' : 'text-slate-200 hover:bg-slate-800'} ${o === value ? 'font-semibold' : ''}`}>
               {o}
             </button>
           ))}
@@ -112,7 +112,7 @@ export const CreatableSelect: React.FC<Props> = ({ label, id, value, options, pl
           )}
         </div>
       )}
-      {error && <p className="text-[11px] text-rose-450 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
+      {error && <p className="text-[11px] text-red-600 font-bold flex items-center gap-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>{error}</p>}
     </div>
   );
 };

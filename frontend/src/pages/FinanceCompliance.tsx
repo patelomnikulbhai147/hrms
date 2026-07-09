@@ -74,8 +74,8 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
   <h3 className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">{children}</h3>
 );
 const Note: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex items-start gap-2 rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2 text-[11px] text-slate-600">
-    <Info size={13} className="text-sky-500 mt-0.5 shrink-0" /> <span>{children}</span>
+  <div className="flex items-start gap-2 rounded-xl border border-brand-100 bg-brand-50/60 px-3 py-2 text-[11px] text-slate-600">
+    <Info size={13} className="text-brand-500 mt-0.5 shrink-0" /> <span>{children}</span>
   </div>
 );
 
@@ -84,7 +84,7 @@ const Segmented: React.FC<{ value: string; onChange: (v: string) => void; option
   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
     {options.map((o) => (
       <button key={o.value} onClick={() => onChange(o.value)}
-        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${value === o.value ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${value === o.value ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
         {o.label}
       </button>
     ))}
@@ -122,9 +122,9 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><Landmark size={16} className="text-[#4F7CFF]" /> Finance &amp; Compliance</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><Landmark size={16} className="text-[#6C3CF0]" /> Finance &amp; Compliance</h2>
           <p className="text-[11px] text-slate-400">Employee loans &amp; advances, statutory filing calendar and payroll-driven deductions — one place — {activeCompany?.name || 'your company'}.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -154,7 +154,7 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
           const Icon = s.icon;
           return (
             <button key={s.id} onClick={() => goTo(s.id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${section === s.id ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${section === s.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {s.label}
             </button>
           );
@@ -182,7 +182,7 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
           />
         ) : canCompliance ? (
           <div className="space-y-2">
-            <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[#4F7CFF]" /><SectionHeading>Statutory Compliance</SectionHeading></div>
+            <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[#6C3CF0]" /><SectionHeading>Statutory Compliance</SectionHeading></div>
             <ComplianceDashboardTab onGoto={(t: ComplianceTabId) => goTo(t === 'reports' ? 'reports' : 'compliance')} />
           </div>
         ) : null

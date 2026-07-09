@@ -140,16 +140,16 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to Subscription</button>
+          <button onClick={onBack} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 transition"><ChevronLeft size={15} /> Back to Subscription</button>
           <div className="h-4 w-px bg-slate-200" />
-          <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-800"><FlaskConical size={17} className="text-indigo-600" /> Employee-Based Subscription
+          <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-800"><FlaskConical size={17} className="text-brand-600" /> Employee-Based Subscription
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-amber-700">Beta</span>
           </h2>
         </div>
         <Button variant="outline" size="sm" icon={<RefreshCw size={13} />} onClick={load} loading={loading}>Refresh</Button>
       </div>
 
-      <p className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3.5 py-2 text-[11px] text-indigo-700">
+      <p className="rounded-lg border border-brand-100 bg-brand-50/60 px-3.5 py-2 text-[11px] text-brand-700">
         <strong>Beta / development model.</strong> This runs alongside — and does not affect — the current production subscription system.
         Monthly charge = <strong>Peak Active Employees × Employee Price</strong> + <strong>Purchased Branch Slots × Branch Price</strong> − discount.
       </p>
@@ -164,7 +164,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[11px] font-bold text-slate-500">Company:</span>
             <select value={selectedId ?? ''} onChange={e => setSelectedId(Number(e.target.value))}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20">
               {boards.map(b => <option key={b.companyId} value={b.companyId}>{b.companyName}</option>)}
             </select>
             {selected && (
@@ -177,7 +177,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
               {/* Dashboard */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 <Stat icon={<Users size={12} />} label="Current Active" value={selected.currentActiveEmployees} hint="status = Active only" />
-                <Stat icon={<TrendingUp size={12} />} label="Peak Activated" value={selected.peakEmployeeCount} tone="text-indigo-700" hint="never auto-decreases" />
+                <Stat icon={<TrendingUp size={12} />} label="Peak Activated" value={selected.peakEmployeeCount} tone="text-brand-700" hint="never auto-decreases" />
                 <Stat icon={<IndianRupee size={12} />} label="Employee Price" value={inr(selected.employeePrice)} hint={selected.usesGlobalEmployeePrice ? 'global default' : 'company override'} />
                 <Stat icon={<IndianRupee size={12} />} label="Employee Charges" value={inr(selected.employeeCharges)} tone="text-slate-800" />
                 <Stat icon={<Layers size={12} />} label="Purchased Slots" value={selected.purchasedBranchSlots} />
@@ -187,7 +187,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
                 <Stat icon={<IndianRupee size={12} />} label="Branch Charges" value={inr(selected.branchCharges)} tone="text-slate-800" />
                 <Stat icon={<CalendarClock size={12} />} label="Expiry" value={selected.validUntil ? String(selected.validUntil).slice(0, 10) : '—'} />
                 <Stat icon={<CreditCard size={12} />} label="Payment" value={selected.paymentStatus} tone={selected.paymentStatus === 'Paid' ? 'text-emerald-600' : selected.paymentStatus === 'Overdue' ? 'text-rose-600' : 'text-amber-600'} />
-                <Stat icon={<IndianRupee size={12} />} label="Total Monthly" value={inr(selected.totalMonthly)} tone="text-indigo-700" hint={selected.discountAmount ? `after −${inr(selected.discountAmount)} discount` : undefined} />
+                <Stat icon={<IndianRupee size={12} />} label="Total Monthly" value={inr(selected.totalMonthly)} tone="text-brand-700" hint={selected.discountAmount ? `after −${inr(selected.discountAmount)} discount` : undefined} />
               </div>
 
               {/* Formula breakdown */}
@@ -195,7 +195,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
                 <span className="font-bold text-slate-700">{selected.peakEmployeeCount}</span> × {inr(selected.employeePrice)} +{' '}
                 <span className="font-bold text-slate-700">{selected.purchasedBranchSlots}</span> × {inr(selected.branchPrice)}
                 {selected.discountPercent ? <> − {selected.discountPercent}% discount</> : null} ={' '}
-                <span className="font-extrabold text-indigo-700">{inr(selected.totalMonthly)}</span> / month
+                <span className="font-extrabold text-brand-700">{inr(selected.totalMonthly)}</span> / month
               </div>
 
               {/* Super Admin controls */}
@@ -203,7 +203,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Global defaults */}
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><ShieldCheck size={15} className="text-indigo-600" /> Global Default Pricing</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><ShieldCheck size={15} className="text-brand-600" /> Global Default Pricing</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <Input label="Default Employee Price (₹)" type="number" value={defEmp} onChange={e => setDefEmp(e.target.value)} />
                       <Input label="Default Branch Price (₹)" type="number" value={defBranch} onChange={e => setDefBranch(e.target.value)} />
@@ -215,7 +215,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
 
                   {/* Company override */}
                   <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><Building2 size={15} className="text-indigo-600" /> {selected.companyName} — Overrides</h3>
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><Building2 size={15} className="text-brand-600" /> {selected.companyName} — Overrides</h3>
                     <div className="grid grid-cols-2 gap-3">
                       <Input label="Employee Price (blank = default)" type="number" value={ovr.employeePrice} onChange={e => setOvr({ ...ovr, employeePrice: e.target.value })} placeholder={`${selected.defaults.employeePrice}`} />
                       <Input label="Branch Price (blank = default)" type="number" value={ovr.branchPrice} onChange={e => setOvr({ ...ovr, branchPrice: e.target.value })} placeholder={`${selected.defaults.branchPrice}`} />
@@ -237,7 +237,7 @@ export const EmployeeSubscription: React.FC<Props> = ({ companies, onBack }) => 
 
               {/* Audit trail */}
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><History size={15} className="text-indigo-600" /> Billing Audit Trail</h3>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-800 mb-3"><History size={15} className="text-brand-600" /> Billing Audit Trail</h3>
                 {audit.length === 0 ? (
                   <p className="text-xs text-slate-400 py-3 text-center">No billing changes recorded yet.</p>
                 ) : (

@@ -38,11 +38,11 @@ import { ui } from '@/components/ui/feedback';
 // spacing, padding and radius. Only the icon, title, value and subtitle change —
 // any future KPI card automatically inherits this look by reusing <KpiCard>.
 const KpiCard: React.FC<{ icon: React.ReactNode; title: string; value: React.ReactNode; subtitle: string }> = ({ icon, title, value, subtitle }) => (
-  <div className="relative overflow-hidden h-full bg-gradient-to-br from-[#EFF6FF] via-[#F0F7FF] to-white rounded-2xl p-5 flex items-start gap-4 border border-[#BFDBFE] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
+  <div className="relative overflow-hidden h-full bg-gradient-to-br from-[#F3F0FF] via-[#F0F7FF] to-white rounded-2xl p-5 flex items-start gap-4 border border-[#BFDBFE] shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200">
     {/* Decorative ring — identical position, size & opacity on every card */}
     <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-[#2563EB]/8 pointer-events-none" />
     {/* Icon container — identical size, radius, background & shadow; glyph varies */}
-    <div className="w-11 h-11 rounded-xl bg-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-md shadow-blue-200">
+    <div className="w-11 h-11 rounded-xl bg-[#2563EB] flex items-center justify-center flex-shrink-0 shadow-md shadow-brand-200">
       {icon}
     </div>
     <div className="flex-1 min-w-0">
@@ -107,7 +107,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           is exclusively available to{' '}
           <span
             className="font-bold px-1.5 py-0.5 rounded"
-            style={{ color: '#1d4ed8', background: '#eff6ff' }}
+            style={{ color: '#4c1fd4', background: '#f3f0ff' }}
           >
             Super Admin
           </span>{' '}
@@ -397,7 +397,7 @@ export const Companies: React.FC<CompaniesProps> = ({
     esicRate: '3.25',
     logo: '',
     logoImage: '',
-    primaryColor: '#3b82f6',
+    primaryColor: '#6c3cf0',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -564,7 +564,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       esicRate: '3.25',
       logo: '',
       logoImage: '',
-      primaryColor: '#3b82f6',
+      primaryColor: '#6c3cf0',
     });
     setErrors({});
 
@@ -1133,13 +1133,13 @@ export const Companies: React.FC<CompaniesProps> = ({
         <div className="flex items-center gap-3 flex-wrap">
           <button
             onClick={() => setActiveMainTab('active')}
-            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'active' ? 'bg-white text-[#2563EB] border-[#DBEAFE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#1D4ED8]'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'active' ? 'bg-white text-[#2563EB] border-[#E6E0FE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#4C1FD4]'}`}
           >
             Active Tenders
           </button>
           <button
             onClick={() => setActiveMainTab('archived')}
-            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'archived' ? 'bg-white text-[#2563EB] border-[#DBEAFE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#1D4ED8]'}`}
+            className={`px-4 py-2 text-sm font-medium rounded-full transition-colors border shadow-sm ${activeMainTab === 'archived' ? 'bg-white text-[#2563EB] border-[#E6E0FE]' : 'bg-transparent border-transparent text-slate-500 hover:text-[#4C1FD4]'}`}
           >
             Archived Tenders
           </button>
@@ -1194,7 +1194,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           {canEdit && activeMainTab === 'active' && (
             <button
               onClick={() => setAddOpen(true)}
-              className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all inline-flex items-center gap-2"
+              className="px-5 py-2 text-sm font-medium bg-gradient-to-r from-[#2563EB] to-[#4C1FD4] text-white rounded-full shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all inline-flex items-center gap-2"
             >
               <Plus size={16} />
               Create Company
@@ -1235,7 +1235,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       </div>
 
       {/* Filters bar */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm p-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="flex-1 relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1244,14 +1244,14 @@ export const Companies: React.FC<CompaniesProps> = ({
               placeholder="Search companies by name or domain..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full bg-slate-50 border-none rounded-full pl-11 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500/20 text-slate-700 placeholder-slate-400 outline-none"
+              className="w-full bg-slate-50 border-none rounded-full pl-11 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-500/20 text-slate-700 placeholder-slate-400 outline-none"
             />
           </div>
           <div className="w-full sm:w-48 relative">
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
             >
               <option value="">All Statuses</option>
               <option value="Active">Active</option>
@@ -1263,7 +1263,7 @@ export const Companies: React.FC<CompaniesProps> = ({
             <select
               value={planFilter}
               onChange={e => setPlanFilter(e.target.value)}
-              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+              className="w-full appearance-none bg-white border border-slate-200 rounded-full px-4 py-2.5 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
             >
               <option value="">All Plans</option>
               <option value="Starter">Starter</option>
@@ -1276,15 +1276,15 @@ export const Companies: React.FC<CompaniesProps> = ({
       </div>
 
       {/* Grid directory */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-[#DBEAFE] flex items-center justify-between bg-white">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-[#E6E0FE] flex items-center justify-between bg-white">
           <span className="text-sm font-bold text-slate-800">Tenant Directory</span>
           <span className="text-xs text-slate-500 font-medium">{filtered.filter(c => !c.parentCompanyId).length} clients registered</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-[#DBEAFE] bg-[#F8FBFF]">
+              <tr className="border-b border-[#E6E0FE] bg-[#F8FBFF]">
                 <th className="py-3 px-5 text-xs font-semibold text-slate-500">Company Profile</th>
                 <th className="py-3 px-5 text-xs font-semibold text-slate-500">SaaS Admin Info</th>
                 <th className="py-3 px-5 text-xs font-semibold text-slate-500">Details</th>
@@ -1292,7 +1292,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 <th className="py-3 px-5 text-xs font-semibold text-slate-500">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#DBEAFE]">
+            <tbody className="divide-y divide-[#E6E0FE]">
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-8 text-sm text-slate-400">
@@ -1325,7 +1325,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                 <ChevronRight size={16} />
                               </button>
                             )}
-                            <div className="w-10 h-10 rounded-full bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center font-bold text-sm border border-[#DBEAFE]" style={!c.logoImage ? {} : {}}>
+                            <div className="w-10 h-10 rounded-full bg-[#F3F0FF] text-[#4C1FD4] flex items-center justify-center font-bold text-sm border border-[#E6E0FE]" style={!c.logoImage ? {} : {}}>
                               {c.logoImage ? (
                                 <img src={c.logoImage} alt="Logo" className="w-full h-full object-contain rounded-full" />
                               ) : (
@@ -1336,7 +1336,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               <div className="flex items-center gap-2">
                                 <h4 className="text-sm font-bold text-slate-800">{c.name}</h4>
                                 {hasBranches && (
-                                  <span className="text-[10px] font-semibold bg-[#EFF6FF] text-[#2563EB] px-2 py-0.5 rounded-full border border-[#DBEAFE]">Parent Company</span>
+                                  <span className="text-[10px] font-semibold bg-[#F3F0FF] text-[#2563EB] px-2 py-0.5 rounded-full border border-[#E6E0FE]">Parent Company</span>
                                 )}
                               </div>
                               <span className="text-xs text-slate-500 mt-0.5 block">{c.domain}</span>
@@ -1369,7 +1369,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
                         {/* Status */}
                         <td className="py-3 px-5">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${c.status === 'Active' ? 'bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${c.status === 'Active' ? 'bg-[#E6E0FE] text-[#4C1FD4] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${c.status === 'Active' ? 'bg-[#2563EB]' : 'bg-[#DC2626]'}`}></span>
                             {c.status}
                           </span>
@@ -1413,7 +1413,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               ) : (
                                 <button
                                   onClick={() => openStatusModal(c)}
-                                  className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]"
+                                  className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#E6E0FE] border-[#BFDBFE] text-[#4C1FD4] hover:bg-[#F3F0FF]"
                                 >
                                   Restore
                                 </button>
@@ -1427,15 +1427,15 @@ export const Companies: React.FC<CompaniesProps> = ({
                       {hasBranches && isExpanded && (
                         <tr>
                           <td colSpan={5} className="bg-[#F8FBFF] p-6 border-l-4 border-[#2563EB]">
-                            <div className="rounded-[16px] border border-[#DBEAFE] bg-white overflow-hidden shadow-sm">
-                              <div className="bg-[#EFF6FF] px-5 py-3 border-b border-[#DBEAFE] flex items-center justify-between">
+                            <div className="rounded-[16px] border border-[#E6E0FE] bg-white overflow-hidden shadow-sm">
+                              <div className="bg-[#F3F0FF] px-5 py-3 border-b border-[#E6E0FE] flex items-center justify-between">
                                 <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">GCRI Connected Sub-Branches</span>
                                 <div className="flex items-center gap-3">
                                   <span className="text-[11px] text-slate-500 font-medium">{branches.length} branches resolved</span>
                                   {canEdit && (
                                     <button
                                       onClick={() => handleOpenCreateBranch(c.id)}
-                                      className="px-3 py-1.5 bg-white border border-[#DBEAFE] hover:bg-[#EFF6FF] text-[#2563EB] rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition-colors"
+                                      className="px-3 py-1.5 bg-white border border-[#E6E0FE] hover:bg-[#F3F0FF] text-[#2563EB] rounded-full text-[11px] font-bold flex items-center gap-1 shadow-sm transition-colors"
                                     >
                                       <Plus size={12} className="text-[#2563EB]" /> Create Branch
                                     </button>
@@ -1444,7 +1444,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </div>
                               <table className="w-full text-left border-collapse">
                                 <thead>
-                                  <tr className="border-b border-[#DBEAFE] text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                                  <tr className="border-b border-[#E6E0FE] text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                                     <th className="py-3 px-5">Branch Code & Name</th>
                                     <th className="py-3 px-5">SaaS Admin Info</th>
                                     <th className="py-3 px-5">Staff Count</th>
@@ -1470,7 +1470,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                                 title="Branch No"
                                               >#{(b as any).branchNo}</span>
                                             )}
-                                            <span className="font-bold text-[#1D4ED8] bg-[#EFF6FF] px-2 py-1 rounded border border-[#DBEAFE] text-[10px]">
+                                            <span className="font-bold text-[#4C1FD4] bg-[#F3F0FF] px-2 py-1 rounded border border-[#E6E0FE] text-[10px]">
                                               {b.branchCode || 'BR'}
                                             </span>
                                             <div>
@@ -1487,7 +1487,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                           {branchEmpCount} Staff
                                         </td>
                                         <td className="py-2.5 px-5">
-                                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${b.status === 'Active' ? 'bg-[#DBEAFE] text-[#1D4ED8] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
+                                          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${b.status === 'Active' ? 'bg-[#E6E0FE] text-[#4C1FD4] border-[#BFDBFE]' : 'bg-[#FEE2E2] text-[#DC2626] border-[#FECACA]'}`}>
                                             <span className={`w-1 h-1 rounded-full ${b.status === 'Active' ? 'bg-[#2563EB]' : 'bg-[#DC2626]'}`}></span>
                                             {b.status}
                                           </span>
@@ -1526,7 +1526,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                                               ) : (
                                                 <button
                                                   onClick={() => openStatusModal(b)}
-                                                  className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#DBEAFE] border-[#BFDBFE] text-[#1D4ED8] hover:bg-[#EFF6FF]"
+                                                  className="px-2.5 py-1 rounded border text-[10px] font-bold shadow-xs transition-all bg-[#E6E0FE] border-[#BFDBFE] text-[#4C1FD4] hover:bg-[#F3F0FF]"
                                                 >
                                                   Restore
                                                 </button>
@@ -1675,10 +1675,10 @@ export const Companies: React.FC<CompaniesProps> = ({
                 onDragOver={e => { e.preventDefault(); setLogoDragOver(true); }}
                 onDragLeave={() => setLogoDragOver(false)}
                 onDrop={e => { e.preventDefault(); setLogoDragOver(false); acceptCompanyLogo(e.dataTransfer.files?.[0]); }}
-                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 cursor-pointer transition ${logoDragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`}
+                className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 cursor-pointer transition ${logoDragOver ? 'border-brand-400 bg-brand-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'}`}
               >
                 <UploadCloud size={22} className="text-slate-400" />
-                <span className="text-xs font-semibold text-blue-600">Upload Logo</span>
+                <span className="text-xs font-semibold text-brand-600">Upload Logo</span>
                 <span className="text-[10px] text-slate-400">or drag &amp; drop image here</span>
                 <span className="text-[9px] text-slate-400">Supported: PNG, JPG, JPEG, SVG · max {LOGO_MAX_MB} MB</span>
                 <input type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" className="hidden" onChange={e => acceptCompanyLogo(e.target.files?.[0])} />
@@ -1691,8 +1691,8 @@ export const Companies: React.FC<CompaniesProps> = ({
                 <div className="min-w-0 flex-1">
                   <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1"><CheckCircle2 size={12} /> Logo Uploaded</p>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <a href={newCompany.logoImage} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-blue-600"><ImageIcon size={12} /> Preview</a>
-                    <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-blue-600 cursor-pointer"><RefreshCw size={12} /> Replace
+                    <a href={newCompany.logoImage} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-brand-600"><ImageIcon size={12} /> Preview</a>
+                    <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 hover:text-brand-600 cursor-pointer"><RefreshCw size={12} /> Replace
                       <input type="file" accept=".png,.jpg,.jpeg,.svg,image/png,image/jpeg,image/svg+xml" className="hidden" onChange={e => acceptCompanyLogo(e.target.files?.[0])} />
                     </label>
                     <button type="button" onClick={() => setNewCompany(prev => ({ ...prev, logoImage: '' }))} className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700"><Trash2 size={12} /> Remove</button>
@@ -1752,7 +1752,7 @@ export const Companies: React.FC<CompaniesProps> = ({
               value={newCompany.primaryColor}
               onChange={e => setNewCompany({ ...newCompany, primaryColor: e.target.value })}
               options={[
-                { value: '#3b82f6', label: 'Vibrant Blue' },
+                { value: '#6c3cf0', label: 'Vibrant Blue' },
                 { value: '#0f766e', label: 'Deep Teal' },
                 { value: '#65a30d', label: 'Fresh Lime' },
                 { value: '#ea580c', label: 'Construct Orange' },
@@ -1796,7 +1796,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           );
           return (
             <div className="space-y-4">
-              <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[11px] text-indigo-700">
+              <div className="flex items-start gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-[11px] text-brand-700">
                 <Shield size={14} className="mt-0.5 shrink-0" />
                 Platform monitoring only. Employee names, salary, payroll, attendance, leave, documents and personal data are private to the company and are never shown here. To assist this company, start an <b>audited Support Session</b>.
               </div>
@@ -1836,7 +1836,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                   <Stat label="Employees" value={d.employeesTotal} />
                   <Stat label="Active" value={d.employeesActive} tone="text-emerald-600" />
                   <Stat label="Inactive" value={d.employeesInactive} tone="text-slate-500" />
-                  <Stat label="Storage" value={fmtBytes(d.storageBytes)} tone="text-indigo-600" />
+                  <Stat label="Storage" value={fmtBytes(d.storageBytes)} tone="text-brand-600" />
                 </div>
                 <p className="mt-2 text-[11px] text-slate-400">Last login: {d.lastLogin ? formatDate(d.lastLogin) : '—'}</p>
               </div>
@@ -1951,7 +1951,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                             <div className="flex items-center gap-1.5">
                               <button
                                 onClick={() => handleOpenWorkspaceAssign(u)}
-                                className="p-1 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50 rounded"
+                                className="p-1 text-brand-500 hover:text-brand-700 hover:bg-brand-50 rounded"
                                 title="Manage Workspaces"
                               >
                                 <Building2 size={12} />
@@ -1965,7 +1965,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </button>
                               <button
                                 onClick={() => handleToggleUserActivation(u.id)}
-                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-[#2563EB] hover:bg-[#1D4ED8]'
+                                className={`text-[10px] px-2 py-0.5 rounded font-bold text-white transition-colors ${u.status === 'Active' ? 'bg-red-650 bg-red-600 hover:bg-red-700' : 'bg-[#2563EB] hover:bg-[#4C1FD4]'
                                   }`}
                               >
                                 {u.status === 'Active' ? 'Disable' : 'Enable'}
@@ -2100,7 +2100,7 @@ export const Companies: React.FC<CompaniesProps> = ({
       {/* Edit Company Modal */}
       <Modal open={editCompanyModalOpen} onClose={() => setEditCompanyModalOpen(false)} title="Edit Parent Company" variant="page" breadcrumbs={[{ label: 'Companies', onClick: () => setEditCompanyModalOpen(false) }, { label: 'Edit Company' }]} subtitle="Update company profile and configuration." size="lg" footer={<>
         <Button variant="outline" onClick={() => setEditCompanyModalOpen(false)}>Cancel</Button>
-        <Button onClick={handleSaveCompany} style={{ backgroundColor: '#4f46e5' }}>Save Changes</Button>
+        <Button onClick={handleSaveCompany} style={{ backgroundColor: '#5b2de6' }}>Save Changes</Button>
       </>}>
         <div className="grid grid-cols-2 gap-4 text-left font-sans">
           <Input label="Company Name *" value={editCompanyForm.name} onChange={e => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })} />
@@ -2132,7 +2132,7 @@ export const Companies: React.FC<CompaniesProps> = ({
           <div className="col-span-2">
             <label className="block text-xs font-semibold text-gray-700 mb-1">Billing Address</label>
             <textarea
-              className="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+              className="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-brand-500 outline-none transition-all"
               rows={2}
               value={editCompanyForm.billingAddress}
               onChange={e => setEditCompanyForm({ ...editCompanyForm, billingAddress: e.target.value })}
@@ -2303,7 +2303,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                   type="checkbox"
                   checked={branchForm.enableBroadcasts}
                   onChange={e => setBranchForm({ ...branchForm, enableBroadcasts: e.target.checked })}
-                  className="rounded text-indigo-650 focus:ring-indigo-500 w-3.5 h-3.5"
+                  className="rounded text-brand-700 focus:ring-brand-500 w-3.5 h-3.5"
                 />
                 Permit local Broadcast Dispatch to all devices in this branch
               </label>
@@ -2312,7 +2312,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                   type="checkbox"
                   checked={branchForm.enableSystemAlerts}
                   onChange={e => setBranchForm({ ...branchForm, enableSystemAlerts: e.target.checked })}
-                  className="rounded text-indigo-650 focus:ring-indigo-500 w-3.5 h-3.5"
+                  className="rounded text-brand-700 focus:ring-brand-500 w-3.5 h-3.5"
                 />
                 Receive automatic critical biometric and compliance alerts
               </label>
@@ -2356,7 +2356,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 <label key={comp.id} className={`flex items-center gap-3 p-3 hover:bg-slate-50 border-b border-gray-50 last:border-0 transition-colors ${isInherited ? 'cursor-default opacity-80 bg-emerald-50/30' : 'cursor-pointer'}`}>
                   <input
                     type="checkbox"
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-4 h-4 disabled:opacity-50 disabled:cursor-not-allowed"
                     checked={isAssigned}
                     disabled={isInherited}
                     onChange={(e) => {
@@ -2371,7 +2371,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
                       {comp.name}
-                      {comp.isHeadOffice && <span className="text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">HQ</span>}
+                      {comp.isHeadOffice && <span className="text-[9px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">HQ</span>}
                       {isInherited && <span className="text-[9px] bg-emerald-100 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-full uppercase tracking-wider font-bold">Inherited</span>}
                     </p>
                     <p className="text-[10px] text-gray-400 mt-0.5">{comp.branchName ? `Branch: ${comp.branchName}` : 'Parent Company'}</p>
@@ -2388,7 +2388,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         {offboardCompany && (
           <div className="space-y-6 text-sm text-left">
             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center font-bold text-lg text-white shadow-inner" style={!offboardCompany.logoImage ? { backgroundColor: offboardCompany.primaryColor || '#3b82f6' } : {}}>
+              <div className="h-12 w-12 rounded-full overflow-hidden flex items-center justify-center font-bold text-lg text-white shadow-inner" style={!offboardCompany.logoImage ? { backgroundColor: offboardCompany.primaryColor || '#6c3cf0' } : {}}>
                 {offboardCompany.logoImage ? (
                   <img src={offboardCompany.logoImage} alt="Logo" className="w-full h-full object-contain" />
                 ) : (
@@ -2417,7 +2417,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </div>
                 <div className="p-3 text-xs flex justify-between items-center">
                   <span className="text-slate-500">All final employee salaries disbursed.</span>
-                  <input type="checkbox" checked={offboardCompany.offboardingState?.payrollVerified} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, payrollVerified: e.target.checked } })} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.payrollVerified} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, payrollVerified: e.target.checked } })} className="rounded border-slate-300 text-brand-600 focus:ring-brand-600" />
                 </div>
               </Card>
 
@@ -2428,7 +2428,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </div>
                 <div className="p-3 text-xs flex justify-between items-center">
                   <span className="text-slate-500">No pending SaaS subscription dues.</span>
-                  <input type="checkbox" checked={offboardCompany.offboardingState?.invoiceCleared} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, invoiceCleared: e.target.checked } })} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.invoiceCleared} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, invoiceCleared: e.target.checked } })} className="rounded border-slate-300 text-brand-600 focus:ring-brand-600" />
                 </div>
               </Card>
 
@@ -2439,7 +2439,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </div>
                 <div className="p-3 text-xs flex justify-between items-center">
                   <span className="text-slate-500">PF & ESIC filings marked complete.</span>
-                  <input type="checkbox" checked={offboardCompany.offboardingState?.complianceVerified} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, complianceVerified: e.target.checked } })} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.complianceVerified} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, complianceVerified: e.target.checked } })} className="rounded border-slate-300 text-brand-600 focus:ring-brand-600" />
                 </div>
               </Card>
 
@@ -2450,7 +2450,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </div>
                 <div className="p-3 text-xs flex justify-between items-center">
                   <span className="text-slate-500">Hardware and licenses recovered.</span>
-                  <input type="checkbox" checked={offboardCompany.offboardingState?.assetCheckCompleted} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, assetCheckCompleted: e.target.checked } })} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.assetCheckCompleted} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, assetCheckCompleted: e.target.checked } })} className="rounded border-slate-300 text-brand-600 focus:ring-brand-600" />
                 </div>
               </Card>
 
@@ -2461,7 +2461,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                 </div>
                 <div className="p-3 text-xs flex justify-between items-center">
                   <span className="text-slate-500">Full & final vendor settlement done.</span>
-                  <input type="checkbox" checked={offboardCompany.offboardingState?.financialSettlement} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, financialSettlement: e.target.checked } })} className="rounded border-slate-300 text-blue-600 focus:ring-blue-600" />
+                  <input type="checkbox" checked={offboardCompany.offboardingState?.financialSettlement} onChange={e => setOffboardCompany({ ...offboardCompany, offboardingState: { ...offboardCompany.offboardingState, financialSettlement: e.target.checked } })} className="rounded border-slate-300 text-brand-600 focus:ring-brand-600" />
                 </div>
               </Card>
             </div>

@@ -114,7 +114,7 @@ export const NomineeForm: React.FC<Props> = ({ open, initial, nomineeCount = 0, 
           {showPercentage && <Input label="Nomination % *" type="number" value={form.percentage} onChange={e => setForm({ ...form, percentage: e.target.value })} error={errors.percentage} />}
         </div>
         {showPercentage && nomineeCount === 1 && !initial && (
-          <p className="text-[10px] text-blue-600 -mt-1.5 font-semibold">Adding a second nominee — the existing nominee's share is adjusted automatically so the total stays 100%.</p>
+          <p className="text-[10px] text-brand-600 -mt-1.5 font-semibold">Adding a second nominee — the existing nominee's share is adjusted automatically so the total stays 100%.</p>
         )}
         <div className="grid grid-cols-2 gap-3">
           <Input label="Aadhaar Number (optional)" value={form.aadhaar} onChange={e => setForm({ ...form, aadhaar: e.target.value })} error={errors.aadhaar} />
@@ -124,7 +124,7 @@ export const NomineeForm: React.FC<Props> = ({ open, initial, nomineeCount = 0, 
 
         <div className="flex flex-wrap gap-5 pt-0.5">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={form.isEmergencyContact} onChange={e => setForm({ ...form, isEmergencyContact: e.target.checked })} className="rounded border-slate-300 text-blue-600" />
+            <input type="checkbox" checked={form.isEmergencyContact} onChange={e => setForm({ ...form, isEmergencyContact: e.target.checked })} className="rounded border-slate-300 text-brand-600" />
             <span className="text-xs font-semibold text-slate-700">Emergency Contact</span>
           </label>
         </div>

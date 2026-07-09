@@ -81,9 +81,9 @@ export const Reports: React.FC<ReportsProps> = ({
     : 100;
 
   const reportCards = [
-    { id: 'attendance' as ReportType, label: 'Attendance Report', icon: <Users size={18} className="text-blue-600" />, color: 'bg-blue-50 border-blue-200', desc: 'Daily punch-in summaries and hours' },
+    { id: 'attendance' as ReportType, label: 'Attendance Report', icon: <Users size={18} className="text-brand-600" />, color: 'bg-brand-50 border-brand-200', desc: 'Daily punch-in summaries and hours' },
     { id: 'payroll' as ReportType, label: 'Payroll Report', icon: <DollarSign size={18} className="text-emerald-600" />, color: 'bg-emerald-50 border-emerald-200', desc: 'Salary processing and pay components' },
-    { id: 'leave' as ReportType, label: 'Leave Report', icon: <Calendar size={18} className="text-indigo-600" />, color: 'bg-indigo-50 border-indigo-200', desc: 'Leave requests and pending balances' },
+    { id: 'leave' as ReportType, label: 'Leave Report', icon: <Calendar size={18} className="text-brand-600" />, color: 'bg-brand-50 border-brand-200', desc: 'Leave requests and pending balances' },
     { id: 'offboarding' as ReportType, label: 'Offboarding Analytics', icon: <Archive size={18} className="text-amber-600" />, color: 'bg-amber-50 border-amber-200', desc: 'Tender closures & archived workforce' },
   ];
 
@@ -109,7 +109,7 @@ export const Reports: React.FC<ReportsProps> = ({
         <Button 
           icon={<Download size={14} />} 
           onClick={() => setExportModalOpen(true)}
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border-0 shadow-lg shadow-blue-500/20"
+          className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white border-0 shadow-lg shadow-brand-500/20"
         >
           Enterprise Export Engine
         </Button>
@@ -118,9 +118,9 @@ export const Reports: React.FC<ReportsProps> = ({
       {/* Summary KPI row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Monthly Payroll Cap" value={`₹${(totalPayroll / 100000).toFixed(2)}L`} icon={<DollarSign size={16} className="text-emerald-600" />} color="bg-emerald-50" />
-        <StatCard label="Attendance Rate" value={`${presentRate}%`} icon={<Users size={16} className="text-blue-600" />} color="bg-blue-50" sub="Present punch-ins today" />
-        <StatCard label="Awaiting Leaves" value={pendingLeavesCount} icon={<Calendar size={16} className="text-indigo-600" />} color="bg-indigo-50" />
-        <StatCard label="Active Personnel" value={activeStaffCount} icon={<Users size={16} className="text-purple-600" />} color="bg-purple-50" />
+        <StatCard label="Attendance Rate" value={`${presentRate}%`} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" sub="Present punch-ins today" />
+        <StatCard label="Awaiting Leaves" value={pendingLeavesCount} icon={<Calendar size={16} className="text-brand-600" />} color="bg-brand-50" />
+        <StatCard label="Active Personnel" value={activeStaffCount} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" />
       </div>
 
       {/* Report Selector grid */}
@@ -134,8 +134,8 @@ export const Reports: React.FC<ReportsProps> = ({
               className="p-3 rounded-lg border text-left transition-colors font-sans"
               style={{
                 borderColor: isSelected ? currentCompany.primaryColor : undefined,
-                backgroundColor: isSelected ? hexToRgbA(currentCompany.primaryColor || '#3b82f6', 0.08) : undefined,
-                boxShadow: isSelected ? `0 0 0 1px ${hexToRgbA(currentCompany.primaryColor || '#3b82f6', 0.25)}` : undefined
+                backgroundColor: isSelected ? hexToRgbA(currentCompany.primaryColor || '#6c3cf0', 0.08) : undefined,
+                boxShadow: isSelected ? `0 0 0 1px ${hexToRgbA(currentCompany.primaryColor || '#6c3cf0', 0.25)}` : undefined
               }}
             >
               <div className="flex items-center gap-2 mb-1">
@@ -195,7 +195,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
                   <Td>
                     <span className="text-xs font-semibold text-gray-800">{a.employeeName}</span>
-                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(a.employeeId, '')}</div>
+                    <div className="text-[10px] font-bold text-brand-600">{codeOf(a.employeeId, '')}</div>
                   </Td>
                   <Td><span className="text-xs text-gray-500">{a.department}</span></Td>
                   <Td><span className="text-xs">{a.date}</span></Td>
@@ -236,7 +236,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
                   <Td>
                     <span className="text-xs font-semibold text-gray-800">{r.employeeName}</span>
-                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(r.employeeId, '')}</div>
+                    <div className="text-[10px] font-bold text-brand-600">{codeOf(r.employeeId, '')}</div>
                   </Td>
                   <Td><span className="text-xs text-gray-500">{r.department}</span></Td>
                   <Td><span className="text-xs">₹{r.basicSalary.toLocaleString()}</span></Td>
@@ -282,7 +282,7 @@ export const Reports: React.FC<ReportsProps> = ({
                   <Td className="text-center text-xs text-gray-400">{i + 1}</Td>
                   <Td>
                     <span className="text-xs font-semibold text-gray-800">{l.employeeName}</span>
-                    <div className="text-[10px] font-bold text-indigo-600">{codeOf(l.employeeId, '')}</div>
+                    <div className="text-[10px] font-bold text-brand-600">{codeOf(l.employeeId, '')}</div>
                   </Td>
                   <Td><span className="text-xs text-gray-500">{l.department}</span></Td>
                   <Td><Badge variant="blue">{l.leaveType}</Badge></Td>

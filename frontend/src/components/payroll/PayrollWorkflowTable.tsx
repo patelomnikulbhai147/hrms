@@ -17,6 +17,7 @@ interface PayrollWorkflowTableProps {
   onSendClick: (record: PayrollRecord) => void;
   role: Role;
   canEdit?: boolean;
+  isLoading?: boolean;
 }
 
 export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
@@ -30,7 +31,8 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
   onDownload,
   onSendClick,
   role,
-  canEdit = true
+  canEdit = true,
+  isLoading = false
 }) => {
   const isEmployee = role === 'Employee';
 
@@ -51,7 +53,16 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
         </tr>
       </Thead>
       <Tbody>
-        {records.length === 0 ? (
+        {isLoading ? (
+          <Tr>
+            <td colSpan={10} className="px-3 py-10 text-center text-slate-500 text-sm">
+              <div className="flex flex-col items-center gap-2">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-600"></div>
+                Loading...
+              </div>
+            </td>
+          </Tr>
+        ) : records.length === 0 ? (
           <Tr>
             <td colSpan={10} className="px-3 py-10 text-center text-gray-400 text-sm">
               No payroll records found for this company. Prepare payroll to begin reconciliation.
@@ -78,7 +89,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                   <span className="text-sm text-emerald-600 font-semibold">+₹{r.allowances.toLocaleString('en-IN')}</span>
                 </Td>
                 <Td>
-                  <span className="text-sm text-sky-600 font-semibold">{(r as any).overtime ? `+₹${Number((r as any).overtime).toLocaleString('en-IN')}` : '—'}</span>
+                  <span className="text-sm text-brand-600 font-semibold">{(r as any).overtime ? `+₹${Number((r as any).overtime).toLocaleString('en-IN')}` : '—'}</span>
                 </Td>
                 <Td>
                   <span className={`text-sm font-semibold ${r.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{r.bonus ? `+₹${Number(r.bonus).toLocaleString('en-IN')}` : '—'}</span>
@@ -146,7 +157,7 @@ export const PayrollWorkflowTable: React.FC<PayrollWorkflowTableProps> = ({
                     {canEdit && currentStatus === 'paid' && (
                       <button
                         onClick={() => onPayslipClick(r)}
-                        className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 whitespace-nowrap"
+                        className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[11px] font-semibold text-brand-700 shadow-sm transition hover:bg-brand-100 whitespace-nowrap"
                       >
                         <FileText size={12} />
                         Payslip

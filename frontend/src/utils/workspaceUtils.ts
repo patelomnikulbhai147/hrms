@@ -119,7 +119,7 @@ export function logWorkspaceAudit(user: any, items: any[], hierarchy: WorkspaceG
   const branches = (items || []).filter(isBranchRecord);
   const audit = auditWorkspaceCounts(user, items, hierarchy);
 
-  console.groupCollapsed?.('%c[Workspace Hierarchy Audit]', 'color:#4F7CFF;font-weight:bold');
+  console.groupCollapsed?.('%c[Workspace Hierarchy Audit]', 'color:#6C3CF0;font-weight:bold');
   console.log('Loaded Companies:', companies.map((c) => `${c.name} [${c.id}]`));
   console.log('Loaded Branches:', branches.map((b) => `${b.branchName || b.name} [${b.id}] -> parent ${b.parentCompanyId || b.companyId}`));
   console.log('User Permissions:', { companyId: user?.companyId, accessibleCompanyIds: user?.accessibleCompanyIds });

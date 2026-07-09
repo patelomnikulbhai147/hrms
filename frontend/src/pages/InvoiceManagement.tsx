@@ -11,6 +11,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
 import { InvoiceDesigner } from '@/components/invoicing/InvoiceDesigner';
+import { InvoiceCanvasDesigner } from '@/components/invoicing/InvoiceCanvasDesigner';
+import { canvasDocHtml, resolveLayout, type InvoiceLayout } from '@/components/invoicing/invoiceCanvas';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -103,6 +105,7 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   // unaffected: generated invoices always pick up the saved template automatically.
   const canBranding = ['Company Head', 'Super Admin'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
+  const [designerMode, setDesignerMode] = useState<'flow' | 'canvas'>('flow'); // classic flow templates vs visual canvas
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
   const activeCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
   const companyState: string = activeCompany?.state || '';
@@ -112,9 +115,9 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ReceiptText size={16} className="text-[#4F7CFF]" /> Invoice Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ReceiptText size={16} className="text-[#6C3CF0]" /> Invoice Management</h2>
           <p className="text-[11px] text-slate-400">Generate GST invoices, track payments & outstanding, manage customers and billable items — {activeCompany?.name || 'your company'}.</p>
         </div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => goCreate(null)}>New Invoice</Button>}
@@ -137,7 +140,7 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'create') setEditInvoiceId(null); }}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {t.label}
             </button>
           );
@@ -163,9 +166,21 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
       {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'payments' && <PaymentsTab canEdit={canEdit} />}
-      {tab === 'designer' && (canBranding
-        ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
-        : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
+      {tab === 'designer' && (canBranding ? (
+        <div className="space-y-3">
+          {/* Flow (classic templates) vs Canvas (visual drag-and-drop). Additive:
+              Flow is the default and unchanged; Canvas is opt-in per company. */}
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
+            {([['flow', 'Classic Templates'], ['canvas', 'Visual Designer']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setDesignerMode(m)}
+                className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${designerMode === m ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>
+            ))}
+          </div>
+          {designerMode === 'flow'
+            ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
+            : <InvoiceCanvasDesigner company={activeCompany} />}
+        </div>
+      ) : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} />}
     </div>
   );
@@ -174,7 +189,7 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
 // ── KPI card ──────────────────────────────────────────────────────────────────
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#EDF4FF] text-[#4F7CFF]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -194,13 +209,13 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
         <Kpi label="Total Invoices" value={loading ? '—' : k.total ?? 0} icon={<ReceiptText size={16} />} />
         <Kpi label="Total Revenue" value={loading ? '—' : inr(k.totalRevenue)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
         <Kpi label="Outstanding" value={loading ? '—' : inr(k.outstanding)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
-        <Kpi label="This Month" value={loading ? '—' : inr(k.thisMonthRevenue)} icon={<IndianRupee size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        <Kpi label="This Month" value={loading ? '—' : inr(k.thisMonthRevenue)} icon={<IndianRupee size={16} />} tone="bg-brand-50 text-brand-600" />
         <Kpi label="Overdue" value={loading ? '—' : k.overdue ?? 0} icon={<Clock size={16} />} tone="bg-rose-50 text-rose-600" />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label="Draft" value={loading ? '—' : k.draft ?? 0} icon={<FileText size={16} />} tone="bg-slate-100 text-slate-500" />
-        <Kpi label="Generated" value={loading ? '—' : k.generated ?? 0} icon={<FileText size={16} />} tone="bg-blue-50 text-blue-600" />
-        <Kpi label="Sent" value={loading ? '—' : k.sent ?? 0} icon={<Send size={16} />} tone="bg-sky-50 text-sky-600" />
+        <Kpi label="Generated" value={loading ? '—' : k.generated ?? 0} icon={<FileText size={16} />} tone="bg-brand-50 text-brand-600" />
+        <Kpi label="Sent" value={loading ? '—' : k.sent ?? 0} icon={<Send size={16} />} tone="bg-brand-50 text-brand-600" />
         <Kpi label="Partially Paid" value={loading ? '—' : k.partiallyPaid ?? 0} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
         <Kpi label="Paid" value={loading ? '—' : k.paid ?? 0} icon={<CheckCircle2 size={16} />} tone="bg-emerald-50 text-emerald-600" />
         <Kpi label="Cancelled" value={loading ? '—' : k.cancelled ?? 0} icon={<Ban size={16} />} tone="bg-rose-50 text-rose-600" />
@@ -214,7 +229,7 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
             <div className="flex items-end gap-3 h-40">
               {months.map(([m, v]) => (
                 <div key={m} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full rounded-t bg-[#4F7CFF]/80" style={{ height: `${Math.max(4, (Number(v) / maxM) * 130)}px` }} title={inr(v)} />
+                  <div className="w-full rounded-t bg-[#6C3CF0]/80" style={{ height: `${Math.max(4, (Number(v) / maxM) * 130)}px` }} title={inr(v)} />
                   <span className="text-[9px] text-slate-400">{m.slice(5)}/{m.slice(2, 4)}</span>
                 </div>
               ))}
@@ -231,7 +246,7 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
                 <span className="flex items-center gap-2 shrink-0">{inr(i.grandTotal)} {statusBadge(i.status)}</span>
               </button>
             ))}
-            {(d?.recent || []).length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No invoices yet. <button onClick={onNew} className="text-[#4F7CFF] font-bold">Create one</button>.</p>}
+            {(d?.recent || []).length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No invoices yet. <button onClick={onNew} className="text-[#6C3CF0] font-bold">Create one</button>.</p>}
           </div>
           {(d?.upcoming || []).length > 0 && <>
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mt-3 mb-2">Upcoming Due</h3>
@@ -260,6 +275,13 @@ const Empty: React.FC<{ icon: React.ReactNode; title: string; sub?: string }> = 
 // ══════════════════════════════════════════════════════════════════════════════
 const blankItem = () => ({ name: '', description: '', hsnSac: '', quantity: 1, unit: 'Nos', rate: 0, discountPct: 0, taxRate: 18 });
 const todayIso = () => new Date().toISOString().slice(0, 10);
+// Add N days to a yyyy-MM-dd string (used to seed a due date from client credit days).
+const addDaysIso = (iso: string, days: number) => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (isNaN(d.getTime()) || !Number.isFinite(days)) return iso;
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
 
 // ── Auto-fitting A4 live preview ────────────────────────────────────────────
 // Measures its OWN container width and scales the full-size A4 page to fit —
@@ -294,6 +316,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
+  const [activeLayout, setActiveLayout] = useState<InvoiceLayout | null>(null);
   const [saving, setSaving] = useState(false);
   // Per-invoice template choice. '' = follow the company default from Templates &
   // Branding; picking another preset only re-styles THIS invoice's live preview
@@ -316,7 +339,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   }, []);
   const layout: 'split' | 'stacked' | 'compact' = containerW >= 980 ? 'split' : containerW >= 640 ? 'stacked' : 'compact';
   const [form, setForm] = useState<any>({
-    customerId: '', billToName: '', billToGstin: '', billToAddress: '', billToEmail: '', billToPhone: '', billToState: '',
+    customerId: '', billToName: '', billToGstin: '', billToAddress: '', billToShipAddress: '', billToEmail: '', billToPhone: '', billToState: '',
     invoiceDate: todayIso(), dueDate: '', currency: 'INR', paymentTerms: 'Net 30', notes: '', termsConditions: '',
     paymentMode: '', bankDetails: '', upiId: '', items: [blankItem()],
   });
@@ -326,6 +349,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       try {
         const [cs, ps, st] = await Promise.all([api.invoicing.listCustomers({ active: 'true' }), api.invoicing.listProducts({ active: 'true' }), api.invoicing.getSettings()]);
         setCustomers(Array.isArray(cs) ? cs : []); setProducts(Array.isArray(ps) ? ps : []); setSettings(st);
+        loadActiveLayout().then(setActiveLayout);
         setForm((f: any) => ({ ...f, paymentTerms: f.paymentTerms || st?.defaultPaymentTerms || 'Net 30', currency: st?.defaultCurrency || 'INR', notes: f.notes || st?.defaultNotes || '', termsConditions: f.termsConditions || st?.defaultTerms || '', bankDetails: f.bankDetails || st?.bankDetails || '', upiId: f.upiId || st?.upiId || '' }));
       } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
     })();
@@ -338,7 +362,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       try {
         const inv = await api.invoicing.getInvoice(editId);
         setForm({
-          customerId: inv.customerId ? String(inv.customerId) : '', billToName: inv.billToName || '', billToGstin: inv.billToGstin || '', billToAddress: inv.billToAddress || '',
+          customerId: inv.customerId ? String(inv.customerId) : '', billToName: inv.billToName || '', billToGstin: inv.billToGstin || '', billToAddress: inv.billToAddress || '', billToShipAddress: inv.billToShipAddress || '',
           billToEmail: inv.billToEmail || '', billToPhone: inv.billToPhone || '', billToState: inv.billToState || '',
           invoiceDate: inv.invoiceDate || todayIso(), dueDate: inv.dueDate || '', currency: inv.currency || 'INR', paymentTerms: inv.paymentTerms || '',
           notes: inv.notes || '', termsConditions: inv.termsConditions || '', paymentMode: inv.paymentMode || '', bankDetails: inv.bankDetails || '', upiId: inv.upiId || '',
@@ -357,7 +381,17 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const pickCustomer = (id: string) => {
     const c = customers.find((x) => String(x.id) === String(id));
     if (!c) { set('customerId', ''); return; }
-    setForm((f: any) => ({ ...f, customerId: String(id), billToName: c.companyName, billToGstin: c.gstin || '', billToAddress: [c.addressLine, c.city, c.state].filter(Boolean).join(', '), billToEmail: c.email || '', billToPhone: c.phone || '', billToState: c.state || '' }));
+    // Auto-fill from the Client Master. Credit days seed the due date from the
+    // invoice date; a blank client field leaves the current form value untouched.
+    setForm((f: any) => {
+      const dueDate = (c.creditDays != null && c.creditDays !== '' && f.invoiceDate) ? addDaysIso(f.invoiceDate, Number(c.creditDays)) : f.dueDate;
+      return {
+        ...f, customerId: String(id), billToName: c.companyName, billToGstin: c.gstin || '',
+        billToAddress: [c.addressLine, c.city, c.state].filter(Boolean).join(', '),
+        billToShipAddress: c.shipToAddress || '', billToEmail: c.email || '', billToPhone: c.phone || '', billToState: c.state || '',
+        paymentTerms: c.paymentTerms || f.paymentTerms, dueDate,
+      };
+    });
   };
   const pickProduct = (i: number, id: string) => {
     const p = products.find((x) => String(x.id) === String(id));
@@ -387,7 +421,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const previewInvoice = useMemo(() => ({
     invoiceNumber: form.invoiceNumber || 'DRAFT',
     invoiceDate: form.invoiceDate, dueDate: form.dueDate, status: form.status || 'Draft',
-    billToName: form.billToName || 'Customer name', billToGstin: form.billToGstin, billToAddress: form.billToAddress,
+    billToName: form.billToName || 'Customer name', billToGstin: form.billToGstin, billToAddress: form.billToAddress, billToShipAddress: form.billToShipAddress,
     billToEmail: form.billToEmail, billToPhone: form.billToPhone, billToState: form.billToState, placeOfSupply: form.billToState,
     currency: form.currency, paymentTerms: form.paymentTerms, paymentMode: form.paymentMode, upiId: form.upiId,
     bankDetails: form.bankDetails, notes: form.notes, termsConditions: form.termsConditions,
@@ -396,10 +430,15 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
     cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, roundOff: totals.roundOff, grandTotal: totals.grandTotal,
     amountPaid: 0, balanceDue: totals.grandTotal,
   }), [form, totals]);
-  const previewHtml = useMemo(() => invoiceDocHtml(previewInvoice, company, activeDesign, { print: false }), [previewInvoice, company, activeDesign]);
+  // When a canvas layout is ACTIVE it takes precedence (same renderer as print).
+  const previewHtml = useMemo(() => activeLayout
+    ? canvasDocHtml(previewInvoice, company, activeLayout, { print: false })
+    : invoiceDocHtml(previewInvoice, company, activeDesign, { print: false }), [previewInvoice, company, activeDesign, activeLayout]);
   const [pw, ph] = (PREVIEW_PAGE_PX[activeDesign.paper] || PREVIEW_PAGE_PX.A4)[activeDesign.orientation] || PREVIEW_PAGE_PX.A4.portrait;
   const openFullPreview = () => {
-    const html = invoiceDocHtml(previewInvoice, company, activeDesign, { print: true });
+    const html = activeLayout
+      ? canvasDocHtml(previewInvoice, company, activeLayout, { print: true })
+      : invoiceDocHtml(previewInvoice, company, activeDesign, { print: true });
     const w = window.open('', '_blank', 'width=900,height=1000');
     if (!w) { ui.toast.error('Allow pop-ups to open the full preview.'); return; }
     w.document.write(html); w.document.close();
@@ -436,8 +475,12 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             <Input label="Email" value={form.billToEmail} onChange={(e: any) => set('billToEmail', e.target.value)} />
             <Input label="Mobile" value={form.billToPhone} onChange={(e: any) => set('billToPhone', e.target.value)} />
             <div className="md:col-span-2">
-              <label className="mb-1 block text-[11px] font-bold text-slate-500">Address</label>
-              <textarea value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" />
+              <label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label>
+              <textarea value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(shown only if enabled in Templates &amp; Branding → Customer)</span></label>
+              <textarea value={form.billToShipAddress} onChange={(e) => set('billToShipAddress', e.target.value)} rows={2} placeholder="Leave blank to reuse billing address" className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
             </div>
           </div>
         </Card>
@@ -445,7 +488,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
         <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Invoice Details</h3>
-            {form.invoiceNumber && <span className="text-xs font-mono font-bold text-[#4F7CFF]">{form.invoiceNumber}</span>}
+            {form.invoiceNumber && <span className="text-xs font-mono font-bold text-[#6C3CF0]">{form.invoiceNumber}</span>}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Input label="Invoice Date *" type="date" value={form.invoiceDate} onChange={(e: any) => set('invoiceDate', e.target.value)} />
@@ -507,11 +550,11 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             <Input label="Payment Mode" value={form.paymentMode} onChange={(e: any) => set('paymentMode', e.target.value)} placeholder="Bank Transfer / UPI / Cheque" />
             <Input label="UPI ID" value={form.upiId} onChange={(e: any) => set('upiId', e.target.value)} />
             <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Bank Details</label>
-              <textarea value={form.bankDetails} onChange={(e) => set('bankDetails', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+              <textarea value={form.bankDetails} onChange={(e) => set('bankDetails', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
             <div><label className="mb-1 block text-[11px] font-bold text-slate-500">Notes</label>
-              <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+              <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
             <div><label className="mb-1 block text-[11px] font-bold text-slate-500">Terms & Conditions</label>
-              <textarea value={form.termsConditions} onChange={(e) => set('termsConditions', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+              <textarea value={form.termsConditions} onChange={(e) => set('termsConditions', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
           </div>
         </Card>
 
@@ -525,7 +568,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           <Row label="Round Off" value={inr(totals.roundOff)} />
           <div className="border-t border-slate-200 mt-2 pt-2 flex items-center justify-between">
             <span className="text-sm font-extrabold text-slate-800">Grand Total</span>
-            <span className="text-lg font-extrabold text-[#4F7CFF]">{inr(totals.grandTotal)}</span>
+            <span className="text-lg font-extrabold text-[#6C3CF0]">{inr(totals.grandTotal)}</span>
           </div>
           <p className="text-[10px] text-slate-400 mt-2">{intraState ? 'Intra-state supply → CGST + SGST.' : 'Inter-state supply → IGST.'} Totals are re-verified on the server.</p>
         </Card>
@@ -551,7 +594,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       {/* Invoice Template selector */}
       <Card>
         <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#4F7CFF]" /> Invoice Template</h3>
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#6C3CF0]" /> Invoice Template</h3>
           <span className="text-[10px] text-slate-400">This invoice only</span>
         </div>
         <div className="flex gap-2.5 overflow-x-auto pb-1.5 -mx-1 px-1">
@@ -560,7 +603,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             const isDefault = defaultTemplateId === p.id;
             return (
               <button key={p.id} type="button" onClick={() => setSelectedTemplateId(p.id)} title={isDefault ? `${p.name} (company default)` : p.name}
-                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#4F7CFF] ring-2 ring-[#4F7CFF]/20 bg-blue-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
+                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#6C3CF0] ring-2 ring-[#6C3CF0]/20 bg-brand-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="rounded-md overflow-hidden border border-slate-100 bg-white">
                   <div className="h-4" style={{ background: p.swatch }} />
                   <div className="p-1 space-y-0.5">
@@ -571,8 +614,8 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
                   </div>
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-1">
-                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#4F7CFF]' : 'text-slate-600'}`}>{p.name}</span>
-                  {active && <CheckCircle2 size={11} className="text-[#4F7CFF] shrink-0" />}
+                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#6C3CF0]' : 'text-slate-600'}`}>{p.name}</span>
+                  {active && <CheckCircle2 size={11} className="text-[#6C3CF0] shrink-0" />}
                 </div>
                 {isDefault && <span className="absolute top-1 right-1 rounded-full bg-slate-900/80 px-1.5 py-px text-[8px] font-bold text-white">Default</span>}
               </button>
@@ -580,22 +623,22 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           })}
         </div>
         {selectedTemplateId && selectedTemplateId !== defaultTemplateId && (
-          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#4F7CFF]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
+          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#6C3CF0]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
         )}
       </Card>
 
       {/* Preview + controls */}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
-          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><Eye size={13} className="text-blue-500" /> Live Preview</p>
+          <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><Eye size={13} className="text-brand-500" /> Live Preview</p>
           <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-            <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><ZoomOut size={13} /></button>
+            <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><ZoomOut size={13} /></button>
             <span className="w-9 text-center text-[10px] font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
-            <button type="button" title="Zoom in" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><ZoomIn size={13} /></button>
+            <button type="button" title="Zoom in" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><ZoomIn size={13} /></button>
             <span className="mx-0.5 h-4 w-px bg-slate-200" />
-            <button type="button" title="Full screen" onClick={() => setFullOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Maximize2 size={13} /></button>
-            <button type="button" title="Print" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Printer size={13} /></button>
-            <button type="button" title="Download PDF" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#4F7CFF]"><Download size={13} /></button>
+            <button type="button" title="Full screen" onClick={() => setFullOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Maximize2 size={13} /></button>
+            <button type="button" title="Print" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Printer size={13} /></button>
+            <button type="button" title="Download PDF" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Download size={13} /></button>
           </div>
         </div>
         <InvoicePreviewFrame html={previewHtml} pw={pw} ph={ph} zoom={zoom} maxHeightVh={82} />
@@ -623,7 +666,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
 
       {layout === 'compact' && (
         <button type="button" onClick={() => setFullOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#4F7CFF] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/30">
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#6C3CF0] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-brand-500/30">
           <Eye size={15} /> Preview
         </button>
       )}
@@ -663,8 +706,10 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const [view, setView] = useState<any>(null); // invoice detail (with items/payments)
   const [payFor, setPayFor] = useState<any>(null); // record-payment target
   const [design, setDesign] = useState<InvoiceDesign>(() => resolveDesign(null));
-  // Load the company's saved Invoice Designer template so print output matches it.
-  useEffect(() => { api.invoicing.getSettings().then((s: any) => setDesign(resolveDesign(s))).catch(() => {}); }, []);
+  const [activeLayout, setActiveLayout] = useState<InvoiceLayout | null>(null);
+  // Load the company's saved Invoice Designer template so print output matches it,
+  // plus any ACTIVE canvas layout (which takes precedence when set).
+  useEffect(() => { api.invoicing.getSettings().then((s: any) => setDesign(resolveDesign(s))).catch(() => {}); loadActiveLayout().then(setActiveLayout); }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -680,13 +725,13 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const cancel = (i: any) => ui.confirm({ message: `Cancel invoice ${i.invoiceNumber}? It stays on record but is marked Cancelled.`, variant: 'danger', confirmText: 'Cancel Invoice' }).then((ok) => { if (ok) doAction(() => api.invoicing.setInvoiceStatus(i.id, 'Cancelled'), 'Invoice cancelled.'); });
   const remove = (i: any) => ui.confirm({ message: `Delete invoice ${i.invoiceNumber}? This cannot be undone.`, variant: 'danger', confirmText: 'Delete' }).then(async (ok) => { if (!ok) return; try { await api.invoicing.deleteInvoice(i.id); ui.toast.success('Invoice deleted.'); await load(); } catch (e: any) { ui.toast.error(e?.message || getApiErrorMessage(e)); } });
   const duplicate = (i: any) => doAction(() => api.invoicing.duplicateInvoice(i.id), 'Invoice duplicated as a new draft.');
-  const print = async (i: any) => { const full = i.items ? i : await api.invoicing.getInvoice(i.id); printInvoice(full, company, design); api.invoicing.logInvoiceAction(i.id, 'PRINTED').catch(() => {}); };
+  const print = async (i: any) => { const full = i.items ? i : await api.invoicing.getInvoice(i.id); printInvoice(full, company, design, activeLayout); api.invoicing.logInvoiceAction(i.id, 'PRINTED').catch(() => {}); };
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
           {['All', 'Draft', 'Generated', 'Sent', 'Partially Paid', 'Paid', 'Cancelled'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
         </select>
@@ -730,24 +775,24 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
         </div>
       </div>
 
-      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
+      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} activeLayout={activeLayout} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
       {payFor && <RecordPaymentModal invoice={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); if (view) openView(view.id); }} />}
     </div>
   );
 };
 
 const IconBtn: React.FC<{ title: string; tone?: string; onClick: () => void; children: React.ReactNode }> = ({ title, tone, onClick, children }) => {
-  const tones: Record<string, string> = { indigo: 'hover:text-indigo-600 hover:bg-indigo-50', violet: 'hover:text-violet-600 hover:bg-violet-50', emerald: 'hover:text-emerald-600 hover:bg-emerald-50', amber: 'hover:text-amber-600 hover:bg-amber-50', rose: 'hover:text-rose-600 hover:bg-rose-50' };
-  return <button title={title} onClick={onClick} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-blue-600 hover:bg-blue-50'}`}>{children}</button>;
+  const tones: Record<string, string> = { indigo: 'hover:text-brand-600 hover:bg-brand-50', violet: 'hover:text-brand-600 hover:bg-brand-50', emerald: 'hover:text-emerald-600 hover:bg-emerald-50', amber: 'hover:text-amber-600 hover:bg-amber-50', rose: 'hover:text-rose-600 hover:bg-rose-50' };
+  return <button title={title} onClick={onClick} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-brand-600 hover:bg-brand-50'}`}>{children}</button>;
 };
 
 // ── Invoice detail modal ──────────────────────────────────────────────────────
-const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, onClose, onPay, onChanged }) => {
+const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; activeLayout?: InvoiceLayout | null; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, activeLayout, onClose, onPay, onChanged }) => {
   const intra = invoice.cgst > 0;
   return (
     <Modal open onClose={onClose} title={`${invoice.invoiceNumber}`} size="lg"
       footer={<>
-        <Button variant="outline" icon={<Printer size={14} />} onClick={() => { printInvoice(invoice, company, design); api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}); }}>Print / PDF</Button>
+        <Button variant="outline" icon={<Printer size={14} />} onClick={() => { printInvoice(invoice, company, design, activeLayout); api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}); }}>Print / PDF</Button>
         {canEdit && invoice.balanceDue > 0 && invoice.status !== 'Cancelled' && <Button icon={<IndianRupee size={14} />} onClick={onPay}>Record Payment</Button>}
         <Button variant="ghost" onClick={onClose}>Close</Button>
       </>}>
@@ -771,7 +816,7 @@ const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolea
             <Row label="Taxable" value={inr(invoice.taxableAmount)} />
             {intra ? <><Row label="CGST" value={inr(invoice.cgst)} /><Row label="SGST" value={inr(invoice.sgst)} /></> : <Row label="IGST" value={inr(invoice.igst)} />}
             <Row label="Round Off" value={inr(invoice.roundOff)} />
-            <div className="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold"><span>Grand Total</span><span className="text-[#4F7CFF]">{inr(invoice.grandTotal)}</span></div>
+            <div className="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold"><span>Grand Total</span><span className="text-[#6C3CF0]">{inr(invoice.grandTotal)}</span></div>
             <Row label="Paid" value={inr(invoice.amountPaid)} />
             <div className="flex justify-between text-xs font-bold text-orange-600"><span>Balance Due</span><span>{inr(invoice.balanceDue)}</span></div>
           </div>
@@ -830,17 +875,18 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true })}>Add Customer</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto"><table className="w-full text-left text-xs min-w-[760px]">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wide"><tr><th className="p-3">Company</th><th className="p-3">GSTIN</th><th className="p-3">Contact</th><th className="p-3 text-center">Invoices</th><th className="p-3 text-right">Outstanding</th><th className="p-3 text-right">Paid</th><th className="p-3 text-center">Status</th><th className="p-3 text-right">Actions</th></tr></thead>
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wide"><tr><th className="p-3">Code</th><th className="p-3">Company</th><th className="p-3">GSTIN</th><th className="p-3">Contact</th><th className="p-3 text-center">Invoices</th><th className="p-3 text-right">Outstanding</th><th className="p-3 text-right">Paid</th><th className="p-3 text-center">Status</th><th className="p-3 text-right">Actions</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={8} className="p-8 text-center text-slate-400">Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={8}><Empty icon={<Users size={26} />} title="No customers yet" /></td></tr>}
+            {loading && <tr><td colSpan={9} className="p-8 text-center text-slate-400">Loading…</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={9}><Empty icon={<Users size={26} />} title="No customers yet" /></td></tr>}
             {rows.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50/60">
+                <td className="p-3 font-mono text-[11px] font-bold text-[#6C3CF0]">{c.customerCode || '—'}</td>
                 <td className="p-3"><p className="font-bold text-slate-800">{c.companyName}</p><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
                 <td className="p-3 text-slate-600 font-mono text-[11px]">{c.gstin || '—'}</td>
                 <td className="p-3 text-slate-600">{c.contactPerson || '—'}<span className="block text-[10px] text-slate-400">{[c.city, c.state].filter(Boolean).join(', ')}</span></td>
@@ -865,6 +911,10 @@ const CustomerModal: React.FC<{ customer: any; onClose: () => void; onSave: (d: 
     <Modal open onClose={onClose} title={f.id ? 'Edit Customer' : 'New Customer'} size="md"
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => onSave(f)} icon={<Save size={14} />}>Save</Button></>}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <label className="mb-1 block text-[11px] font-bold text-slate-500">Client Code</label>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono font-bold text-[#6C3CF0]">{f.customerCode || 'Auto-assigned on save'}</div>
+        </div>
         <Input label="Company Name *" value={f.companyName || ''} onChange={(e: any) => set('companyName', e.target.value)} />
         <Input label="Contact Person" value={f.contactPerson || ''} onChange={(e: any) => set('contactPerson', e.target.value)} />
         <Input label="GSTIN" value={f.gstin || ''} onChange={(e: any) => set('gstin', e.target.value)} />
@@ -874,8 +924,11 @@ const CustomerModal: React.FC<{ customer: any; onClose: () => void; onSave: (d: 
         <Input label="City" value={f.city || ''} onChange={(e: any) => set('city', e.target.value)} />
         <Input label="State" value={f.state || ''} onChange={(e: any) => set('state', e.target.value)} />
         <Input label="Country" value={f.country || 'India'} onChange={(e: any) => set('country', e.target.value)} />
+        <Input label="Payment Terms" value={f.paymentTerms || ''} onChange={(e: any) => set('paymentTerms', e.target.value)} placeholder="e.g. Net 30" />
+        <Input label="Credit Days" type="number" value={f.creditDays ?? ''} onChange={(e: any) => set('creditDays', e.target.value)} placeholder="e.g. 30" />
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Address</label><textarea value={f.addressLine || ''} onChange={(e) => set('addressLine', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label><textarea value={f.addressLine || ''} onChange={(e) => set('addressLine', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(default; auto-filled onto new invoices)</span></label><textarea value={f.shipToAddress || ''} onChange={(e) => set('shipToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
       </div>
     </Modal>
   );
@@ -894,7 +947,7 @@ const ProductsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEd
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ name: '', unit: 'Nos', rate: 0, taxRate: 18, isActive: true })}>Add Product / Service</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -934,7 +987,7 @@ const ProductModal: React.FC<{ product: any; onClose: () => void; onSave: (d: an
         <Input label="Rate (₹)" type="number" value={f.rate ?? 0} onChange={(e: any) => set('rate', e.target.value)} />
         <Input label="GST %" type="number" value={f.taxRate ?? 0} onChange={(e: any) => set('taxRate', e.target.value)} />
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label><textarea value={f.description || ''} onChange={(e) => set('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label><textarea value={f.description || ''} onChange={(e) => set('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
       </div>
     </Modal>
   );
@@ -1007,7 +1060,7 @@ const SettingsTab: React.FC<{ canManage: boolean }> = ({ canManage }) => {
           <Input label="Next Number" type="number" value={f.nextNumber} onChange={(e: any) => set('nextNumber', e.target.value)} disabled={!canManage} />
           <Input label="Seq Padding" type="number" value={f.seqPadding} onChange={(e: any) => set('seqPadding', e.target.value)} disabled={!canManage} />
         </div>
-        <p className="text-[11px] text-slate-500 mt-2">Tokens: <code>{'{PREFIX} {FY} {YYYY} {MM} {SEQ}'}</code> · Next invoice: <b className="text-[#4F7CFF]">{preview}</b></p>
+        <p className="text-[11px] text-slate-500 mt-2">Tokens: <code>{'{PREFIX} {FY} {YYYY} {MM} {SEQ}'}</code> · Next invoice: <b className="text-[#6C3CF0]">{preview}</b></p>
       </Card>
       <Card>
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Defaults</h3>
@@ -1032,14 +1085,27 @@ const SettingsTab: React.FC<{ canManage: boolean }> = ({ canManage }) => {
 // ══════════════════════════════════════════════════════════════════════════════
 // A4 PRINT / PDF — opens a print window with a faithful invoice layout
 // ══════════════════════════════════════════════════════════════════════════════
-function printInvoice(inv: any, company: any, design?: InvoiceDesign) {
+function printInvoice(inv: any, company: any, design?: InvoiceDesign, activeLayout?: InvoiceLayout | null) {
   // Renders through the shared invoiceDocHtml so the print output is IDENTICAL to
   // the Invoice Designer's live preview. Branding still comes from BrandingService
   // inside the renderer. `design` defaults to the standard layout (unchanged output).
-  const html = invoiceDocHtml(inv, company, design, { print: true });
+  // When the company has an ACTIVE canvas layout, render via canvasDocHtml instead
+  // (same renderer as the visual designer → preview === PDF). Opt-in only.
+  const html = activeLayout
+    ? canvasDocHtml(inv, company, activeLayout, { print: true })
+    : invoiceDocHtml(inv, company, design, { print: true });
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { ui.toast.error('Allow pop-ups to print / download the invoice.'); return; }
   w.document.write(html); w.document.close();
+}
+
+// Fetch a company's ACTIVE canvas layout (or null → classic flow rendering).
+async function loadActiveLayout(): Promise<InvoiceLayout | null> {
+  try {
+    const r = await api.invoicing.listLayouts();
+    const active = (r?.layouts || []).find((l: any) => l.isDefault);
+    return active ? resolveLayout(active.layout) : null;
+  } catch { return null; }
 }
 
 export default InvoiceManagement;

@@ -134,7 +134,7 @@ export const DeploymentTab: React.FC<Props> = ({ activeCompanyId, role, onChange
             <Tbody>
               {deployments.map(d => (
                 <Tr key={d.id}>
-                  <Td><span className="font-semibold text-slate-800">{d.employee?.name}</span><span className="block text-[10px] text-indigo-600">{d.employee?.employeeId}</span></Td>
+                  <Td><span className="font-semibold text-slate-800">{d.employee?.name}</span><span className="block text-[10px] text-brand-600">{d.employee?.employeeId}</span></Td>
                   <Td>{d.site?.siteName || '—'}</Td>
                   <Td>{d.roleAtSite || '—'}</Td>
                   <Td><span className="text-[11px] text-slate-500">{formatDate(d.assignmentDate)}</span></Td>

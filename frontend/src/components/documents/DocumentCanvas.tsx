@@ -368,9 +368,9 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = (p) => {
 };
 
 // ── Mini schematic for the template picker card — shows the real layout shape. ──
-export const LayoutThumbnail: React.FC<{ layout?: string; color?: string }> = ({ layout, color = '#4f46e5' }) => {
+export const LayoutThumbnail: React.FC<{ layout?: string; color?: string }> = ({ layout, color = '#5b2de6' }) => {
   const id = LAYOUT_IDS.includes(layout || '') ? layout : 'modern-corporate';
-  const line = (w: string, c = '#e2e8f0') => <div className="h-[2px] rounded" style={{ width: w, background: c }} />;
+  const line = (w: string, c = '#e5e7eb') => <div className="h-[2px] rounded" style={{ width: w, background: c }} />;
   const box = "h-16 bg-white border border-slate-100 rounded-lg p-1.5 overflow-hidden pointer-events-none select-none flex flex-col";
   if (id === 'sidebar-tech') return (
     <div className={box + ' flex-row gap-1'}>
@@ -394,7 +394,7 @@ export const LayoutThumbnail: React.FC<{ layout?: string; color?: string }> = ({
       {line('55%', '#334155')}
       <div className="h-[2px] w-full bg-slate-300 my-1" />
       <div className="w-full space-y-1">{line('100%')}{line('95%')}{line('90%')}</div>
-      <div className="flex gap-2 w-full mt-auto pt-1">{line('40%', '#94a3b8')}{line('40%', '#94a3b8')}</div>
+      <div className="flex gap-2 w-full mt-auto pt-1">{line('40%', '#9ca3af')}{line('40%', '#9ca3af')}</div>
     </div>);
   if (id === 'government-format') return (
     <div className={box + ' p-0.5'}>
@@ -409,7 +409,7 @@ export const LayoutThumbnail: React.FC<{ layout?: string; color?: string }> = ({
       {line('40%', '#334155')}
       <div className="h-[1px] w-full bg-slate-200" />
       <div className="space-y-1.5">{line('85%')}{line('70%')}</div>
-      <div className="mt-auto">{line('30%', '#94a3b8')}</div>
+      <div className="mt-auto">{line('30%', '#9ca3af')}</div>
     </div>);
   if (id === 'international') return (
     <div className={box}>
@@ -426,7 +426,7 @@ export const LayoutThumbnail: React.FC<{ layout?: string; color?: string }> = ({
         <div className="w-2.5 h-2.5 rounded" style={{ background: color }} />
       </div>
       <div className="space-y-1 mt-1">{line('90%')}{line('80%')}{line('85%')}</div>
-      <div className="mt-auto">{line('35%', '#94a3b8')}</div>
+      <div className="mt-auto">{line('35%', '#9ca3af')}</div>
     </div>);
 };
 

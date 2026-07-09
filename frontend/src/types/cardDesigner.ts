@@ -149,16 +149,16 @@ export const FIELD_LABEL: Record<string, string> = Object.fromEntries(FIELD_CATA
 // ── Built-in colour themes ────────────────────────────────────────────────────
 export interface NamedTheme { id: string; label: string; theme: CardTheme; }
 export const CARD_THEMES: NamedTheme[] = [
-  { id: 'blue', label: 'Blue', theme: { primary: '#1e4fd8', secondary: '#4f7cff', accent: '#dbeafe', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'green', label: 'Green', theme: { primary: '#0f7b4f', secondary: '#16a34a', accent: '#dcfce7', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'purple', label: 'Purple', theme: { primary: '#6d28d9', secondary: '#8b5cf6', accent: '#ede9fe', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'orange', label: 'Orange', theme: { primary: '#c2410c', secondary: '#f97316', accent: '#ffedd5', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'black', label: 'Black', theme: { primary: '#0f172a', secondary: '#334155', accent: '#e2e8f0', text: '#f8fafc', bg: '#0f172a' } },
+  { id: 'blue', label: 'Blue', theme: { primary: '#1e4fd8', secondary: '#6c3cf0', accent: '#e6e0fe', text: '#111827', bg: '#ffffff' } },
+  { id: 'green', label: 'Green', theme: { primary: '#0f7b4f', secondary: '#16a34a', accent: '#dcfce7', text: '#111827', bg: '#ffffff' } },
+  { id: 'purple', label: 'Purple', theme: { primary: '#6d28d9', secondary: '#8b5cf6', accent: '#ede9fe', text: '#111827', bg: '#ffffff' } },
+  { id: 'orange', label: 'Orange', theme: { primary: '#c2410c', secondary: '#f97316', accent: '#ffedd5', text: '#111827', bg: '#ffffff' } },
+  { id: 'black', label: 'Black', theme: { primary: '#111827', secondary: '#334155', accent: '#e5e7eb', text: '#f8fafc', bg: '#111827' } },
   { id: 'white', label: 'White', theme: { primary: '#111827', secondary: '#6b7280', accent: '#f3f4f6', text: '#111827', bg: '#ffffff' } },
   { id: 'corporate', label: 'Corporate', theme: { primary: '#0b2447', secondary: '#19376d', accent: '#a5d7e8', text: '#0b2447', bg: '#ffffff' } },
-  { id: 'hospital', label: 'Hospital', theme: { primary: '#0e7490', secondary: '#06b6d4', accent: '#cffafe', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'university', label: 'University', theme: { primary: '#7f1d1d', secondary: '#b91c1c', accent: '#fee2e2', text: '#0f172a', bg: '#ffffff' } },
-  { id: 'manufacturing', label: 'Manufacturing', theme: { primary: '#a16207', secondary: '#f59e0b', accent: '#fef3c7', text: '#0f172a', bg: '#ffffff' } },
+  { id: 'hospital', label: 'Hospital', theme: { primary: '#0e7490', secondary: '#06b6d4', accent: '#cffafe', text: '#111827', bg: '#ffffff' } },
+  { id: 'university', label: 'University', theme: { primary: '#7f1d1d', secondary: '#b91c1c', accent: '#fee2e2', text: '#111827', bg: '#ffffff' } },
+  { id: 'manufacturing', label: 'Manufacturing', theme: { primary: '#a16207', secondary: '#f59e0b', accent: '#fef3c7', text: '#111827', bg: '#ffffff' } },
   { id: 'gold', label: 'Premium Gold', theme: { primary: '#8a6d1f', secondary: '#caa64a', accent: '#f7ecc9', text: '#1c1917', bg: '#fffef8' } },
-  { id: 'slate', label: 'Slate', theme: { primary: '#334155', secondary: '#64748b', accent: '#e2e8f0', text: '#0f172a', bg: '#ffffff' } },
+  { id: 'slate', label: 'Slate', theme: { primary: '#334155', secondary: '#6b7280', accent: '#e5e7eb', text: '#111827', bg: '#ffffff' } },
 ];

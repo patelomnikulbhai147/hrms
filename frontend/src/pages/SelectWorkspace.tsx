@@ -96,7 +96,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
   if (isLoading || (companies.length === 0 && isLoading !== false)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
-        <div className="w-10 h-10 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        <div className="w-10 h-10 border-2 border-brand-200 border-t-brand-600 rounded-full animate-spin" />
         <div className="text-slate-500 text-sm font-medium">Loading your workspaces…</div>
       </div>
     );
@@ -108,7 +108,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
               <ShieldCheck size={18} className="text-white" />
             </div>
             <div className="leading-tight">
@@ -121,7 +121,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
               <div className="text-sm font-medium text-slate-900">{user.name || user.username}</div>
               <div className="text-[11px] text-slate-500">{user.role}</div>
             </div>
-            <div className="w-9 h-9 rounded-full bg-indigo-50 ring-1 ring-indigo-100 flex items-center justify-center text-sm font-semibold text-indigo-600">
+            <div className="w-9 h-9 rounded-full bg-brand-50 ring-1 ring-brand-100 flex items-center justify-center text-sm font-semibold text-brand-600">
               {initials}
             </div>
           </div>
@@ -146,7 +146,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search workspaces…"
-                className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                className="w-full bg-white border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
               />
             </div>
           )}
@@ -189,15 +189,15 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                         type="button"
                         onClick={() => handleEnterWorkspace(group.companyId)}
                         title="Open the company workspace (consolidated, all branches)"
-                        className="group/comp flex items-center gap-3 -ml-1 pl-1 pr-2.5 py-1 rounded-lg hover:bg-indigo-50/70 transition-colors cursor-pointer"
+                        className="group/comp flex items-center gap-3 -ml-1 pl-1 pr-2.5 py-1 rounded-lg hover:bg-brand-50/70 transition-colors cursor-pointer"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center group-hover/comp:ring-indigo-300 transition-colors">
-                          <Building2 size={16} className="text-slate-600 group-hover/comp:text-indigo-600 transition-colors" />
+                        <div className="w-8 h-8 rounded-lg bg-white ring-1 ring-slate-200 shadow-sm flex items-center justify-center group-hover/comp:ring-brand-300 transition-colors">
+                          <Building2 size={16} className="text-slate-600 group-hover/comp:text-brand-600 transition-colors" />
                         </div>
-                        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700 group-hover/comp:text-indigo-700 transition-colors">
+                        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-700 group-hover/comp:text-brand-700 transition-colors">
                           {group.companyName}
                         </h2>
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600 opacity-0 group-hover/comp:opacity-100 transition-opacity">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-brand-600 opacity-0 group-hover/comp:opacity-100 transition-opacity">
                           Open <ArrowRight size={11} />
                         </span>
                       </button>
@@ -231,7 +231,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                           className={cn(
                             "group relative text-left rounded-2xl p-5 transition-all duration-150 ring-1 focus:outline-none",
                             isSelected
-                              ? "bg-indigo-50 ring-2 ring-indigo-500 shadow-md"
+                              ? "bg-brand-50 ring-2 ring-brand-500 shadow-md"
                               : "bg-white ring-slate-200 shadow-sm hover:ring-slate-300 hover:shadow-md"
                           )}
                         >
@@ -240,12 +240,12 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                             "absolute top-4 right-4 transition-opacity",
                             isSelected ? "opacity-100" : "opacity-0"
                           )}>
-                            <CheckCircle2 size={20} className="text-indigo-600" />
+                            <CheckCircle2 size={20} className="text-brand-600" />
                           </div>
 
                           <div className={cn(
                             "w-11 h-11 rounded-xl flex items-center justify-center mb-4 transition-colors",
-                            isSelected ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
+                            isSelected ? "bg-brand-100 text-brand-600" : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
                           )}>
                             <MapPin size={20} />
                           </div>
@@ -263,7 +263,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
                             )}
                             <span className={cn(
                               "ml-auto text-xs font-medium transition-colors",
-                              isSelected ? "text-indigo-600" : "text-slate-400 group-hover:text-slate-600"
+                              isSelected ? "text-brand-600" : "text-slate-400 group-hover:text-slate-600"
                             )}>
                               {isSelected ? 'Selected' : 'Click to select'}
                             </span>
@@ -319,7 +319,7 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
             <button
               onClick={() => handleEnterWorkspace(selectedId)}
               disabled={!selectedId || isEntering}
-              className="shrink-0 px-6 py-3 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white rounded-xl font-semibold text-sm flex items-center gap-2 shadow-lg shadow-indigo-500/25 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+              className="shrink-0 px-6 py-3 bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-500 hover:to-brand-500 text-white rounded-xl font-semibold text-sm flex items-center gap-2 shadow-lg shadow-brand-500/25 transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isEntering ? (
                 <>

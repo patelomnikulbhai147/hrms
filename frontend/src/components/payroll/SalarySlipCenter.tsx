@@ -115,13 +115,13 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
 
   const cards: { label: string; value: string; icon: React.ReactNode; tone: string }[] = [
     { label: 'Total Employees', value: String(m.total), icon: <Users size={16} />, tone: 'text-slate-600 bg-slate-50' },
-    { label: 'Payroll Generated', value: String(m.generated), icon: <FileCheck2 size={16} />, tone: 'text-blue-600 bg-blue-50' },
+    { label: 'Payroll Generated', value: String(m.generated), icon: <FileCheck2 size={16} />, tone: 'text-brand-600 bg-brand-50' },
     { label: 'Payroll Approved', value: String(m.approved), icon: <CheckCircle2 size={16} />, tone: 'text-emerald-600 bg-emerald-50' },
     { label: 'Payroll Paid', value: String(m.paid), icon: <Wallet size={16} />, tone: 'text-green-600 bg-green-50' },
-    { label: 'Gross Payroll', value: inr(m.gross), icon: <TrendingUp size={16} />, tone: 'text-indigo-600 bg-indigo-50' },
+    { label: 'Gross Payroll', value: inr(m.gross), icon: <TrendingUp size={16} />, tone: 'text-brand-600 bg-brand-50' },
     { label: 'Total Deductions', value: inr(m.deductions), icon: <TrendingDown size={16} />, tone: 'text-rose-600 bg-rose-50' },
-    { label: 'Net Payroll', value: inr(m.net), icon: <IndianRupee size={16} />, tone: 'text-violet-600 bg-violet-50' },
-    { label: 'PF Liability', value: inr(m.pf), icon: <Landmark size={16} />, tone: 'text-cyan-600 bg-cyan-50' },
+    { label: 'Net Payroll', value: inr(m.net), icon: <IndianRupee size={16} />, tone: 'text-brand-600 bg-brand-50' },
+    { label: 'PF Liability', value: inr(m.pf), icon: <Landmark size={16} />, tone: 'text-brand-600 bg-brand-50' },
     { label: 'ESIC Liability', value: inr(m.esic), icon: <ShieldCheck size={16} />, tone: 'text-teal-600 bg-teal-50' },
     { label: 'Professional Tax', value: inr(m.pt), icon: <Receipt size={16} />, tone: 'text-amber-600 bg-amber-50' },
     { label: 'TDS', value: inr(m.tds), icon: <Percent size={16} />, tone: 'text-orange-600 bg-orange-50' },
@@ -182,13 +182,13 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
           <div className="relative">
             <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input value={empSearch} onChange={e => setEmpSearch(e.target.value)} placeholder="Search code / name…"
-              className="w-52 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-indigo-400" />
+              className="w-52 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-brand-400" />
           </div>
-          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-indigo-400">
+          <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
             <option value="">All Branches</option>
             {branches.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
-          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-indigo-400">
+          <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
             <option value="">All Departments</option>
             {depts.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
@@ -233,7 +233,7 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
                 const pb = payrollStatusBadge(x.r.payrollStatus || x.r.status);
                 const yb = paymentStatusBadge(x.r.paymentStatus);
                 return (
-                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${selected.has(x.r.id) ? 'bg-indigo-50/40' : ''}`}>
+                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${selected.has(x.r.id) ? 'bg-brand-50/40' : ''}`}>
                     <td className="px-3 py-2"><input type="checkbox" checked={selected.has(x.r.id)} onChange={() => toggleOne(x.r.id)} className="rounded border-slate-300" /></td>
                     <td className="px-2 py-2 text-center text-slate-400">{i + 1}</td>
                     <td className="px-2 py-2 font-bold text-slate-800">{x.code}</td>
@@ -249,7 +249,7 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
                     <td className="px-2 py-2"><Badge variant={yb.variant}>{yb.label}</Badge></td>
                     <td className="px-2 py-2">
                       <div className="relative flex items-center justify-center gap-1">
-                        <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"><Eye size={14} /></button>
+                        <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><Eye size={14} /></button>
                         <button title="Download PDF" onClick={() => onDownloadPdf(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"><Download size={14} /></button>
                         <button title="More actions" onClick={() => setOpenMenu(openMenu === x.r.id ? null : x.r.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><MoreVertical size={14} /></button>
                         {openMenu === x.r.id && (

@@ -37,9 +37,9 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#4F7CFF]" /> Compliance Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#6C3CF0]" /> Compliance Management</h2>
           <p className="text-[11px] text-slate-400">Statutory filing calendar, due-date tracking &amp; challans — PF · ESI · PT · TDS · GST · LWF — {activeCompany?.name || 'your company'}.</p>
         </div>
         {canEdit && <Button size="sm" variant="outline" icon={<Bell size={14} />} onClick={async () => { try { const r = await api.compliance.runReminders(); ui.toast.success(`Reminders sent: ${r.sent} of ${r.checked} filing(s) due.`); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }}>Send Reminders</Button>}
@@ -49,7 +49,7 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
       <div className="flex flex-wrap gap-1 border-b border-slate-200">
         {TABS.map((t) => { const Icon = t.icon; return (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
             <Icon size={14} /> {t.label}
           </button>
         ); })}
@@ -66,7 +66,7 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#EDF4FF] text-[#4F7CFF]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -91,18 +91,18 @@ export const DashboardTab: React.FC<{ onGoto: (t: TabId) => void }> = ({ onGoto 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Upcoming (30d)" value={loading ? '—' : k.upcoming ?? 0} icon={<Clock size={16} />} tone="bg-sky-50 text-sky-600" />
+        <Kpi label="Upcoming (30d)" value={loading ? '—' : k.upcoming ?? 0} icon={<Clock size={16} />} tone="bg-brand-50 text-brand-600" />
         <Kpi label="Overdue" value={loading ? '—' : k.overdue ?? 0} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
         <Kpi label="Pending" value={loading ? '—' : k.pendingTotal ?? 0} icon={<ListChecks size={16} />} tone="bg-amber-50 text-amber-600" />
         <Kpi label="Filed" value={loading ? '—' : k.filedTotal ?? 0} icon={<CheckCircle2 size={16} />} tone="bg-emerald-50 text-emerald-600" />
-        <Kpi label="Pending Amount" value={loading ? '—' : inr(k.pendingAmount)} icon={<IndianRupee size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        <Kpi label="Pending Amount" value={loading ? '—' : inr(k.pendingAmount)} icon={<IndianRupee size={16} />} tone="bg-brand-50 text-brand-600" />
       </div>
 
       <Card>
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Statutory Categories (pending)</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {CATEGORIES.filter((c) => cats[c]).map((c) => (
-            <button key={c} onClick={() => onGoto('filings')} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-left hover:border-[#4F7CFF] transition">
+            <button key={c} onClick={() => onGoto('filings')} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-left hover:border-[#6C3CF0] transition">
               <p className="text-[10px] font-bold uppercase text-slate-400">{c}</p>
               <p className="text-lg font-extrabold text-slate-800">{cats[c].pending}</p>
               <p className="text-[10px] text-slate-500">{inr(cats[c].amount)}</p>

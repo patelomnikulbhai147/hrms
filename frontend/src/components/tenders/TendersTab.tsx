@@ -160,7 +160,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
     return (
       <div className="space-y-4 animate-fade-in">
         <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <button onClick={closeForm} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-indigo-600 transition"><ChevronLeft size={15} /> Back to tenders</button>
+          <button onClick={closeForm} className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-brand-600 transition"><ChevronLeft size={15} /> Back to tenders</button>
           <h3 className="text-base font-extrabold text-slate-800">{editingId ? 'Edit Tender' : 'Create Tender'}</h3>
         </div>
         <div className="space-y-4 max-w-5xl">
@@ -194,8 +194,8 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
   }
 
   const CARDS: { label: string; value: number; tone: string }[] = [
-    { label: 'Live Tenders', value: counts.live, tone: 'border-sky-200 bg-gradient-to-br from-sky-50 to-white text-sky-700' },
-    { label: 'Submitted', value: counts.submitted, tone: 'border-blue-200 bg-gradient-to-br from-blue-50 to-white text-blue-700' },
+    { label: 'Live Tenders', value: counts.live, tone: 'border-brand-200 bg-gradient-to-br from-brand-50 to-white text-brand-700' },
+    { label: 'Submitted', value: counts.submitted, tone: 'border-brand-200 bg-gradient-to-br from-brand-50 to-white text-brand-700' },
     { label: 'Awarded', value: counts.awarded, tone: 'border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-emerald-700' },
     { label: 'Closed', value: counts.closed, tone: 'border-rose-200 bg-gradient-to-br from-rose-50 to-white text-rose-700' },
     { label: 'Cancelled', value: counts.cancelled, tone: 'border-slate-200 bg-gradient-to-br from-slate-50 to-white text-slate-600' },
@@ -217,7 +217,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
       <div className="flex flex-wrap gap-1">
         {TENDER_TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
         ))}
       </div>
 
@@ -259,7 +259,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
             <Tbody>
               {rows.map(t => (
                 <Tr key={t.id}>
-                  <Td><span className="font-mono text-[11px] text-indigo-700">{t.tenderNumber || '—'}</span></Td>
+                  <Td><span className="font-mono text-[11px] text-brand-700">{t.tenderNumber || '—'}</span></Td>
                   <Td><span className="font-semibold text-slate-800">{t.tenderName}</span></Td>
                   <Td>{t.clientName || '—'}</Td>
                   <Td>{t.serviceType ? <Badge variant="indigo">{t.serviceType}</Badge> : '—'}</Td>
@@ -268,10 +268,10 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
                   <Td><Badge variant={statusVariant(t.status)}>{t.status}</Badge>{t.convertedContractId && <span className="ml-1 text-[9px] font-bold text-emerald-600">✓ Contract</span>}</Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
-                      <button onClick={() => setViewTender(t)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-indigo-600 shadow-sm"><Eye size={13} /></button>
-                      {canManageCommercial && <button onClick={() => openEdit(t)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Edit2 size={13} /></button>}
-                      {canManageCommercial && t.status === 'Draft' && <button onClick={() => setStatus(t, 'Live')} title="Mark Live" className="p-1.5 rounded-md border border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100 shadow-sm"><Send size={13} /></button>}
-                      {canManageCommercial && t.status === 'Live' && <button onClick={() => setStatus(t, 'Submitted')} title="Submit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Send size={13} /></button>}
+                      <button onClick={() => setViewTender(t)} title="View" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Eye size={13} /></button>
+                      {canManageCommercial && <button onClick={() => openEdit(t)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Edit2 size={13} /></button>}
+                      {canManageCommercial && t.status === 'Draft' && <button onClick={() => setStatus(t, 'Live')} title="Mark Live" className="p-1.5 rounded-md border border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 shadow-sm"><Send size={13} /></button>}
+                      {canManageCommercial && t.status === 'Live' && <button onClick={() => setStatus(t, 'Submitted')} title="Submit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Send size={13} /></button>}
                       {canManageCommercial && t.status === 'Won' && !t.convertedContractId && <button onClick={() => convert(t)} title="Convert to Contract" className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-sm"><ArrowRightCircle size={13} /></button>}
                       {canManageCommercial && <button onClick={() => remove(t.id)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                     </div>
@@ -303,7 +303,7 @@ export const TendersTab: React.FC<Props> = ({ activeCompanyId, canManageCommerci
               <div key={k as string} className="flex justify-between border-b border-slate-100 py-1.5"><span className="text-xs text-slate-500 font-semibold">{k}</span><span className="text-xs text-slate-800 font-bold">{v}</span></div>
             ))}
             {viewTender.documentPath && (
-              <a href={viewTender.documentPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:underline pt-1"><ExternalLink size={13} /> Open attachment</a>
+              <a href={viewTender.documentPath} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline pt-1"><ExternalLink size={13} /> Open attachment</a>
             )}
             {(viewTender.remarks || viewTender.notes) && <div className="pt-2"><p className="text-[10px] text-slate-400 uppercase font-bold">Remarks</p><p className="text-xs text-slate-700 mt-0.5 whitespace-pre-wrap">{viewTender.remarks || viewTender.notes}</p></div>}
           </div>

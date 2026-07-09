@@ -118,7 +118,7 @@ export const NomineesTab: React.FC<Props> = ({ employeeId, employeeName, role })
                   <p className="text-sm font-bold text-slate-800 truncate">{n.fullName}</p>
                   <p className="text-[11px] text-slate-500">{n.relationship}{n.dob ? ` · DOB ${n.dob}` : ''}{n.gender ? ` · ${n.gender}` : ''}</p>
                 </div>
-                {multi && <span className="shrink-0 text-sm font-extrabold text-indigo-600">{Number(n.percentage)}%</span>}
+                {multi && <span className="shrink-0 text-sm font-extrabold text-brand-600">{Number(n.percentage)}%</span>}
               </div>
               <div className="flex flex-wrap gap-1 mt-2">
                 {n.status === 'Archived' && <Badge variant="gray">Archived</Badge>}
@@ -133,7 +133,7 @@ export const NomineesTab: React.FC<Props> = ({ employeeId, employeeName, role })
                       <FileText size={11} className="text-slate-400 shrink-0" />
                       <span className="text-[10px] font-semibold text-slate-600 shrink-0">{d.docType}</span>
                       <span className="text-[10px] text-slate-400 truncate flex-1">{d.fileName}</span>
-                      <button title="View" onClick={() => viewDoc(d.id)} className="text-slate-400 hover:text-blue-600 shrink-0"><Eye size={12} /></button>
+                      <button title="View" onClick={() => viewDoc(d.id)} className="text-slate-400 hover:text-brand-600 shrink-0"><Eye size={12} /></button>
                       <button title="Download" onClick={() => downloadDoc(d.id)} className="text-slate-400 hover:text-emerald-600 shrink-0"><Download size={12} /></button>
                       {canEdit && <button title="Delete" onClick={() => deleteDoc(d.id)} className="text-slate-400 hover:text-rose-600 shrink-0"><Trash2 size={12} /></button>}
                     </div>
@@ -142,7 +142,7 @@ export const NomineesTab: React.FC<Props> = ({ employeeId, employeeName, role })
               )}
               {canEdit && (
                 <div className="flex gap-1.5 mt-2.5 pt-2 border-t border-slate-100">
-                  <button onClick={() => setEditing(n)} className="flex items-center gap-1 text-[10px] font-bold text-blue-700 hover:bg-blue-50 px-2 py-1 rounded"><Pencil size={11} /> Edit</button>
+                  <button onClick={() => setEditing(n)} className="flex items-center gap-1 text-[10px] font-bold text-brand-700 hover:bg-brand-50 px-2 py-1 rounded"><Pencil size={11} /> Edit</button>
                   <button onClick={() => onArchive(n)} className="flex items-center gap-1 text-[10px] font-bold text-amber-700 hover:bg-amber-50 px-2 py-1 rounded">{n.status === 'Archived' ? <><ArchiveRestore size={11} /> Restore</> : <><Archive size={11} /> Archive</>}</button>
                   <button onClick={() => onDelete(n)} className="flex items-center gap-1 text-[10px] font-bold text-rose-700 hover:bg-rose-50 px-2 py-1 rounded ml-auto"><Trash2 size={11} /> Delete</button>
                 </div>

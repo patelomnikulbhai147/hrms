@@ -136,7 +136,7 @@ export async function exportQrZip(items: CardItem[], fileName = 'employee-qr-cod
   const zip = new JSZip();
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
-    const url = qrDataUrl(verificationUrl(it.employee, it.companyId), 480, '#0f172a', '#ffffff');
+    const url = qrDataUrl(verificationUrl(it.employee, it.companyId), 480, '#111827', '#ffffff');
     const base = (it.employee?.employeeId || it.employee?.name || 'employee').toString().replace(/[^\w.-]+/g, '_');
     if (url) zip.file(`${base}-qr.png`, url.split(',')[1], { base64: true });
     onProgress?.(i + 1, items.length);

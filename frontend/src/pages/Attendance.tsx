@@ -47,9 +47,9 @@ const ATTENDANCE_STATUS_OPTIONS = [
 const WEEKLY_CELL_STATUSES: { value: string; label: string; dot: string }[] = [
   { value: 'Present', label: 'Present (P)', dot: 'bg-emerald-500' },
   { value: 'Absent', label: 'Absent (A)', dot: 'bg-rose-500' },
-  { value: 'Leave', label: 'Leave (L)', dot: 'bg-indigo-500' },
+  { value: 'Leave', label: 'Leave (L)', dot: 'bg-brand-500' },
   { value: 'Half Day', label: 'Half Day (HD)', dot: 'bg-orange-500' },
-  { value: 'Work From Home', label: 'Work From Home (WFH)', dot: 'bg-purple-500' },
+  { value: 'Work From Home', label: 'Work From Home (WFH)', dot: 'bg-brand-500' },
   { value: 'Holiday', label: 'Holiday (H)', dot: 'bg-gray-400' },
   { value: 'Weekly Off', label: 'Weekly Off (WO)', dot: 'bg-slate-300' },
 ];
@@ -921,7 +921,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     <div className="space-y-4 font-sans">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><Calendar size={20} className="text-blue-600" /> Enterprise Attendance Management Center</h2>
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2"><Calendar size={20} className="text-brand-600" /> Enterprise Attendance Management Center</h2>
           <p className="text-xs text-slate-500 mt-1">Fully integrated with Payroll Engine, Leave Balances, and Overtime Processing.</p>
         </div>
         <div className="flex gap-2">
@@ -929,7 +929,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
              <Download size={14}/> Export
            </Button>
            {isAdmin && (
-             <Button variant="outline" size="sm" onClick={openPayrollSync} className="flex items-center gap-1 border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100">
+             <Button variant="outline" size="sm" onClick={openPayrollSync} className="flex items-center gap-1 border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100">
                <RefreshCcw size={14}/> Push to Payroll Engine
              </Button>
            )}
@@ -950,7 +950,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id as any)}
-            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-lg transition-colors ${activeTab === t.id ? 'bg-white text-blue-700 border-t border-l border-r border-slate-200 shadow-[0_-2px_4px_rgba(0,0,0,0.02)]' : 'text-slate-500 hover:bg-slate-50'}`}
+            className={`flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-t-lg transition-colors ${activeTab === t.id ? 'bg-white text-brand-700 border-t border-l border-r border-slate-200 shadow-[0_-2px_4px_rgba(0,0,0,0.02)]' : 'text-slate-500 hover:bg-slate-50'}`}
           >
             <t.icon size={14} /> {t.label}
           </button>
@@ -962,19 +962,19 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         <div className="space-y-4 animate-in fade-in">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {[
-              { label: 'Total Employees', sub: 'Active Workforce', value: statTotal, icon: Users, colorClass: 'text-blue-600', bgClass: 'bg-blue-50', gradient: 'from-blue-500 to-blue-600' },
+              { label: 'Total Employees', sub: 'Active Workforce', value: statTotal, icon: Users, colorClass: 'text-brand-600', bgClass: 'bg-brand-50', gradient: 'from-brand-500 to-brand-600' },
               { label: 'Present Today', sub: '100% of total', value: statPresent, icon: CheckCircle2, colorClass: 'text-emerald-600', bgClass: 'bg-emerald-50', gradient: 'from-emerald-500 to-emerald-600' },
               { label: 'Absent Today', sub: '0% of total', value: statAbsent, icon: XCircle, colorClass: 'text-rose-600', bgClass: 'bg-rose-50', gradient: 'from-rose-500 to-rose-600' },
               { label: 'On Leave', sub: '0% of total', value: statLeave, icon: Calendar, colorClass: 'text-amber-600', bgClass: 'bg-amber-50', gradient: 'from-amber-500 to-amber-600' },
-              { label: 'WFH Today', sub: '0% of total', value: statWfh, icon: Building2, colorClass: 'text-purple-600', bgClass: 'bg-purple-50', gradient: 'from-purple-500 to-purple-600' },
-              { label: 'Half Day', sub: '0% of total', value: statHalf, icon: Clock, colorClass: 'text-cyan-600', bgClass: 'bg-cyan-50', gradient: 'from-cyan-500 to-cyan-600' },
+              { label: 'WFH Today', sub: '0% of total', value: statWfh, icon: Building2, colorClass: 'text-brand-600', bgClass: 'bg-brand-50', gradient: 'from-brand-500 to-brand-600' },
+              { label: 'Half Day', sub: '0% of total', value: statHalf, icon: Clock, colorClass: 'text-brand-600', bgClass: 'bg-brand-50', gradient: 'from-brand-500 to-brand-600' },
               { label: 'Late Today', sub: '0.0% of total', value: statLate, icon: AlertCircle, colorClass: 'text-pink-600', bgClass: 'bg-pink-50', gradient: 'from-pink-500 to-pink-600' },
-              { label: 'Overtime Running', sub: '0% of total', value: statOvertime, icon: Clock, colorClass: 'text-violet-600', bgClass: 'bg-violet-50', gradient: 'from-violet-500 to-violet-600' },
+              { label: 'Overtime Running', sub: '0% of total', value: statOvertime, icon: Clock, colorClass: 'text-brand-600', bgClass: 'bg-brand-50', gradient: 'from-brand-500 to-brand-600' },
             ].map((kpi, idx) => {
               const pct = statTotal ? Math.round((kpi.value / statTotal) * 100) : 0;
               const subtext = kpi.sub || `${pct}% of total`;
               return (
-                <div key={idx} className="bg-white/80 backdrop-blur-xl rounded-[20px] border border-[#E5EFFF] shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[120px] p-4 group">
+                <div key={idx} className="bg-white/80 backdrop-blur-xl rounded-[20px] border border-[#E6E0FE] shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden flex flex-col justify-between h-[120px] p-4 group">
                   {/* Subtle bottom gradient strip */}
                   <div className={`absolute bottom-0 left-0 w-full h-[4px] bg-gradient-to-r ${kpi.gradient} opacity-90`} />
                   
@@ -1005,7 +1005,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {/* Workforce Analytics */}
-            <div className="bg-white rounded-[20px] border border-[#E5EFFF] shadow-sm p-5 flex flex-col justify-between">
+            <div className="bg-white rounded-[20px] border border-[#E6E0FE] shadow-sm p-5 flex flex-col justify-between">
               <div>
                 <h3 className="text-[14px] font-bold text-gray-800">Workforce Analytics</h3>
                 <p className="text-[11px] text-gray-500 mb-4">Real-time insights and statistics.</p>
@@ -1030,16 +1030,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     <span className="text-gray-800">{statLeave} ({(statTotal ? Math.round(statLeave/statTotal*100) : 0)}%)</span>
                   </div>
                   <div className="flex justify-between items-center text-[11px] font-bold">
-                    <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-purple-500 shadow-sm"></span> WFH</span>
+                    <span className="flex items-center gap-1.5 text-gray-600"><span className="w-2 h-2 rounded-full bg-brand-500 shadow-sm"></span> WFH</span>
                     <span className="text-gray-800">{statWfh} ({(statTotal ? Math.round(statWfh/statTotal*100) : 0)}%)</span>
                   </div>
                 </div>
               </div>
-              <button className="text-[11px] text-blue-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
+              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Department Distribution */}
-            <div className="bg-white rounded-[20px] border border-[#E5EFFF] shadow-sm p-5 flex flex-col justify-between">
+            <div className="bg-white rounded-[20px] border border-[#E6E0FE] shadow-sm p-5 flex flex-col justify-between">
               <div>
                 <h3 className="text-[14px] font-bold text-gray-800 mb-5">Department Distribution</h3>
               </div>
@@ -1054,7 +1054,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                         <span className="text-gray-800">{deptCount} ({Math.round(pct)}%)</span>
                       </div>
                       <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden shadow-inner">
-                        <div className="bg-blue-600 h-full rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                        <div className="bg-brand-600 h-full rounded-full transition-all duration-500" style={{ width: `${pct}%` }}></div>
                       </div>
                     </div>
                   );
@@ -1063,51 +1063,51 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                    <div className="text-xs text-gray-400 text-center py-4">No department data available.</div>
                 )}
               </div>
-              <button className="text-[11px] text-blue-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
+              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Broadcast & Notification */}
-            <div className="bg-white rounded-[20px] border border-[#E5EFFF] shadow-sm p-5 flex flex-col justify-between">
+            <div className="bg-white rounded-[20px] border border-[#E6E0FE] shadow-sm p-5 flex flex-col justify-between">
               <div>
                 <h3 className="text-[14px] font-bold text-gray-800 mb-4">Broadcast & Notification</h3>
               </div>
               <div className="flex flex-col gap-3 flex-1">
                 <div>
                   <label className="block text-[11px] font-bold text-gray-600 mb-1">Target Audience</label>
-                  <select className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700 transition-all">
+                  <select className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all">
                     <option>All Staff</option>
                     <option>My Local Branch Staff Only</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-gray-600 mb-1">Message</label>
-                  <textarea className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-gray-700 transition-all" placeholder="Type your message here..."></textarea>
+                  <textarea className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all" placeholder="Type your message here..."></textarea>
                 </div>
               </div>
-              <Button className="w-full text-xs mt-4 bg-indigo-600 hover:bg-indigo-700 font-bold shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2"><Send size={14} /> Dispatch Broadcast</Button>
+              <Button className="w-full text-xs mt-4 bg-brand-600 hover:bg-brand-700 font-bold shadow-md shadow-brand-600/20 flex items-center justify-center gap-2"><Send size={14} /> Dispatch Broadcast</Button>
             </div>
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-[16px] border border-[#E5EFFF] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-[16px] border border-[#E6E0FE] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl group-hover:scale-110 transition-transform"><Activity size={18} /></div>
+                <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl group-hover:scale-110 transition-transform"><Activity size={18} /></div>
                 <div>
                   <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">Today's Attendance Rate</p>
                   <h4 className="text-xl font-black text-gray-900">{statTotal > 0 ? Math.round((statPresent/statTotal)*100) : 0}%</h4>
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-[16px] border border-[#E5EFFF] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-[16px] border border-[#E6E0FE] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3">
-                <div className="p-2.5 bg-purple-50 text-purple-600 rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} /></div>
+                <div className="p-2.5 bg-brand-50 text-brand-600 rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} /></div>
                 <div>
                   <p className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">Overtime Hours (Today)</p>
                   <h4 className="text-xl font-black text-gray-900">{statOvertime > 0 ? `${statOvertime * 2}h 00m` : '00h 00m'}</h4>
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-[16px] border border-[#E5EFFF] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-[16px] border border-[#E6E0FE] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl group-hover:scale-110 transition-transform"><CheckCircle2 size={18} /></div>
                 <div>
@@ -1116,7 +1116,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </div>
               </div>
             </div>
-            <div className="bg-white rounded-[16px] border border-[#E5EFFF] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
+            <div className="bg-white rounded-[16px] border border-[#E6E0FE] shadow-sm p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-orange-50 text-orange-600 rounded-xl group-hover:scale-110 transition-transform"><Users size={18} /></div>
                 <div>
@@ -1137,7 +1137,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
             {(['daily','weekly','monthly','yearly','custom'] as PeriodMode[]).map(m => (
               <button key={m} onClick={() => setPeriodMode(m)}
-                className={`px-3 py-1.5 text-[11px] font-bold rounded-md capitalize transition-colors ${periodMode === m ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                className={`px-3 py-1.5 text-[11px] font-bold rounded-md capitalize transition-colors ${periodMode === m ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 {m}
               </button>
             ))}
@@ -1194,7 +1194,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             {isAdmin && (
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Present')}><CheckCircle2 size={12} className="mr-1 text-emerald-500"/> Bulk Present</Button>
-                <Button size="sm" variant="outline" className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Holiday')}><Calendar size={12} className="mr-1 text-indigo-500"/> Bulk Holiday</Button>
+                <Button size="sm" variant="outline" className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Holiday')}><Calendar size={12} className="mr-1 text-brand-500"/> Bulk Holiday</Button>
               </div>
             )}
           </div>
@@ -1217,7 +1217,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   {isAdmin && <Td className="text-center"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={e => {
                     if (e.target.checked) setSelectedIds([...selectedIds, r.id]);
                     else setSelectedIds(selectedIds.filter(id => id !== r.id));
-                  }} className="rounded border-slate-300 text-blue-600" /></Td>}
+                  }} className="rounded border-slate-300 text-brand-600" /></Td>}
                   <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
                   <Td>
                     <div className="font-bold text-slate-800 text-xs">{r.employeeName}</div>
@@ -1230,7 +1230,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <span className={`px-2 py-1 w-max rounded-full text-[10px] font-bold 
                         ${r.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 
                           r.status === 'Absent' ? 'bg-rose-100 text-rose-700' : 
-                          r.status === 'Leave' ? 'bg-indigo-100 text-indigo-700' : 
+                          r.status === 'Leave' ? 'bg-brand-100 text-brand-700' : 
                           r.status === 'Holiday' ? 'bg-fuchsia-100 text-fuchsia-700' :
                           r.status === 'Weekly Off' ? 'bg-slate-200 text-slate-700' :
                           'bg-slate-100 text-slate-700'}`}>
@@ -1246,7 +1246,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   {isAdmin && (
                     <Td className="text-right">
                       <select 
-                        className="text-[10px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-500"
+                        className="text-[10px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
                         value={r.status}
                         onChange={e => handleSingleMark(r.id, e.target.value)}
                       >
@@ -1298,7 +1298,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                           if (bucket === 'present') present++;
                           // Color coding: Present=green, Absent=red, Leave=blue,
                           // Half Day=orange, WFH=purple, Holiday=gray, Weekly Off=light gray.
-                          const color = bucket === 'present' ? 'bg-emerald-100 text-emerald-700' : bucket === 'absent' ? 'bg-rose-100 text-rose-700' : bucket === 'leave' ? 'bg-indigo-100 text-indigo-700' : bucket === 'half' ? 'bg-orange-100 text-orange-700' : bucket === 'wfh' ? 'bg-purple-100 text-purple-700' : bucket === 'holiday' ? 'bg-gray-300 text-gray-700' : 'bg-slate-100 text-slate-500';
+                          const color = bucket === 'present' ? 'bg-emerald-100 text-emerald-700' : bucket === 'absent' ? 'bg-rose-100 text-rose-700' : bucket === 'leave' ? 'bg-brand-100 text-brand-700' : bucket === 'half' ? 'bg-orange-100 text-orange-700' : bucket === 'wfh' ? 'bg-brand-100 text-brand-700' : bucket === 'holiday' ? 'bg-gray-300 text-gray-700' : 'bg-slate-100 text-slate-500';
                           const key = `${emp.id}|${d}`;
                           const isSaving = savingCell === key;
                           const isEditing = cellMenu?.key === key;
@@ -1317,7 +1317,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                                   const pos = computeCellMenuPos(anchor.getBoundingClientRect());
                                   setCellMenu({ key, emp, date: d, status, top: pos.top, left: pos.left, anchor });
                                 }}
-                                className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold transition-all ${color} ${isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-blue-300' : 'cursor-default'} ${isEditing ? 'ring-2 ring-blue-500' : ''} ${isSaving ? 'opacity-50' : ''}`}
+                                className={`inline-block w-9 py-0.5 rounded text-[10px] font-bold transition-all ${color} ${isAdmin ? 'cursor-pointer hover:ring-2 hover:ring-brand-300' : 'cursor-default'} ${isEditing ? 'ring-2 ring-brand-500' : ''} ${isSaving ? 'opacity-50' : ''}`}
                               >
                                 {isSaving ? '…' : statusCode(status)}
                               </button>
@@ -1359,11 +1359,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     aria-selected={selected}
                     autoFocus={selected || (idx === 0 && !WEEKLY_CELL_STATUSES.some(o => o.value === cellMenu.status))}
                     onClick={() => markCell(cellMenu.emp, cellMenu.date, opt.value)}
-                    className={`w-full flex items-center gap-2.5 text-left px-3 py-2 text-xs transition-colors focus:outline-none hover:bg-blue-50 focus:bg-blue-50 ${selected ? 'font-bold text-blue-600 bg-blue-50/60' : 'text-slate-700'}`}
+                    className={`w-full flex items-center gap-2.5 text-left px-3 py-2 text-xs transition-colors focus:outline-none hover:bg-brand-50 focus:bg-brand-50 ${selected ? 'font-bold text-brand-600 bg-brand-50/60' : 'text-slate-700'}`}
                   >
                     <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${opt.dot}`} />
                     <span className="flex-1">{opt.label}</span>
-                    {selected && <Check size={14} className="text-blue-600" />}
+                    {selected && <Check size={14} className="text-brand-600" />}
                   </button>
                 );
               })}
@@ -1417,14 +1417,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Td className="text-center text-xs font-bold text-fuchsia-600">{s.otHours}</Td>
                       <Td className="text-center text-xs">{s.workingDays}</Td>
                       <Td className="text-center text-xs font-bold text-rose-500">{s.lop}</Td>
-                      <Td className="text-center text-xs font-bold text-blue-600">{s.payableDays}</Td>
+                      <Td className="text-center text-xs font-bold text-brand-600">{s.payableDays}</Td>
                       {isAdmin && (
                         <Td className="text-center sticky right-0 z-10 bg-white group-hover:bg-slate-50 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.15)]">
                           {dbSummaries[String(s.employeeId)]?.locked ? (
                             <span className="text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Month Locked</span>
                           ) : (
                             <button onClick={() => openEditSummary(s.employeeId, s.employeeName, s.employeeCode)}
-                              className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded hover:bg-blue-100 transition-colors">
+                              className="text-[10px] font-bold text-brand-700 bg-brand-50 border border-brand-200 px-2 py-1 rounded hover:bg-brand-100 transition-colors">
                               Edit
                             </button>
                           )}
@@ -1472,7 +1472,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Td className="text-center text-xs">{m.half}</Td>
                       <Td className="text-center text-xs">{m.wfh}</Td>
                       <Td className="text-center text-xs text-fuchsia-600 font-bold">{m.otHours}</Td>
-                      <Td className="text-center text-xs font-bold text-blue-600">{m.attendanceRate}%</Td>
+                      <Td className="text-center text-xs font-bold text-brand-600">{m.attendanceRate}%</Td>
                     </Tr>
                   ))}
                 </Tbody>
@@ -1491,7 +1491,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <StatCard label="Total OT Hours" value={overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
             <StatCard label="Approved OT" value={overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
             <StatCard label="Pending OT" value={overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
-            <StatCard label="OT Cost (Est.)" value={`₹ ${(overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0) * 200).toLocaleString()}`} icon={<Database size={16} className="text-indigo-600" />} color="bg-indigo-50" />
+            <StatCard label="OT Cost (Est.)" value={`₹ ${(overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0) * 200).toLocaleString()}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
           </div>
 
           <Card padding={false} className="overflow-hidden border-slate-200">
@@ -1524,7 +1524,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                               <button className="text-[10px] text-rose-600 font-bold hover:underline" onClick={() => handleStatusOT(ot.id, 'Rejected')}>Reject</button>
                             </>
                           )}
-                          <button className="text-[10px] text-blue-600 hover:underline font-bold" onClick={() => handleOpenOTModal(ot)}>Edit</button>
+                          <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenOTModal(ot)}>Edit</button>
                           <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteOT(ot.id)}>Delete</button>
                         </div>
                       </Td>
@@ -1577,7 +1577,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     ) : filteredEmployees.map(e => (
                       <div 
                         key={e.id}
-                        className="px-3 py-2 hover:bg-blue-50 cursor-pointer flex flex-col"
+                        className="px-3 py-2 hover:bg-brand-50 cursor-pointer flex flex-col"
                         onClick={() => {
                           setOTForm({
                             ...otForm, 
@@ -1663,8 +1663,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   {isAdmin && (
                     <Td>
                       <div className="flex items-center gap-2">
-                        <button className="text-[10px] text-indigo-600 hover:underline font-bold" onClick={() => openAssignShift(s)}>Assign</button>
-                        <button className="text-[10px] text-blue-600 hover:underline font-bold" onClick={() => handleOpenShiftModal(s)}>Edit</button>
+                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => openAssignShift(s)}>Assign</button>
+                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenShiftModal(s)}>Edit</button>
                         {s.status !== 'Archived' && <button className="text-[10px] text-amber-600 hover:underline font-bold" onClick={() => handleArchiveShift(s.id)}>Archive</button>}
                         <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteShift(s.id)}>Delete</button>
                       </div>
@@ -1702,7 +1702,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
              <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">Overtime Eligibility</label>
                 <select 
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                   value={shiftForm.otEnabled ? 'yes' : 'no'}
                   onChange={e => setShiftForm({...shiftForm, otEnabled: e.target.value === 'yes'})}
                 >
@@ -1713,7 +1713,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
              <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">Shift Status</label>
                 <select 
-                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
                   value={shiftForm.status}
                   onChange={e => setShiftForm({...shiftForm, status: e.target.value})}
                 >
@@ -1739,7 +1739,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         <div className="space-y-3">
           <p className="text-xs text-slate-500">Select the employees who work this shift. Unchecking removes them from the shift.</p>
           <div className="flex items-center justify-between text-[11px]">
-            <button className="text-indigo-600 font-bold hover:underline" onClick={() => setAssignIds(companyEmployees.map((e: any) => String(e.id)))}>Select all</button>
+            <button className="text-brand-600 font-bold hover:underline" onClick={() => setAssignIds(companyEmployees.map((e: any) => String(e.id)))}>Select all</button>
             <button className="text-slate-500 font-bold hover:underline" onClick={() => setAssignIds([])}>Clear all</button>
           </div>
           <div className="max-h-80 overflow-y-auto border border-slate-200 rounded-lg divide-y divide-slate-100">
@@ -1768,10 +1768,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <h4 className="font-bold text-sm text-slate-800 mb-2">Smart Excel Import</h4>
             <p className="text-xs text-slate-500 mb-4">Upload biometrics CSV/XLSX. The system will automatically map columns (Employee ID, Punch In, Punch Out) and save permanently to the database.</p>
             
-            <div className="border-2 border-dashed border-blue-200 bg-blue-50/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-blue-50 transition-colors" onClick={() => ui.toast.info('File dialogue opened')}>
-              <Upload size={32} className="text-blue-500 mb-3" />
-              <p className="text-sm font-bold text-blue-800">Click to upload or drag and drop</p>
-              <p className="text-xs text-blue-600/70 mt-1">XLSX, XLS, or CSV (Max. 15MB)</p>
+            <div className="border-2 border-dashed border-brand-200 bg-brand-50/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-brand-50 transition-colors" onClick={() => ui.toast.info('File dialogue opened')}>
+              <Upload size={32} className="text-brand-500 mb-3" />
+              <p className="text-sm font-bold text-brand-800">Click to upload or drag and drop</p>
+              <p className="text-xs text-brand-600/70 mt-1">XLSX, XLS, or CSV (Max. 15MB)</p>
             </div>
           </Card>
           
@@ -1785,7 +1785,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             </Card>
             
             <Card className="bg-slate-900 text-white border-none">
-              <h4 className="font-bold text-sm text-white mb-2 flex items-center gap-2"><Database size={14} className="text-blue-400"/> Database Ready</h4>
+              <h4 className="font-bold text-sm text-white mb-2 flex items-center gap-2"><Database size={14} className="text-brand-400"/> Database Ready</h4>
               <p className="text-xs text-slate-400">Imported files are instantly synced to the cloud database. Missing employee records will trigger smart mapping alerts.</p>
               <div className="mt-3 flex gap-2">
                 <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300">ZKTeco Ready</span>
@@ -1825,7 +1825,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <StatCard label="Total Employees" value={filteredReportRecords.length} icon={<Users size={16} className="text-slate-600" />} color="bg-slate-50" />
             <StatCard label="Present" value={filteredReportRecords.filter(r => r.status === 'Present').length} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
             <StatCard label="Absent" value={filteredReportRecords.filter(r => r.status === 'Absent').length} icon={<XCircle size={16} className="text-rose-600" />} color="bg-rose-50" />
-            <StatCard label="On Leave" value={filteredReportRecords.filter(r => r.status === 'Leave').length} icon={<Calendar size={16} className="text-indigo-600" />} color="bg-indigo-50" />
+            <StatCard label="On Leave" value={filteredReportRecords.filter(r => r.status === 'Leave').length} icon={<Calendar size={16} className="text-brand-600" />} color="bg-brand-50" />
             <StatCard label="Late Mark" value={filteredReportRecords.filter(r => r.flags?.includes('Late Mark')).length} icon={<AlertCircle size={16} className="text-amber-600" />} color="bg-amber-50" />
           </div>
 
@@ -1896,11 +1896,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     <div 
                       key={mode.id}
                       onClick={() => setAttendanceMode(mode.id)}
-                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${attendanceMode === mode.id ? 'border-blue-500 bg-blue-50/50 shadow-sm' : 'border-slate-100 hover:border-slate-300 bg-white'}`}
+                      className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${attendanceMode === mode.id ? 'border-brand-500 bg-brand-50/50 shadow-sm' : 'border-slate-100 hover:border-slate-300 bg-white'}`}
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-bold text-sm text-slate-800">{mode.label}</span>
-                        {attendanceMode === mode.id && <CheckCircle2 size={16} className="text-blue-500" />}
+                        {attendanceMode === mode.id && <CheckCircle2 size={16} className="text-brand-500" />}
                       </div>
                       <p className="text-[10px] text-slate-500">{mode.desc}</p>
                     </div>
@@ -1982,7 +1982,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Period</label>
             <div className="grid grid-cols-5 gap-1.5">
               {(['daily','weekly','monthly','yearly','custom'] as PeriodMode[]).map(m => (
-                <button key={m} onClick={() => setExportMode(m)} className={`py-2 text-[11px] font-bold rounded-lg border capitalize ${exportMode === m ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>{m}</button>
+                <button key={m} onClick={() => setExportMode(m)} className={`py-2 text-[11px] font-bold rounded-lg border capitalize ${exportMode === m ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}>{m}</button>
               ))}
             </div>
             {exportMode === 'custom' && (
@@ -1998,7 +1998,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Format</label>
             <div className="grid grid-cols-4 gap-1.5">
               {([['excel','Excel',Download],['pdf','PDF',FileText],['csv','CSV',Database],['print','Print',Printer]] as [ExportFormat,string,any][]).map(([f, label, Icon]) => (
-                <button key={f} onClick={() => setExportFormat(f)} className={`py-2 text-[11px] font-bold rounded-lg border flex items-center justify-center gap-1.5 ${exportFormat === f ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}><Icon size={13} /> {label}</button>
+                <button key={f} onClick={() => setExportFormat(f)} className={`py-2 text-[11px] font-bold rounded-lg border flex items-center justify-center gap-1.5 ${exportFormat === f ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}><Icon size={13} /> {label}</button>
               ))}
             </div>
           </div>
@@ -2021,7 +2021,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <div className="border border-slate-200 rounded-lg p-3 max-h-40 overflow-y-auto space-y-1.5">
               {companyOptions.map(c => (
                 <label key={c.value} className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer">
-                  <input type="checkbox" checked={exportCompanyIds.includes(c.value)} onChange={e => setExportCompanyIds(e.target.checked ? [...exportCompanyIds, c.value] : exportCompanyIds.filter(id => id !== c.value))} className="rounded border-slate-300 text-blue-600" />
+                  <input type="checkbox" checked={exportCompanyIds.includes(c.value)} onChange={e => setExportCompanyIds(e.target.checked ? [...exportCompanyIds, c.value] : exportCompanyIds.filter(id => id !== c.value))} className="rounded border-slate-300 text-brand-600" />
                   {c.label}
                 </label>
               ))}
@@ -2076,7 +2076,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <StatCard label="Employees" value={syncPreview.totals?.employees || 0} icon={<Users size={16} className="text-slate-600" />} color="bg-slate-50" />
                 <StatCard label="LOP Days" value={syncPreview.totals?.lopDays || 0} icon={<XCircle size={16} className="text-rose-600" />} color="bg-rose-50" />
                 <StatCard label="OT Hours" value={(syncPreview.totals?.otHours || 0).toFixed(1)} icon={<Clock size={16} className="text-fuchsia-600" />} color="bg-fuchsia-50" />
-                <StatCard label="OT Amount" value={`₹${(syncPreview.totals?.otAmount || 0).toLocaleString()}`} icon={<Database size={16} className="text-indigo-600" />} color="bg-indigo-50" />
+                <StatCard label="OT Amount" value={`₹${(syncPreview.totals?.otAmount || 0).toLocaleString()}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
               </div>
               <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
                 <Table>
@@ -2112,7 +2112,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </div>
               <div className="text-right">
                 <p className="text-[10px] text-slate-400 uppercase font-bold">Payable Days</p>
-                <p className="text-lg font-extrabold text-blue-600">{payablePreview}</p>
+                <p className="text-lg font-extrabold text-brand-600">{payablePreview}</p>
               </div>
             </div>
 

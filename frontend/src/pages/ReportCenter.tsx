@@ -187,10 +187,10 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm">
-        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#DBEAFE]">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
+        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#E6E0FE]">
           <div>
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><BarChart3 size={18} className="text-indigo-600" /> Report Center</h2>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><BarChart3 size={18} className="text-brand-600" /> Report Center</h2>
             <p className="text-xs text-slate-500">Enterprise HRMS reporting — browse every report by category. New generation engine rolling out soon.</p>
           </div>
           <div className="flex items-center gap-2">
@@ -207,12 +207,12 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
 
       {/* Dashboard summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        <StatCard label="Report Categories" value={totals.categories} icon={<BarChart3 size={16} />} color="bg-indigo-500" />
+        <StatCard label="Report Categories" value={totals.categories} icon={<BarChart3 size={16} />} color="bg-brand-500" />
         <StatCard label="Total Reports" value={totals.totalReports} icon={<ClipboardList size={16} />} color="bg-slate-600" />
-        <StatCard label="Employee Reports" value={totals.employee} icon={<Users size={16} />} color="bg-blue-500" />
+        <StatCard label="Employee Reports" value={totals.employee} icon={<Users size={16} />} color="bg-brand-500" />
         <StatCard label="Attendance Reports" value={totals.attendance} icon={<CalendarCheck size={16} />} color="bg-emerald-500" />
         <StatCard label="Payroll Reports" value={totals.payroll} icon={<DollarSign size={16} />} color="bg-amber-500" />
-        <StatCard label="Compliance Reports" value={totals.compliance} icon={<ShieldCheck size={16} />} color="bg-violet-500" />
+        <StatCard label="Compliance Reports" value={totals.compliance} icon={<ShieldCheck size={16} />} color="bg-brand-500" />
       </div>
 
       {/* Categories */}
@@ -226,13 +226,13 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
       ) : (
         <div className="space-y-3">
           {filtered.map(cat => (
-            <div key={cat.id} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm overflow-hidden">
+            <div key={cat.id} className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm overflow-hidden">
               <button
                 onClick={() => toggle(cat.id)}
                 className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50/70 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600">{cat.icon}</span>
+                  <span className="flex items-center justify-center w-9 h-9 rounded-xl bg-brand-50 text-brand-600">{cat.icon}</span>
                   <div className="text-left">
                     <h3 className="text-sm font-bold text-slate-800">{cat.title}</h3>
                     <p className="text-[11px] text-slate-400">{cat.matches.length} report{cat.matches.length !== 1 ? 's' : ''}</p>
@@ -265,7 +265,7 @@ export const ReportCenter: React.FC<ReportCenterProps> = (props) => {
                             <Button variant="outline" size="sm" onClick={() => setViewer({ def: live, name })}>Generate</Button>
                             <button title="Export PDF" onClick={() => setViewer({ def: live, name, autoAction: 'pdf' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-rose-600 shadow-sm"><FileDown size={14} /></button>
                             <button title="Export Excel" onClick={() => setViewer({ def: live, name, autoAction: 'excel' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-emerald-600 shadow-sm"><FileSpreadsheet size={14} /></button>
-                            <button title="Print" onClick={() => setViewer({ def: live, name, autoAction: 'print' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 shadow-sm"><Printer size={14} /></button>
+                            <button title="Print" onClick={() => setViewer({ def: live, name, autoAction: 'print' })} className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-brand-600 shadow-sm"><Printer size={14} /></button>
                           </div>
                         </div>
                       );

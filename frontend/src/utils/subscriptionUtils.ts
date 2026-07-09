@@ -143,17 +143,17 @@ export const getSubscriptionAlert = (company: Company): SubscriptionAlert | null
       break;
     case 'Trial Ending':
       message = `Trial tier ends in ${daysLeft} days. Workspace will be restricted upon expiration.`;
-      badgeColor = 'bg-indigo-100 text-indigo-700 border-indigo-200';
-      textColor = 'text-indigo-700';
-      bgColor = 'bg-indigo-50/50';
-      borderColor = 'border-indigo-100';
+      badgeColor = 'bg-brand-100 text-brand-700 border-brand-200';
+      textColor = 'text-brand-700';
+      bgColor = 'bg-brand-50/50';
+      borderColor = 'border-brand-100';
       break;
     case 'Expiring Soon':
       message = `Subscription renewal coming up in ${daysLeft} days.`;
-      badgeColor = 'bg-blue-100 text-blue-700 border-blue-200';
-      textColor = 'text-blue-700';
-      bgColor = 'bg-blue-50/50';
-      borderColor = 'border-blue-100';
+      badgeColor = 'bg-brand-100 text-brand-700 border-brand-200';
+      textColor = 'text-brand-700';
+      bgColor = 'bg-brand-50/50';
+      borderColor = 'border-brand-100';
       break;
   }
 

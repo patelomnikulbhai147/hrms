@@ -121,11 +121,11 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
   const grandCount = sorted.length;
 
   const kpiCards = [
-    { label: 'Total Records', value: grandCount.toLocaleString('en-IN'), accent: 'bg-indigo-500' },
+    { label: 'Total Records', value: grandCount.toLocaleString('en-IN'), accent: 'bg-brand-500' },
     ...a.kpiCols.map((c, i) => ({
       label: `Total ${c.label}`.replace(/\s*\(₹\)/, ''),
       value: a.isMoney[c.key] ? fmtMoney(sumOf(sorted, c.key)) : fmtNum(sumOf(sorted, c.key)),
-      accent: ['bg-emerald-500', 'bg-blue-500', 'bg-violet-500', 'bg-amber-500'][i % 4],
+      accent: ['bg-emerald-500', 'bg-brand-500', 'bg-brand-500', 'bg-amber-500'][i % 4],
     })),
   ];
   // Extra KPIs from the report's own summary object (already-aggregated values).
@@ -134,7 +134,7 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
 
   const SortIcon = ({ k }: { k: string }) => sortKey !== k
     ? <ChevronsUpDown size={11} className="text-slate-300 group-hover:text-slate-400" />
-    : sortDir === 'asc' ? <ArrowUp size={11} className="text-indigo-600" /> : <ArrowDown size={11} className="text-indigo-600" />;
+    : sortDir === 'asc' ? <ArrowUp size={11} className="text-brand-600" /> : <ArrowDown size={11} className="text-brand-600" />;
 
   const headerCell = (c: Col) => (
     <th key={c.key} onClick={() => toggleSort(c.key)}
@@ -143,16 +143,16 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
     </th>
   );
   const bodyRow = (r: any, i: number) => (
-    <tr key={i} className="even:bg-slate-50/60 hover:bg-indigo-50/50 transition-colors">
+    <tr key={i} className="even:bg-slate-50/60 hover:bg-brand-50/50 transition-colors">
       {visibleCols.map(c => (
         <td key={c.key} className={`px-3 py-1.5 text-[11.5px] text-slate-700 whitespace-nowrap ${a.isNumeric[c.key] ? 'text-right tabular-nums font-medium' : 'text-left'}`}>{cell(r, c)}</td>
       ))}
     </tr>
   );
   const subtotalRow = (rs: any[], label: string) => (
-    <tr className="bg-indigo-50/70 border-t border-indigo-100 font-semibold">
+    <tr className="bg-brand-50/70 border-t border-brand-100 font-semibold">
       {visibleCols.map((c, idx) => (
-        <td key={c.key} className={`px-3 py-1.5 text-[11px] text-indigo-800 whitespace-nowrap ${a.isNumeric[c.key] ? 'text-right tabular-nums' : 'text-left'}`}>
+        <td key={c.key} className={`px-3 py-1.5 text-[11px] text-brand-800 whitespace-nowrap ${a.isNumeric[c.key] ? 'text-right tabular-nums' : 'text-left'}`}>
           {idx === 0 ? label : a.isNumeric[c.key] ? (a.isMoney[c.key] ? fmtMoney(sumOf(rs, c.key)) : fmtNum(sumOf(rs, c.key))) : ''}
         </td>
       ))}
@@ -162,10 +162,10 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
   return (
     <div className="mt-3 space-y-3">
       {/* Executive header */}
-      <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/70 to-white px-4 py-3">
+      <div className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50/70 to-white px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-sm"><Building2 size={17} /></span>
+            <span className="w-9 h-9 rounded-xl bg-brand-600 text-white flex items-center justify-center shadow-sm"><Building2 size={17} /></span>
             <div className="leading-tight">
               <div className="text-sm font-extrabold text-slate-800">{m.name || 'Company'}</div>
               {m.branchName && <div className="text-[12px] font-bold text-slate-600">{m.branchName}</div>}
@@ -173,7 +173,7 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
             </div>
           </div>
           <div className="text-right">
-            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-full px-2 py-0.5"><BarChart3 size={10} /> Business Report</span>
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider bg-brand-100 text-brand-700 border border-brand-200 rounded-full px-2 py-0.5"><BarChart3 size={10} /> Business Report</span>
             <div className="text-[10px] text-slate-400 mt-1">{report.generatedAt ? `Generated ${new Date(report.generatedAt).toLocaleString('en-IN')}` : ''}{report.generatedBy ? ` · ${report.generatedBy}` : ''}</div>
           </div>
         </div>
@@ -208,7 +208,7 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search within this report…"
-            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-200 text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-300" />
+            className="w-full pl-9 pr-8 py-2 rounded-lg border border-slate-200 text-[12px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-300" />
           {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><X size={14} /></button>}
         </div>
         {a.groupable.length > 0 && (
@@ -228,7 +228,7 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
             <div className="absolute right-0 mt-1 z-20 w-52 max-h-64 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-lg p-1.5">
               {cols.map(c => (
                 <label key={c.key} className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-slate-50 cursor-pointer text-[12px] text-slate-700">
-                  <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => toggleHidden(c.key)} className="accent-indigo-600" />
+                  <input type="checkbox" checked={!hidden.has(c.key)} onChange={() => toggleHidden(c.key)} className="accent-brand-600" />
                   {c.label}
                 </label>
               ))}
@@ -240,12 +240,12 @@ export const BusinessReportView: React.FC<Props> = ({ report }) => {
       {/* Group analytics chart */}
       {groups && chartCol && chartData.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p className="text-[11px] font-bold text-slate-600 mb-2 flex items-center gap-1.5"><BarChart3 size={13} className="text-indigo-500" /> {chartCol.label} by {a.groupable.find(c => c.key === groupKey)?.label || groupKey}</p>
+          <p className="text-[11px] font-bold text-slate-600 mb-2 flex items-center gap-1.5"><BarChart3 size={13} className="text-brand-500" /> {chartCol.label} by {a.groupable.find(c => c.key === groupKey)?.label || groupKey}</p>
           <div className="space-y-1.5">
             {chartData.map(d => (
               <div key={d.label} className="flex items-center gap-2">
                 <span className="text-[10px] text-slate-500 w-28 truncate text-right shrink-0" title={d.label}>{d.label}</span>
-                <div className="flex-1 bg-slate-100 rounded h-4 overflow-hidden"><div className="h-full bg-gradient-to-r from-indigo-500 to-indigo-400 rounded" style={{ width: `${d.pct}%` }} /></div>
+                <div className="flex-1 bg-slate-100 rounded h-4 overflow-hidden"><div className="h-full bg-gradient-to-r from-brand-500 to-brand-400 rounded" style={{ width: `${d.pct}%` }} /></div>
                 <span className="text-[10px] font-semibold text-slate-700 w-24 text-right shrink-0 tabular-nums">{a.isMoney[chartCol.key] ? fmtMoney(d.value) : fmtNum(d.value)}</span>
               </div>
             ))}

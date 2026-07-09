@@ -191,10 +191,10 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm">
-        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#DBEAFE]">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
+        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#E6E0FE]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600"><IdCard size={20} /></div>
+            <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><IdCard size={20} /></div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">Employee Card Designer</h2>
               <p className="text-xs text-slate-500">Choose a template, customise it, preview live and generate print-ready cards — {brand?.name || 'your company'}.</p>
@@ -207,7 +207,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
         </div>
         <div className="px-5 py-2 flex flex-wrap gap-1 border-b border-slate-100">
           {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg ${tab === t.id ? 'bg-[#EDF4FF] text-[#4F7CFF]' : 'text-slate-500 hover:text-slate-700'}`}>{t.icon}{t.label}</button>
+            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg ${tab === t.id ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'text-slate-500 hover:text-slate-700'}`}>{t.icon}{t.label}</button>
           ))}
           <div className="ml-auto flex items-center gap-2 py-1">
             <span className="text-[11px] text-slate-400">Active template:</span>
@@ -223,7 +223,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr_1.4fr] gap-4">
           {/* Left: employees + scope */}
           <Card>
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600"><Users size={14} className="text-indigo-600" /> Employees</div>
+            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600"><Users size={14} className="text-brand-600" /> Employees</div>
             <div className="space-y-2 mb-3">
               <Select value={scopeMode} onChange={(e) => { setScopeMode(e.target.value as ScopeMode); setScopeValue(''); }}
                 options={[
@@ -243,14 +243,14 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
               <span>{scopeMode === 'selected' ? `${bulkIds.length || (previewEmp ? 1 : 0)} selected` : `${targets.length} in scope`}</span>
-              {scopeMode === 'selected' && <button className="text-[#4F7CFF] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>}
+              {scopeMode === 'selected' && <button className="text-[#6C3CF0] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>}
             </div>
             <div className="max-h-[460px] overflow-y-auto space-y-1">
               {filtered.length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No employees match.</p>}
               {filtered.map((e) => {
                 const id = String(e.id); const isSel = String(previewEmp?.id) === id;
                 return (
-                  <div key={id} onClick={() => setSelectedId(id)} className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer ${isSel ? 'bg-indigo-50 border-indigo-200' : 'border-transparent hover:bg-slate-50'}`}>
+                  <div key={id} onClick={() => setSelectedId(id)} className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer ${isSel ? 'bg-brand-50 border-brand-200' : 'border-transparent hover:bg-slate-50'}`}>
                     {scopeMode === 'selected' && <input type="checkbox" checked={bulkIds.includes(id)} onClick={(ev) => ev.stopPropagation()} onChange={() => setBulkIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])} />}
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 truncate">{e.name}</p>
@@ -265,14 +265,14 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
           {/* Middle: template chooser (compare) — fills the panel height and
               scrolls independently; the Live Preview on the right stays put. */}
           <Card className="flex flex-col min-h-[480px] max-h-[760px]">
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600 flex-shrink-0"><LayoutGrid size={14} className="text-indigo-600" /> Templates <span className="text-slate-400 font-normal">· click to apply</span></div>
+            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600 flex-shrink-0"><LayoutGrid size={14} className="text-brand-600" /> Templates <span className="text-slate-400 font-normal">· click to apply</span></div>
             <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-2 pr-1 auto-rows-min content-start">
               {tset.all.map((t) => (
-                <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`rounded-xl border p-2 text-left transition ${selectedTemplate?.id === t.id ? 'border-[#4F7CFF] ring-1 ring-[#4F7CFF]/30 bg-[#F7FAFF]' : 'border-slate-200 hover:border-slate-300'}`}>
+                <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`rounded-xl border p-2 text-left transition ${selectedTemplate?.id === t.id ? 'border-[#6C3CF0] ring-1 ring-[#6C3CF0]/30 bg-[#F3F0FF]' : 'border-slate-200 hover:border-slate-300'}`}>
                   <div className="flex items-center justify-center bg-slate-50 rounded-lg p-2 h-[104px] overflow-hidden">
                     <CardCanvas template={t} side="front" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(t, 140, 88)} style={{ boxShadow: '0 1px 5px rgba(0,0,0,.12)', borderRadius: 6 }} />
                   </div>
-                  <p className="mt-1.5 text-[10px] font-bold text-slate-700 truncate flex items-center gap-1">{selectedTemplate?.id === t.id && <Check size={10} className="text-[#4F7CFF]" />}{t.name}</p>
+                  <p className="mt-1.5 text-[10px] font-bold text-slate-700 truncate flex items-center gap-1">{selectedTemplate?.id === t.id && <Check size={10} className="text-[#6C3CF0]" />}{t.name}</p>
                   <p className="text-[9px] text-slate-400">{t.category}{t.custom ? ' · Custom' : ''}</p>
                 </button>
               ))}
@@ -282,9 +282,9 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
           {/* Right: live preview + generation */}
           <Card>
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-indigo-600" /> Live Preview</div>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-brand-600" /> Live Preview</div>
               <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#4F7CFF] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
+                {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#6C3CF0] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
               </div>
             </div>
             {!previewEmp ? <div className="py-16 text-center text-sm text-slate-400">Select an employee to preview.</div> : (
@@ -298,12 +298,12 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             <div className="mt-3 space-y-2.5">
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="text-slate-400 font-bold">Sides</span>
-                {(['front', 'back', 'both'] as SideMode[]).map((s) => <button key={s} onClick={() => setSideMode(s)} className={`px-2 py-1 rounded-lg border font-semibold capitalize ${sideMode === s ? 'border-[#4F7CFF] text-[#4F7CFF] bg-[#EDF4FF]' : 'border-slate-200 text-slate-500'}`}>{s}</button>)}
+                {(['front', 'back', 'both'] as SideMode[]).map((s) => <button key={s} onClick={() => setSideMode(s)} className={`px-2 py-1 rounded-lg border font-semibold capitalize ${sideMode === s ? 'border-[#6C3CF0] text-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 text-slate-500'}`}>{s}</button>)}
                 <span className="text-slate-400 font-bold ml-2">Layout</span>
-                {([['card', 'Card'], ['sheet', 'A4 Sheet'], ['duplex', 'Duplex']] as [PdfLayout, string][]).map(([v, l]) => <button key={v} onClick={() => setPdfLayout(v)} className={`px-2 py-1 rounded-lg border font-semibold ${pdfLayout === v ? 'border-[#4F7CFF] text-[#4F7CFF] bg-[#EDF4FF]' : 'border-slate-200 text-slate-500'}`}>{l}</button>)}
+                {([['card', 'Card'], ['sheet', 'A4 Sheet'], ['duplex', 'Duplex']] as [PdfLayout, string][]).map(([v, l]) => <button key={v} onClick={() => setPdfLayout(v)} className={`px-2 py-1 rounded-lg border font-semibold ${pdfLayout === v ? 'border-[#6C3CF0] text-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 text-slate-500'}`}>{l}</button>)}
               </div>
 
-              {progress && <div className="text-[11px] text-slate-500">Generating {progress.done}/{progress.total}… <div className="mt-1 h-1.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-[#4F7CFF]" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} /></div></div>}
+              {progress && <div className="text-[11px] text-slate-500">Generating {progress.done}/{progress.total}… <div className="mt-1 h-1.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-[#6C3CF0]" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} /></div></div>}
 
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" icon={<Download size={13} />} loading={busy === 'pdf'} onClick={doPdf}>PDF{targets.length > 1 ? ` (${targets.length})` : ''}</Button>
@@ -326,7 +326,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
               <Button size="sm" icon={<Plus size={14} />} onClick={() => { setWorking(blankTemplate()); setTab('designer'); }}>New Blank Template</Button>
               <label className="inline-flex">
                 <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importTemplate(e.target.files?.[0]); e.target.value = ''; }} />
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:border-[#4F7CFF] cursor-pointer"><Upload size={14} /> Import Template</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:border-[#6C3CF0] cursor-pointer"><Upload size={14} /> Import Template</span>
               </label>
             </div>
           )}
@@ -350,7 +350,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             <CardDesigner template={working} onChange={setWorking} employee={previewEmp} branding={pv.branding} companyId={pv.companyId} onSave={saveWorking} saving={saving} canEdit={canEdit} />
           </div>
         ) : (
-          <Card><div className="py-16 text-center text-sm text-slate-400">Pick a template to edit from the <button className="text-[#4F7CFF] font-bold" onClick={() => setTab('templates')}>Template Gallery</button>, or create a new blank one.</div></Card>
+          <Card><div className="py-16 text-center text-sm text-slate-400">Pick a template to edit from the <button className="text-[#6C3CF0] font-bold" onClick={() => setTab('templates')}>Template Gallery</button>, or create a new blank one.</div></Card>
         )
       )}
 

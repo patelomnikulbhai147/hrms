@@ -21,7 +21,44 @@ import { resolveBranding } from '@/services/brandingService';
 
 export interface InvoiceColumn { key: string; label: string; visible: boolean; width?: number }
 
+export interface CanvasElement {
+  id: string;
+  type: 'text' | 'image' | 'logo' | 'companyDetails' | 'customerDetails' | 'itemTable' | 'totals' | 'bankDetails' | 'signature' | 'terms' | 'notes' | 'qr' | 'barcode' | 'stamp' | 'rect' | 'circle' | 'line' | 'customSection';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  rotation: number;
+  opacity: number;
+  visible: boolean;
+  locked: boolean;
+  zIndex: number;
+  name: string;
+  content?: string;
+  src?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fontWeight?: string;
+  fontStyle?: string;
+  textDecoration?: string;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  color?: string;
+  letterSpacing?: number;
+  lineHeight?: number;
+  bg?: string;
+  borderWidth?: number;
+  borderColor?: string;
+  borderStyle?: string;
+  borderRadius?: number;
+  padding?: number;
+  tableCols?: InvoiceColumn[];
+  totalsRows?: any;
+}
+
+
 export interface InvoiceDesign {
+  isCanvas?: boolean;
+  elements?: CanvasElement[];
   template: string;                 // preset id (for the gallery highlight)
   paper: 'A4' | 'Letter';
   orientation: 'portrait' | 'landscape';
@@ -89,7 +126,7 @@ export const DEFAULT_DESIGN: InvoiceDesign = {
   paper: 'A4',
   orientation: 'portrait',
   title: 'TAX INVOICE',
-  colors: { primary: '', secondary: '', headerBg: '', tableHeaderBg: '#f1f5f9', tableHeaderText: '#475569', text: '#1e293b', border: '#e2e8f0', grandTotal: '#0f172a', footer: '#64748b', accent: '' },
+  colors: { primary: '', secondary: '', headerBg: '', tableHeaderBg: '#f1f5f9', tableHeaderText: '#475569', text: '#1e293b', border: '#e5e7eb', grandTotal: '#111827', footer: '#6b7280', accent: '' },
   font: { family: "'Segoe UI', Arial, sans-serif", size: 12, heading: "'Segoe UI', Arial, sans-serif", lineHeight: 1.5, headingBold: true, italicNotes: false, letterSpacing: 0, headerStyle: 'split' },
   layout: { margin: 14, headerHeight: 0, footerHeight: 0, logoPosition: 'left', titlePosition: 'right', borderStyle: 'solid', borderRadius: 0 },
   tableBorders: true,
@@ -113,8 +150,12 @@ export function resolveDesign(saved: any): InvoiceDesign {
   let d: any = saved;
   if (typeof saved === 'string') { try { d = JSON.parse(saved); } catch { d = null; } }
   // A settings row may carry the design under `designJson`.
-  if (d && typeof d === 'object' && d.designJson !== undefined && d.template === undefined) {
+  if (d && typeof d === 'object' && d.designJson !== undefined && d.template === undefined && d.isCanvas === undefined) {
     try { d = typeof d.designJson === 'string' ? JSON.parse(d.designJson) : d.designJson; } catch { d = null; }
+  }
+  if (d && typeof d === 'object' && d.isCanvas) {
+    // If it's a new canvas-based design, return it as-is
+    return d;
   }
   const base = () => ({ ...DEFAULT_DESIGN, columns: DEFAULT_DESIGN.columns.map(c => ({ ...c })) });
   if (!d || typeof d !== 'object') return base();
@@ -140,20 +181,20 @@ const font = (family: string, heading = family): InvoiceDesign['font'] => ({ ...
 const colors = (over: Partial<InvoiceDesign['colors']>): InvoiceDesign['colors'] => ({ ...DEFAULT_DESIGN.colors, ...over });
 
 export const TEMPLATE_PRESETS: TemplatePreset[] = [
-  { id: 'standard', name: 'Standard', paper: 'A4', orientation: 'portrait', swatch: '#4F7CFF', apply: { template: 'standard', title: 'TAX INVOICE', colors: colors({ primary: '#4F7CFF' }) } },
+  { id: 'standard', name: 'Standard', paper: 'A4', orientation: 'portrait', swatch: '#6C3CF0', apply: { template: 'standard', title: 'TAX INVOICE', colors: colors({ primary: '#6C3CF0' }) } },
   { id: 'modern', name: 'Modern', paper: 'A4', orientation: 'portrait', swatch: '#6366f1', apply: { template: 'modern', colors: colors({ primary: '#6366f1', tableHeaderBg: '#eef2ff', tableHeaderText: '#4338ca', accent: '#6366f1' }), font: font("'Inter', 'Segoe UI', sans-serif") } },
   { id: 'professional', name: 'Professional', paper: 'A4', orientation: 'portrait', swatch: '#0f766e', apply: { template: 'professional', colors: colors({ primary: '#0f766e', tableHeaderBg: '#ccfbf1', tableHeaderText: '#0f766e', grandTotal: '#0f766e', accent: '#0f766e' }), font: font("'Inter', 'Segoe UI', sans-serif") } },
-  { id: 'corporate', name: 'Corporate', paper: 'A4', orientation: 'portrait', swatch: '#0f172a', apply: { template: 'corporate', colors: colors({ primary: '#0f172a', tableHeaderBg: '#0f172a', tableHeaderText: '#ffffff' }), font: font("Georgia, 'Times New Roman', serif") } },
+  { id: 'corporate', name: 'Corporate', paper: 'A4', orientation: 'portrait', swatch: '#111827', apply: { template: 'corporate', colors: colors({ primary: '#111827', tableHeaderBg: '#111827', tableHeaderText: '#ffffff' }), font: font("Georgia, 'Times New Roman', serif") } },
   { id: 'minimal', name: 'Minimal', paper: 'A4', orientation: 'portrait', swatch: '#334155', apply: { template: 'minimal', tableBorders: false, colors: colors({ primary: '#334155', tableHeaderBg: '#ffffff', tableHeaderText: '#334155', border: '#e5e7eb' }), font: { ...DEFAULT_DESIGN.font, headerStyle: 'split' } } },
   { id: 'creative', name: 'Creative', paper: 'A4', orientation: 'portrait', swatch: '#db2777', apply: { template: 'creative', colors: colors({ primary: '#db2777', secondary: '#7c3aed', headerBg: '#db2777', tableHeaderBg: '#fce7f3', tableHeaderText: '#9d174d', grandTotal: '#9d174d', accent: '#db2777' }), font: { ...font("'Inter', 'Segoe UI', sans-serif"), headerStyle: 'banner' }, layout: { ...DEFAULT_DESIGN.layout, borderRadius: 8 } } },
   { id: 'elegant', name: 'Elegant', paper: 'A4', orientation: 'portrait', swatch: '#1f2937', apply: { template: 'elegant', altRows: true, altRowColor: '#f8fafc', colors: colors({ primary: '#1f2937', secondary: '#b45309', tableHeaderBg: '#f9fafb', tableHeaderText: '#374151', grandTotal: '#b45309', accent: '#b45309' }), font: { ...font("'Playfair Display', Georgia, serif", "'Playfair Display', Georgia, serif"), headerStyle: 'centered' } } },
-  { id: 'blue-business', name: 'Blue Business', paper: 'A4', orientation: 'portrait', swatch: '#1d4ed8', apply: { template: 'blue-business', colors: colors({ primary: '#1d4ed8', headerBg: '#1d4ed8', tableHeaderBg: '#dbeafe', tableHeaderText: '#1e40af', accent: '#1d4ed8' }), font: { ...DEFAULT_DESIGN.font, headerStyle: 'banner' } } },
+  { id: 'blue-business', name: 'Blue Business', paper: 'A4', orientation: 'portrait', swatch: '#4c1fd4', apply: { template: 'blue-business', colors: colors({ primary: '#4c1fd4', headerBg: '#4c1fd4', tableHeaderBg: '#e6e0fe', tableHeaderText: '#1e40af', accent: '#4c1fd4' }), font: { ...DEFAULT_DESIGN.font, headerStyle: 'banner' } } },
   { id: 'green-business', name: 'Green Business', paper: 'A4', orientation: 'portrait', swatch: '#15803d', apply: { template: 'green-business', altRows: true, altRowColor: '#f0fdf4', colors: colors({ primary: '#15803d', tableHeaderBg: '#dcfce7', tableHeaderText: '#166534', grandTotal: '#166534', accent: '#15803d' }) } },
   { id: 'healthcare', name: 'Healthcare', paper: 'A4', orientation: 'portrait', swatch: '#0891b2', apply: { template: 'healthcare', colors: colors({ primary: '#0891b2', secondary: '#0e7490', headerBg: '#ecfeff', tableHeaderBg: '#cffafe', tableHeaderText: '#155e75', grandTotal: '#0e7490', accent: '#0891b2' }), font: font("'Inter', 'Segoe UI', sans-serif"), layout: { ...DEFAULT_DESIGN.layout, borderRadius: 6 } } },
-  { id: 'education', name: 'Education', paper: 'A4', orientation: 'portrait', swatch: '#4338ca', apply: { template: 'education', colors: colors({ primary: '#4338ca', secondary: '#d97706', tableHeaderBg: '#eef2ff', tableHeaderText: '#3730a3', grandTotal: '#d97706', accent: '#4338ca' }) } },
+  { id: 'education', name: 'Education', paper: 'A4', orientation: 'portrait', swatch: '#4338ca', apply: { template: 'education', colors: colors({ primary: '#4338ca', secondary: '#d97706', tableHeaderBg: '#eef2ff', tableHeaderText: '#3d19aa', grandTotal: '#d97706', accent: '#4338ca' }) } },
   { id: 'manufacturing', name: 'Manufacturing', paper: 'A4', orientation: 'portrait', swatch: '#c2410c', apply: { template: 'manufacturing', altRows: true, altRowColor: '#fff7ed', colors: colors({ primary: '#1e293b', secondary: '#c2410c', tableHeaderBg: '#1e293b', tableHeaderText: '#ffffff', grandTotal: '#c2410c', accent: '#c2410c' }) } },
   { id: 'retail', name: 'Retail', paper: 'A4', orientation: 'portrait', swatch: '#7c3aed', apply: { template: 'retail', colors: colors({ primary: '#7c3aed', secondary: '#db2777', headerBg: '#7c3aed', tableHeaderBg: '#f5f3ff', tableHeaderText: '#5b21b6', grandTotal: '#7c3aed', accent: '#7c3aed' }), font: { ...font("'Inter', 'Segoe UI', sans-serif"), headerStyle: 'banner' }, layout: { ...DEFAULT_DESIGN.layout, borderRadius: 8 } } },
-  { id: 'technology', name: 'Technology', paper: 'A4', orientation: 'portrait', swatch: '#0ea5e9', apply: { template: 'technology', colors: colors({ primary: '#0ea5e9', secondary: '#6366f1', tableHeaderBg: '#0f172a', tableHeaderText: '#e2e8f0', grandTotal: '#0ea5e9', accent: '#0ea5e9' }), font: font("'Inter', 'Segoe UI', sans-serif"), layout: { ...DEFAULT_DESIGN.layout, borderRadius: 6 } } },
+  { id: 'technology', name: 'Technology', paper: 'A4', orientation: 'portrait', swatch: '#0ea5e9', apply: { template: 'technology', colors: colors({ primary: '#0ea5e9', secondary: '#6366f1', tableHeaderBg: '#111827', tableHeaderText: '#e5e7eb', grandTotal: '#0ea5e9', accent: '#0ea5e9' }), font: font("'Inter', 'Segoe UI', sans-serif"), layout: { ...DEFAULT_DESIGN.layout, borderRadius: 6 } } },
   { id: 'luxury', name: 'Luxury', paper: 'A4', orientation: 'portrait', swatch: '#a16207', apply: { template: 'luxury', colors: colors({ primary: '#111827', secondary: '#a16207', headerBg: '#111827', tableHeaderBg: '#1f2937', tableHeaderText: '#fcd34d', grandTotal: '#a16207', accent: '#a16207' }), font: { ...font("'Playfair Display', Georgia, serif", "'Playfair Display', Georgia, serif"), headerStyle: 'banner' } } },
 ];
 
@@ -210,10 +251,13 @@ export interface RenderOpts { print?: boolean; qrDataUrl?: string }
 
 /** Build the full A4 invoice HTML document. Default design ≈ the original output. */
 export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: RenderOpts = {}): string {
+  if (designIn && designIn.isCanvas) {
+    return renderCanvasHtml(inv, company, designIn, opts);
+  }
   const d = resolveDesign(designIn);
   const b = resolveBranding(company);
-  const primary = d.colors.primary || company?.themeColor || '#4F7CFF';
-  const accent = d.colors.accent || '#94a3b8';
+  const primary = d.colors.primary || company?.themeColor || '#6C3CF0';
+  const accent = d.colors.accent || '#9ca3af';
   const cols = (d.columns || DEFAULT_COLUMNS).filter(c => c.visible);
   const intra = inv.cgst > 0;
   const tdBorder = d.tableBorders ? `1px ${d.layout.borderStyle} ${d.colors.border}` : 'none';
@@ -243,7 +287,22 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
     ? `<div class="words">Amount in Words: <b>${esc(amountInWords(inv.grandTotal))}</b></div>` : '';
 
   // ── Header (split / centered / banner) ──
-  const logoHtml = d.header.showLogo && b.hasLogo ? `<img class="logo" src="${b.logo}"/>` : '';
+  const getLogoHtml = () => {
+    if (!d.header.showLogo) return '';
+    const fallbackJs = `this.style.display='none'; this.nextElementSibling.style.display='flex';`;
+    const placeholder = `<div class="logo-placeholder" style="display:none;align-items:center;justify-content:center;width:100px;height:50px;background:#f8fafc;color:#9ca3af;font-size:11px;border:1px dashed #d1d5db;border-radius:4px;font-weight:600;margin-bottom:8px;">COMPANY LOGO</div>`;
+    const emptyPlaceholder = `<div class="logo-placeholder" style="display:flex;align-items:center;justify-content:center;width:100px;height:50px;background:#f8fafc;color:#9ca3af;font-size:11px;border:1px dashed #d1d5db;border-radius:4px;font-weight:600;margin-bottom:8px;">COMPANY LOGO</div>`;
+    
+    if (b.hasLogo && b.logo && b.logo !== 'null' && b.logo !== 'undefined') {
+      const isUrl = b.logo.includes('/') || b.logo.includes('.') || b.logo.startsWith('data:');
+      if (!isUrl && b.logo.length <= 4) {
+        return `<div class="logo-placeholder" style="display:flex;align-items:center;justify-content:center;width:50px;height:50px;background:#f1f5f9;color:#475569;font-size:20px;font-weight:bold;border-radius:8px;margin-bottom:8px;">${esc(b.logo)}</div>`;
+      }
+      return `<img class="logo" src="${b.logo}" onerror="${fallbackJs}" />${placeholder}`;
+    }
+    return emptyPlaceholder;
+  };
+  const logoHtml = getLogoHtml();
   const taglineHtml = d.header.showTagline && (company?.tagline || company?.motto) ? `<div class="muted" style="font-style:italic">${esc(company.tagline || company.motto)}</div>` : '';
   const companyBlock = `${logoHtml}<div class="brand">${esc(company?.name || 'Company')}</div>
       ${d.header.showAddress ? `<div class="muted">${esc(company?.address || company?.city || '')}</div>` : ''}
@@ -273,9 +332,12 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
       ${d.customer.showGstin ? `<div class="muted">GSTIN: ${esc(inv.billToGstin || '—')}${inv.billToState ? ` · ${esc(inv.billToState)}` : ''}</div>` : ''}
       ${d.customer.showPan && (inv.billToPan || inv.customerPan) ? `<div class="muted">PAN: ${esc(inv.billToPan || inv.customerPan)}</div>` : ''}
       ${d.customer.showEmailPhone ? `<div class="muted">${esc(inv.billToEmail || '')} ${esc(inv.billToPhone || '')}</div>` : ''}</div>` : '';
-  // Ship-To is preview-only in practice: real invoices don't carry ship-to fields.
-  const shipTo = d.customer.showShipTo && (inv.shipToName || inv.shipToAddress) ? `<div class="box"><h4>Ship To</h4><div><b>${esc(inv.shipToName || inv.billToName)}</b></div>
-      <div class="muted">${esc(inv.shipToAddress || '')}</div>
+  // Ship-To now uses the real invoice snapshot (billToShipAddress, auto-filled from
+  // the Client Master); falls back to the preview-only shipToAddress. Still fully
+  // data-gated + default-off, so invoices without a ship-to are unchanged.
+  const shipAddr = inv.billToShipAddress || inv.shipToAddress;
+  const shipTo = d.customer.showShipTo && (inv.shipToName || shipAddr) ? `<div class="box"><h4>Ship To</h4><div><b>${esc(inv.shipToName || inv.billToName)}</b></div>
+      <div class="muted">${esc(shipAddr || '')}</div>
       ${inv.shipToState ? `<div class="muted">${esc(inv.shipToState)}</div>` : ''}</div>` : '';
   const payment = d.customer.showPayment ? `<div class="box" style="text-align:right"><h4>Payment</h4>
       <div class="muted">Terms: ${esc(inv.paymentTerms || '—')}</div>
@@ -299,10 +361,10 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
 
   const signBlock = d.footer.showSignature ? `<div class="sign">
       <div style="height:44px;position:relative">
-        ${b.hasSeal ? `<img class="seal" src="${b.seal}" style="position:absolute;right:0;top:-6px;opacity:0.9"/>` : ''}
-        ${b.hasSignature ? `<img class="sig" src="${b.signature}"/>` : ''}
+        ${b.hasSeal ? `<img class="seal" src="${b.seal}" style="position:absolute;right:0;top:-6px;opacity:0.9" onerror="this.style.display='none'" />` : ''}
+        ${b.hasSignature ? `<img class="sig" src="${b.signature}" onerror="this.style.display='none'" />` : ''}
       </div>
-      <div style="border-top:1px solid #94a3b8;padding-top:4px" class="muted">${esc(b.signatureText || 'Authorised Signatory')}<br>${esc(company?.name || '')}</div></div>` : '';
+      <div style="border-top:1px solid #9ca3af;padding-top:4px" class="muted">${esc(b.signatureText || 'Authorised Signatory')}<br>${esc(company?.name || '')}</div></div>` : '';
 
   const thankYou = d.footer.showThankYou && d.footer.thankYouText
     ? `<div class="thanks">${esc(d.footer.thankYouText)}</div>` : '';
@@ -320,7 +382,7 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
   const copyrightBlock = d.footer.showContact && c.copyright ? `<div class="copyright">${esc(c.copyright)}</div>` : '';
 
   const footerTextBlock = d.footer.showFooterText && (b.footerText || company?.footerText)
-    ? `<div class="muted" style="text-align:center;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:8px">${esc(b.footerText || company.footerText)}</div>` : '';
+    ? `<div class="muted" style="text-align:center;margin-top:16px;border-top:1px solid #e5e7eb;padding-top:8px">${esc(b.footerText || company.footerText)}</div>` : '';
 
   const printScript = opts.print === false ? '' : `<script>window.onload=function(){window.print();}</script>`;
 
@@ -352,7 +414,7 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
     .copyright { text-align: center; margin-top: 4px; font-size: 9px; color: ${d.colors.footer}; opacity: 0.8; }
     .status { display:inline-block; padding:3px 10px; border-radius:${radius || 6}px; font-weight:700; font-size:10px; background:${d.colors.accent ? `${d.colors.accent}22` : '#eef2ff'}; color:${d.colors.accent || '#4338ca'}; }
     .wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 0; pointer-events: none; overflow: hidden; }
-    .wm span { font-size: 90px; font-weight: 800; color:#0f172a; opacity: 0.06; transform: rotate(-30deg); white-space: nowrap; letter-spacing: 10px; }
+    .wm span { font-size: 90px; font-weight: 800; color:#111827; opacity: 0.06; transform: rotate(-30deg); white-space: nowrap; letter-spacing: 10px; }
     .wm img { max-width: 60%; max-height: 60%; opacity: 0.07; transform: rotate(-30deg); }
     .content { position: relative; z-index: 1; }
     .logo { height: 46px; max-width: 180px; object-fit: contain; margin-bottom: 6px; display:block; }
@@ -360,7 +422,7 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
     .seal { height: 54px; object-fit: contain; display:inline-block; }
     .sig { height: 38px; object-fit: contain; display:block; margin: 0 auto; }
   </style></head><body>
-  ${b.hasWatermark ? `<div class="wm">${b.watermarkImage ? `<img src="${b.watermarkImage}"/>` : `<span>${esc(b.watermarkText)}</span>`}</div>` : ''}
+  ${b.hasWatermark ? `<div class="wm">${b.watermarkImage ? `<img src="${b.watermarkImage}" onerror="this.style.display='none'" />` : `<span>${esc(b.watermarkText)}</span>`}</div>` : ''}
   <div class="content">
   ${head}
   <div class="grid">
@@ -400,3 +462,162 @@ export const SAMPLE_INVOICE = {
   subtotal: 39000, discountTotal: 750, taxableAmount: 38250, cgst: 3442.5, sgst: 3442.5, igst: 0, roundOff: 0.0, grandTotal: 45135,
   bankDetails: 'Bank: HDFC Bank\nA/C: 5010 0123 4567\nIFSC: HDFC0000123', notes: 'Thank you for your business.', termsConditions: 'Payment due within 30 days.',
 };
+
+// ── Canvas Renderer ─────────────────────────────────────────────────────────
+
+function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: RenderOpts): string {
+  const b = resolveBranding(company);
+  const elements = design.elements || [];
+  const pageSize = `${design.paper || 'A4'} ${design.orientation || 'portrait'}`;
+  
+  const printScript = opts.print === false ? '' : `<script>window.onload=function(){window.print();}</script>`;
+  
+  let html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(inv.invoiceNumber)}</title>
+  <style>
+    @page { size: ${pageSize}; margin: 0; }
+    * { box-sizing: border-box; } 
+    body { margin: 0; position: relative; width: 100%; height: 100%; display: flex; justify-content: center; }
+    .canvas-container { position: relative; width: 794px; height: 1123px; overflow: hidden; background: white; }
+    .el { position: absolute; word-wrap: break-word; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; font-size: 0.9em; }
+    th { background: #f8fafc; font-weight: bold; }
+    .r { text-align: right; }
+  </style></head><body><div class="canvas-container">`;
+
+  // Sort elements by zIndex
+  const sorted = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+
+  for (const el of sorted) {
+    if (!el.visible) continue;
+    
+    let style = `left: ${el.x}px; top: ${el.y}px; width: ${el.w}px; height: ${el.h}px; z-index: ${el.zIndex};`;
+    if (el.rotation) style += ` transform: rotate(${el.rotation}deg);`;
+    if (el.opacity !== undefined) style += ` opacity: ${el.opacity};`;
+    if (el.fontFamily) style += ` font-family: ${el.fontFamily};`;
+    if (el.fontSize) style += ` font-size: ${el.fontSize}px;`;
+    if (el.fontWeight) style += ` font-weight: ${el.fontWeight};`;
+    if (el.fontStyle) style += ` font-style: ${el.fontStyle};`;
+    if (el.textDecoration) style += ` text-decoration: ${el.textDecoration};`;
+    if (el.textAlign) style += ` text-align: ${el.textAlign};`;
+    if (el.color) style += ` color: ${el.color};`;
+    if (el.letterSpacing) style += ` letter-spacing: ${el.letterSpacing}px;`;
+    if (el.lineHeight) style += ` line-height: ${el.lineHeight};`;
+    if (el.bg) style += ` background-color: ${el.bg};`;
+    if (el.borderWidth) style += ` border-width: ${el.borderWidth}px;`;
+    if (el.borderColor) style += ` border-color: ${el.borderColor};`;
+    if (el.borderStyle) style += ` border-style: ${el.borderStyle};`;
+    if (el.borderRadius) style += ` border-radius: ${el.borderRadius}px;`;
+    if (el.padding) style += ` padding: ${el.padding}px;`;
+
+    let innerHtml = '';
+    
+    switch (el.type) {
+      case 'text':
+      case 'customSection': {
+        let textContent = el.content || '';
+        textContent = textContent
+          .replace(/\{\{CustomerName\}\}/gi, esc(inv.billToName || ''))
+          .replace(/\{\{InvoiceNumber\}\}/gi, esc(inv.invoiceNumber || ''))
+          .replace(/\{\{InvoiceDate\}\}/gi, esc(inv.invoiceDate || ''))
+          .replace(/\{\{DueDate\}\}/gi, esc(inv.dueDate || ''))
+          .replace(/\{\{CompanyName\}\}/gi, esc(company?.name || ''))
+          .replace(/\{\{GSTIN\}\}/gi, esc(company?.gstin || ''))
+          .replace(/\{\{CustomerGST\}\}/gi, esc(inv.billToGstin || ''))
+          .replace(/\{\{PageNumber\}\}/gi, '1')
+          .replace(/\{\{TotalPages\}\}/gi, '1')
+          .replace(/\{\{CustomField1\}\}/gi, esc(inv.customField1 || ''));
+        innerHtml = textContent.replace(/\n/g, '<br/>');
+        break;
+      }
+      case 'rect':
+      case 'circle':
+        if (el.type === 'circle') style += ' border-radius: 50%;';
+        break;
+      case 'line':
+        style += ' border-top-width: ' + (el.borderWidth || 1) + 'px; border-top-style: ' + (el.borderStyle || 'solid') + '; border-top-color: ' + (el.borderColor || '#000') + ';';
+        style += ' height: 0 !important; overflow: visible;';
+        break;
+      case 'image':
+      case 'stamp':
+        innerHtml = `<img src="${el.src || ''}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
+        break;
+      case 'logo':
+        if (b.hasLogo) innerHtml = `<img src="${b.logo}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
+        break;
+      case 'signature':
+        if (b.hasSignature) innerHtml = `<img src="${b.signature}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
+        break;
+      case 'qr':
+        if (opts.qrDataUrl) innerHtml = `<img src="${opts.qrDataUrl}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
+        break;
+      case 'barcode':
+        // Placeholder for barcode preview since it requires JS rendering usually
+        innerHtml = `<div style="width:100%; height:100%; border:1px solid #ccc; display:flex; align-items:center; justify-content:center;">|||||||||||||||</div>`;
+        break;
+      case 'companyDetails':
+        innerHtml = `<strong>${esc(company?.name || 'Company Name')}</strong><br/>
+          ${esc(company?.address || '')}<br/>
+          ${company?.gstin ? `GSTIN: ${esc(company.gstin)}<br/>` : ''}
+          ${company?.email ? `${esc(company.email)}<br/>` : ''}
+          ${company?.phone ? `${esc(company.phone)}` : ''}`;
+        break;
+      case 'customerDetails':
+        innerHtml = `<strong>${esc(inv.billToName || 'Customer')}</strong><br/>
+          ${esc(inv.billToAddress || '')}<br/>
+          ${inv.billToGstin ? `GSTIN: ${esc(inv.billToGstin)}<br/>` : ''}
+          ${inv.billToEmail ? `${esc(inv.billToEmail)}<br/>` : ''}
+          ${inv.billToPhone ? `${esc(inv.billToPhone)}` : ''}`;
+        break;
+      case 'itemTable':
+        {
+          const cols = (el.tableCols || DEFAULT_COLUMNS).filter(c => c.visible);
+          let ths = cols.map(c => {
+            const r = ['qty', 'rate', 'disc', 'gst', 'amount'].includes(c.key) ? ' class="r"' : '';
+            return `<th${r} style="width:${c.width ? c.width + '%' : 'auto'}">${esc(c.label)}</th>`;
+          }).join('');
+          let trs = (inv.items || []).map((it:any, i:number) => {
+            return `<tr>${cols.map(c => colCell(c, it, i)).join('')}</tr>`;
+          }).join('');
+          innerHtml = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+        }
+        break;
+      case 'totals':
+        {
+          const rows = [];
+          const tr = el.totalsRows || { subtotal: true, grandTotal: true };
+          if (tr.subtotal) rows.push(`<tr><td>Subtotal</td><td class="r">${money(inv.subtotal)}</td></tr>`);
+          if (tr.discount) rows.push(`<tr><td>Discount</td><td class="r">− ${money(inv.discountTotal)}</td></tr>`);
+          if (tr.taxable) rows.push(`<tr><td>Taxable Amount</td><td class="r">${money(inv.taxableAmount)}</td></tr>`);
+          if (tr.tax) {
+            if (inv.cgst > 0) {
+              rows.push(`<tr><td>CGST</td><td class="r">${money(inv.cgst)}</td></tr>`);
+              rows.push(`<tr><td>SGST</td><td class="r">${money(inv.sgst)}</td></tr>`);
+            } else if (inv.igst > 0) {
+              rows.push(`<tr><td>IGST</td><td class="r">${money(inv.igst)}</td></tr>`);
+            }
+          }
+          if (tr.roundOff) rows.push(`<tr><td>Round Off</td><td class="r">${money(inv.roundOff)}</td></tr>`);
+          if (tr.grandTotal) rows.push(`<tr><td style="font-weight:bold">Grand Total</td><td class="r" style="font-weight:bold">${money(inv.grandTotal)}</td></tr>`);
+          if (tr.amountInWords) rows.push(`<tr><td colspan="2" style="font-size:0.9em">Amount in Words: <b>${esc(amountInWords(inv.grandTotal))}</b></td></tr>`);
+          innerHtml = `<table style="border:none"><tbody>${rows.join('')}</tbody></table>`;
+        }
+        break;
+      case 'bankDetails':
+        innerHtml = inv.bankDetails ? `<strong>Bank Details</strong><br/>${esc(inv.bankDetails).replace(/\n/g, '<br/>')}` : '';
+        break;
+      case 'terms':
+        innerHtml = inv.termsConditions ? `<strong>Terms & Conditions</strong><br/>${esc(inv.termsConditions).replace(/\n/g, '<br/>')}` : '';
+        break;
+      case 'notes':
+        innerHtml = inv.notes ? `<strong>Notes</strong><br/>${esc(inv.notes).replace(/\n/g, '<br/>')}` : '';
+        break;
+    }
+    
+    html += `<div class="el" style="${style}">${innerHtml}</div>`;
+  }
+  
+  html += `</div>${printScript}</body></html>`;
+  return html;
+}
+

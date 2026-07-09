@@ -162,7 +162,7 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
         <div className="w-full">
           {/* ── Sticky payroll summary — Gross, Deductions, Net (final payable) ── */}
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div className="rounded-xl bg-indigo-50 px-3 py-2 text-indigo-700">
+            <div className="rounded-xl bg-brand-50 px-3 py-2 text-brand-700">
               <p className="text-[9px] font-bold uppercase tracking-wide opacity-80 leading-tight">Gross Salary</p>
               <p className="text-base font-black font-mono leading-tight">{inr(totals.grossSalary)}</p>
             </div>
@@ -237,8 +237,8 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
                 { label: 'PL', value: att.pl },
                 { label: 'Half Days', value: att.halfDays },
                 { label: 'LOP', value: att.lop, tone: 'text-rose-600' },
-                { label: 'OT Hours', value: att.otHours, tone: 'text-blue-600' },
-                { label: 'Payable Days', value: att.payableDays, always: true, tone: 'text-indigo-600' },
+                { label: 'OT Hours', value: att.otHours, tone: 'text-brand-600' },
+                { label: 'Payable Days', value: att.payableDays, always: true, tone: 'text-brand-600' },
               ] as { label: string; value: any; always?: boolean; tone?: string }[])
                 .filter(c => c.always || n(c.value) > 0)
                 .map(c => <AttCell key={c.label} label={c.label} value={c.value} tone={c.tone} />)}
@@ -248,11 +248,11 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
           {/* ── Earnings | Deductions ── */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-150 p-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-bold text-blue-700 mb-2"><TrendingUp size={13} /> Earnings</p>
+              <p className="flex items-center gap-1.5 text-[11px] font-bold text-brand-700 mb-2"><TrendingUp size={13} /> Earnings</p>
               <div className="divide-y divide-slate-50">
                 {EARNINGS.map(([k, label]) => <MoneyRow key={k} k={k} label={label} value={form[k]} editable={editable} onChange={setField} />)}
               </div>
-              <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-xs font-bold text-blue-800">
+              <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-xs font-bold text-brand-800">
                 <span>Total Earnings</span><span className="font-mono">{inr(totals.totalEarnings)}</span>
               </div>
             </div>

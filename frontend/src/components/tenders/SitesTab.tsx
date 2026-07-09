@@ -105,7 +105,7 @@ export const SitesTab: React.FC<Props> = ({ activeCompanyId, canManageCommercial
                   <Td className="text-center"><Badge variant={(s.vacancies ?? 0) > 0 ? 'amber' : 'green'}>{s.vacancies ?? 0}</Badge></Td>
                   <Td>
                     <div className="flex items-center gap-1.5">
-                      {canManageCommercial && <button onClick={() => openEdit(s)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><Edit2 size={13} /></button>}
+                      {canManageCommercial && <button onClick={() => openEdit(s)} title="Edit" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><Edit2 size={13} /></button>}
                       {canManageCommercial && <button onClick={() => remove(s.id)} title="Delete" className="p-1.5 rounded-md border border-slate-200 bg-white text-rose-400 hover:text-rose-600 shadow-sm"><Trash2 size={13} /></button>}
                     </div>
                   </Td>

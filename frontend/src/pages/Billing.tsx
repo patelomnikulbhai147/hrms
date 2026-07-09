@@ -481,14 +481,14 @@ export const Billing: React.FC<BillingProps> = ({
     const name = planName || 'Starter';
     if (name === 'Enterprise') {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-gradient-to-r from-purple-100 to-amber-100 text-purple-800 border border-purple-200/50 shadow-xs uppercase tracking-wide">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-gradient-to-r from-brand-100 to-amber-100 text-brand-800 border border-brand-200/50 shadow-xs uppercase tracking-wide">
           👑 {name}
         </span>
       );
     }
     if (name === 'Professional' || name === 'Growth') {
       return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-100 uppercase tracking-wide">
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-100 uppercase tracking-wide">
           Professional
         </span>
       );
@@ -779,26 +779,26 @@ export const Billing: React.FC<BillingProps> = ({
         )}
 
         {/* ─── New Employee-Based Subscription entry (Beta) ─────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white px-5 py-3.5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-brand-100 bg-gradient-to-r from-brand-50 to-white px-5 py-3.5 shadow-sm">
           <div>
             <p className="text-sm font-extrabold text-slate-800">Trying the new billing model?</p>
             <p className="text-[11px] text-slate-500">Peak-employee + branch-slot based subscription. Runs alongside this page — nothing here changes.</p>
           </div>
-          <Button onClick={() => setShowNewSub(true)} className="bg-indigo-600 hover:bg-indigo-700 shrink-0">
+          <Button onClick={() => setShowNewSub(true)} className="bg-brand-600 hover:bg-brand-700 shrink-0">
             <span className="flex items-center gap-1.5"><Rocket size={14} /> New Employee-Based Subscription (Beta)</span>
           </Button>
         </div>
 
         {/* ─── Metric Highlights ────────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-          <div className="bg-white p-5 rounded-[16px] border border-[#E2E8F0] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-[16px] border border-[#E5E7EB] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Monthly Recurring Revenue</div>
-                <div className="mt-2 text-3xl font-extrabold text-[#0F172A] tracking-tight">₹{mrr.toLocaleString('en-IN')}</div>
-                <div className="mt-1 text-[11px] text-[#64748B]">Projected monthly run-rate</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Monthly Recurring Revenue</div>
+                <div className="mt-2 text-3xl font-extrabold text-[#111827] tracking-tight">₹{mrr.toLocaleString('en-IN')}</div>
+                <div className="mt-1 text-[11px] text-[#6B7280]">Projected monthly run-rate</div>
               </div>
-              <div className="text-[#6D5DFC] bg-[#F3F0FF] border border-[#E9D5FF] rounded-xl p-2.5">
+              <div className="text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] rounded-xl p-2.5">
                 <DollarSign size={20} />
               </div>
             </div>
@@ -809,16 +809,16 @@ export const Billing: React.FC<BillingProps> = ({
               <div className="flex-1 bg-[#F1F5F9] rounded-full h-1.5 overflow-hidden">
                 <div className="h-full bg-emerald-500 rounded-full" style={{ width: '46%' }} />
               </div>
-              <div className="text-[10px] text-[#64748B]">vs last month</div>
+              <div className="text-[10px] text-[#6B7280]">vs last month</div>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-[16px] border border-[#E2E8F0] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-[16px] border border-[#E5E7EB] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Total SaaS Revenue</div>
-                <div className="mt-2 text-3xl font-extrabold text-[#0F172A] tracking-tight">₹{totalRevenue.toLocaleString('en-IN')}</div>
-                <div className="mt-1 text-[11px] text-[#64748B]">All processed transactions</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Total SaaS Revenue</div>
+                <div className="mt-2 text-3xl font-extrabold text-[#111827] tracking-tight">₹{totalRevenue.toLocaleString('en-IN')}</div>
+                <div className="mt-1 text-[11px] text-[#6B7280]">All processed transactions</div>
               </div>
               <div className="text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-xl p-2.5">
                 <ArrowUpRight size={20} />
@@ -826,26 +826,26 @@ export const Billing: React.FC<BillingProps> = ({
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-[16px] border border-[#E2E8F0] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-[16px] border border-[#E5E7EB] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Active Subscriptions</div>
-                <div className="mt-2 text-3xl font-extrabold text-[#0F172A] tracking-tight">
-                  {activePlansCount} <span className="text-sm font-medium text-[#64748B]">/ {parentCompanies.length}</span>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Active Subscriptions</div>
+                <div className="mt-2 text-3xl font-extrabold text-[#111827] tracking-tight">
+                  {activePlansCount} <span className="text-sm font-medium text-[#6B7280]">/ {parentCompanies.length}</span>
                 </div>
-                <div className="mt-1 text-[11px] text-[#64748B]">Paid or trial workspaces</div>
+                <div className="mt-1 text-[11px] text-[#6B7280]">Paid or trial workspaces</div>
               </div>
-              <div className="text-[#3B82F6] bg-[#F0F6FF] border border-[#DBEAFE] rounded-xl p-2.5">
+              <div className="text-[#6C3CF0] bg-[#F0F6FF] border border-[#E6E0FE] rounded-xl p-2.5">
                 <UserCheck size={20} />
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-[16px] border border-[#E2E8F0] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
+          <div className="bg-white p-5 rounded-[16px] border border-[#E5E7EB] shadow-[0_4px_20px_rgba(15,23,42,0.05)] flex flex-col justify-between">
             <div className="flex items-start justify-between">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-[#64748B]">Pending / Overdue</div>
-                <div className="mt-2 text-3xl font-extrabold text-[#0F172A] tracking-tight">{pendingPaymentsCount}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-[#6B7280]">Pending / Overdue</div>
+                <div className="mt-2 text-3xl font-extrabold text-[#111827] tracking-tight">{pendingPaymentsCount}</div>
                 <div className="mt-1 text-[11px] text-rose-500 font-medium">Requires immediate renewal</div>
               </div>
               <div className="text-rose-500 bg-rose-50 border border-rose-100 rounded-xl p-2.5 animate-pulse">
@@ -856,14 +856,14 @@ export const Billing: React.FC<BillingProps> = ({
         </div>
 
       {/* ─── Premium Tab Bar ────────────────────────────────────────────────── */}
-      <div className="bg-white border border-[#E2E8F0] shadow-sm rounded-2xl p-2 flex flex-wrap gap-2">
+      <div className="bg-white border border-[#E5E7EB] shadow-sm rounded-2xl p-2 flex flex-wrap gap-2">
         <button
           onClick={() => setActiveTab('overview')}
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'overview'
-              ? 'bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
-              : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
           <Building2 size={14} />
@@ -874,8 +874,8 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'plans'
-              ? 'bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
-              : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
           <CreditCard size={14} />
@@ -886,8 +886,8 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'payments'
-              ? 'bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
-              : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
           <FileText size={14} />
@@ -898,8 +898,8 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 relative cursor-pointer",
             activeTab === 'alerts'
-              ? 'bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
-              : 'text-[#64748B] hover:bg-[#F8FAFC] hover:text-[#0F172A]'
+              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
           <ShieldAlert size={14} />
@@ -914,12 +914,12 @@ export const Billing: React.FC<BillingProps> = ({
 
       {/* ─── TAB CONTENT: OVERVIEW (COMPANIES GRID/TABLE) ────────────────────── */}
       {activeTab === 'overview' && (
-        <div className="bg-white rounded-[16px] border border-[#E2E8F0] shadow-sm overflow-hidden">
+        <div className="bg-white rounded-[16px] border border-[#E5E7EB] shadow-sm overflow-hidden">
 
           {/* Controls */}
-          <div className="p-6 border-b border-[#E2E8F0] flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#F8FAFC]/50">
+          <div className="p-6 border-b border-[#E5E7EB] flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#F8FAFC]/50">
             <div className="flex-1 max-w-xl relative">
-              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#64748B]">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[#6B7280]">
                 <Search size={14} />
               </span>
               <input
@@ -927,17 +927,17 @@ export const Billing: React.FC<BillingProps> = ({
                 placeholder="Search companies, domain, or admin..."
                 value={companySearch}
                 onChange={(e) => setCompanySearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-xs focus:ring-1 focus:ring-[#6D5DFC] focus:border-[#6D5DFC] outline-none shadow-sm transition-all"
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-xs focus:ring-1 focus:ring-[#6C3CF0] focus:border-[#6C3CF0] outline-none shadow-sm transition-all"
               />
             </div>
 
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <Filter size={14} className="text-[#64748B]" />
+                <Filter size={14} className="text-[#6B7280]" />
                 <select
                   value={planFilter}
                   onChange={(e) => setPlanFilter(e.target.value)}
-                  className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-indigo-500/50 cursor-pointer"
+                  className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-brand-500/50 cursor-pointer"
                 >
                   <option value="">All Plans</option>
                   {plans.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
@@ -947,7 +947,7 @@ export const Billing: React.FC<BillingProps> = ({
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-indigo-500/50 cursor-pointer"
+                className="border border-white/5 rounded-xl px-3 py-2 text-xs outline-none bg-slate-900 text-slate-200 focus:border-brand-500/50 cursor-pointer"
               >
                 <option value="">All Statuses</option>
                 <option value="Paid">Paid</option>
@@ -989,30 +989,30 @@ export const Billing: React.FC<BillingProps> = ({
                   case 'Paid': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_8px_rgba(16,185,129,0.15)]';
                   case 'Pending': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.15)]';
                   case 'Overdue': return 'bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-[0_0_8px_rgba(244,63,94,0.15)]';
-                  case 'Trial Active': return 'bg-sky-500/10 text-sky-400 border border-sky-500/20 shadow-[0_0_8px_rgba(14,165,233,0.15)]';
+                  case 'Trial Active': return 'bg-brand-500/10 text-brand-400 border border-brand-500/20 shadow-[0_0_8px_rgba(14,165,233,0.15)]';
                   default: return 'bg-slate-800/50 text-slate-400 border border-slate-700/50';
                 }
               };
 
               return (
-                <div key={comp.id} className="bg-white p-6 border border-[#E2E8F0] rounded-[24px] hover:shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-300 relative overflow-hidden mb-6 text-left">
+                <div key={comp.id} className="bg-white p-6 border border-[#E5E7EB] rounded-[24px] hover:shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-300 relative overflow-hidden mb-6 text-left">
                   {/* Parent Company Header */}
-                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E2E8F0]">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E5E7EB]">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md border border-black/5" style={{ backgroundColor: comp.primaryColor || '#6D5DFC' }}>
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md border border-black/5" style={{ backgroundColor: comp.primaryColor || '#6C3CF0' }}>
                         {comp.logo}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-xl font-extrabold text-[#0F172A] tracking-tight">{comp.name}</h3>
-                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6D5DFC] border border-[#E9D5FF] uppercase tracking-wider">Parent Company</span>
+                          <h3 className="text-xl font-extrabold text-[#111827] tracking-tight">{comp.name}</h3>
+                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6C3CF0] border border-[#E9D5FF] uppercase tracking-wider">Parent Company</span>
                         </div>
-                        <p className="text-xs text-[#64748B] mt-1">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
+                        <p className="text-xs text-[#6B7280] mt-1">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
                       </div>
 
                       {/* Subscription Tier restored in top metrics/info section */}
-                      <div className="ml-6 pl-6 border-l border-[#E2E8F0] text-left">
-                        <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Subscription Tier</div>
+                      <div className="ml-6 pl-6 border-l border-[#E5E7EB] text-left">
+                        <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Subscription Tier</div>
                         <div className="mt-1 flex items-center gap-2">
                           {getPlanBadge(comp.plan)}
                         </div>
@@ -1027,13 +1027,13 @@ export const Billing: React.FC<BillingProps> = ({
                         <>
                           <button
                             onClick={() => { setSelectedPlanId(plans.find(p => p.name === comp.plan)?.id || plans[0].id); setChangingPlanCompany(comp); }}
-                            className="px-4 py-2 bg-white border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B] rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                            className="px-4 py-2 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#6B7280] rounded-xl text-xs font-bold transition-colors cursor-pointer"
                           >
                             Change Plan
                           </button>
                           <button
                             onClick={() => handleQuickExtend(comp.id)}
-                            className="px-4 py-2 bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white font-bold rounded-xl text-xs transition-colors shadow-[0_4px_12px_rgba(109,93,252,0.25)] cursor-pointer"
+                            className="px-4 py-2 bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white font-bold rounded-xl text-xs transition-colors shadow-[0_4px_12px_rgba(109,93,252,0.25)] cursor-pointer"
                           >
                             Renew Subscription
                           </button>
@@ -1043,34 +1043,34 @@ export const Billing: React.FC<BillingProps> = ({
                   </div>
 
                   {/* High-Fidelity Combined Summary Grid */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-[#F8FAFC]/50 rounded-2xl px-5 mt-5 border border-[#E2E8F0]">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-[#F8FAFC]/50 rounded-2xl px-5 mt-5 border border-[#E5E7EB]">
                     <div>
-                      <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Subscription Plan</div>
+                      <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Subscription Plan</div>
                       <div className="mt-1 flex items-center gap-2">
                         {getPlanBadge(comp.plan)}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Combined Workforce</div>
-                      <div className="mt-1 text-sm font-extrabold text-[#0F172A]">
-                        {totalWorkforce} <span className="text-[10px] font-normal text-[#64748B]">Employees (Head Office: {parentEmployeesCount})</span>
+                      <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Combined Workforce</div>
+                      <div className="mt-1 text-sm font-extrabold text-[#111827]">
+                        {totalWorkforce} <span className="text-[10px] font-normal text-[#6B7280]">Employees (Head Office: {parentEmployeesCount})</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Subsidiary Branches</div>
-                      <div className="mt-1 text-sm font-extrabold text-[#0F172A]">
+                      <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Subsidiary Branches</div>
+                      <div className="mt-1 text-sm font-extrabold text-[#111827]">
                         {isSingleCompanyMode ? (
-                          <span className="text-[#64748B] font-normal text-xs">Disabled (Single Office)</span>
+                          <span className="text-[#6B7280] font-normal text-xs">Disabled (Single Office)</span>
                         ) : (
                           <span>
-                            {compBranches.length} <span className="text-[10px] font-normal text-[#64748B]">Active (Quota: {allowedBranchLimit})</span>
+                            {compBranches.length} <span className="text-[10px] font-normal text-[#6B7280]">Active (Quota: {allowedBranchLimit})</span>
                           </span>
                         )}
                       </div>
                     </div>
                     <div>
-                      <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Consolidated Renewal</div>
-                      <div className="mt-1 text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
+                      <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Consolidated Renewal</div>
+                      <div className="mt-1 text-xs font-bold text-[#111827] flex items-center gap-1.5">
                         <span>{formatDisplayDate(comp.renewalDate) || '—'}</span>
                         {isSoon && <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-600 text-[10px] font-bold border border-amber-200 shadow-sm animate-pulse">Expires in {daysLeft}d</span>}
                       </div>
@@ -1091,17 +1091,17 @@ export const Billing: React.FC<BillingProps> = ({
                   ) : (
                     <>
                       {/* Branches Directory Panel */}
-                      <div className="mt-6 border-t border-[#E2E8F0] pt-6">
+                      <div className="mt-6 border-t border-[#E5E7EB] pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <Building2 size={16} className="text-[#6D5DFC]" />
-                            <h4 className="font-extrabold text-[#0F172A] text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
+                            <Building2 size={16} className="text-[#6C3CF0]" />
+                            <h4 className="font-extrabold text-[#111827] text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
                           </div>
                         </div>
 
                         {/* Frosted Glass Title Header */}
                         <div className="flex items-center gap-2 mb-4 mt-8">
-                          <Building size={16} className="text-[#3B82F6]" />
+                          <Building size={16} className="text-[#6C3CF0]" />
                           <h3 className="text-[15px] font-bold text-slate-800">Branches Directory</h3>
                           <span className="text-[13px] text-slate-500 font-medium">(vishv enterprise subsidiary network)</span>
                         </div>
@@ -1109,7 +1109,7 @@ export const Billing: React.FC<BillingProps> = ({
                         {/* Frosted Glass License Allocation Summary Bar */}
                         <div className="bg-[#F5FAFF] border border-[#E6EEF7] rounded-[14px] p-5 mb-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-sm">
                           <div>
-                            <h4 className="text-[11px] font-bold text-[#3B82F6] uppercase tracking-wider mb-3">Manage Branch License Allocations</h4>
+                            <h4 className="text-[11px] font-bold text-[#6C3CF0] uppercase tracking-wider mb-3">Manage Branch License Allocations</h4>
                             <div className="flex items-center gap-8 text-[12px]">
                               <div>
                                 <p className="text-slate-500 uppercase text-[10px] mb-0.5">Included Slots</p>
@@ -1124,8 +1124,8 @@ export const Billing: React.FC<BillingProps> = ({
                                 <p className="font-bold text-slate-800">{allowedBranchLimit} branch(es)</p>
                               </div>
                               <div>
-                                <p className="text-[#3B82F6] uppercase text-[10px] mb-0.5 font-semibold">Active Slots</p>
-                                <p className="font-bold text-[#3B82F6]">
+                                <p className="text-[#6C3CF0] uppercase text-[10px] mb-0.5 font-semibold">Active Slots</p>
+                                <p className="font-bold text-[#6C3CF0]">
                                   {compBranches.filter(b => {
                                     const isSuspended = b.status === 'Inactive' || b.accountStatus === 'Suspended';
                                     const licenseLabel = b.branchLicenseStatus || 'Active License';
@@ -1147,13 +1147,13 @@ export const Billing: React.FC<BillingProps> = ({
                                 </button>
                                 <button
                                   onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
-                                  className="px-4 py-2 bg-white border border-[#3B82F6] hover:bg-blue-50 text-[#3B82F6] rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                                  className="px-4 py-2 bg-white border border-[#6C3CF0] hover:bg-brand-50 text-[#6C3CF0] rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                                 >
                                   <Plus size={14} /> Add Slot (+₹999/mo)
                                 </button>
                                 <button
                                   onClick={() => handleOpenCreateBranch(comp.id)}
-                                  className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                  className="px-5 py-2 bg-[#6C3CF0] hover:bg-brand-600 text-white rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                 >
                                   <Rocket size={14} /> Deploy Branch
                                 </button>
@@ -1163,7 +1163,7 @@ export const Billing: React.FC<BillingProps> = ({
                         </div>
 
                         {compBranches.length === 0 ? (
-                          <div className="text-center py-8 border border-dashed border-[#CBD5E1] rounded-[14px] text-[#64748B] text-xs bg-[#F8FAFC]">
+                          <div className="text-center py-8 border border-dashed border-[#D1D5DB] rounded-[14px] text-[#6B7280] text-xs bg-[#F8FAFC]">
                             No branches deployed yet for this workspace. Click "Deploy Branch Portal" to onboard one.
                           </div>
                         ) : (
@@ -1182,7 +1182,7 @@ export const Billing: React.FC<BillingProps> = ({
                                   {/* Top Section */}
                                   <div className="flex justify-between items-start mb-5 pb-4 border-b border-[#E6EEF7]">
                                     <div className="flex items-center gap-3">
-                                      <span className="font-bold text-[#3B82F6] bg-[#EFF6FF] px-3 py-1.5 rounded-full border border-[#DBEAFE] text-[11px] uppercase">
+                                      <span className="font-bold text-[#6C3CF0] bg-[#F3F0FF] px-3 py-1.5 rounded-full border border-[#E6E0FE] text-[11px] uppercase">
                                         {br.branchCode || 'BR'}
                                       </span>
                                       <div>
@@ -1194,7 +1194,7 @@ export const Billing: React.FC<BillingProps> = ({
                                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold ${
                                         licenseLabel === 'Suspended'
                                           ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-sm'
-                                          : 'bg-[#EFF6FF] text-[#3B82F6] border border-[#DBEAFE] shadow-sm'
+                                          : 'bg-[#F3F0FF] text-[#6C3CF0] border border-[#E6E0FE] shadow-sm'
                                       }`}>
                                         <ShieldCheck size={12} /> {licenseLabel}
                                       </span>
@@ -1228,7 +1228,7 @@ export const Billing: React.FC<BillingProps> = ({
                                       <>
                                         <button
                                           onClick={() => onStartMasquerade(br.id, 'branch')}
-                                          className="px-4 py-2.5 bg-[#3B82F6] hover:bg-blue-600 text-white rounded-md text-[12px] font-medium transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                          className="px-4 py-2.5 bg-[#6C3CF0] hover:bg-brand-600 text-white rounded-md text-[12px] font-medium transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
                                         >
                                           <Users size={14} className="opacity-80" /> Masquerade
                                         </button>
@@ -1286,16 +1286,16 @@ export const Billing: React.FC<BillingProps> = ({
                       </div>
 
                       {/* Branch Resource Utilization Analytics */}
-                      <div className="mt-8 border-t border-[#E2E8F0] pt-6">
+                      <div className="mt-8 border-t border-[#E5E7EB] pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
                             <Users size={16} className="text-emerald-500" />
-                            <h4 className="font-extrabold text-[#0F172A] text-sm">Branch Usage Telemetry & Resource Analytics</h4>
+                            <h4 className="font-extrabold text-[#111827] text-sm">Branch Usage Telemetry & Resource Analytics</h4>
                           </div>
                         </div>
 
                         {compBranches.length === 0 ? (
-                          <div className="text-center py-6 text-[#64748B] text-xs">
+                          <div className="text-center py-6 text-[#6B7280] text-xs">
                             No branch usage analytics available. Onboard portals to monitor live load metrics.
                           </div>
                         ) : (
@@ -1311,20 +1311,20 @@ export const Billing: React.FC<BillingProps> = ({
                               const storage = br.storageUsed || '3.4 GB';
 
                               return (
-                                <div key={br.id} className="bg-white border border-[#E2E8F0] shadow-sm rounded-[20px] p-4 transition-all duration-300">
+                                <div key={br.id} className="bg-white border border-[#E5E7EB] shadow-sm rounded-[20px] p-4 transition-all duration-300">
                                   <div className="flex items-center justify-between mb-3">
-                                    <div className="font-bold text-[#0F172A] text-xs">{br.name} Usage Overview</div>
-                                    <span className="text-[10px] font-bold bg-[#F0F6FF] text-[#3B82F6] border border-[#DBEAFE] px-2.5 py-0.5 rounded-full shadow-sm">
+                                    <div className="font-bold text-[#111827] text-xs">{br.name} Usage Overview</div>
+                                    <span className="text-[10px] font-bold bg-[#F0F6FF] text-[#6C3CF0] border border-[#E6E0FE] px-2.5 py-0.5 rounded-full shadow-sm">
                                       Usage: {capacityPercent}%
                                     </span>
                                   </div>
 
-                                  <div className="space-y-3.5 text-[11px] text-[#64748B]">
+                                  <div className="space-y-3.5 text-[11px] text-[#6B7280]">
                                     {/* Capacity Progress Bar */}
                                     <div>
-                                      <div className="flex justify-between text-[10px] text-[#64748B] mb-1">
+                                      <div className="flex justify-between text-[10px] text-[#6B7280] mb-1">
                                         <span>Workforce Capacity ({brEmployeesCount} / {capacity} staff)</span>
-                                        <span className="font-bold text-[#0F172A]">{capacityPercent}%</span>
+                                        <span className="font-bold text-[#111827]">{capacityPercent}%</span>
                                       </div>
                                       <div className="w-full bg-[#F1F5F9] rounded-full h-1.5 overflow-hidden">
                                         <div
@@ -1337,35 +1337,35 @@ export const Billing: React.FC<BillingProps> = ({
 
                                     {/* Sub details metrics */}
                                     <div className="grid grid-cols-3 gap-2 text-center pt-1">
-                                      <div className="bg-white border border-[#E2E8F0] p-2 rounded-xl shadow-sm">
-                                        <div className="text-[8px] text-[#64748B] uppercase font-bold">HR Administrators</div>
-                                        <div className="font-extrabold text-[#0F172A] text-xs mt-0.5">{activeHr} accounts</div>
+                                      <div className="bg-white border border-[#E5E7EB] p-2 rounded-xl shadow-sm">
+                                        <div className="text-[8px] text-[#6B7280] uppercase font-bold">HR Administrators</div>
+                                        <div className="font-extrabold text-[#111827] text-xs mt-0.5">{activeHr} accounts</div>
                                       </div>
-                                      <div className="bg-white border border-[#E2E8F0] p-2 rounded-xl shadow-sm">
-                                        <div className="text-[8px] text-[#64748B] uppercase font-bold">Payroll Volume</div>
+                                      <div className="bg-white border border-[#E5E7EB] p-2 rounded-xl shadow-sm">
+                                        <div className="text-[8px] text-[#6B7280] uppercase font-bold">Payroll Volume</div>
                                         <div className="font-extrabold text-emerald-600 text-xs mt-0.5">₹{payroll.toLocaleString('en-IN')}</div>
                                       </div>
-                                      <div className="bg-white border border-[#E2E8F0] p-2 rounded-xl shadow-sm">
-                                        <div className="text-[8px] text-[#64748B] uppercase font-bold">Storage Loaded</div>
-                                        <div className="font-extrabold text-[#0F172A] text-xs mt-0.5">{storage}</div>
+                                      <div className="bg-white border border-[#E5E7EB] p-2 rounded-xl shadow-sm">
+                                        <div className="text-[8px] text-[#6B7280] uppercase font-bold">Storage Loaded</div>
+                                        <div className="font-extrabold text-[#111827] text-xs mt-0.5">{storage}</div>
                                       </div>
                                     </div>
 
                                     {/* Super Admin Inline adjust capacity input */}
-                                    <div className="flex items-center justify-between border-t border-[#E2E8F0] pt-3">
+                                    <div className="flex items-center justify-between border-t border-[#E5E7EB] pt-3">
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] text-[#64748B] font-bold uppercase">Renewal override:</span>
+                                        <span className="text-[9px] text-[#6B7280] font-bold uppercase">Renewal override:</span>
                                         <input
                                           type="date"
                                           defaultValue={br.branchRenewalDate || '2027-05-22'}
                                           disabled={!canEdit}
                                           onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
-                                          className="text-[10px] border border-[#E2E8F0] rounded px-1.5 py-0.5 bg-white text-[#0F172A] focus:outline-none focus:ring-1 focus:ring-[#6D5DFC] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="text-[10px] border border-[#E5E7EB] rounded px-1.5 py-0.5 bg-white text-[#111827] focus:outline-none focus:ring-1 focus:ring-[#6C3CF0] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                       </div>
                                       <div className="flex items-center gap-1.5">
-                                        <span className="text-[9px] text-[#64748B] font-bold uppercase">Limit:</span>
-                                        <span className="text-[10px] font-extrabold text-[#6D5DFC] bg-[#F3F0FF] border border-[#E9D5FF] px-2 py-0.5 rounded-lg shadow-sm">
+                                        <span className="text-[9px] text-[#6B7280] font-bold uppercase">Limit:</span>
+                                        <span className="text-[10px] font-extrabold text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] px-2 py-0.5 rounded-lg shadow-sm">
                                           {capacity} staff
                                         </span>
 
@@ -1394,7 +1394,7 @@ export const Billing: React.FC<BillingProps> = ({
                                               <>
                                                 <button
                                                   onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#6B7280] border border-[#E5E7EB] rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                   title="Downgrade limit to 200 employees (Free base capacity)"
                                                 >
                                                   -200
@@ -1412,14 +1412,14 @@ export const Billing: React.FC<BillingProps> = ({
                                               <>
                                                 <button
                                                   onClick={() => handleUpdateBranchCapacity(br.id, 200)}
-                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#6B7280] border border-[#E5E7EB] rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                   title="Downgrade limit to 200 employees (Free base capacity)"
                                                 >
                                                   -200
                                                 </button>
                                                 <button
                                                   onClick={() => handleUpdateBranchCapacity(br.id, 500)}
-                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] rounded text-[9px] font-bold transition-colors cursor-pointer"
+                                                  className="px-1.5 py-0.5 bg-white hover:bg-[#F8FAFC] text-[#6B7280] border border-[#E5E7EB] rounded text-[9px] font-bold transition-colors cursor-pointer"
                                                   title="Downgrade limit to 500 employees (+₹1,499/mo)"
                                                 >
                                                   -500
@@ -1442,7 +1442,7 @@ export const Billing: React.FC<BillingProps> = ({
                   )}
 
                   {/* Invoices and Stats Bar */}
-                  <div className="mt-6 pt-4 border-t border-[#E2E8F0] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-[#64748B]">
+                  <div className="mt-6 pt-4 border-t border-[#E5E7EB] flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-[#6B7280]">
                     <div>
                       {(() => {
                         const basePrice = (comp.billingCycle === 'Yearly' ? comp.priceYearly : comp.priceMonthly) || 
@@ -1453,9 +1453,9 @@ export const Billing: React.FC<BillingProps> = ({
                         
                         return (
                           <>
-                            Unified price: <strong className="text-[#0F172A]">₹{displayPrice.toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
+                            Unified price: <strong className="text-[#111827]">₹{displayPrice.toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
                             {!isSingleCompanyMode && compBranches.length > 0 && totalBranchAddonCost > 0 && (
-                              <span className="ml-2 text-[#6D5DFC] bg-[#F3F0FF] border border-[#E9D5FF] px-2.5 py-0.5 rounded-full font-bold shadow-sm">
+                              <span className="ml-2 text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] px-2.5 py-0.5 rounded-full font-bold shadow-sm">
                                 Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
                               </span>
                             )}
@@ -1466,11 +1466,11 @@ export const Billing: React.FC<BillingProps> = ({
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setShowInvoiceModal(comp)}
-                        className="text-[#6D5DFC] hover:text-[#5b4be8] font-bold transition-colors cursor-pointer"
+                        className="text-[#6C3CF0] hover:text-[#5b4be8] font-bold transition-colors cursor-pointer"
                       >
                         View Latest Payment Receipt
                       </button>
-                      <span className="text-[#E2E8F0]">|</span>
+                      <span className="text-[#E5E7EB]">|</span>
                       <span>Next renewal: {formatDisplayDate(comp.renewalDate)}</span>
                     </div>
                   </div>
@@ -1485,7 +1485,7 @@ export const Billing: React.FC<BillingProps> = ({
       {activeTab === 'plans' && (
         <div className="space-y-6">
           {plans.map(plan => {
-            let planColor = '#3b82f6';
+            let planColor = '#6c3cf0';
             let planIcon = <Users size={24} />;
             let isEnterprise = plan.name === 'Enterprise';
 
@@ -1498,36 +1498,36 @@ export const Billing: React.FC<BillingProps> = ({
             }
 
             return (
-              <div key={plan.id} className="bg-white p-6 border border-[#E2E8F0] rounded-[24px] hover:shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-300 relative overflow-hidden text-left mb-6">
+              <div key={plan.id} className="bg-white p-6 border border-[#E5E7EB] rounded-[24px] hover:shadow-[0_8px_30px_rgba(15,23,42,0.06)] transition-all duration-300 relative overflow-hidden text-left mb-6">
                 {/* Plan Header */}
-                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E2E8F0]">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E5E7EB]">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white shadow-md border border-black/5" style={{ backgroundColor: planColor }}>
                       {planIcon}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-xl font-extrabold text-[#0F172A] tracking-tight">{plan.name}</h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6D5DFC] border border-[#E9D5FF] uppercase tracking-wider">
+                        <h3 className="text-xl font-extrabold text-[#111827] tracking-tight">{plan.name}</h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6C3CF0] border border-[#E9D5FF] uppercase tracking-wider">
                           {isEnterprise ? '👑 Enterprise' : 'SaaS Tier'}
                         </span>
                       </div>
-                      <p className="text-xs text-[#64748B] mt-1">SaaS Platform Subscription Tier</p>
+                      <p className="text-xs text-[#6B7280] mt-1">SaaS Platform Subscription Tier</p>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-6 flex-wrap">
                     <div className="text-right hidden sm:block">
-                      <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Monthly Billing</div>
+                      <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Monthly Billing</div>
                       <div className="mt-1 flex items-baseline gap-1">
-                        <span className="text-2xl font-extrabold text-[#0F172A]">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
-                        <span className="text-[10px] text-[#64748B]">/mo</span>
+                        <span className="text-2xl font-extrabold text-[#111827]">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
+                        <span className="text-[10px] text-[#6B7280]">/mo</span>
                       </div>
                     </div>
                     {canEdit && (
                       <button
                         onClick={() => setEditingPlan(plan)}
-                        className="px-4 py-2 border border-[#E2E8F0] hover:bg-[#F8FAFC] text-[#64748B] rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
+                        className="px-4 py-2 border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#6B7280] rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5"
                       >
                         <Edit3 size={13} /> Adjust Thresholds
                       </button>
@@ -1536,40 +1536,40 @@ export const Billing: React.FC<BillingProps> = ({
                 </div>
 
                 {/* High-Fidelity Combined Summary Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-[#F8FAFC]/50 rounded-2xl px-5 mt-5 border border-[#E2E8F0]">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 py-5 bg-[#F8FAFC]/50 rounded-2xl px-5 mt-5 border border-[#E5E7EB]">
                   <div>
-                    <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Included Workforce</div>
-                    <div className="mt-1 text-sm font-extrabold text-[#0F172A] flex items-center gap-1.5">
-                      <Users size={13} className="text-[#6D5DFC]" />
-                      {plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit} <span className="text-[10px] font-normal text-[#64748B]">Active Employees</span>
+                    <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Included Workforce</div>
+                    <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
+                      <Users size={13} className="text-[#6C3CF0]" />
+                      {plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit} <span className="text-[10px] font-normal text-[#6B7280]">Active Employees</span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Management Quota</div>
-                    <div className="mt-1 text-sm font-extrabold text-[#0F172A] flex items-center gap-1.5">
-                      <UserCheck size={13} className="text-[#6D5DFC]" />
-                      {plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit} <span className="text-[10px] font-normal text-[#64748B]">HR Admins</span>
+                    <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Management Quota</div>
+                    <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
+                      <UserCheck size={13} className="text-[#6C3CF0]" />
+                      {plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit} <span className="text-[10px] font-normal text-[#6B7280]">HR Admins</span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Secure Storage</div>
-                    <div className="mt-1 text-sm font-extrabold text-[#0F172A] flex items-center gap-1.5">
-                      <CreditCard size={13} className="text-[#6D5DFC]" />
-                      {plan.storageLimit} <span className="text-[10px] font-normal text-[#64748B]">Vault</span>
+                    <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Secure Storage</div>
+                    <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
+                      <CreditCard size={13} className="text-[#6C3CF0]" />
+                      {plan.storageLimit} <span className="text-[10px] font-normal text-[#6B7280]">Vault</span>
                     </div>
                   </div>
                   <div>
-                    <div className="text-[9px] uppercase font-bold text-[#64748B] tracking-wider">Payroll Processing</div>
+                    <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Payroll Processing</div>
                     <div className="mt-1 text-sm font-extrabold flex items-center gap-1.5">
                       {plan.payrollAccess ? (
                         <>
                           <CheckCircle2 size={13} className="text-emerald-500" />
-                          <span className="text-[#0F172A]">Active</span>
+                          <span className="text-[#111827]">Active</span>
                         </>
                       ) : (
                         <>
-                          <XCircle size={13} className="text-[#64748B]" />
-                          <span className="text-[#64748B]">Unavailable</span>
+                          <XCircle size={13} className="text-[#6B7280]" />
+                          <span className="text-[#6B7280]">Unavailable</span>
                         </>
                       )}
                     </div>
@@ -1577,18 +1577,18 @@ export const Billing: React.FC<BillingProps> = ({
                 </div>
 
                 {/* Additional Features Panel */}
-                <div className="mt-5 pt-5 border-t border-[#E2E8F0] flex flex-wrap items-center justify-between gap-4">
-                  <div className="text-xs font-bold text-[#64748B] flex items-center gap-1.5">
-                    <CheckCircle2 size={13} className={plan.documentAccess ? 'text-emerald-500' : 'text-[#94A3B8]'} />
-                    <span className={plan.documentAccess ? 'text-[#0F172A]' : 'text-[#94A3B8] line-through'}>
+                <div className="mt-5 pt-5 border-t border-[#E5E7EB] flex flex-wrap items-center justify-between gap-4">
+                  <div className="text-xs font-bold text-[#6B7280] flex items-center gap-1.5">
+                    <CheckCircle2 size={13} className={plan.documentAccess ? 'text-emerald-500' : 'text-[#9CA3AF]'} />
+                    <span className={plan.documentAccess ? 'text-[#111827]' : 'text-[#9CA3AF] line-through'}>
                       Advanced HR Templates & Letter Systems Included
                     </span>
                   </div>
                   
                   <div className="text-right sm:hidden">
                     <div className="mt-1 flex items-baseline gap-1">
-                      <span className="text-lg font-extrabold text-[#0F172A]">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
-                      <span className="text-[10px] text-[#64748B]">/mo</span>
+                      <span className="text-lg font-extrabold text-[#111827]">₹{plan.priceMonthly.toLocaleString('en-IN')}</span>
+                      <span className="text-[10px] text-[#6B7280]">/mo</span>
                     </div>
                   </div>
                 </div>
@@ -1600,11 +1600,11 @@ export const Billing: React.FC<BillingProps> = ({
 
       {/* ─── TAB CONTENT: TRANSACTION HISTORIES ──────────────────────────────── */}
       {activeTab === 'payments' && (
-        <div className="bg-white rounded-[24px] border border-[#E2E8F0] overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-[#E2E8F0] flex items-center justify-between flex-wrap gap-4 text-left">
+        <div className="bg-white rounded-[24px] border border-[#E5E7EB] overflow-hidden shadow-sm">
+          <div className="p-6 border-b border-[#E5E7EB] flex items-center justify-between flex-wrap gap-4 text-left">
             <div>
-              <h4 className="font-extrabold text-[#0F172A] text-lg">SaaS Transaction History</h4>
-              <p className="text-xs text-[#64748B] mt-0.5">Exportable payment receipts ledger</p>
+              <h4 className="font-extrabold text-[#111827] text-lg">SaaS Transaction History</h4>
+              <p className="text-xs text-[#6B7280] mt-0.5">Exportable payment receipts ledger</p>
             </div>
 
             <ExportMenu
@@ -1620,7 +1620,7 @@ export const Billing: React.FC<BillingProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-xs font-semibold text-[#64748B] uppercase tracking-wider">
+                <tr className="bg-[#F8FAFC] border-b border-[#E5E7EB] text-xs font-semibold text-[#6B7280] uppercase tracking-wider">
                   <th className="py-4 px-6">Invoice ID</th>
                   <th className="py-4 px-6">Company Name</th>
                   <th className="py-4 px-6">Pricing Tier</th>
@@ -1631,30 +1631,30 @@ export const Billing: React.FC<BillingProps> = ({
                   <th className="py-4 px-6 text-right">Gateway Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#E2E8F0] text-sm text-[#0F172A] bg-transparent">
+              <tbody className="divide-y divide-[#E5E7EB] text-sm text-[#111827] bg-transparent">
                 {payments.map(pay => (
                   <tr key={pay.id} className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-4 px-6 font-mono text-xs font-semibold text-[#6D5DFC]">
+                    <td className="py-4 px-6 font-mono text-xs font-semibold text-[#6C3CF0]">
                       {pay.invoiceNumber}
                     </td>
-                    <td className="py-4 px-6 font-bold text-[#0F172A]">
+                    <td className="py-4 px-6 font-bold text-[#111827]">
                       {pay.companyName}
                     </td>
-                    <td className="py-4 px-6 text-xs text-[#64748B]">
+                    <td className="py-4 px-6 text-xs text-[#6B7280]">
                       {pay.planType}
                     </td>
-                    <td className="py-4 px-6 text-xs text-[#64748B] font-medium">
+                    <td className="py-4 px-6 text-xs text-[#6B7280] font-medium">
                       {pay.billingCycle || 'Monthly'}
                     </td>
-                    <td className="py-4 px-6 text-xs text-[#64748B]">
+                    <td className="py-4 px-6 text-xs text-[#6B7280]">
                       {pay.paymentDate}
                     </td>
                     <td className="py-4 px-6">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] text-xs font-medium">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded bg-[#F8FAFC] text-[#6B7280] border border-[#E5E7EB] text-xs font-medium">
                         {pay.paymentMode}
                       </span>
                     </td>
-                    <td className="py-4 px-6 font-extrabold text-[#0F172A]">
+                    <td className="py-4 px-6 font-extrabold text-[#111827]">
                       ₹{pay.amount.toLocaleString('en-IN')}
                     </td>
                     <td className="py-4 px-6 text-right">
@@ -1677,10 +1677,10 @@ export const Billing: React.FC<BillingProps> = ({
       {/* ─── TAB CONTENT: RENEWAL & EXPIRE ALERTS ──────────────────────────────── */}
       {activeTab === 'alerts' && (
         <div className="space-y-4 font-sans text-left">
-          <div className="bg-white rounded-[24px] shadow-sm border border-[#E2E8F0] p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="bg-white rounded-[24px] shadow-sm border border-[#E5E7EB] p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <h4 className="font-extrabold text-[#0F172A] text-lg">Subscription Alerts & Action Center</h4>
-              <p className="text-xs text-[#64748B] mt-1">Real-time status tracking for trial expirations, unpaid invoices, and administrative holds.</p>
+              <h4 className="font-extrabold text-[#111827] text-lg">Subscription Alerts & Action Center</h4>
+              <p className="text-xs text-[#6B7280] mt-1">Real-time status tracking for trial expirations, unpaid invoices, and administrative holds.</p>
             </div>
             {alertCount > 0 && (
               <span className="px-3 py-1 bg-rose-50 border border-rose-200 text-rose-600 text-xs font-bold rounded-full animate-pulse shadow-sm whitespace-nowrap">
@@ -1697,7 +1697,7 @@ export const Billing: React.FC<BillingProps> = ({
               return (
                 <div
                   key={`${comp.id}-${alertItem.type}`}
-                  className={`p-5 rounded-[20px] border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all duration-300 hover:shadow-md bg-white ${alertItem.borderColor || 'border-[#E2E8F0]'}`}
+                  className={`p-5 rounded-[20px] border flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all duration-300 hover:shadow-md bg-white ${alertItem.borderColor || 'border-[#E5E7EB]'}`}
                 >
                   <div className="flex items-start gap-4">
                     <div className={`p-3 rounded-2xl flex items-center justify-center ${alertItem.badgeColor} border shadow-sm`}>
@@ -1711,26 +1711,26 @@ export const Billing: React.FC<BillingProps> = ({
                     </div>
                     <div>
                       <div className="flex items-center flex-wrap gap-2">
-                        <h5 className="font-extrabold text-[#0F172A] text-base">{comp.name}</h5>
-                        <span className="text-xs text-[#64748B]">({comp.domain})</span>
+                        <h5 className="font-extrabold text-[#111827] text-base">{comp.name}</h5>
+                        <span className="text-xs text-[#6B7280]">({comp.domain})</span>
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${alertItem.badgeColor}`}>
                           {alertItem.type}
                         </span>
                       </div>
-                      <p className="text-xs text-[#64748B] mt-1.5 leading-relaxed">
+                      <p className="text-xs text-[#6B7280] mt-1.5 leading-relaxed">
                         {alertItem.message} Workspace access is currently {isSusp ? 'fully locked' : 'restricted'} for corporate operations.
                       </p>
 
                       <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                        <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] rounded-lg shadow-sm">
-                          Plan: <strong className="text-[#0F172A]">{comp.plan}</strong>
+                        <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E5E7EB] text-[#6B7280] rounded-lg shadow-sm">
+                          Plan: <strong className="text-[#111827]">{comp.plan}</strong>
                         </span>
-                        <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] rounded-lg shadow-sm">
-                          Price: <strong className="text-[#0F172A]">₹{comp.subscriptionPrice?.toLocaleString('en-IN')}/mo</strong>
+                        <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E5E7EB] text-[#6B7280] rounded-lg shadow-sm">
+                          Price: <strong className="text-[#111827]">₹{comp.subscriptionPrice?.toLocaleString('en-IN')}/mo</strong>
                         </span>
                         {comp.renewalDate && (
-                          <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] rounded-lg shadow-sm">
-                            Elapsed Date: <strong className="text-[#0F172A]">{formatDisplayDate(comp.renewalDate)}</strong>
+                          <span className="px-2.5 py-1 bg-[#F8FAFC] border border-[#E5E7EB] text-[#6B7280] rounded-lg shadow-sm">
+                            Elapsed Date: <strong className="text-[#111827]">{formatDisplayDate(comp.renewalDate)}</strong>
                           </span>
                         )}
                       </div>
@@ -1742,14 +1742,14 @@ export const Billing: React.FC<BillingProps> = ({
                       onClick={() => {
                         ui.toast.success(`Successfully dispatched billing notification & billing invoice copy to ${comp.adminEmail}!`);
                       }}
-                      className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+                      className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#6B7280] border border-[#E5E7EB] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >
                       Send Reminder
                     </button>
 
                     <button
                       onClick={() => setActiveTab('overview')}
-                      className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+                      className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#111827] border border-[#E5E7EB] rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
                     >
                       View Billing
                     </button>
@@ -1769,7 +1769,7 @@ export const Billing: React.FC<BillingProps> = ({
                     {canEdit && (
                       <button
                         onClick={() => handleQuickExtend(comp.id)}
-                        className="px-3.5 py-2 bg-gradient-to-r from-[#6D5DFC] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-[0_4px_12px_rgba(109,93,252,0.25)]"
+                        className="px-3.5 py-2 bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-[0_4px_12px_rgba(109,93,252,0.25)]"
                       >
                         Renew Plan
                       </button>
@@ -1830,7 +1830,7 @@ export const Billing: React.FC<BillingProps> = ({
                 <select
                   value={selectedPlanId}
                   onChange={(e) => setSelectedPlanId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   {plans.map(p => (
                     <option key={p.id} value={p.id}>
@@ -1850,7 +1850,7 @@ export const Billing: React.FC<BillingProps> = ({
                 </Button>
                 <Button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold"
                 >
                   Confirm Plan Switch
                 </Button>
@@ -1889,7 +1889,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <select
                       value={renewalPlan}
                       onChange={(e) => updateRenewalState(e.target.value as any, renewalCycle)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                     >
                       <option value="Starter">Starter Plan (₹1,999/mo | ₹19,999/yr)</option>
                       <option value="Professional">Professional Plan (₹4,999/mo | ₹49,999/yr)</option>
@@ -1907,7 +1907,7 @@ export const Billing: React.FC<BillingProps> = ({
                         type="button"
                         onClick={() => updateRenewalState(renewalPlan, 'Monthly')}
                         className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all ${renewalCycle === 'Monthly'
-                          ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
+                          ? 'border-brand-600 bg-brand-50/50 text-brand-900 shadow-sm ring-1 ring-brand-500'
                           : 'border-gray-200 hover:bg-gray-50 text-gray-600'
                           }`}
                       >
@@ -1919,7 +1919,7 @@ export const Billing: React.FC<BillingProps> = ({
                         type="button"
                         onClick={() => updateRenewalState(renewalPlan, 'Yearly')}
                         className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border text-center transition-all relative overflow-hidden ${renewalCycle === 'Yearly'
-                          ? 'border-blue-600 bg-blue-50/50 text-blue-900 shadow-sm ring-1 ring-blue-500'
+                          ? 'border-brand-600 bg-brand-50/50 text-brand-900 shadow-sm ring-1 ring-brand-500'
                           : 'border-gray-200 hover:bg-gray-50 text-gray-600'
                           }`}
                       >
@@ -1936,7 +1936,7 @@ export const Billing: React.FC<BillingProps> = ({
                   <div className="grid grid-cols-3 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-100">
                     <div>
                       <p className="font-semibold text-gray-400 uppercase tracking-wider text-[9px]">Calculated Cost</p>
-                      <p className="mt-1 font-bold text-blue-600 text-sm font-mono">
+                      <p className="mt-1 font-bold text-brand-600 text-sm font-mono">
                         ₹{planPricing[renewalPlan][renewalCycle === 'Yearly' ? 'Yearly' : 'Monthly'].toLocaleString('en-IN')}
                       </p>
                     </div>
@@ -1980,7 +1980,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="date"
                       value={newRenewalDate}
                       onChange={(e) => setNewRenewalDate(e.target.value)}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-brand-500 mt-1"
                     />
                   </div>
                 </div>
@@ -1997,7 +1997,7 @@ export const Billing: React.FC<BillingProps> = ({
                     type="button"
                     disabled={renewalConfirmCompany.renewalDate ? new Date(renewalConfirmCompany.renewalDate).getTime() > new Date('2026-05-20').getTime() : false}
                     onClick={() => setRenewalStep(2)}
-                    className="px-4.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold cursor-pointer"
+                    className="px-4.5 py-2 bg-brand-600 hover:bg-brand-700 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold cursor-pointer"
                   >
                     Continue
                   </button>
@@ -2034,7 +2034,7 @@ export const Billing: React.FC<BillingProps> = ({
                       <li>Configure subscription plan to <strong className="text-gray-800">{renewalPlan} ({renewalCycle === 'Yearly' ? 'Annual' : 'Monthly'})</strong></li>
                       <li>Extend subscription renewal date to <strong className="text-gray-800">{formatDisplayDate(newRenewalDate)}</strong></li>
                       <li>Generate payment and manual ledger entries in transaction database</li>
-                      <li>Increment lifetime billing revenue by <strong className="text-blue-600">₹{planPricing[renewalPlan][renewalCycle === 'Yearly' ? 'Yearly' : 'Monthly'].toLocaleString('en-IN')}</strong></li>
+                      <li>Increment lifetime billing revenue by <strong className="text-brand-600">₹{planPricing[renewalPlan][renewalCycle === 'Yearly' ? 'Yearly' : 'Monthly'].toLocaleString('en-IN')}</strong></li>
                       <li>Re-activate all locked corporate HR/employee dashboard portals</li>
                     </ul>
                   </div>
@@ -2091,7 +2091,7 @@ export const Billing: React.FC<BillingProps> = ({
                     type="number"
                     value={editingPlan.priceMonthly}
                     onChange={(e) => setEditingPlan({ ...editingPlan, priceMonthly: Number(e.target.value) })}
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
                 <div>
@@ -2102,7 +2102,7 @@ export const Billing: React.FC<BillingProps> = ({
                     type="number"
                     value={editingPlan.priceYearly}
                     onChange={(e) => setEditingPlan({ ...editingPlan, priceYearly: Number(e.target.value) })}
-                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
               </div>
@@ -2124,7 +2124,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={editingPlan.employeeLimit === 'Unlimited' ? '' : editingPlan.employeeLimit}
                       onChange={(e) => setEditingPlan({ ...editingPlan, employeeLimit: e.target.value === '' ? 0 : Number(e.target.value) })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   )}
                 </div>
@@ -2144,7 +2144,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={editingPlan.hrLimit === 'Unlimited' ? '' : editingPlan.hrLimit}
                       onChange={(e) => setEditingPlan({ ...editingPlan, hrLimit: e.target.value === '' ? 0 : Number(e.target.value) })}
-                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   )}
                 </div>
@@ -2158,7 +2158,7 @@ export const Billing: React.FC<BillingProps> = ({
                   type="text"
                   value={editingPlan.storageLimit}
                   onChange={(e) => setEditingPlan({ ...editingPlan, storageLimit: e.target.value })}
-                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-xl bg-white text-gray-700 outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
 
@@ -2168,7 +2168,7 @@ export const Billing: React.FC<BillingProps> = ({
                     type="checkbox"
                     checked={editingPlan.payrollAccess}
                     onChange={(e) => setEditingPlan({ ...editingPlan, payrollAccess: e.target.checked })}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                    className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-gray-300"
                   />
                   <span className="text-sm font-semibold text-gray-700">Enable Payroll module access</span>
                 </label>
@@ -2178,7 +2178,7 @@ export const Billing: React.FC<BillingProps> = ({
                     type="checkbox"
                     checked={editingPlan.documentAccess}
                     onChange={(e) => setEditingPlan({ ...editingPlan, documentAccess: e.target.checked })}
-                    className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                    className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-gray-300"
                   />
                   <span className="text-sm font-semibold text-gray-700">Enable Custom Letter Templates access</span>
                 </label>
@@ -2195,7 +2195,7 @@ export const Billing: React.FC<BillingProps> = ({
                 {canEdit && (
                   <Button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold"
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold"
                   >
                     Save Settings
                   </Button>
@@ -2265,7 +2265,7 @@ export const Billing: React.FC<BillingProps> = ({
 
                     <div className="pt-4 flex items-center justify-end gap-3">
                       <Button onClick={() => { setShowInvoiceModal(null); }} className="px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-sm">Close</Button>
-                      <Button onClick={() => { /* future: download invoice PDF */ }} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm">Download PDF</Button>
+                      <Button onClick={() => { /* future: download invoice PDF */ }} className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm">Download PDF</Button>
                     </div>
                   </div>
                 );
@@ -2297,7 +2297,7 @@ export const Billing: React.FC<BillingProps> = ({
             <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
               {/* General details */}
               <div className="space-y-4">
-                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">1. General Subsidiary Profiles</h5>
+                <h5 className="font-bold text-xs text-brand-600 uppercase tracking-wider">1. General Subsidiary Profiles</h5>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -2307,7 +2307,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="e.g. GCRI Rajkot"
                       value={branchForm.name}
                       onChange={(e) => setBranchForm({ ...branchForm, name: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2317,7 +2317,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="e.g. RAJ"
                       value={branchForm.branchCode}
                       onChange={(e) => setBranchForm({ ...branchForm, branchCode: e.target.value.toUpperCase() })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
@@ -2330,7 +2330,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="Full Name"
                       value={branchForm.adminName}
                       onChange={(e) => setBranchForm({ ...branchForm, adminName: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2340,7 +2340,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="admin@gcri.in"
                       value={branchForm.email}
                       onChange={(e) => setBranchForm({ ...branchForm, email: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
@@ -2353,7 +2353,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="+91 XXXXX XXXXX"
                       value={branchForm.phone}
                       onChange={(e) => setBranchForm({ ...branchForm, phone: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2363,7 +2363,7 @@ export const Billing: React.FC<BillingProps> = ({
                       placeholder="Rajkot, Gujarat"
                       value={branchForm.location}
                       onChange={(e) => setBranchForm({ ...branchForm, location: e.target.value })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
@@ -2371,7 +2371,7 @@ export const Billing: React.FC<BillingProps> = ({
 
               {/* Threshold limits */}
               <div className="space-y-4 border-t border-slate-100 pt-5">
-                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">2. Regional Limits & Settings</h5>
+                <h5 className="font-bold text-xs text-brand-600 uppercase tracking-wider">2. Regional Limits & Settings</h5>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -2380,7 +2380,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.employeeCapacity}
                       onChange={(e) => setBranchForm({ ...branchForm, employeeCapacity: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2388,7 +2388,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <select
                       value={branchForm.status}
                       onChange={(e) => setBranchForm({ ...branchForm, status: e.target.value as any })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 bg-white"
                     >
                       <option value="Active">Active (Live Portal)</option>
                       <option value="Inactive">Inactive (Suspended)</option>
@@ -2402,7 +2402,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="checkbox"
                       checked={branchForm.enableBroadcasts}
                       onChange={(e) => setBranchForm({ ...branchForm, enableBroadcasts: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-gray-300"
                     />
                     <span>Allow regional administrative broadcasts</span>
                   </label>
@@ -2411,7 +2411,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="checkbox"
                       checked={branchForm.enableSystemAlerts}
                       onChange={(e) => setBranchForm({ ...branchForm, enableSystemAlerts: e.target.checked })}
-                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-gray-300"
+                      className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-gray-300"
                     />
                     <span>Allow automatic system payroll alerts</span>
                   </label>
@@ -2420,7 +2420,7 @@ export const Billing: React.FC<BillingProps> = ({
 
               {/* Statutory parameters */}
               <div className="space-y-4 border-t border-slate-100 pt-5">
-                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">3. Statutory Payroll Parameters Override</h5>
+                <h5 className="font-bold text-xs text-brand-600 uppercase tracking-wider">3. Statutory Payroll Parameters Override</h5>
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
@@ -2429,7 +2429,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.pfRate}
                       onChange={(e) => setBranchForm({ ...branchForm, pfRate: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2438,7 +2438,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.esicRate}
                       onChange={(e) => setBranchForm({ ...branchForm, esicRate: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2447,7 +2447,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.basicPercent}
                       onChange={(e) => setBranchForm({ ...branchForm, basicPercent: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
@@ -2459,7 +2459,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.profTaxRate}
                       onChange={(e) => setBranchForm({ ...branchForm, profTaxRate: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                   <div>
@@ -2468,7 +2468,7 @@ export const Billing: React.FC<BillingProps> = ({
                       type="number"
                       value={branchForm.overtimeRate}
                       onChange={(e) => setBranchForm({ ...branchForm, overtimeRate: Number(e.target.value) })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
                 </div>
@@ -2485,7 +2485,7 @@ export const Billing: React.FC<BillingProps> = ({
               </button>
               <button
                 onClick={handleSaveBranch}
-                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
+                className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs"
               >
                 {editingBranch ? 'Save Branch Settings' : 'Deploy Branch Workspace'}
               </button>
@@ -2499,7 +2499,7 @@ export const Billing: React.FC<BillingProps> = ({
           <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-slate-50/50">
               <div className="flex items-center gap-2">
-                <span className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                <span className="p-2 bg-brand-50 text-brand-600 rounded-xl">
                   <ShieldAlert size={22} className="animate-pulse" />
                 </span>
                 <div>
@@ -2516,7 +2516,7 @@ export const Billing: React.FC<BillingProps> = ({
             </div>
 
             <div className="p-6 space-y-6">
-              <div className="text-center py-4 bg-indigo-50/20 rounded-2xl border border-indigo-100/50">
+              <div className="text-center py-4 bg-brand-50/20 rounded-2xl border border-brand-100/50">
                 <div className="text-xs text-slate-400 uppercase font-bold tracking-wider">Current Limit Reached</div>
                 <div className="text-4xl font-extrabold text-slate-800 mt-1">
                   {companies.filter(c => c.parentCompanyId === paywallParentCompany.id).length} / {(plans.find(p => p.name === paywallParentCompany.plan)?.includedBranchLimit || 0) + (paywallParentCompany.purchasedAdditionalBranches || 0)}
@@ -2525,25 +2525,25 @@ export const Billing: React.FC<BillingProps> = ({
               </div>
 
               <div className="space-y-4">
-                <h5 className="font-bold text-xs text-indigo-600 uppercase tracking-wider">Upgrade Options</h5>
+                <h5 className="font-bold text-xs text-brand-600 uppercase tracking-wider">Upgrade Options</h5>
 
                 {/* Add-on option */}
-                <div className="p-4 border-2 border-indigo-500 rounded-2xl bg-indigo-50/30 flex items-start justify-between gap-3">
+                <div className="p-4 border-2 border-brand-500 rounded-2xl bg-brand-50/30 flex items-start justify-between gap-3">
                   <div className="space-y-1">
                     <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
                       Buy Individual Branch Add-on
-                      <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">Popular</span>
+                      <span className="bg-brand-600 text-white text-[9px] px-2 py-0.5 rounded-full font-bold uppercase">Popular</span>
                     </div>
                     <p className="text-xs text-slate-600 leading-relaxed">
                       Instantly increase your subsidiary portal count by <strong>1 branch</strong>. You can configure and deploy immediately. Billed as ₹999/month.
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className="text-lg font-extrabold text-indigo-700">₹{globalBranchPrice}</div>
+                    <div className="text-lg font-extrabold text-brand-700">₹{globalBranchPrice}</div>
                     <div className="text-[9px] text-slate-400">/ month</div>
                     <button
                       onClick={() => handleAdjustBranchSlots(paywallParentCompany.id, 'add')}
-                      className="mt-3.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
+                      className="mt-3.5 px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs transition-all shadow-xs cursor-pointer"
                     >
                       Buy Add-On
                     </button>

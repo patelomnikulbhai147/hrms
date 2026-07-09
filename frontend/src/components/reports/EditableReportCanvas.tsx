@@ -81,7 +81,7 @@ const EditableCell: React.FC<{
     data-row={row}
     data-col={col}
     {...(editMode ? ({ contentEditable: 'plaintext-only', suppressContentEditableWarning: true, onInput, onKeyDown, className: 'cell-edit outline-none' } as any) : {})}
-    style={{ border: '1px solid #e2e8f0', padding: '3px 6px', fontSize: 9.5, textAlign: numeric ? 'right' : 'left', whiteSpace: 'nowrap' }}
+    style={{ border: '1px solid #e5e7eb', padding: '3px 6px', fontSize: 9.5, textAlign: numeric ? 'right' : 'left', whiteSpace: 'nowrap' }}
     dangerouslySetInnerHTML={{ __html: html }}
   />
 ), (a, b) => a.html === b.html && a.editMode === b.editMode && a.numeric === b.numeric);
@@ -283,7 +283,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
   return (
     <div className="mt-3 space-y-3" key={resetKey}>
       <style>{`
-        .doc-editable:empty:before{content:attr(data-ph);color:#cbd5e1;}
+        .doc-editable:empty:before{content:attr(data-ph);color:#d1d5db;}
         .doc-editable:hover{background:rgba(99,102,241,0.04);}
         .doc-editable:focus{background:rgba(99,102,241,0.07);border-radius:4px;}
         td.cell-edit:hover{background:rgba(99,102,241,0.06)!important;}
@@ -292,7 +292,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
 
       {/* Toolbar */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-3 py-2 flex flex-wrap items-center gap-2 sticky top-0 z-20">
-        <button disabled={!canEdit} onClick={() => setEditMode(e => !e)} className={`flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50 ${editMode ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+        <button disabled={!canEdit} onClick={() => setEditMode(e => !e)} className={`flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg disabled:opacity-50 ${editMode ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
           {!canEdit ? <><Lock size={13} /> View Only</> : editMode ? <><Pencil size={13} /> Editing</> : <><Eye size={13} /> View</>}
         </button>
         <div className="h-5 w-px bg-slate-200" />
@@ -309,8 +309,8 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
           <button title="Redo" className={tbtn(true)} onClick={() => exec('redo')}><Redo2 size={14} /></button>
           <button title="Reset to original" className={tbtn(true)} onClick={resetEdits}><RotateCcw size={14} /></button>
         </div>
-        <button onClick={() => setPanel(p => p === 'versions' ? 'none' : 'versions')} className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-md border ${panel === 'versions' ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}><History size={13} /> Versions <span className="text-[9px] bg-slate-200 rounded-full px-1">{versions.length}</span></button>
-        <button onClick={() => setPanel(p => p === 'audit' ? 'none' : 'audit')} className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-md border ${panel === 'audit' ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}><ScrollText size={13} /> Audit <span className="text-[9px] bg-slate-200 rounded-full px-1">{auditLog.length}</span></button>
+        <button onClick={() => setPanel(p => p === 'versions' ? 'none' : 'versions')} className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-md border ${panel === 'versions' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}><History size={13} /> Versions <span className="text-[9px] bg-slate-200 rounded-full px-1">{versions.length}</span></button>
+        <button onClick={() => setPanel(p => p === 'audit' ? 'none' : 'audit')} className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1.5 rounded-md border ${panel === 'audit' ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}><ScrollText size={13} /> Audit <span className="text-[9px] bg-slate-200 rounded-full px-1">{auditLog.length}</span></button>
         <div className="flex-1" />
         <span className="text-[10px] font-semibold text-emerald-600 flex items-center gap-1">{dirty ? <span className="text-amber-600">● Unsaved edits</span> : savedAt && <><Check size={11} /> Saved {savedAt}</>}</span>
         {canEdit && <Button size="sm" icon={<Save size={13} />} onClick={saveChanges}>Save Changes</Button>}
@@ -323,15 +323,15 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
       {/* Versions panel */}
       {panel === 'versions' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5"><History size={13} className="text-indigo-600" /> Version History</p>
+          <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5"><History size={13} className="text-brand-600" /> Version History</p>
           <div className="space-y-1.5 max-h-56 overflow-auto">
             {versions.map(v => (
               <div key={v.v} className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 px-3 py-2">
                 <div className="min-w-0">
-                  <p className="text-[12px] font-bold text-slate-800">Version {v.v} {v.v === 1 ? <span className="text-emerald-600">· Original</span> : <span className="text-indigo-600">· {v.label}</span>}</p>
+                  <p className="text-[12px] font-bold text-slate-800">Version {v.v} {v.v === 1 ? <span className="text-emerald-600">· Original</span> : <span className="text-brand-600">· {v.label}</span>}</p>
                   <p className="text-[10px] text-slate-400">{v.editedBy} {v.role && v.role !== 'system' ? `(${v.role})` : ''} · {new Date(v.at).toLocaleString('en-IN')}{v.branch ? ` · ${v.branch}` : ''}</p>
                 </div>
-                <button onClick={() => loadVersion(v)} className="text-[11px] font-bold text-indigo-600 hover:underline shrink-0">Restore</button>
+                <button onClick={() => loadVersion(v)} className="text-[11px] font-bold text-brand-600 hover:underline shrink-0">Restore</button>
               </div>
             ))}
           </div>
@@ -341,7 +341,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
       {/* Audit panel */}
       {panel === 'audit' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ScrollText size={13} className="text-indigo-600" /> Audit Trail <span className="text-[10px] font-semibold text-slate-400">({auditLog.length} change{auditLog.length === 1 ? '' : 's'})</span></p>
+          <p className="text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5"><ScrollText size={13} className="text-brand-600" /> Audit Trail <span className="text-[10px] font-semibold text-slate-400">({auditLog.length} change{auditLog.length === 1 ? '' : 's'})</span></p>
           {auditLog.length === 0 ? <p className="text-[11px] text-slate-400">No edits recorded yet. Make a change and click Save Changes.</p> : (
             <div className="overflow-auto max-h-64 border border-slate-100 rounded-lg">
               <table className="w-full border-collapse text-[11px]">
@@ -383,7 +383,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
           {/* Report header banner from Company Profile (letterhead / report header). */}
           {m.reportHeaderImage && <img src={m.reportHeaderImage} alt="" style={{ width: '100%', objectFit: 'contain', marginBottom: 12 }} />}
           {/* Header */}
-          <div className="flex items-start justify-between border-b-2 pb-3 mb-4" style={{ borderColor: m.primaryColor || '#4f46e5' }}>
+          <div className="flex items-start justify-between border-b-2 pb-3 mb-4" style={{ borderColor: m.primaryColor || '#5b2de6' }}>
             <div className="flex items-start gap-3">
               {m.logoImage && <img src={m.logoImage} alt="logo" style={{ width: 46, height: 46, objectFit: 'contain' }} />}
               <div>
@@ -408,7 +408,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
           <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'system-ui, sans-serif' }}>
             <thead>
               <tr>{cols.map(c => (
-                <th key={c.key} style={{ border: '1px solid #cbd5e1', background: '#eef2ff', color: '#3730a3', padding: '4px 6px', fontSize: 9.5, textAlign: numericCols[c.key] ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.label}</th>
+                <th key={c.key} style={{ border: '1px solid #d1d5db', background: '#eef2ff', color: '#3d19aa', padding: '4px 6px', fontSize: 9.5, textAlign: numericCols[c.key] ? 'right' : 'left', whiteSpace: 'nowrap' }}>{c.label}</th>
               ))}</tr>
             </thead>
             <tbody>

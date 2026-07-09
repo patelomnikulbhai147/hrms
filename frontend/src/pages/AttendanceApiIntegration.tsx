@@ -207,7 +207,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><Fingerprint size={22} /></div>
+          <div className="w-11 h-11 rounded-xl bg-brand-50 text-brand-600 flex items-center justify-center"><Fingerprint size={22} /></div>
           <div>
             <h2 className="text-base font-semibold text-gray-900">Attendance API Integration</h2>
             <p className="text-xs text-gray-500 mt-0.5">Sync attendance from the E-TimeOffice cloud into HRMS. Matched by Biometric ID; duplicates prevented automatically.</p>
@@ -250,8 +250,8 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
         {statCard('Present Today', stats.presentToday ?? 0, CheckCircle2, 'bg-emerald-50 text-emerald-600')}
         {statCard('Absent Today', stats.absentToday ?? 0, XCircle, 'bg-rose-50 text-rose-600')}
         {statCard('Late Today', stats.lateToday ?? 0, Clock, 'bg-amber-50 text-amber-600')}
-        {statCard('On Leave', stats.onLeaveToday ?? 0, Users, 'bg-violet-50 text-violet-600')}
-        {statCard("Today's Records", stats.todaysAttendanceRecords ?? 0, Users, 'bg-blue-50 text-blue-600')}
+        {statCard('On Leave', stats.onLeaveToday ?? 0, Users, 'bg-brand-50 text-brand-600')}
+        {statCard("Today's Records", stats.todaysAttendanceRecords ?? 0, Users, 'bg-brand-50 text-brand-600')}
       </div>
 
       {/* Sync health */}
@@ -260,7 +260,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
         {statCard('Failed Today', stats.failedToday ?? 0, XCircle, 'bg-rose-50 text-rose-600')}
         {statCard('Duplicates Today', stats.duplicatesToday ?? 0, AlertTriangle, 'bg-amber-50 text-amber-600')}
         {statCard('Pending (Unmatched)', stats.pendingUnmatched ?? 0, AlertTriangle, 'bg-orange-50 text-orange-600')}
-        {statCard('Sync Interval', `${stats.syncIntervalMinutes ?? form.syncIntervalMinutes} min`, Clock, 'bg-indigo-50 text-indigo-600')}
+        {statCard('Sync Interval', `${stats.syncIntervalMinutes ?? form.syncIntervalMinutes} min`, Clock, 'bg-brand-50 text-brand-600')}
         {statCard('Last Sync', stats.lastSyncAt ? formatDateTime(stats.lastSyncAt).split(',')[0] : '—', RefreshCw, 'bg-slate-100 text-slate-500')}
       </div>
 
@@ -270,7 +270,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
           <div className="flex flex-wrap items-center gap-4 text-xs">
             <span className="font-bold text-slate-700">{lastSyncResult.dryRun ? 'Dry Run Result:' : 'Sync Result:'}</span>
             <span className="text-emerald-600 font-semibold">Imported: {lastSyncResult.imported}</span>
-            <span className="text-blue-600 font-semibold">Updated: {lastSyncResult.updated}</span>
+            <span className="text-brand-600 font-semibold">Updated: {lastSyncResult.updated}</span>
             <span className="text-slate-500 font-semibold">Skipped: {lastSyncResult.skipped}</span>
             <span className="text-orange-600 font-semibold">Unmatched: {lastSyncResult.unmatched}</span>
             <span className="text-amber-600 font-semibold">Duplicates: {lastSyncResult.duplicates}</span>
@@ -284,7 +284,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
         {/* Configuration */}
         <Card>
           <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
-            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5"><PlugZap size={14} className="text-indigo-600" /> Connection Configuration</h3>
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5"><PlugZap size={14} className="text-brand-600" /> Connection Configuration</h3>
             {!canManage && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">View Only</span>}
           </div>
 
@@ -303,7 +303,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
             </div>
 
             <label className="flex items-center gap-2 cursor-pointer select-none">
-              <input type="checkbox" className="accent-indigo-600 h-4 w-4" checked={form.enabled} disabled={!canManage}
+              <input type="checkbox" className="accent-brand-600 h-4 w-4" checked={form.enabled} disabled={!canManage}
                 onChange={e => setField('enabled', e.target.checked)} />
               <span className="text-xs font-semibold text-slate-700">Enable automatic sync (scheduler pulls on the interval below)</span>
             </label>
@@ -378,7 +378,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
                     <td className="py-2 px-2 text-slate-600 whitespace-nowrap">{formatDateTime(l.startedAt)}</td>
                     <td className="py-2 px-2 text-slate-500 capitalize">{l.trigger}</td>
                     <td className="py-2 px-2 text-center font-bold text-emerald-600">{l.imported}</td>
-                    <td className="py-2 px-2 text-center font-bold text-blue-600">{l.updated}</td>
+                    <td className="py-2 px-2 text-center font-bold text-brand-600">{l.updated}</td>
                     <td className="py-2 px-2 text-center font-bold text-orange-600">{l.unmatched}</td>
                     <td className="py-2 px-2 text-center font-bold text-rose-600">{l.failed}</td>
                     <td className="py-2 px-2">
@@ -453,7 +453,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
                             <span className="text-[10px] text-slate-400 italic">Blank code — cannot map (fix at the device)</span>
                           ) : (
                             <select
-                              className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 focus:border-indigo-500 focus:outline-none disabled:opacity-60"
+                              className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] text-slate-700 focus:border-brand-500 focus:outline-none disabled:opacity-60"
                               value={mapSel[code] || ''} disabled={!canManage || resolvingCode === code}
                               onChange={e => setMapSel(s => ({ ...s, [code]: e.target.value }))}>
                               <option value="">Select employee…</option>
@@ -465,7 +465,7 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role, activeCompanyI
                             </select>
                           )}
                           {!isBlank && g.suggestedEmployee && (
-                            <p className="mt-1 text-[10px] text-indigo-500 flex items-center gap-1">
+                            <p className="mt-1 text-[10px] text-brand-500 flex items-center gap-1">
                               <UserPlus size={10} /> Suggested: {g.suggestedEmployee.name} ({g.suggestedEmployee.employeeId})
                             </p>
                           )}

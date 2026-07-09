@@ -109,9 +109,9 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
         onClick={() => setOpen(o => !o)}
         className={cn(
           'inline-flex items-center justify-center gap-1.5 font-bold transition-all duration-200',
-          'bg-white border border-[#E2E8F0] text-[#475569] shadow-sm',
-          'hover:bg-[#F8FAFC] hover:text-[#1E293B] hover:border-[#CBD5E1]',
-          'focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-40 disabled:cursor-not-allowed select-none',
+          'bg-white border border-[#E5E7EB] text-[#475569] shadow-sm',
+          'hover:bg-[#F8FAFC] hover:text-[#1E293B] hover:border-[#D1D5DB]',
+          'focus:outline-none focus:ring-2 focus:ring-brand-500/10 disabled:opacity-40 disabled:cursor-not-allowed select-none',
           sizeCls
         )}
       >
@@ -127,7 +127,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.97 }}
             transition={{ duration: 0.12 }}
-            className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-xl border border-[#E2E8F0] bg-white shadow-xl shadow-slate-200/60"
+            className="absolute right-0 z-50 mt-1.5 w-48 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-xl shadow-slate-200/60"
           >
             <button
               type="button"

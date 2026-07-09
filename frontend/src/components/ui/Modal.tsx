@@ -77,14 +77,14 @@ export const Modal: React.FC<ModalProps> = ({
                   <React.Fragment key={i}>
                     {i > 0 && <ChevronRight size={11} className="text-slate-300" />}
                     {c.onClick && i < arr.length - 1
-                      ? <button onClick={c.onClick} className="hover:text-indigo-600 transition-colors">{c.label}</button>
+                      ? <button onClick={c.onClick} className="hover:text-brand-600 transition-colors">{c.label}</button>
                       : <span className={i === arr.length - 1 ? 'text-slate-700' : ''}>{c.label}</span>}
                   </React.Fragment>
                 ))}
               </div>
               <div className="px-5 pb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <button onClick={onClose} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-indigo-600 transition shrink-0"><ChevronLeft size={16} /> Back</button>
+                  <button onClick={onClose} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-brand-600 transition shrink-0"><ChevronLeft size={16} /> Back</button>
                   <div className="border-l border-slate-200 pl-3">
                     <h2 className="text-base font-extrabold text-slate-800 leading-tight">{title}</h2>
                     {subtitle && <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>}

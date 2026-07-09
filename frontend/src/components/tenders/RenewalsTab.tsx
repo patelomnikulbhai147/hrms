@@ -70,7 +70,7 @@ export const RenewalsTab: React.FC<Props> = ({ activeCompanyId, canManageCommerc
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><RefreshCw size={15} className="text-indigo-600" /> Renewals &amp; Alerts</h3>
+        <h3 className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><RefreshCw size={15} className="text-brand-600" /> Renewals &amp; Alerts</h3>
         <ExportMenu fileName="Expiring_Contracts" title="Expiring Contracts Report" sheetName="Renewals" columns={exportColumns} rows={() => rows} />
       </div>
 
@@ -89,7 +89,7 @@ export const RenewalsTab: React.FC<Props> = ({ activeCompanyId, canManageCommerc
                 const tone = alertTone(c.days);
                 return (
                   <Tr key={c.id}>
-                    <Td><span className="font-semibold text-slate-800">{c.contractName}</span><span className="block font-mono text-[10px] text-indigo-600">{c.contractNumber || ''}</span></Td>
+                    <Td><span className="font-semibold text-slate-800">{c.contractName}</span><span className="block font-mono text-[10px] text-brand-600">{c.contractNumber || ''}</span></Td>
                     <Td>{c.clientName || '—'}</Td>
                     <Td><span className="text-[11px] text-slate-500">{formatDate(c.endDate)}</span></Td>
                     <Td className="text-center"><span className={`text-xs font-extrabold ${c.days < 0 ? 'text-rose-600' : c.days <= 30 ? 'text-rose-600' : c.days <= 60 ? 'text-amber-600' : 'text-amber-500'}`}>{c.days < 0 ? `${Math.abs(c.days)}d ago` : `${c.days}d`}</span></Td>
@@ -97,7 +97,7 @@ export const RenewalsTab: React.FC<Props> = ({ activeCompanyId, canManageCommerc
                     <Td>
                       <div className="flex items-center gap-1.5">
                         {canManageCommercial && <button onClick={() => extend(c, 'Renew')} title="Renew" className="p-1.5 rounded-md border border-emerald-200 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 shadow-sm"><RefreshCw size={13} /></button>}
-                        {canManageCommercial && <button onClick={() => extend(c, 'Extend')} title="Extend" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-blue-600 shadow-sm"><CalendarPlus size={13} /></button>}
+                        {canManageCommercial && <button onClick={() => extend(c, 'Extend')} title="Extend" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-brand-600 shadow-sm"><CalendarPlus size={13} /></button>}
                         {canManageCommercial && <button onClick={() => close(c)} title="Close" className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 hover:text-rose-600 shadow-sm"><XCircle size={13} /></button>}
                       </div>
                     </Td>

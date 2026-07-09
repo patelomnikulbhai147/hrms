@@ -247,7 +247,7 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
       <Button variant="outline" size="sm" icon={<Save size={14} />} loading={busy} onClick={() => saveDraft(false)}>Save Draft</Button>
       {!isLast
         ? <Button size="sm" icon={<ChevronRight size={14} />} onClick={() => setStep(s => Math.min(STEPS.length - 1, s + 1))}>Next</Button>
-        : <Button size="sm" className="bg-indigo-600 hover:bg-indigo-700" icon={<Send size={14} />} loading={busy} disabled={!canSubmit || !checklist.ok} onClick={submitForApproval} title={checklist.ok ? 'Submit for approval' : 'Complete all required items first'}>Submit for Approval</Button>}
+        : <Button size="sm" className="bg-brand-600 hover:bg-brand-700" icon={<Send size={14} />} loading={busy} disabled={!canSubmit || !checklist.ok} onClick={submitForApproval} title={checklist.ok ? 'Submit for approval' : 'Complete all required items first'}>Submit for Approval</Button>}
     </>
   );
 
@@ -265,10 +265,10 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
       <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-xs font-bold text-slate-700">Profile Completion</span>
-          <span className={`text-lg font-extrabold ${checklist.ok ? 'text-emerald-600' : 'text-indigo-600'}`}>{checklist.pct}%</span>
+          <span className={`text-lg font-extrabold ${checklist.ok ? 'text-emerald-600' : 'text-brand-600'}`}>{checklist.pct}%</span>
         </div>
         <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-          <div className={`h-full rounded-full transition-all ${checklist.ok ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${checklist.pct}%` }} />
+          <div className={`h-full rounded-full transition-all ${checklist.ok ? 'bg-emerald-500' : 'bg-brand-500'}`} style={{ width: `${checklist.pct}%` }} />
         </div>
         <div className="mt-1 flex justify-between text-[9px] font-semibold text-slate-300">
           {[0, 25, 50, 75, 100].map(m => <span key={m} className={checklist.pct >= m ? 'text-slate-500' : ''}>{m}%</span>)}
@@ -282,7 +282,7 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
           const active = i === step;
           return (
             <React.Fragment key={s.id}>
-              <button onClick={() => setStep(i)} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold whitespace-nowrap transition ${active ? 'bg-indigo-600 text-white shadow' : 'bg-white border border-slate-200 text-slate-500 hover:text-indigo-600'}`}>
+              <button onClick={() => setStep(i)} className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-bold whitespace-nowrap transition ${active ? 'bg-brand-600 text-white shadow' : 'bg-white border border-slate-200 text-slate-500 hover:text-brand-600'}`}>
                 <Icon size={13} /> <span className="hidden sm:inline">{i + 1}. {s.label}</span><span className="sm:hidden">{i + 1}</span>
               </button>
               {i < STEPS.length - 1 && <ChevronRight size={12} className="text-slate-300 shrink-0" />}
@@ -476,7 +476,7 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
 // ── Small presentational helpers ──────────────────────────────────────────────
 const Section: React.FC<{ title: string; icon: React.ElementType; children: React.ReactNode }> = ({ title, icon: Icon, children }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4 md:p-5 shadow-sm">
-    <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Icon size={16} className="text-indigo-600" />{title}</h3>
+    <h3 className="mb-4 flex items-center gap-2 text-sm font-extrabold text-slate-800"><Icon size={16} className="text-brand-600" />{title}</h3>
     {children}
   </div>
 );
@@ -493,14 +493,14 @@ const DocSlot: React.FC<{ doc: { key: string; label: string }; required?: boolea
         </span>
         {present && (
           <span className="flex items-center gap-1.5">
-            {src && <a href={src} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-indigo-600" title="View"><Eye size={13} /></a>}
-            {src && <a href={src} download={fname} className="text-slate-400 hover:text-indigo-600" title="Download"><Download size={13} /></a>}
+            {src && <a href={src} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-brand-600" title="View"><Eye size={13} /></a>}
+            {src && <a href={src} download={fname} className="text-slate-400 hover:text-brand-600" title="Download"><Download size={13} /></a>}
             <button onClick={onClear} className="text-slate-400 hover:text-rose-600" title="Remove"><Trash2 size={13} /></button>
           </span>
         )}
       </div>
       {fname && <p className="mt-0.5 text-[9px] text-slate-400 truncate">{fname}</p>}
-      <label className="mt-2 block cursor-pointer text-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 py-1.5 text-[10px] font-semibold text-indigo-600 transition">
+      <label className="mt-2 block cursor-pointer text-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 py-1.5 text-[10px] font-semibold text-brand-600 transition">
         {present ? 'Replace file' : 'Choose file'}
         <input type="file" data-doc={doc.key} accept={doc.key === 'photo' ? 'image/*' : 'image/*,application/pdf'} className="hidden" onChange={e => onFile(doc.key, e.target.files?.[0])} />
       </label>

@@ -101,12 +101,12 @@ export const AddressSection: React.FC<Props> = ({ values, onChange, errors, disa
   return (
     <div className="space-y-5">
       <div>
-        <h4 className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><MapPin size={14} className="text-[#4F7CFF]" /> Present Address</h4>
+        <h4 className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><MapPin size={14} className="text-[#6C3CF0]" /> Present Address</h4>
         <Grid pfx="p_" values={values} onChange={onChange} errors={errors} disabled={disabled} requiredMark />
       </div>
       <div>
-        <h4 className="mb-2 flex items-center gap-2 text-xs font-extrabold text-slate-700"><MapPin size={14} className="text-[#4F7CFF]" /> Permanent Address</h4>
-        <label className="mb-3 flex w-fit items-center gap-2 text-[11px] font-semibold text-indigo-600 cursor-pointer">
+        <h4 className="mb-2 flex items-center gap-2 text-xs font-extrabold text-slate-700"><MapPin size={14} className="text-[#6C3CF0]" /> Permanent Address</h4>
+        <label className="mb-3 flex w-fit items-center gap-2 text-[11px] font-semibold text-brand-600 cursor-pointer">
           <input type="checkbox" checked={same} disabled={disabled} onChange={e => onChange('sameAsPresent', e.target.checked)} />
           <Copy size={12} /> Same as Present Address
         </label>

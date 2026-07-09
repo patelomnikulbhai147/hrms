@@ -180,9 +180,9 @@ const fillSample = (text: string, b: Branding): string =>
 const designOf = (item: any, b: Branding) => {
   const layout = parseLayout(item?.layout) || {};
   const theme: Theme = (item?.theme && item.theme.background) ? item.theme : (layout.theme || {});
-  const bg = theme.background || (theme.bg1 ? `linear-gradient(135deg,${theme.bg1},${theme.bg2 || theme.bg1})` : 'linear-gradient(135deg,#eef2ff,#e2e8f0)');
+  const bg = theme.background || (theme.bg1 ? `linear-gradient(135deg,${theme.bg1},${theme.bg2 || theme.bg1})` : 'linear-gradient(135deg,#eef2ff,#e5e7eb)');
   return {
-    bg, accent: theme.accent || '#4f46e5', text: theme.text || '#1e293b',
+    bg, accent: theme.accent || '#5b2de6', text: theme.text || '#1e293b',
     font: theme.font || "'Trebuchet MS',sans-serif",
     emoji: theme.emoji || layout.emoji || item?.emoji || '🎉',
     art: theme.art || layout.art || item?.art || 'celebration',
@@ -246,7 +246,7 @@ const CardArt: React.FC<{ art: string; accent: string }> = ({ art, accent }) => 
         <span key={`s${i}`} className="absolute rounded-full bg-white" style={{ top: `${(i * 9 + 4) % 92}%`, left: `${(i * 17 + 6) % 92}%`, width: '1.8cqw', height: '1.8cqw', opacity: 0.8 }} />
       ))}
       {spec.flair === 'colors' && SCATTER.slice(0, 6).map((p, i) => (
-        <span key={`k${i}`} className="absolute rounded-full" style={{ top: `${p[0]}%`, left: `${p[1]}%`, width: '6cqw', height: '6cqw', background: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444'][i % 6], filter: 'blur(1px)', opacity: 0.5 }} />
+        <span key={`k${i}`} className="absolute rounded-full" style={{ top: `${p[0]}%`, left: `${p[1]}%`, width: '6cqw', height: '6cqw', background: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#6c3cf0', '#ef4444'][i % 6], filter: 'blur(1px)', opacity: 0.5 }} />
       ))}
       {spec.items.map((em, i) => {
         const p = SCATTER[i % SCATTER.length];
@@ -260,7 +260,7 @@ const CardArt: React.FC<{ art: string; accent: string }> = ({ art, accent }) => 
 const PhotoFrame: React.FC<{ accent: string; size: number; name: string }> = ({ accent, size, name }) => {
   const initials = (name || 'OM PATEL').split(' ').slice(0, 2).map(w => w[0]).join('');
   return (
-    <div className="flex items-center justify-center rounded-full" style={{ width: `${size}cqw`, height: `${size}cqw`, background: 'linear-gradient(135deg,#cbd5e1,#94a3b8)', border: `${size * 0.07}cqw solid #ffffff`, boxShadow: `0 0 0 ${size * 0.05}cqw ${accent}` }}>
+    <div className="flex items-center justify-center rounded-full" style={{ width: `${size}cqw`, height: `${size}cqw`, background: 'linear-gradient(135deg,#d1d5db,#9ca3af)', border: `${size * 0.07}cqw solid #ffffff`, boxShadow: `0 0 0 ${size * 0.05}cqw ${accent}` }}>
       <span className="font-extrabold text-white" style={{ fontSize: `${size * 0.34}cqw` }}>{initials}</span>
     </div>
   );
@@ -403,8 +403,8 @@ export const CommunicationCenter: React.FC<Props> = () => {
     <BrandingCtx.Provider value={branding}>
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#DBEAFE] bg-white px-4 py-3 shadow-sm">
-        <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><MessageSquare size={16} className="text-[#4F7CFF]" /> Communication Center</h2>
+      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm">
+        <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><MessageSquare size={16} className="text-[#6C3CF0]" /> Communication Center</h2>
         <p className="text-[11px] text-slate-400">Central hub for employee notifications, greetings & announcements · WhatsApp delivery, automation & live diagnostics</p>
       </div>
 
@@ -422,7 +422,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
           const active = activeModule.id === m.id;
           return (
             <button key={m.id} onClick={() => setTab(m.groups[0].items[0].id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-[#4F7CFF] text-[#4F7CFF]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {m.label}
             </button>
           );
@@ -443,7 +443,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
                       const on = tab === it.id;
                       return (
                         <button key={it.id} onClick={() => setTab(it.id)}
-                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-bold transition-colors ${on ? 'bg-[#EDF4FF] text-[#4F7CFF]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-bold transition-colors ${on ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
                           <I size={15} /> <span className="truncate">{it.label}</span>
                         </button>
                       );
@@ -494,7 +494,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 const Card: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#EDF4FF] text-[#4F7CFF]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
     <p className="text-2xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -514,9 +514,9 @@ const DashboardTab: React.FC<{ onGo: (t: TabId) => void }> = ({ onGo }) => {
         <Card label="Scheduled Messages" value={loading ? '—' : v('scheduledMessages')} icon={<Clock size={16} />} />
         <Card label="Sent Today" value={loading ? '—' : v('sentToday')} icon={<Send size={16} />} tone="bg-emerald-50 text-emerald-600" />
         <Card label="Upcoming Birthdays" value={loading ? '—' : v('upcomingBirthdays')} icon={<Cake size={16} />} tone="bg-pink-50 text-pink-600" />
-        <Card label="Upcoming Work Anniversaries" value={loading ? '—' : v('upcomingAnniversaries')} icon={<Sparkles size={16} />} tone="bg-indigo-50 text-indigo-600" />
+        <Card label="Upcoming Work Anniversaries" value={loading ? '—' : v('upcomingAnniversaries')} icon={<Sparkles size={16} />} tone="bg-brand-50 text-brand-600" />
         <Card label="Festival Templates" value={loading ? '—' : v('festivalTemplates')} icon={<PartyPopper size={16} />} tone="bg-orange-50 text-orange-600" />
-        <Card label="Announcements" value={loading ? '—' : v('announcements')} icon={<Megaphone size={16} />} tone="bg-violet-50 text-violet-600" />
+        <Card label="Announcements" value={loading ? '—' : v('announcements')} icon={<Megaphone size={16} />} tone="bg-brand-50 text-brand-600" />
         <Card label="Upcoming Holidays" value={loading ? '—' : v('upcomingHolidays')} icon={<CalendarDays size={16} />} tone="bg-teal-50 text-teal-600" />
         <Card label="Draft Messages" value={loading ? '—' : v('draftMessages')} icon={<FileStack size={16} />} tone="bg-slate-100 text-slate-500" />
       </div>
@@ -528,7 +528,7 @@ const DashboardTab: React.FC<{ onGo: (t: TabId) => void }> = ({ onGo }) => {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Card label="WhatsApp Templates" value={loading ? '—' : v('whatsappTemplates')} icon={<MessageCircle size={16} />} tone="bg-emerald-50 text-emerald-600" />
           <Card label="Pending Messages" value={loading ? '—' : v('whatsappPending')} icon={<Clock size={16} />} tone="bg-amber-50 text-amber-600" />
-          <Card label="Simulated Messages" value={loading ? '—' : v('whatsappSimulated')} icon={<FlaskConical size={16} />} tone="bg-indigo-50 text-indigo-600" />
+          <Card label="Simulated Messages" value={loading ? '—' : v('whatsappSimulated')} icon={<FlaskConical size={16} />} tone="bg-brand-50 text-brand-600" />
           <Card label="Failed Messages" value={loading ? '—' : v('whatsappFailed')} icon={<AlertTriangle size={16} />} tone="bg-rose-50 text-rose-600" />
           <Card label="Development Mode" value={loading ? '—' : (d?.whatsappDevelopmentMode ? 'ON' : 'OFF')} icon={<ShieldCheck size={16} />} tone={d?.whatsappDevelopmentMode ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'} />
           <Card label="Upcoming Birthday Messages" value={loading ? '—' : v('upcomingBirthdayMessages')} icon={<Cake size={16} />} tone="bg-pink-50 text-pink-600" />
@@ -571,7 +571,7 @@ const LAYOUT_OPTIONS = [
 ];
 const ART_OPTIONS = ['celebration', 'birthday', 'anniversary', 'welcome', 'farewell', 'promotion', 'award', 'finance', 'document', 'notice', 'diwali', 'holi', 'eid', 'christmas', 'newyear', 'tricolor', 'navratri', 'rakhi', 'janmashtami', 'ganesh', 'kite', 'shivratri', 'womensday', 'labour', 'flowers', 'formal'];
 const starterDesign = () => ({
-  theme: { bg1: '#4f46e5', bg2: '#9333ea', background: 'linear-gradient(135deg,#4f46e5 0%,#9333ea 100%)', accent: '#fde047', text: '#ffffff', font: "'Trebuchet MS',sans-serif", emoji: '🎉', art: 'celebration', layoutKind: 'classic' },
+  theme: { bg1: '#5b2de6', bg2: '#9333ea', background: 'linear-gradient(135deg,#5b2de6 0%,#9333ea 100%)', accent: '#fde047', text: '#ffffff', font: "'Trebuchet MS',sans-serif", emoji: '🎉', art: 'celebration', layoutKind: 'classic' },
   greetingTitle: '', subtitle: '', signoff: 'Best wishes, {{company_name}}',
 });
 const blankTemplate = () => ({ title: '', category: 'Birthday Wishes', subject: '', body: '', status: 'Draft', backgroundImage: '', companyLogo: '', employeePhotoPlaceholder: true, festivalName: '', festivalDate: '', layout: starterDesign(), whatsappCompatible: false, whatsappRichText: false, whatsappCaption: '' });
@@ -609,7 +609,7 @@ const TemplatesTab: React.FC = () => {
   const setTheme = (patch: any) => setDraft((d: any) => {
     const layout = { ...(typeof d.layout === 'object' && d.layout ? d.layout : starterDesign()) };
     layout.theme = { ...(layout.theme || {}), ...patch };
-    if (patch.bg1 !== undefined || patch.bg2 !== undefined) layout.theme.background = `linear-gradient(135deg,${layout.theme.bg1 || '#4f46e5'} 0%,${layout.theme.bg2 || '#9333ea'} 100%)`;
+    if (patch.bg1 !== undefined || patch.bg2 !== undefined) layout.theme.background = `linear-gradient(135deg,${layout.theme.bg1 || '#5b2de6'} 0%,${layout.theme.bg2 || '#9333ea'} 100%)`;
     return { ...d, layout };
   });
   const setLayoutField = (patch: any) => setDraft((d: any) => ({ ...d, layout: { ...(typeof d.layout === 'object' && d.layout ? d.layout : starterDesign()), ...patch } }));
@@ -653,14 +653,14 @@ const TemplatesTab: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
-            <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'mine' ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500'}`}>My Templates ({items.length})</button>
-            <button onClick={() => setView('samples')} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'samples' ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500'}`}><Star size={12} /> Sample Library ({samples.length})</button>
+            <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'mine' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>My Templates ({items.length})</button>
+            <button onClick={() => setView('samples')} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'samples' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}><Star size={12} /> Sample Library ({samples.length})</button>
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search templates…" className="w-52 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-[#4F7CFF] focus:outline-none" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search templates…" className="w-52 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none" />
           </div>
-          <select value={cat} onChange={e => setCat(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-[#4F7CFF] focus:outline-none">
+          <select value={cat} onChange={e => setCat(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none">
             <option value="All">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -669,7 +669,7 @@ const TemplatesTab: React.FC = () => {
       </div>
 
       {view === 'samples' && (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-[11px] font-semibold text-indigo-700">
+        <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-[11px] font-semibold text-brand-700">
           Professionally designed sample templates — preview, then <b>Duplicate</b> any one to make an editable copy. {filteredSamples.length} samples shown.
         </div>
       )}
@@ -689,8 +689,8 @@ const TemplatesTab: React.FC = () => {
                       </div>
                       <p className="mt-0.5 text-[11px] text-slate-400">{t.category}</p>
                       <div className="mt-2 flex items-center gap-1.5">
-                        <button onClick={() => setPreview(t)} className="text-slate-400 hover:text-[#4F7CFF]" title="Preview"><Eye size={15} /></button>
-                        <button onClick={() => openEdit(t)} className="text-slate-400 hover:text-indigo-500" title="Edit"><Edit size={15} /></button>
+                        <button onClick={() => setPreview(t)} className="text-slate-400 hover:text-[#6C3CF0]" title="Preview"><Eye size={15} /></button>
+                        <button onClick={() => openEdit(t)} className="text-slate-400 hover:text-brand-500" title="Edit"><Edit size={15} /></button>
                         <button onClick={() => remove(t)} className="text-slate-400 hover:text-rose-500" title="Delete"><Trash2 size={15} /></button>
                       </div>
                     </div>
@@ -754,12 +754,12 @@ const TemplatesTab: React.FC = () => {
               <div>
                 <label className="mb-1 block text-[11px] font-bold text-slate-500">Message Body</label>
                 <textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} rows={3}
-                  className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-[#4F7CFF] focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none"
                   placeholder="Write your message. Insert placeholders from the library below." />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {PLACEHOLDERS.map(p => (
                     <button key={p} type="button" onClick={() => setDraft((d: any) => ({ ...d, body: `${d.body || ''}${p}` }))}
-                      className="rounded-lg border border-indigo-150 bg-white px-2 py-1 text-[10px] font-bold text-indigo-700 hover:bg-indigo-600 hover:text-white">{p}</button>
+                      className="rounded-lg border border-brand-100 bg-white px-2 py-1 text-[10px] font-bold text-brand-700 hover:bg-brand-600 hover:text-white">{p}</button>
                   ))}
                 </div>
                 {/* Live placeholder preview — replaces {{tokens}} with sample data (design only) */}
@@ -781,7 +781,7 @@ const TemplatesTab: React.FC = () => {
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-500">Background Colors</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" value={dTheme.bg1 || '#4f46e5'} onChange={e => setTheme({ bg1: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 1" />
+                      <input type="color" value={dTheme.bg1 || '#5b2de6'} onChange={e => setTheme({ bg1: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 1" />
                       <input type="color" value={dTheme.bg2 || '#9333ea'} onChange={e => setTheme({ bg2: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 2" />
                     </div>
                   </div>
@@ -891,7 +891,7 @@ const DesignerTab: React.FC = () => {
         <p className="mb-3 text-[10px] text-slate-400">Click to place onto the canvas. Layout presets cover placement; saved layouts are reusable templates.</p>
         <div className="flex flex-wrap gap-1.5">
           {DESIGNER_ELEMENTS.map(el => (
-            <button key={el} onClick={() => add(el)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#4F7CFF] hover:text-[#4F7CFF]">+ {el}</button>
+            <button key={el} onClick={() => add(el)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#6C3CF0] hover:text-[#6C3CF0]">+ {el}</button>
           ))}
         </div>
       </div>
@@ -1032,7 +1032,7 @@ const HolidayTab: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
           {([['calendar', 'Calendar', CalendarDays], ['month', 'Monthly', LayoutGrid], ['list', 'List', ListIcon]] as const).map(([id, label, Icon]) => (
-            <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === id ? 'bg-white text-[#4F7CFF] shadow-sm' : 'text-slate-500'}`}><Icon size={12} /> {label}</button>
+            <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === id ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}><Icon size={12} /> {label}</button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1083,12 +1083,12 @@ const HolidayTab: React.FC = () => {
                 {Array.from({ length: daysInMonth }).map((_, i) => {
                   const day = i + 1; const list = holidaysOn(day); const isToday = ymd(cursor.y, cursor.m, day) === todayStr;
                   return (
-                    <div key={day} className={`min-h-[78px] border-b border-r border-slate-100 p-1.5 ${isToday ? 'bg-blue-50/60' : ''}`}>
-                      <div className={`mb-1 text-[11px] font-bold ${isToday ? 'text-[#4F7CFF]' : 'text-slate-500'}`}>{day}</div>
+                    <div key={day} className={`min-h-[78px] border-b border-r border-slate-100 p-1.5 ${isToday ? 'bg-brand-50/60' : ''}`}>
+                      <div className={`mb-1 text-[11px] font-bold ${isToday ? 'text-[#6C3CF0]' : 'text-slate-500'}`}>{day}</div>
                       <div className="space-y-0.5">
                         {list.slice(0, 3).map(h => (
                           <button key={h.id} onClick={() => openEdit(h)} title={h.name}
-                            className={`block w-full truncate rounded px-1 py-0.5 text-left text-[9px] font-semibold ${h.isOptionalHoliday ? 'bg-amber-100 text-amber-700' : h.isPublicHoliday ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{h.name}</button>
+                            className={`block w-full truncate rounded px-1 py-0.5 text-left text-[9px] font-semibold ${h.isOptionalHoliday ? 'bg-amber-100 text-amber-700' : h.isPublicHoliday ? 'bg-rose-100 text-rose-700' : 'bg-brand-100 text-brand-700'}`}>{h.name}</button>
                         ))}
                         {list.length > 3 && <p className="text-[8px] text-slate-400">+{list.length - 3} more</p>}
                       </div>
@@ -1120,7 +1120,7 @@ const HolidayTab: React.FC = () => {
                         </div>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
-                        <button onClick={() => openEdit(h)} className="text-slate-400 hover:text-indigo-500"><Edit size={15} /></button>
+                        <button onClick={() => openEdit(h)} className="text-slate-400 hover:text-brand-500"><Edit size={15} /></button>
                         <button onClick={() => remove(h)} className="text-slate-400 hover:text-rose-500"><Trash2 size={15} /></button>
                       </div>
                     </div>
@@ -1144,7 +1144,7 @@ const HolidayTab: React.FC = () => {
                           <td className="px-3 py-2"><Badge variant={holidayTone(h) as any}>{h.isOptionalHoliday ? 'Optional' : h.isPublicHoliday ? 'Public' : 'Other'}</Badge></td>
                           <td className="px-3 py-2">{h.isRecurring ? 'Yes' : 'No'}</td>
                           <td className="px-3 py-2"><Badge variant={h.status === 'Active' ? 'green' : 'gray'}>{h.status}</Badge></td>
-                          <td className="px-3 py-2"><div className="flex gap-1.5"><button onClick={() => openEdit(h)} className="text-slate-400 hover:text-indigo-500"><Edit size={14} /></button><button onClick={() => remove(h)} className="text-slate-400 hover:text-rose-500"><Trash2 size={14} /></button></div></td>
+                          <td className="px-3 py-2"><div className="flex gap-1.5"><button onClick={() => openEdit(h)} className="text-slate-400 hover:text-brand-500"><Edit size={14} /></button><button onClick={() => remove(h)} className="text-slate-400 hover:text-rose-500"><Trash2 size={14} /></button></div></td>
                         </tr>
                       ))}
                     </tbody>
@@ -1169,7 +1169,7 @@ const HolidayTab: React.FC = () => {
           </div>
           <div className="mt-3">
             <label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label>
-            <textarea rows={2} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" />
+            <textarea rows={2} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
           </div>
           <div className="mt-3 flex flex-wrap gap-4">
             <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600"><input type="checkbox" checked={!!draft.isPublicHoliday} onChange={e => setDraft({ ...draft, isPublicHoliday: e.target.checked })} /> Public Holiday</label>
@@ -1219,7 +1219,7 @@ const AnnouncementsTab: React.FC = () => {
                     <p className="mt-1 text-[10px] text-slate-400">{a.expiryDate ? `Expires ${formatDate(a.expiryDate)}` : 'No expiry'}{a.attachmentName ? ` · 📎 ${a.attachmentName}` : ''}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1.5">
-                    <button onClick={() => { setDraft({ ...a }); setModal(true); }} className="text-slate-400 hover:text-indigo-500"><Edit size={15} /></button>
+                    <button onClick={() => { setDraft({ ...a }); setModal(true); }} className="text-slate-400 hover:text-brand-500"><Edit size={15} /></button>
                     <button onClick={() => remove(a)} className="text-slate-400 hover:text-rose-500"><Trash2 size={15} /></button>
                   </div>
                 </div>
@@ -1233,7 +1233,7 @@ const AnnouncementsTab: React.FC = () => {
             <Input label="Title *" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} />
             <div>
               <label className="mb-1 block text-[11px] font-bold text-slate-500">Message</label>
-              <textarea rows={4} value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#4F7CFF] focus:outline-none" />
+              <textarea rows={4} value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Select label="Priority" value={draft.priority} onChange={e => setDraft({ ...draft, priority: e.target.value })} options={['Low', 'Normal', 'High', 'Urgent'].map(p => ({ value: p, label: p }))} />
@@ -1292,7 +1292,7 @@ const ScheduledTab: React.FC = () => {
                       <td className="px-3 py-2 capitalize">{s.recurrence}</td>
                       <td className="px-3 py-2">{templates.find(t => t.id === s.templateId)?.title || '—'}</td>
                       <td className="px-3 py-2"><Badge variant="gray">{s.status}</Badge></td>
-                      <td className="px-3 py-2"><div className="flex gap-1.5"><button onClick={() => { setDraft({ ...s, templateId: s.templateId || '' }); setModal(true); }} className="text-slate-400 hover:text-indigo-500"><Edit size={14} /></button><button onClick={() => remove(s)} className="text-slate-400 hover:text-rose-500"><Trash2 size={14} /></button></div></td>
+                      <td className="px-3 py-2"><div className="flex gap-1.5"><button onClick={() => { setDraft({ ...s, templateId: s.templateId || '' }); setModal(true); }} className="text-slate-400 hover:text-brand-500"><Edit size={14} /></button><button onClick={() => remove(s)} className="text-slate-400 hover:text-rose-500"><Trash2 size={14} /></button></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -1345,13 +1345,13 @@ const DeliveryLogsTab: React.FC = () => {
 };
 
 // ── WhatsApp Settings (Phase 1 foundation — NO messages are ever sent) ────────
-// Prepares HRMate for the Meta WhatsApp Business Cloud API. Company Head can edit;
+// Prepares ZeniaHR for the Meta WhatsApp Business Cloud API. Company Head can edit;
 // HR can view (and edit only if granted the Communication "edit" permission).
 // Development Mode (default ON) redirects every message to a single developer
 // test number so future testing is safe. Backed by /api/communication/whatsapp.
 const QUEUE_STATUS_LEGEND = [
   { label: 'Pending', tone: 'bg-amber-50 text-amber-700 border-amber-200' },
-  { label: 'Processing', tone: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { label: 'Processing', tone: 'bg-brand-50 text-brand-700 border-brand-200' },
   { label: 'Sent', tone: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   { label: 'Failed', tone: 'bg-rose-50 text-rose-700 border-rose-200' },
 ];
@@ -1531,8 +1531,8 @@ const WhatsAppSettingsTab: React.FC = () => {
 
       {/* Development Mode */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><FlaskConical size={14} className="text-indigo-600" /> Development Mode</p>
-        <div className="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2.5">
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><FlaskConical size={14} className="text-brand-600" /> Development Mode</p>
+        <div className="flex items-center justify-between rounded-xl border border-brand-100 bg-brand-50/50 px-3 py-2.5">
           <div>
             <p className="text-xs font-bold text-slate-700">Development Mode {s?.developmentMode ? <span className="ml-1 text-[10px] font-bold text-emerald-600">ON</span> : <span className="ml-1 text-[10px] font-bold text-rose-600">OFF</span>}</p>
             <p className="text-[10px] text-slate-500">When ON, every WhatsApp message is redirected to the Developer Test Number instead of real employees — for safe testing.</p>
@@ -1801,14 +1801,14 @@ const AutomationRulesTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3">
-        <p className="flex items-center gap-2 text-xs font-bold text-violet-800"><Sparkles size={16} /> Automation Rules — one generic engine for birthdays, anniversaries, festivals, announcements & more. Generates queue entries only (never sends directly).</p>
-        <Button size="sm" disabled={!editable} onClick={() => openEditor()} icon={<Plus size={13} />} className="bg-violet-600 hover:bg-violet-700 text-white">New Rule</Button>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
+        <p className="flex items-center gap-2 text-xs font-bold text-brand-800"><Sparkles size={16} /> Automation Rules — one generic engine for birthdays, anniversaries, festivals, announcements & more. Generates queue entries only (never sends directly).</p>
+        <Button size="sm" disabled={!editable} onClick={() => openEditor()} icon={<Plus size={13} />} className="bg-brand-600 hover:bg-brand-700 text-white">New Rule</Button>
       </div>
 
       {/* Rules table */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Sparkles size={14} className="text-violet-600" /> Rules</p></div>
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><Sparkles size={14} className="text-brand-600" /> Rules</p></div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-slate-50 text-slate-500"><tr>{['Rule', 'Event', 'Trigger', 'Recipients', 'Template', 'Status', 'Last Run', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
@@ -1928,8 +1928,8 @@ const AutomationRulesTab: React.FC = () => {
               <p className="mb-2 text-[11px] font-extrabold text-slate-700">Template</p>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Select label="Meta Template Mapping (preferred)" value={String(draft.templateMappingId || '')} onChange={e => setDraft({ ...draft, templateMappingId: e.target.value, language: mappings.find(m => String(m.id) === e.target.value)?.language || draft.language })}
-                  options={[{ value: '', label: 'None (use HRMate template)' }, ...mappings.map(m => ({ value: String(m.id), label: `${m.metaTemplateName} · ${String(m.language).toUpperCase()} · ${m.status}` }))]} />
-                <Select label="HRMate Template (fallback)" value={String(draft.hrmateTemplateId || '')} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
+                  options={[{ value: '', label: 'None (use ZeniaHR template)' }, ...mappings.map(m => ({ value: String(m.id), label: `${m.metaTemplateName} · ${String(m.language).toUpperCase()} · ${m.status}` }))]} />
+                <Select label="ZeniaHR Template (fallback)" value={String(draft.hrmateTemplateId || '')} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
                   options={[{ value: '', label: 'None' }, ...hrTemplates.map((t: any) => ({ value: String(t.id), label: t.title }))]} />
                 <Input label="Language" value={draft.language} onChange={e => setDraft({ ...draft, language: e.target.value })} placeholder="en / gu / hi" />
                 <Select label="Status" value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })} options={[{ value: 'active', label: 'Active' }, { value: 'paused', label: 'Paused' }]} />
@@ -2090,7 +2090,7 @@ const WhatsAppTemplatesTab: React.FC = () => {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-        <p className="flex items-center gap-2 text-xs font-bold text-emerald-800"><LayoutTemplate size={16} /> WhatsApp Templates — map HRMate templates to Meta-approved templates. Separate from Communication Templates.</p>
+        <p className="flex items-center gap-2 text-xs font-bold text-emerald-800"><LayoutTemplate size={16} /> WhatsApp Templates — map ZeniaHR templates to Meta-approved templates. Separate from Communication Templates.</p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" disabled={!editable || syncing} onClick={sync} icon={<Download size={13} />}>{syncing ? 'Syncing…' : 'Sync Templates'}</Button>
           <Button size="sm" disabled={!editable} onClick={() => openEditor()} icon={<Plus size={13} />} className="bg-emerald-600 hover:bg-emerald-700 text-white">Map Template</Button>
@@ -2125,13 +2125,13 @@ const WhatsAppTemplatesTab: React.FC = () => {
 
       {/* Mappings */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><LayoutTemplate size={14} /> Template Mappings (HRMate → Meta)</p></div>
+        <div className="border-b border-slate-100 px-4 py-2.5"><p className="flex items-center gap-2 text-xs font-extrabold text-slate-700"><LayoutTemplate size={14} /> Template Mappings (ZeniaHR → Meta)</p></div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-slate-50 text-slate-500"><tr>{['HRMate Template', 'Meta Template', 'Language', 'Status', 'Usable', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
+            <thead className="bg-slate-50 text-slate-500"><tr>{['ZeniaHR Template', 'Meta Template', 'Language', 'Status', 'Usable', 'Actions'].map(h => <th key={h} className="px-3 py-2 text-left font-bold whitespace-nowrap">{h}</th>)}</tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={6} className="px-3 py-10 text-center text-slate-500">Loading…</td></tr>
-                : mappings.length === 0 ? <tr><td colSpan={6} className="px-3 py-12 text-center text-slate-400">No mappings yet. Click “Map Template” to link an HRMate template to a Meta template.</td></tr>
+                : mappings.length === 0 ? <tr><td colSpan={6} className="px-3 py-12 text-center text-slate-400">No mappings yet. Click “Map Template” to link a ZeniaHR template to a Meta template.</td></tr>
                   : mappings.map(m => (
                     <tr key={m.id} className="border-t border-slate-100">
                       <td className="px-3 py-2 font-semibold">{m.hrmateTemplateName || `#${m.hrmateTemplateId}`}</td>
@@ -2175,12 +2175,12 @@ const WhatsAppTemplatesTab: React.FC = () => {
 
       {/* Mapping editor */}
       {modal && draft && (
-        <Modal open={modal} onClose={() => setModal(false)} title={draft.id ? 'Edit Template Mapping' : 'Map HRMate → Meta Template'} size="lg"
+        <Modal open={modal} onClose={() => setModal(false)} title={draft.id ? 'Edit Template Mapping' : 'Map ZeniaHR → Meta Template'} size="lg"
           footer={<><Button variant="outline" onClick={() => setModal(false)}>Cancel</Button><Button onClick={save} disabled={!canSave || saving}>{saving ? 'Saving…' : 'Save Mapping'}</Button></>}>
           <div className="space-y-3">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <Select label="HRMate Template" value={draft.hrmateTemplateId} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
-                options={[{ value: '', label: 'Select HRMate template…' }, ...hrTemplates.map((t: any) => ({ value: String(t.id), label: `${t.title} (${t.category})` }))]} />
+              <Select label="ZeniaHR Template" value={draft.hrmateTemplateId} onChange={e => setDraft({ ...draft, hrmateTemplateId: e.target.value })}
+                options={[{ value: '', label: 'Select ZeniaHR template…' }, ...hrTemplates.map((t: any) => ({ value: String(t.id), label: `${t.title} (${t.category})` }))]} />
               <Select label="Meta Template (synced)" value={draft.metaKey} onChange={e => onPickMeta(e.target.value)}
                 options={[{ value: '', label: 'Select Meta template…' }, ...metaTemplates.map(t => ({ value: `${t.name}||${t.language}`, label: `${t.name} · ${String(t.language || '').toUpperCase()} · ${t.status}` }))]} />
             </div>
@@ -2209,10 +2209,10 @@ const WhatsAppTemplatesTab: React.FC = () => {
 
             {/* Header media */}
             {selectedMeta && selectedMeta.headerFormat && selectedMeta.headerFormat !== 'TEXT' && (
-              <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3">
-                <p className="mb-2 text-[11px] font-extrabold text-indigo-700">Header Media ({selectedMeta.headerFormat})</p>
+              <div className="rounded-xl border border-brand-200 bg-brand-50/50 p-3">
+                <p className="mb-2 text-[11px] font-extrabold text-brand-700">Header Media ({selectedMeta.headerFormat})</p>
                 <Input label="Media URL" value={draft.headerMediaUrl} onChange={e => setDraft({ ...draft, headerMediaUrl: e.target.value, headerMediaType: selectedMeta.headerFormat.toLowerCase() })} placeholder="https://…/asset" />
-                <p className="mt-1 text-[10px] text-indigo-700/70">Public URL of the {String(selectedMeta.headerFormat).toLowerCase()} to use in the template header.</p>
+                <p className="mt-1 text-[10px] text-brand-700/70">Public URL of the {String(selectedMeta.headerFormat).toLowerCase()} to use in the template header.</p>
               </div>
             )}
 
@@ -2220,8 +2220,8 @@ const WhatsAppTemplatesTab: React.FC = () => {
             {selectedMeta && (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">HRMate Preview</p>
-                  <p className="whitespace-pre-wrap text-[11px] text-slate-700">{selectedHr ? fillSample(selectedHr.body, branding) : <span className="italic text-slate-400">Select an HRMate template…</span>}</p>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">ZeniaHR Preview</p>
+                  <p className="whitespace-pre-wrap text-[11px] text-slate-700">{selectedHr ? fillSample(selectedHr.body, branding) : <span className="italic text-slate-400">Select a ZeniaHR template…</span>}</p>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
                   <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">Meta Template Preview</p>
@@ -2360,7 +2360,7 @@ const WhatsAppQueueTab: React.FC = () => {
               <div><span className="text-slate-400">Employee</span><p className="font-bold">{logPreview.employeeName || '—'}</p></div>
               <div><span className="text-slate-400">Template</span><p className="font-bold">{logPreview.templateName || '—'}</p></div>
               <div><span className="text-slate-400">Original Recipient</span><p className="font-mono font-bold">{logPreview.originalNumber || '—'}</p></div>
-              <div><span className="text-slate-400">Actual Recipient</span><p className="font-mono font-bold text-indigo-600">{logPreview.actualSentNumber || '—'}</p></div>
+              <div><span className="text-slate-400">Actual Recipient</span><p className="font-mono font-bold text-brand-600">{logPreview.actualSentNumber || '—'}</p></div>
             </div>
             <div>
               <span className="text-slate-400">Generated Message</span>
@@ -2399,21 +2399,21 @@ const WhatsAppSchedulerTab: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-        <CalendarClock size={18} className="mt-0.5 shrink-0 text-indigo-600" />
+      <div className="flex items-start gap-2 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
+        <CalendarClock size={18} className="mt-0.5 shrink-0 text-brand-600" />
         <div>
-          <p className="text-xs font-extrabold text-indigo-800">Scheduler Preview (simulation only)</p>
-          <p className="text-[11px] font-semibold text-indigo-700">Shows the WhatsApp jobs that <i>would</i> run — nothing is queued or sent. {d?.developmentMode && <>In Development Mode all recipients resolve to <b>{d?.testNumber || 'the test number'}</b>.</>}</p>
+          <p className="text-xs font-extrabold text-brand-800">Scheduler Preview (simulation only)</p>
+          <p className="text-[11px] font-semibold text-brand-700">Shows the WhatsApp jobs that <i>would</i> run — nothing is queued or sent. {d?.developmentMode && <>In Development Mode all recipients resolve to <b>{d?.testNumber || 'the test number'}</b>.</>}</p>
         </div>
       </div>
 
       <Section title="Today's Birthday Queue" icon={<Cake size={14} className="text-pink-600" />} rows={d?.todayBirthdays || []}
         cols={['Employee', 'Date', 'Original Number', 'Would Send To']} empty="No birthdays today."
-        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-indigo-600">{r.redirectedTo}</td></>)} />
+        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-brand-600">{r.redirectedTo}</td></>)} />
 
       <Section title="Tomorrow's Birthday Queue" icon={<Cake size={14} className="text-pink-500" />} rows={d?.tomorrowBirthdays || []}
         cols={['Employee', 'Date', 'Original Number', 'Would Send To']} empty="No birthdays tomorrow."
-        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-indigo-600">{r.redirectedTo}</td></>)} />
+        render={(r) => (<><td className="px-3 py-2">{r.employee}</td><td className="px-3 py-2">{formatDate(r.date)}</td><td className="px-3 py-2 font-mono text-[11px]">{r.originalNumber || '—'}</td><td className="px-3 py-2 font-mono text-[11px] text-brand-600">{r.redirectedTo}</td></>)} />
 
       <Section title="Upcoming Festival Queue (next 30 days)" icon={<PartyPopper size={14} className="text-orange-600" />} rows={d?.upcomingFestivals || []}
         cols={['Festival', 'Date', 'Category', 'Templates Available']} empty="No festivals in the next 30 days."

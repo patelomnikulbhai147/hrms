@@ -96,8 +96,8 @@ export const MinimumWageAdvisory: React.FC<Props> = ({ companyId, branch, defaul
   const isWageWorker = category === 'wage' || category === 'contract';
 
   return (
-    <div className="rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/60 to-white p-3 mb-4">
-      <p className="text-[11px] font-extrabold text-indigo-700 uppercase tracking-wider flex items-center gap-1.5 mb-2"><Scale size={13} /> Minimum Wage Compliance (Advisory)</p>
+    <div className="rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50/60 to-white p-3 mb-4">
+      <p className="text-[11px] font-extrabold text-brand-700 uppercase tracking-wider flex items-center gap-1.5 mb-2"><Scale size={13} /> Minimum Wage Compliance (Advisory)</p>
 
       {/* Employment Category */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2">
@@ -117,7 +117,7 @@ export const MinimumWageAdvisory: React.FC<Props> = ({ companyId, branch, defaul
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-2 items-end">
             <Select label="State *" value={stateValue} onChange={e => onSelectState(e.target.value)} options={stateOptions} />
             <div className="md:col-span-2 flex flex-wrap items-center gap-2 text-[11px] pb-1">
-              <span className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1 font-semibold text-slate-600"><MapPin size={11} className="text-indigo-500" /> Branch: {branch || '—'}</span>
+              <span className="inline-flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1 font-semibold text-slate-600"><MapPin size={11} className="text-brand-500" /> Branch: {branch || '—'}</span>
               {autoState && (!manualState || norm(manualState) === norm(autoState))
                 ? <span className="inline-flex items-center gap-1 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 font-semibold text-emerald-700"><CheckCircle2 size={11} /> Auto-mapped from branch</span>
                 : manualState
