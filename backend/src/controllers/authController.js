@@ -1,7 +1,10 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const { sendOtpEmail } = require('../services/emailService');
+const integrationSettings = require('../services/integrationSettings');
+const { generateCaptchaCode, generateSvgCaptcha } = require('../utils/captcha');
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -89,6 +92,183 @@ const findUserByLogin = async (identifier) => {
   });
 };
 
+const getFailedAttemptsInfo = async (email) => {
+  const normEmail = normalizeEmail(email);
+  const sec = integrationSettings.getSecuritySettings();
+  
+  if (!sec.captchaEnabled) {
+    return { failedCount: 0, lockedOut: false, timeRemaining: 0, captchaRequired: false };
+  }
+
+  // Find the last successful login for this email
+  const latestSuccess = await prisma.loginAudit.findFirst({
+    where: { email: normEmail, success: true },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  // Count the number of failures since the last success (or from the beginning if no success exists)
+  const failedCount = await prisma.loginAudit.count({
+    where: {
+      email: normEmail,
+      success: false,
+      createdAt: latestSuccess ? { gt: latestSuccess.createdAt } : undefined
+    }
+  });
+
+  let lockedOut = false;
+  let timeRemaining = 0;
+
+  if (failedCount >= sec.lockoutLimit) {
+    // Get the timestamp of the latest failed login
+    const latestFailure = await prisma.loginAudit.findFirst({
+      where: { email: normEmail, success: false },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (latestFailure) {
+      const elapsedMs = Date.now() - new Date(latestFailure.createdAt).getTime();
+      const durationMs = sec.lockoutDuration * 60 * 1000;
+      if (elapsedMs < durationMs) {
+        lockedOut = true;
+        timeRemaining = Math.ceil((durationMs - elapsedMs) / 1000); // in seconds
+      }
+    }
+  }
+
+  const captchaRequired = sec.alwaysEnabled || failedCount >= sec.failedAttemptsLimit;
+
+  return {
+    failedCount,
+    lockedOut,
+    timeRemaining,
+    captchaRequired,
+    captchaType: sec.captchaType,
+    googleV2SiteKey: sec.googleV2SiteKey,
+    googleV3SiteKey: sec.googleV3SiteKey
+  };
+};
+
+exports.getCaptchaStatus = async (req, res) => {
+  const rawIdentifier = req.body.email || req.body.username;
+  if (!rawIdentifier) {
+    const sec = integrationSettings.getSecuritySettings();
+    return res.json({
+      captchaRequired: sec.captchaEnabled && sec.alwaysEnabled,
+      captchaType: sec.captchaType,
+      googleV2SiteKey: sec.googleV2SiteKey,
+      googleV3SiteKey: sec.googleV3SiteKey,
+      lockedOut: false,
+      timeRemaining: 0,
+      failedCount: 0
+    });
+  }
+  try {
+    const info = await getFailedAttemptsInfo(rawIdentifier);
+    res.json(info);
+  } catch (error) {
+    console.error('[CAPTCHA STATUS ERROR]', error);
+    res.status(500).json({ error: 'Server error retrieving CAPTCHA status.' });
+  }
+};
+
+exports.generateInternalCaptcha = async (req, res) => {
+  try {
+    const code = generateCaptchaCode(6);
+    const svg = generateSvgCaptcha(code);
+
+    // Create signed token containing solution
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
+    // Must use the same normalization as verifyCaptcha(), otherwise no answer
+    // can ever match the signature.
+    const hash = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(code.toUpperCase() + '.' + expiresAt)
+      .digest('hex');
+      
+    const captchaId = `${hash}.${expiresAt}`;
+    res.json({ captchaId, captchaSvg: svg });
+  } catch (error) {
+    console.error('[CAPTCHA GENERATION ERROR]', error);
+    res.status(500).json({ error: 'Failed to generate CAPTCHA.' });
+  }
+};
+
+const consumedCaptchaIds = new Set();
+
+const verifyCaptcha = async (req, body, info) => {
+  const sec = integrationSettings.getSecuritySettings();
+  if (!sec.captchaEnabled) return true;
+  
+  const isRequired = sec.alwaysEnabled || info.failedCount >= sec.failedAttemptsLimit;
+  if (!isRequired) return true;
+
+  if (sec.captchaType === 'internal') {
+    const { captchaAnswer, captchaId } = body;
+    if (!captchaAnswer || !captchaId) return false;
+
+    // Strict single-use check
+    if (consumedCaptchaIds.has(captchaId)) {
+      return false;
+    }
+    consumedCaptchaIds.add(captchaId);
+
+    // Periodic cleanup of expired consumed IDs to prevent memory leaks
+    const now = Date.now();
+    for (const id of consumedCaptchaIds) {
+      const parts = id.split('.');
+      if (parts.length === 2) {
+        const exp = parseInt(parts[1]);
+        if (now > exp) {
+          consumedCaptchaIds.delete(id);
+        }
+      }
+    }
+
+    const parts = captchaId.split('.');
+    if (parts.length !== 2) return false;
+    const [hash, expiresAtStr] = parts;
+    const expiresAt = parseInt(expiresAtStr);
+
+    if (now > expiresAt) return false;
+
+    const expectedHash = crypto
+      .createHmac('sha256', JWT_SECRET)
+      .update(captchaAnswer.trim().toUpperCase() + '.' + expiresAt)
+      .digest('hex');
+
+    return hash === expectedHash;
+  } else if (sec.captchaType === 'google_v2' || sec.captchaType === 'google_v3') {
+    const { captchaToken } = body;
+    if (!captchaToken) return false;
+
+    const secretKey = sec.captchaType === 'google_v2' ? sec.googleV2SecretKey : sec.googleV3SecretKey;
+    if (!secretKey) {
+      console.warn(`[CAPTCHA] Google reCAPTCHA secret key is missing for type ${sec.captchaType}.`);
+      if (process.env.NODE_ENV !== 'production') return true;
+      return false;
+    }
+
+    try {
+      const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${encodeURIComponent(secretKey)}&response=${encodeURIComponent(captchaToken)}`;
+      const resp = await fetch(verifyUrl, { method: 'POST' });
+      const json = await resp.json();
+      
+      if (!json.success) return false;
+      
+      if (sec.captchaType === 'google_v3') {
+        return json.score >= 0.5;
+      }
+      
+      return true;
+    } catch (err) {
+      console.error('[CAPTCHA] reCAPTCHA verification failed to reach Google:', err.message);
+      return false;
+    }
+  }
+
+  return false;
+};
+
 // ----------------------------------------------------------------------------
 // Login
 // ----------------------------------------------------------------------------
@@ -105,6 +285,30 @@ exports.login = async (req, res) => {
       return res
         .status(400)
         .json({ error: 'Please provide your email and password.' });
+    }
+
+    // Check CAPTCHA / Lockout settings and counters
+    const info = await getFailedAttemptsInfo(rawIdentifier);
+    if (info.lockedOut) {
+      const sec = integrationSettings.getSecuritySettings();
+      return res.status(429).json({
+        error: `Too many failed login attempts. Please try again after ${sec.lockoutDuration} minutes.`,
+        lockedOut: true,
+        timeRemaining: info.timeRemaining
+      });
+    }
+
+    if (info.captchaRequired) {
+      const captchaOk = await verifyCaptcha(req, req.body, info);
+      if (!captchaOk) {
+        await recordLogin({
+          email: normalizeEmail(rawIdentifier),
+          success: false,
+          reason: 'CAPTCHA_FAILED',
+          req,
+        });
+        return res.status(400).json({ error: 'Invalid CAPTCHA. Please enter the correct characters.' });
+      }
     }
 
     const user = await findUserByLogin(rawIdentifier);

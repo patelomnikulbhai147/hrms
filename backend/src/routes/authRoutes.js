@@ -5,6 +5,8 @@ const { protect } = require('../middleware/authMiddleware');
 
 // Public routes
 router.post('/login', authController.login);
+router.post('/captcha-status', authController.getCaptchaStatus);
+router.get('/captcha', authController.generateInternalCaptcha);
 
 // Forgot-password OTP workflow
 router.post('/forgot-password', authController.forgotPassword); // step 1: request OTP
