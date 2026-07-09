@@ -266,7 +266,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   /* ─── render helpers ─────────────────────────────────────────────────── */
   const ActionBtn = ({ onClick, title, children, danger }: any) => (
     <button onClick={onClick} title={title}
-      className={`p-1.5 rounded-md border border-slate-200 bg-white shadow-sm transition-colors ${danger ? 'text-rose-400 hover:text-rose-600' : 'text-slate-400 hover:text-indigo-600'}`}>
+      className={`p-1.5 rounded-md border border-slate-200 bg-white shadow-sm transition-colors ${danger ? 'text-rose-400 hover:text-rose-600' : 'text-slate-400 hover:text-brand-600'}`}>
       {children}
     </button>
   );
@@ -274,8 +274,8 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   return (
     <div className="space-y-4">
       {/* Header + tabs */}
-      <div className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm">
-        <div className="px-5 py-4 flex items-center justify-between border-b border-[#DBEAFE]">
+      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
+        <div className="px-5 py-4 flex items-center justify-between border-b border-[#E6E0FE]">
           <div>
             <h2 className="text-lg font-bold text-slate-800">Leave Management</h2>
             <p className="text-xs text-slate-500">Dashboard · Requests · Administration · Balances · History · Reports · Policies</p>
@@ -285,7 +285,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         <div className="flex flex-wrap gap-1 px-3 py-2">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
               {t.icon}{t.label}
             </button>
           ))}
@@ -305,10 +305,10 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
           return <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${map[s] || map.Cancelled}`}>{s}</span>;
         };
         const tiles = [
-          { label: 'Total Requests', value: dash.total, icon: <FileText size={16} />, color: 'bg-indigo-500' },
+          { label: 'Total Requests', value: dash.total, icon: <FileText size={16} />, color: 'bg-brand-500' },
           { label: 'Pending Approvals', value: dash.pending.length, icon: <Clock size={16} />, color: 'bg-amber-500' },
           { label: 'Approved', value: dash.approved, icon: <CheckCircle2 size={16} />, color: 'bg-emerald-500' },
-          { label: 'Employees', value: scopedEmployees.length, icon: <Users size={16} />, color: 'bg-blue-500' },
+          { label: 'Employees', value: scopedEmployees.length, icon: <Users size={16} />, color: 'bg-brand-500' },
         ];
         const fmt = (d: string) => formatDate(d);
         const LeaveRow = ({ l }: { l: LeaveRequest }) => (
@@ -325,7 +325,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
             {/* Leave Statistics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {tiles.map(t => (
-                <div key={t.label} className="bg-white rounded-[14px] border border-[#DBEAFE] shadow-sm p-3.5 flex items-center gap-3">
+                <div key={t.label} className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm p-3.5 flex items-center gap-3">
                   <span className={`w-10 h-10 rounded-xl text-white flex items-center justify-center ${t.color}`}>{t.icon}</span>
                   <div className="min-w-0"><p className="text-xl font-bold text-slate-800 leading-none">{t.value}</p><p className="text-[10px] text-slate-500 font-semibold mt-1 truncate">{t.label}</p></div>
                 </div>
@@ -337,7 +337,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               <Card>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Clock size={15} className="text-amber-500" /> Pending Approvals <span className="text-[10px] font-bold text-amber-600">({dash.pending.length})</span></h3>
-                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">Review all <ArrowRight size={12} /></button>
+                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1">Review all <ArrowRight size={12} /></button>
                 </div>
                 {dash.pendingList.length === 0
                   ? <div className="py-8 text-center"><CheckCircle2 size={22} className="mx-auto text-emerald-500 mb-1" /><p className="text-xs font-semibold text-slate-500">No pending leave requests.</p></div>
@@ -348,7 +348,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               <Card>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><HistoryIcon size={15} className="text-slate-500" /> Recent Requests</h3>
-                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">View all <ArrowRight size={12} /></button>
+                  <button onClick={() => setTab('requests')} className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1">View all <ArrowRight size={12} /></button>
                 </div>
                 {dash.recent.length === 0
                   ? <div className="py-8 text-center text-xs text-slate-400">No leave requests yet.</div>
@@ -359,15 +359,15 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
             {/* Leave Balances Overview */}
             <Card>
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Wallet size={15} className="text-violet-500" /> Leave Balances Overview</h3>
-                <button onClick={() => setTab('administration')} className="text-[11px] font-bold text-indigo-600 hover:underline flex items-center gap-1">Open Administration <ArrowRight size={12} /></button>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Wallet size={15} className="text-brand-500" /> Leave Balances Overview</h3>
+                <button onClick={() => setTab('administration')} className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1">Open Administration <ArrowRight size={12} /></button>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
-                <div className="rounded-xl bg-blue-50 border border-blue-100 p-3"><p className="text-lg font-bold text-blue-700">{dash.totalCL}</p><p className="text-[10px] font-semibold text-blue-600/80">CL Available</p></div>
-                <div className="rounded-xl bg-violet-50 border border-violet-100 p-3"><p className="text-lg font-bold text-violet-700">{dash.totalPL}</p><p className="text-[10px] font-semibold text-violet-600/80">PL Available</p></div>
+                <div className="rounded-xl bg-brand-50 border border-brand-100 p-3"><p className="text-lg font-bold text-brand-700">{dash.totalCL}</p><p className="text-[10px] font-semibold text-brand-600/80">CL Available</p></div>
+                <div className="rounded-xl bg-brand-50 border border-brand-100 p-3"><p className="text-lg font-bold text-brand-700">{dash.totalPL}</p><p className="text-[10px] font-semibold text-brand-600/80">PL Available</p></div>
                 <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-lg font-bold text-amber-700">{dash.totalSL}</p><p className="text-[10px] font-semibold text-amber-600/80">SL Available</p></div>
                 <div className="rounded-xl bg-rose-50 border border-rose-100 p-3"><p className="text-lg font-bold text-rose-700">{dash.totalTaken}</p><p className="text-[10px] font-semibold text-rose-600/80">Days Taken</p></div>
-                <div className="rounded-xl bg-slate-50 border border-slate-200 p-3"><p className="text-lg font-bold text-slate-700 flex items-center justify-center gap-1">{dash.lowBalance > 0 && <AlertCircle size={14} className="text-amber-500" />}{dash.lowBalance}</p><p className="text-[10px] font-semibold text-slate-500">Low Balance (≤2)</p></div>
+                <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-lg font-bold text-amber-700 flex items-center justify-center gap-1">{dash.lowBalance > 0 && <AlertCircle size={14} className="text-amber-600" />}{dash.lowBalance}</p><p className="text-[10px] font-semibold text-amber-600/80">Low Balance (≤2)</p></div>
               </div>
             </Card>
 
@@ -435,7 +435,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                 {adminRows.length === 0 && <Tr><Td colSpan={10}><span className="text-slate-400 text-xs">No employees in this workspace.</span></Td></Tr>}
                 {adminRows.map(r => (
                   <Tr key={r.employeeId}>
-                    <Td><span className="font-mono text-[11px] text-indigo-700">{r.employeeCode}</span></Td>
+                    <Td><span className="font-mono text-[11px] text-brand-700">{r.employeeCode}</span></Td>
                     <Td><span className="font-semibold text-slate-800">{r.employeeName}</span></Td>
                     <Td>{r.branch}</Td><Td>{r.department}</Td>
                     <Td><Badge variant="blue">{r.cl}</Badge></Td>
@@ -478,8 +478,8 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                   <span className="text-[10px] font-bold text-emerald-600">{r.remaining} left</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-blue-50 py-1.5"><p className="text-[9px] font-bold text-blue-400 uppercase">CL</p><p className="font-extrabold text-blue-700">{r.cl}</p></div>
-                  <div className="rounded-lg bg-violet-50 py-1.5"><p className="text-[9px] font-bold text-violet-400 uppercase">PL</p><p className="font-extrabold text-violet-700">{r.pl}</p></div>
+                  <div className="rounded-lg bg-brand-50 py-1.5"><p className="text-[9px] font-bold text-brand-400 uppercase">CL</p><p className="font-extrabold text-brand-700">{r.cl}</p></div>
+                  <div className="rounded-lg bg-brand-50 py-1.5"><p className="text-[9px] font-bold text-brand-400 uppercase">PL</p><p className="font-extrabold text-brand-700">{r.pl}</p></div>
                   <div className="rounded-lg bg-amber-50 py-1.5"><p className="text-[9px] font-bold text-amber-400 uppercase">SL</p><p className="font-extrabold text-amber-700">{r.sl}</p></div>
                 </div>
               </div>
@@ -528,7 +528,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         <div className="space-y-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <StatCard label="Pending Requests" value={reportStats.pending} icon={<HistoryIcon size={16} />} color="bg-amber-500" />
-            <StatCard label="Approved Days" value={reportStats.approvedDays} icon={<CalendarPlus size={16} />} color="bg-blue-500" />
+            <StatCard label="Approved Days" value={reportStats.approvedDays} icon={<CalendarPlus size={16} />} color="bg-brand-500" />
             <StatCard label="Leaves Taken" value={reportStats.totalTaken} icon={<CalendarMinus size={16} />} color="bg-rose-500" />
             <StatCard label="Remaining Balance" value={reportStats.totalRemaining} icon={<Wallet size={16} />} color="bg-emerald-500" />
           </div>
