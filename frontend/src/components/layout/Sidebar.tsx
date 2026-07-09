@@ -1,12 +1,14 @@
 import React from 'react';
 import { cn } from '@/utils/cn';
 import {
-  ChevronRight, Building2, ArrowLeft,
+  ChevronRight, ArrowLeft,
 } from 'lucide-react';
 import type { Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { usePermissions } from '@/context/PermissionContext';
-import { getCompanyInitials } from '@/utils/workspaceUtils';
+import { ZeniaLogo, BRAND_NAME } from '@/components/brand/ZeniaLogo';
+import { CompanyBrand } from '@/components/brand/CompanyBrand';
+import { resolveWorkspaceBranding } from '@/services/brandingService';
 import { MODULE_REGISTRY, type PageId } from '@/config/moduleRegistry';
 import type { Role } from '@/data/mockData';
 
@@ -24,7 +26,10 @@ interface SidebarProps {
   theme?: 'dark' | 'light';
   toggleTheme?: () => void;
   authProfile?: UserAccount | null;
-  currentCompany?: Company;
+  /** Full company+branch list and the active workspace id — the sidebar resolves
+   *  the owning company's branding from these (see resolveWorkspaceBranding). */
+  companies?: Company[];
+  activeCompanyId?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -34,9 +39,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   collapsed,
   isMasquerading,
   onExitMasquerade,
-  currentCompany
+  companies,
+  activeCompanyId,
 }) => {
   const { canView } = usePermissions();
+
+  const branding = React.useMemo(
+    () => resolveWorkspaceBranding(companies as any[], activeCompanyId),
+    [companies, activeCompanyId],
+  );
 
   // Navigation is derived from the single module registry (config/moduleRegistry)
   // — the same source the permission matrices use — so the sidebar and the
@@ -78,62 +89,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className={cn(
-      'flex flex-col bg-gradient-to-br from-[#E8F4FF] via-white to-[#E0EFFF] text-[#4B5563] h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 border-r border-[#E5E7EB] shadow-sm relative',
+      'flex flex-col bg-surface text-ink-secondary h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 border-r border-hairline relative',
       collapsed ? 'w-16' : 'w-60'
     )}>
       {/* Logo */}
       <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-[#E5E7EB] relative z-10', collapsed && 'justify-center px-0')}>
         {role === 'Super Admin' && !isMasquerading ? (
           <>
-            <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#4F7CFF] flex items-center justify-center shadow-[0_4px_10px_rgba(79,124,255,0.2)]">
-              <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 5v14M13 5v14M6 12h7M13 5c3.5 0 5 1.5 5 3.5S16.5 12 13 12M13 12l4.5 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="6" cy="5" r="1.5" fill="currentColor" />
-                <circle cx="6" cy="19" r="1.5" fill="currentColor" />
-                <circle cx="13" cy="5" r="1.5" fill="currentColor" />
-                <circle cx="13" cy="19" r="1.5" fill="currentColor" />
-                <circle cx="13" cy="12" r="1.5" fill="currentColor" />
-                <circle cx="17.5" cy="19" r="1.5" fill="currentColor" />
-              </svg>
-            </div>
+            <ZeniaLogo size={36} radius={220} className="rounded-[22%] shadow-[0_4px_12px_rgba(108,60,240,0.25)]" />
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[16px] font-bold text-[#111827] leading-tight font-sans tracking-wide">
-                  HRMate
+                <p className="text-[16px] font-bold text-ink leading-tight font-heading tracking-tight">
+                  {BRAND_NAME}
                 </p>
-                <p className="text-[10px] text-[#4F7CFF] mt-0.5 uppercase tracking-widest font-bold">
+                <p className="text-[10px] text-brand-600 mt-0.5 uppercase tracking-widest font-bold">
                   SUPER ADMIN
                 </p>
               </div>
             )}
           </>
         ) : (
-          <>
-            <div 
-              className="flex-shrink-0 w-12 h-12 bg-[#F7FAFF] border border-[#E5EFFF] rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all overflow-hidden" 
-              style={(!currentCompany?.logoImage && currentCompany?.primaryColor) ? { backgroundColor: currentCompany.primaryColor, borderColor: currentCompany.primaryColor } : {}}
-            >
-              {currentCompany?.logoImage ? (
-                <img src={currentCompany.logoImage} alt="Logo" className="w-full h-full object-cover" />
-              ) : (
-                getCompanyInitials(currentCompany?.name) === '??' ? (
-                  <Building2 size={20} className="text-[#4F7CFF]" />
-                ) : (
-                  <span className="text-[#4F7CFF] font-bold text-sm">{getCompanyInitials(currentCompany?.name)}</span>
-                )
-              )}
-            </div>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <p className="text-[14px] font-bold text-[#111827] leading-tight font-sans truncate" title={currentCompany?.headerText || currentCompany?.name || 'Company Name'}>
-                  {currentCompany?.headerText || currentCompany?.name || 'Company Name'}
-                </p>
-                <p className="text-[11px] text-[#6B7280] mt-0.5 font-semibold">
-                  {isMasquerading ? 'Masquerading' : role}
-                </p>
-              </div>
-            )}
-          </>
+          <CompanyBrand
+            name={branding.name}
+            logo={branding.logo}
+            role={isMasquerading ? 'Masquerading' : role}
+            compact={collapsed}
+          />
         )}
       </div>
 
@@ -164,16 +145,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className={cn(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-semibold tracking-wide transition-all duration-200 group active:scale-[0.98]',
               currentPage === item.id
-                ? 'bg-[#EDF4FF] text-[#4F7CFF]'
-                : 'text-[#4B5563] hover:bg-[#D1E0FF]/40 hover:text-[#111827]',
+                ? 'bg-brand-500/10 text-brand-600'
+                : 'text-ink-secondary hover:bg-[var(--surface-hover)] hover:text-ink',
               collapsed && 'justify-center px-0'
             )}
           >
             <span className={cn(
-              'flex-shrink-0 transition-transform duration-200 group-hover:scale-110', 
-              currentPage === item.id 
-                ? 'text-[#4F7CFF]' 
-                : 'text-[#6B7280] group-hover:text-[#4F7CFF]'
+              'flex-shrink-0 transition-transform duration-200',
+              currentPage === item.id
+                ? 'text-brand-600'
+                : 'text-ink-muted group-hover:text-brand-600'
             )}>{item.icon}</span>
             {!collapsed && (
               <span className="flex-1 text-left min-w-0">
@@ -194,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <span aria-hidden>🚧</span>Beta
               </span>
             )}
-            {!collapsed && currentPage === item.id && <ChevronRight size={14} className="flex-shrink-0 text-[#4F7CFF]/80" />}
+            {!collapsed && currentPage === item.id && <ChevronRight size={14} className="flex-shrink-0 text-[#6C3CF0]/80" />}
           </button>
         ))}
       </nav>

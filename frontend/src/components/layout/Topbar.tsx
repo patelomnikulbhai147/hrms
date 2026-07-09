@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/apiClient';
 import { buildWorkspaceHierarchy } from '@/utils/workspaceUtils';
 import { resolveActiveWorkspace } from '@/types';
+import { CompanyLogo } from '@/components/brand/CompanyBrand';
+import { resolveWorkspaceBranding } from '@/services/brandingService';
 import { ui } from '@/components/ui/feedback';
 
 
@@ -112,6 +114,12 @@ export const Topbar: React.FC<TopbarProps> = ({
   // Loose (String) compare so a branch workspace resolves whether activeCompanyId
   // is a number (fresh click) or a string (rehydrated from localStorage).
   const currentCompany = (resolveActiveWorkspace(companies as any[], activeCompanyId) as any) || companies.find(c => String(c.id) === String(activeCompanyId));
+
+  // Same accessor the sidebar uses, so the two chrome surfaces can never drift.
+  const workspaceBranding = React.useMemo(
+    () => resolveWorkspaceBranding(companies as any[], activeCompanyId),
+    [companies, activeCompanyId],
+  );
   // When the active workspace is a branch, resolve its parent company so the
   // header can render the "Company → Branch" breadcrumb.
   const activeParentCompany = (currentCompany as any)?.parentCompanyId
@@ -185,8 +193,8 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Fixed Company Name Badge in Navbar (Mobile only or if multiple disabled) */}
         {companies.length <= 1 && currentCompany && (
-          <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F7FAFF] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
-            <Building2 size={16} className="text-[#4F7CFF]" />
+          <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F3F0FF] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
+            <CompanyLogo logo={workspaceBranding.logo} name={workspaceBranding.name} size={18} />
             <span>{(currentCompany as any).branchName || currentCompany.name}</span>
           </div>
         )}
@@ -198,10 +206,10 @@ export const Topbar: React.FC<TopbarProps> = ({
             <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
-                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F3F0FF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
                 title="Switch workspace"
               >
-                <Building2 size={16} className="text-[#4F7CFF]" />
+                <Building2 size={16} className="text-[#6C3CF0]" />
                 <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">Workspace:</span>
                 <span className="max-w-[140px] truncate">{currentCompany?.name || 'Select'}</span>
                 <ChevronDown size={16} className="text-[#6B7280]" />
@@ -214,7 +222,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5EFFF] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0FE] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
                   >
                     <div className="max-h-80 overflow-y-auto custom-scrollbar">
                       {/* Companies (head offices / parents) */}
@@ -233,10 +241,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                           <React.Fragment key={comp.id}>
                             <button
                               onClick={() => { if (!isCurrent) onCompanyChange(comp.id, 'company'); setWorkspaceOpen(false); }}
-                              className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F7FAFF]', isCurrent ? 'bg-[#EDF4FF] text-[#4F7CFF] font-bold' : 'text-[#1F2937] font-semibold')}
+                              className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F3F0FF]', isCurrent ? 'bg-[#F3F0FF] text-[#6C3CF0] font-bold' : 'text-[#1F2937] font-semibold')}
                             >
-                              <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#4F7CFF] flex-shrink-0" />{comp.name}</span>
-                              {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
+                              <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#6C3CF0] flex-shrink-0" />{comp.name}</span>
+                              {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0" />}
                             </button>
                             {childBranches.length > 0 && (
                               <div className="pl-3">
@@ -248,10 +256,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                                     <button
                                       key={br.id}
                                       onClick={() => { if (!brCurrent) onCompanyChange(br.id, 'branch'); setWorkspaceOpen(false); }}
-                                      className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#F7FAFF] border-l-2 border-[#E5EFFF] ml-3', brCurrent ? 'text-[#4F7CFF] font-bold bg-[#F7FAFF]' : 'text-[#4B5563] font-medium')}
+                                      className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#F3F0FF] border-l-2 border-[#E6E0FE] ml-3', brCurrent ? 'text-[#6C3CF0] font-bold bg-[#F3F0FF]' : 'text-[#4B5563] font-medium')}
                                     >
                                       <span className="truncate pr-2">↳ {(br as any).branchName || br.name}</span>
-                                      {brCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#4F7CFF] flex-shrink-0" />}
+                                      {brCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0" />}
                                     </button>
                                   );
                                 })}
@@ -272,9 +280,9 @@ export const Topbar: React.FC<TopbarProps> = ({
             <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
-                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F7FAFF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F3F0FF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
               >
-                <Building2 size={16} className="text-[#4F7CFF]" />
+                <CompanyLogo logo={workspaceBranding.logo} name={workspaceBranding.name} size={18} />
                 <span className="max-w-[120px] truncate">{(currentCompany as any)?.branchName || currentCompany?.name || 'Switch Workspace'}</span>
                 <ChevronDown size={16} className="text-[#6B7280]" />
               </button>
@@ -286,12 +294,12 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E5EFFF] rounded-2xl shadow-2xl py-1 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0FE] rounded-2xl shadow-2xl py-1 z-50 overflow-hidden"
                   >
-                    <div className="px-3 py-2 border-b border-[#E5EFFF] flex flex-col gap-2 bg-[#F8FAFC]">
+                    <div className="px-3 py-2 border-b border-[#E6E0FE] flex flex-col gap-2 bg-[#F8FAFC]">
                       <div className="flex items-center gap-2 px-1">
-                        <History size={13} className="text-[#64748B]" />
-                        <span className="text-[10px] font-extrabold text-[#64748B] uppercase tracking-wider">Switch Workspace</span>
+                        <History size={13} className="text-[#6B7280]" />
+                        <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Switch Workspace</span>
                       </div>
                       <div className="relative">
                         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
@@ -300,7 +308,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                           placeholder="Search workspaces..."
                           value={wsSearchTerm}
                           onChange={e => setWsSearchTerm(e.target.value)}
-                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E2E8F0] rounded-lg text-[11px] font-semibold text-[#334155] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#4F7CFF]/20 focus:border-[#4F7CFF] transition-all shadow-sm"
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E5E7EB] rounded-lg text-[11px] font-semibold text-[#334155] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#6C3CF0]/20 focus:border-[#6C3CF0] transition-all shadow-sm"
                         />
                       </div>
                     </div>
@@ -364,7 +372,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                                 // its branches so selecting never collapses the group.
                                 <div className={cn(
                                   "w-full flex items-center justify-between border-b border-[#F1F5F9] last:border-0 transition-colors",
-                                  companyIsCurrent ? "bg-[#EFF6FF]" : "hover:bg-[#F8FAFC]"
+                                  companyIsCurrent ? "bg-[#F3F0FF]" : "hover:bg-[#F8FAFC]"
                                 )}>
                                   <button
                                     type="button"
@@ -376,19 +384,19 @@ export const Topbar: React.FC<TopbarProps> = ({
                                     title="Switch to the company workspace (consolidated, all branches)"
                                     className={cn(
                                       "flex-1 min-w-0 text-left px-3 py-2 flex items-center gap-2 cursor-pointer",
-                                      companyIsCurrent ? "text-[#2563EB] font-bold" : "text-[#334155] font-bold hover:text-[#0F172A]"
+                                      companyIsCurrent ? "text-[#2563EB] font-bold" : "text-[#334155] font-bold hover:text-[#111827]"
                                     )}
                                   >
                                     <span className="text-[14px]">🏢</span>
                                     <span className="text-[12px] truncate tracking-wide">{groupName} ({group.cards.length})</span>
-                                    {companyIsCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                    {companyIsCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
                                   </button>
                                   <button
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); toggleGroup(groupName); }}
                                     title={isExpanded ? 'Collapse branches' : 'Expand branches'}
                                     aria-expanded={isExpanded}
-                                    className="px-2.5 py-2 flex items-center flex-shrink-0 text-[#94A3B8] hover:text-[#475569] transition-colors cursor-pointer"
+                                    className="px-2.5 py-2 flex items-center flex-shrink-0 text-[#9CA3AF] hover:text-[#475569] transition-colors cursor-pointer"
                                   >
                                     <ChevronRight size={14} className={cn("transition-transform duration-200", isExpanded && "rotate-90")} />
                                   </button>
@@ -407,10 +415,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <span className="text-[14px]">🏢</span>
-                                    <span className="text-[11px] font-extrabold text-[#64748B] uppercase tracking-wider truncate">{groupName}</span>
-                                    <span className="text-[9px] font-bold text-[#94A3B8] tracking-wide flex-shrink-0">{group.cards.length} branch{group.cards.length === 1 ? '' : 'es'}</span>
+                                    <span className="text-[11px] font-extrabold text-[#6B7280] uppercase tracking-wider truncate">{groupName}</span>
+                                    <span className="text-[9px] font-bold text-[#9CA3AF] tracking-wide flex-shrink-0">{group.cards.length} branch{group.cards.length === 1 ? '' : 'es'}</span>
                                   </div>
-                                  <ChevronRight size={14} className={cn("text-[#94A3B8] transition-transform duration-200 flex-shrink-0", isExpanded && "rotate-90")} />
+                                  <ChevronRight size={14} className={cn("text-[#9CA3AF] transition-transform duration-200 flex-shrink-0", isExpanded && "rotate-90")} />
                                 </button>
                               )}
                               
@@ -439,14 +447,14 @@ export const Topbar: React.FC<TopbarProps> = ({
                                             }}
                                             className={cn(
                                               "w-full text-left px-4 py-2 text-[12px] flex items-center justify-between transition-all group",
-                                              isCurrent ? "bg-[#EFF6FF] text-[#2563EB] font-bold" : "text-[#475569] font-medium hover:bg-[#F8FAFC] hover:text-[#0F172A]"
+                                              isCurrent ? "bg-[#F3F0FF] text-[#2563EB] font-bold" : "text-[#475569] font-medium hover:bg-[#F8FAFC] hover:text-[#111827]"
                                             )}
                                           >
                                             <div className="flex items-center gap-2 overflow-hidden">
                                               <span className="text-[13px]">{isPrimary ? '⭐' : '📍'}</span>
                                               <span className="truncate">{(comp as any).branchName || comp.name}</span>
                                             </div>
-                                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#3B82F6] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
                                           </button>
                                         );
                                       })}
@@ -484,7 +492,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   size={18} 
                   className={cn(
                     "absolute transition-all duration-500",
-                    theme === 'light' ? "opacity-0 -rotate-90 scale-50" : "opacity-100 rotate-0 scale-100 text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]"
+                    theme === 'light' ? "opacity-0 -rotate-90 scale-50" : "opacity-100 rotate-0 scale-100 text-brand-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]"
                   )} 
                 />
               </div>
@@ -521,7 +529,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                       {companyNotifs.some(n => !n.read) && (
                         <button
                           onClick={(e) => { e.stopPropagation(); api.notifications.markAllRead().then(() => onUpdateNotifications(prev => prev.map(i => ({ ...i, read: true })))).catch(() => {}); }}
-                          className="text-[10px] font-bold text-blue-400 hover:text-blue-300" title="Mark all as read"
+                          className="text-[10px] font-bold text-brand-400 hover:text-brand-300" title="Mark all as read"
                         >Mark all read</button>
                       )}
                       {companyNotifs.length > 0 && (
@@ -540,7 +548,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                         <div
                           key={n.id}
                           onClick={() => { if (!n.read) { api.notifications.markRead(n.id).then(() => onUpdateNotifications(prev => prev.map(i => i.id === n.id ? { ...i, read: true } : i))).catch(() => {}); } }}
-                          className={cn('px-4 py-3 hover:bg-slate-850/45 flex items-start justify-between gap-3 transition-colors cursor-pointer', !n.read && 'bg-blue-955/20')}
+                          className={cn('px-4 py-3 hover:bg-slate-850/45 flex items-start justify-between gap-3 transition-colors cursor-pointer', !n.read && 'bg-brand-900/20')}
                         >
                           <div className="flex items-start gap-2.5 min-w-0">
                             <div className={cn('w-2 h-2 rounded-full mt-1.5 flex-shrink-0 relative', n.priority === 'high' ? 'bg-rose-500' : n.priority === 'medium' ? 'bg-amber-500' : 'bg-slate-500')}>
@@ -579,7 +587,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               onClick={() => { setProfileOpen(p => !p); setNotifOpen(false); setWorkspaceOpen(false); }}
               className="flex items-center gap-2 p-1 text-slate-300 hover:bg-slate-800/60 rounded-xl transition-all active:scale-95"
             >
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-indigo-600 text-white flex items-center justify-center text-xs font-extrabold font-sans shadow-lg shadow-blue-500/20">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-500 to-brand-600 text-white flex items-center justify-center text-xs font-extrabold font-sans shadow-lg shadow-brand-500/20">
                 {userAvatar}
               </div>
               <ChevronDown size={14} className="text-slate-500" />
@@ -625,8 +633,8 @@ export const Topbar: React.FC<TopbarProps> = ({
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => !cpwBusy && setCpwOpen(false)} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
             <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
-                <KeyRound size={18} className="text-blue-600" />
+              <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center">
+                <KeyRound size={18} className="text-brand-600" />
               </div>
               <div className="flex-1">
                 <h3 className="text-[15px] font-black text-slate-900">Change Password</h3>
@@ -648,14 +656,14 @@ export const Topbar: React.FC<TopbarProps> = ({
               <div className="px-6 py-5">
                 <label className="block text-[12px] font-bold text-slate-600 mb-1.5">Current password</label>
                 <input type={cpwShow ? 'text' : 'password'} value={cpwCurrent} onChange={e => setCpwCurrent(e.target.value)} placeholder="Your current password"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" autoFocus />
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400" autoFocus />
                 <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">New password</label>
                 <input type={cpwShow ? 'text' : 'password'} value={cpwNew} onChange={e => setCpwNew(e.target.value)} placeholder="At least 8 characters"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400" />
                 <label className="block text-[12px] font-bold text-slate-600 mb-1.5 mt-4">Confirm new password</label>
                 <input type={cpwShow ? 'text' : 'password'} value={cpwConfirm} onChange={e => setCpwConfirm(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleChangePassword(); }} placeholder="Re-enter the new password"
-                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400" />
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-200 focus:border-brand-400" />
                 <button type="button" onClick={() => setCpwShow(s => !s)} className="mt-2 text-[12px] font-bold text-slate-500 hover:text-slate-700">
                   {cpwShow ? 'Hide' : 'Show'} passwords
                 </button>
@@ -665,7 +673,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 <div className="flex items-center justify-end gap-2 mt-5">
                   <button onClick={() => setCpwOpen(false)} disabled={cpwBusy} className="px-4 py-2 text-sm font-bold text-slate-500 hover:text-slate-700 disabled:opacity-50">Cancel</button>
                   <button onClick={handleChangePassword} disabled={cpwBusy}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm disabled:opacity-60">
+                    className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-bold transition-all shadow-sm disabled:opacity-60">
                     {cpwBusy ? 'Saving…' : 'Update Password'}
                   </button>
                 </div>
