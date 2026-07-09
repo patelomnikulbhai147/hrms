@@ -312,9 +312,73 @@ exports.getAll = async (req, res) => {
     
     await syncPayrollForEmployees(syncCompanyWhere, targetMonth, targetYear);
 
+    // Pagination & Filters
+    const { page, limit, search, department, status, branch } = req.query;
+
+    if (search) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        employee: {
+          OR: [
+            { name: { contains: search } },
+            { employeeId: { contains: search } }
+          ]
+        }
+      });
+    }
+
+    if (department) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        employee: {
+          OR: [
+            { department: department },
+            { designation: department }
+          ]
+        }
+      });
+    }
+
+    if (status) {
+      whereClause.status = status;
+    }
+
+    if (branch) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({
+        employee: { branchLocation: branch }
+      });
+    }
+
+    if (page && limit) {
+      const pageNum = parseInt(page, 10);
+      const limitNum = parseInt(limit, 10);
+      const skip = (pageNum - 1) * limitNum;
+
+      const [data, total] = await Promise.all([
+        prisma.payroll.findMany({ 
+          where: whereClause,
+          include: { employee: true },
+          skip,
+          take: limitNum,
+          orderBy: { employeeId: 'asc' }
+        }),
+        prisma.payroll.count({ where: whereClause })
+      ]);
+
+      return res.json({
+        data,
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum)
+      });
+    }
+
     const data = await prisma.payroll.findMany({ 
       where: whereClause,
-      include: { employee: true }
+      include: { employee: true },
+      orderBy: { employeeId: 'asc' }
     });
     res.json(data);
   } catch (error) {
@@ -823,13 +887,15 @@ exports.markPaid = async (req, res) => {
 };
 
 // Lock/unlock the AttendanceSummary rows matching a set of payroll records.
-async function setSummaryLock(payrollIds, locked) {
-  const rows = await prisma.payroll.findMany({
+// `db` is either the prisma client or a transaction client, so callers can run
+// the payroll flip and the attendance flip as one atomic unit.
+async function setSummaryLock(db, payrollIds, locked) {
+  const rows = await db.payroll.findMany({
     where: { id: { in: payrollIds } },
     select: { employeeId: true, month: true, year: true },
   });
   for (const r of rows) {
-    await prisma.attendanceSummary.updateMany({
+    await db.attendanceSummary.updateMany({
       where: { employeeId: r.employeeId, month: r.month, year: r.year },
       data: { locked },
     });
@@ -855,11 +921,15 @@ exports.lock = async (req, res) => {
       return res.status(400).json({ error: 'Only fully Paid payroll can be locked. None of the selected records are Paid.' });
     }
 
-    const result = await prisma.payroll.updateMany({
-      where: { id: { in: paidIds } },
-      data: { payrollStatus: 'locked', lockedAt: new Date() },
+    // Atomic: if the attendance flip fails, the payroll rows must not stay locked.
+    const result = await prisma.$transaction(async (tx) => {
+      const r = await tx.payroll.updateMany({
+        where: { id: { in: paidIds } },
+        data: { payrollStatus: 'locked', lockedAt: new Date() },
+      });
+      await setSummaryLock(tx, paidIds, true); // block attendance editing for the locked month
+      return r;
     });
-    await setSummaryLock(paidIds, true); // block attendance editing for the locked month
 
     if (req.user?.id) {
       await prisma.auditLog.create({
@@ -895,11 +965,32 @@ exports.unlock = async (req, res) => {
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
     const reason = (req.body.reason || '').toString();
 
-    const result = await prisma.payroll.updateMany({
-      where: { id: { in: ids } },
-      data: { payrollStatus: 'paid', lockedAt: null },
+    // Atomic: payroll status, salary-slip invalidation and the attendance reopen
+    // either all land or none do.
+    const { result, payslipsInvalidated, paidCount } = await prisma.$transaction(async (tx) => {
+      const targets = await tx.payroll.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, payslipGenerated: true, paymentStatus: true },
+      });
+
+      const r = await tx.payroll.updateMany({
+        where: { id: { in: ids } },
+        // The record was Paid before it was locked, so 'paid' is the state it
+        // returns to. payslipGenerated is cleared: any slip produced before the
+        // unlock is stale the moment payroll can be recalculated.
+        // paymentStatus is deliberately untouched — payment history is never
+        // destroyed by an unlock; reconciliation is a separate, explicit action.
+        data: { payrollStatus: 'paid', lockedAt: null, payslipGenerated: false },
+      });
+
+      await setSummaryLock(tx, ids, false);
+
+      return {
+        result: r,
+        payslipsInvalidated: targets.filter(t => t.payslipGenerated).length,
+        paidCount: targets.filter(t => String(t.paymentStatus || '').toLowerCase() === 'paid').length,
+      };
     });
-    await setSummaryLock(ids, false);
 
     if (req.user?.id) {
       await prisma.auditLog.create({
@@ -911,11 +1002,14 @@ exports.unlock = async (req, res) => {
           details: JSON.stringify({
             by: req.user.name || req.user.email, role,
             reason: reason || '(none)', unlocked: result.count,
+            payslipsInvalidated, paymentsPresent: paidCount,
           }).slice(0, 1500),
         },
       }).catch(() => {});
     }
-    res.json({ unlocked: result.count });
+    // payslipsInvalidated / paymentsPresent let the client tell the user what the
+    // unlock actually invalidated instead of guessing.
+    res.json({ unlocked: result.count, payslipsInvalidated, paymentsPresent: paidCount });
   } catch (error) {
     console.error('Error unlocking payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
