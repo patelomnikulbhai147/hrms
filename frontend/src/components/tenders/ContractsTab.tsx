@@ -108,7 +108,7 @@ export const ContractsTab: React.FC<Props> = ({ activeCompanyId, canManageCommer
           const n = contracts.filter(c => t.statuses.includes(effectiveContractStatus(c))).length;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}<span className="ml-1 opacity-70">({n})</span></button>
+              className={`px-3 py-1.5 seg-tab text-xs ${tab === t.id ? 'seg-tab-active' : ''}`}>{t.label}<span className="ml-1 opacity-70">({n})</span></button>
           );
         })}
       </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ChevronLeft, Printer, FileDown, FileSpreadsheet, RefreshCw, AlertTriangle, Pencil, Save, Lock, RotateCcw, Languages } from 'lucide-react';
+import { ChevronLeft, Printer, FileDown, FileSpreadsheet, RefreshCw, AlertTriangle, Pencil, Save, Lock, RotateCcw, Languages, CalendarRange } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
 import { api } from '@/api/apiClient';
@@ -59,11 +59,66 @@ const isEditableLeaf = (el: Element): boolean => {
 const CUR_YEAR = 2026;
 const YEARS = [CUR_YEAR, CUR_YEAR - 1, CUR_YEAR - 2, CUR_YEAR - 3];
 
+interface PayrollPeriod { value: string; label: string; count: number }
+
+// Why the report cannot be generated yet. `null` → go ahead.
+type Blocked = 'loading' | 'no-payroll' | 'no-period' | null;
+
 // Full-page viewer: loads LIVE data for the report, renders the matching template
 // (the on-screen PREVIEW), and exports the very same node to PDF / Print, plus an
 // Excel of the underlying rows. Preview === PDF === Print by construction.
 export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, companyId, onClose, autoAction, canEdit = false, userName = '' }) => {
   const [year, setYear] = useState<number>(CUR_YEAR);
+
+  // Which filters this report accepts. The backend catalog is the single source of
+  // truth (it derives them from the report's own query), so the viewer never has to
+  // keep a second list of "which reports are month-wise" in sync.
+  const [filters, setFilters] = useState<string[] | null>(null);
+  const needsPeriod = !!filters?.includes('payrollPeriod');
+  const needsYear = !!filters?.includes('financialYear');
+
+  // Payroll cycles that actually exist for this workspace, newest first.
+  const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
+  const [periodsLoaded, setPeriodsLoaded] = useState(false);
+  const [period, setPeriod] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api.complianceReports.catalog()
+      .then((list: any[]) => { if (!cancelled) setFilters((list || []).find(r => r.key === def.reportKey)?.filters || []); })
+      .catch(() => { if (!cancelled) setFilters([]); });
+    return () => { cancelled = true; };
+  }, [def.reportKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPeriodsLoaded(false);
+    api.complianceReports.payrollPeriods()
+      .then((p: any) => { if (!cancelled) { setPeriods(Array.isArray(p) ? p : []); setPeriodsLoaded(true); } })
+      .catch(() => { if (!cancelled) { setPeriods([]); setPeriodsLoaded(true); } });
+    return () => { cancelled = true; };
+  }, [companyId]);
+
+  // Open on the most recent cycle that exists. This is a DEFAULT, not a fallback:
+  // once a period is chosen it is never reassigned, and an empty result for the
+  // chosen month never silently loads a different one.
+  useEffect(() => {
+    if (needsPeriod && !period && periods.length) setPeriod(periods[0].value);
+  }, [needsPeriod, period, periods]);
+
+  const periodLabel = periods.find(p => p.value === period)?.label || period;
+  // What this report is scoped to — printed in the header, PDF title and file name.
+  const scopeLabel = needsPeriod ? periodLabel : String(year);
+  const scopeKey = needsPeriod ? (period || 'none') : String(year);
+  const fileScope = (needsPeriod ? periodLabel : String(year)).replace(/\s+/g, '_') || scopeKey;
+
+  const blocked: Blocked =
+    filters === null ? 'loading'
+      : !needsPeriod ? null
+        : !periodsLoaded ? 'loading'
+          : !periods.length ? 'no-payroll'
+            : !period ? 'no-period'
+              : null;
   // Report language for labels/headers/static text. Defaults to the user's last
   // choice (remembered across reports), else English. Calculations are unaffected.
   const [lang, setLang] = useState<string>(() => {
@@ -85,9 +140,10 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
   const initialNotes = useRef<string>((() => { try { return localStorage.getItem(notesKey) || ''; } catch { return ''; } })());
 
   // In-place content edits to the prescribed template (numbers/text/headers/footer)
-  // — content only, layout fixed. Keyed by report+company+year; each entry stores
-  // the original + edited text so a stale edit never lands on changed live data.
-  const editsKey = `hrms_report_tpl_edits_${def.reportKey}_${companyId}_${year}`;
+  // — content only, layout fixed. Keyed by report+company+scope (payroll period, or
+  // year for annual reports); each entry stores the original + edited text so a stale
+  // edit never lands on changed live data — or on a different payroll cycle.
+  const editsKey = `hrms_report_tpl_edits_${def.reportKey}_${companyId}_${scopeKey}`;
   const readEdits = (): Record<string, { o: string; v: string }> => { try { return JSON.parse(localStorage.getItem(editsKey) || '{}') || {}; } catch { return {}; } };
   const saveTimer = useRef<number | null>(null);
 
@@ -238,15 +294,22 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
   };
 
   const load = useCallback(async () => {
+    // Never generate on a guessed scope. A month-wise report with no period would
+    // return every cycle on record and print whichever month dominates the rows.
+    if (blocked) { setLoading(false); setData(null); return; }
     setLoading(true); setError(null);
     try {
-      const res = await api.complianceReports.generate({ reportKey: def.reportKey, companyId, year });
-      setData({ ...res, filters: { year } });
+      const payload: any = { reportKey: def.reportKey, companyId };
+      if (needsPeriod) payload.payrollPeriod = period; else payload.year = year;
+      const res = await api.complianceReports.generate(payload);
+      // Keep the backend's echoed filters (it returns the resolved period label) so a
+      // template header shows the SELECTED cycle even when zero rows came back.
+      setData({ ...res, filters: { ...(res.filters || {}), ...(needsPeriod ? {} : { year }) } });
     } catch (e: any) {
       setError(e?.message || 'Failed to generate report.');
       setData(null);
     } finally { setLoading(false); }
-  }, [def.reportKey, companyId, year]);
+  }, [def.reportKey, companyId, year, period, needsPeriod, blocked]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -257,12 +320,12 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
     api.complianceReports.logDownload({ reportKey: def.reportKey, reportName, format, companyId, rowCount: data?.rows?.length || 0 }).catch(() => {});
 
   // Same orientation + branding context for print AND pdf so all three outputs match.
-  const exportCtx = () => ({ companyName: data?.meta?.name, title: `${reportName} — ${year}`, generatedBy: userName || undefined, generatedAt: (data as any)?.generatedAt });
+  const exportCtx = () => ({ companyName: data?.meta?.name, title: `${reportName} — ${scopeLabel}`, generatedBy: userName || undefined, generatedAt: (data as any)?.generatedAt });
   const onPrint = () => { if (printRef.current) { printNode(printRef.current, reportName, def.orientation, exportCtx()); logDownload('PRINT'); } };
   const onPdf = async () => {
     if (!printRef.current) return;
     setBusy('pdf');
-    try { await nodeToPdf(printRef.current, `${def.fileStem}_${year}`, def.orientation, exportCtx()); logDownload('PDF'); }
+    try { await nodeToPdf(printRef.current, `${def.fileStem}_${fileScope}`, def.orientation, exportCtx()); logDownload('PDF'); }
     catch (e: any) { ui.toast.error(e?.message || 'PDF export failed.'); }
     finally { setBusy(null); }
   };
@@ -274,15 +337,15 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
       // fall back to the canonical columns/rows when no table/edit is present.
       const grid = editedGrid();
       const branchLine = data.meta?.branchName ? `Branch: ${data.meta.branchName}` : '';
-      const headerLines = [data.meta?.name || '', data.meta?.address || '', branchLine, `${reportName} — ${year}`].filter(Boolean);
+      const headerLines = [data.meta?.name || '', data.meta?.address || '', branchLine, `${reportName} — ${scopeLabel}`].filter(Boolean);
       if (grid && grid.header.length) {
         rowsToExcel({
           columns: grid.header.map((h, i) => ({ key: String(i), label: h })),
           rows: grid.rows.map(r => Object.fromEntries(r.map((c, i) => [String(i), c]))),
-          fileName: `${def.fileStem}_${year}`, sheetName: reportName, headerLines,
+          fileName: `${def.fileStem}_${fileScope}`, sheetName: reportName, headerLines,
         });
       } else {
-        rowsToExcel({ columns: data.columns, rows: data.rows, fileName: `${def.fileStem}_${year}`, sheetName: reportName, headerLines });
+        rowsToExcel({ columns: data.columns, rows: data.rows, fileName: `${def.fileStem}_${fileScope}`, sheetName: reportName, headerLines });
       }
       logDownload('EXCEL');
     } catch (e: any) { ui.toast.error(e?.message || 'Excel export failed.'); }
@@ -319,14 +382,33 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-28"><Select value={String(year)} onChange={e => setYear(Number(e.target.value))} options={YEARS.map(y => ({ value: String(y), label: `Year ${y}` }))} /></div>
+          {/* Month-wise reports are scoped by the payroll CYCLE they were run for —
+              a bare year cannot identify it. Annual reports (Form 16) keep the year. */}
+          {needsPeriod ? (
+            <div className="flex items-center gap-1.5" title="Payroll period — the payroll cycle this report is generated for">
+              <CalendarRange size={15} className="text-slate-400 shrink-0" />
+              <div className="w-44">
+                <Select
+                  value={period}
+                  onChange={e => setPeriod(e.target.value)}
+                  disabled={!periods.length}
+                  options={[
+                    { value: '', label: periodsLoaded && !periods.length ? 'No payroll generated yet' : 'Select Payroll Period…', disabled: periods.length > 0 },
+                    ...periods.map(p => ({ value: p.value, label: p.label })),
+                  ]}
+                />
+              </div>
+            </div>
+          ) : needsYear ? (
+            <div className="w-28"><Select value={String(year)} onChange={e => setYear(Number(e.target.value))} options={YEARS.map(y => ({ value: String(y), label: `Year ${y}` }))} /></div>
+          ) : null}
           {/* Report language — applies to preview, print, PDF and Excel/CSV (labels,
               headers and static text only; calculations are never changed). */}
           <div className="flex items-center gap-1.5" title="Report language — applied to preview, print, PDF and Excel">
             <Languages size={15} className="text-slate-400 shrink-0" />
             <div className="w-40"><Select value={lang} onChange={e => changeLang(e.target.value)} options={REPORT_LANGUAGES.map(l => ({ value: l.code, label: l.label }))} /></div>
           </div>
-          <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={load}>Generate</Button>
+          <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={load} disabled={!!blocked}>Generate</Button>
           {canEdit ? (
             <>
               <button
@@ -365,7 +447,17 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
 
       {/* Preview surface */}
       <div className="bg-slate-200/60 rounded-[14px] border border-slate-200 p-4 overflow-auto" style={{ maxHeight: '70vh' }}>
-        {loading ? (
+        {blocked === 'no-payroll' ? (
+          <div className="py-20 text-center">
+            <p className="text-sm font-semibold text-slate-700">No payroll has been generated for this company.</p>
+            <p className="mt-1 text-xs text-slate-500">Please generate payroll first, then return to this report.</p>
+          </div>
+        ) : blocked === 'no-period' ? (
+          <div className="py-20 text-center">
+            <p className="text-sm font-semibold text-slate-700">Please select a Payroll Period and click Generate.</p>
+            <p className="mt-1 text-xs text-slate-500">Only cycles that have payroll are listed.</p>
+          </div>
+        ) : loading || blocked === 'loading' ? (
           <div className="py-20 text-center text-sm text-slate-500">Generating report from live data…</div>
         ) : error ? (
           <div className="py-20 text-center text-sm text-rose-600">{error}</div>

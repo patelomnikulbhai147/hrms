@@ -32,6 +32,10 @@ import { safeSetJSON } from '@/utils/safeStorage';
 import { downloadCompanyExcel, downloadCompanyPDF } from '@/utils/companyExportUtils';
 import { ui } from '@/components/ui/feedback';
 
+// Mirrors COMPANY_TYPES in CompanyProfile so a type chosen at registration is a
+// valid option when the Company Head later edits it.
+const REG_COMPANY_TYPES = ['Private Limited', 'Public Limited', 'LLP', 'Partnership', 'Proprietorship', 'Trust', 'NGO', 'Government', 'Other'];
+
 // ── Standard KPI card ────────────────────────────────────────────────────────
 // One enterprise design system for EVERY dashboard KPI card: identical white/blue
 // theme, border, shadow, hover lift, icon container, decorative ring, typography,
@@ -382,23 +386,91 @@ export const Companies: React.FC<CompaniesProps> = ({
     }));
   };
 
-  // Dynamic Onboarding state
-  const [newCompany, setNewCompany] = useState({
+  // Dynamic Onboarding state.
+  //
+  // Everything captured here is written to the Company master record (or its
+  // Branch / CompanyOwner / Document children) by POST /api/companies, so the
+  // Company Head's Company Profile opens pre-filled. Optional boxes left empty
+  // are dropped server-side rather than stored as '', and the Company Head can
+  // fill them in later.
+  const BLANK_COMPANY = {
+    // Identity
     name: '',
+    legalName: '',
+    tradeName: '',
+    companyCode: '',
+    companyType: '',
+    industry: 'Technology',
+    businessCategory: '',
+    employeeCapacity: '',
+    // Contact
     email: '',
     countryCode: '+91',
     mobileNumber: '',
+    website: '',
+    // Registered address
     address: '',
+    city: '',
+    state: '',
+    pincode: '',
+    country: 'India',
+    // Statutory registration
+    gstNumber: '',
+    panNumber: '',
+    cinNumber: '',
+    registrationNumber: '',
+    msmeNumber: '',
+    iecCode: '',
+    // Default branch
+    defaultBranchName: '',
+    defaultBranchCode: '',
+    // Company Head account
     adminName: '',
     adminEmail: '',
-    industry: 'Technology',
+    // Plan & branding
     plan: 'Starter' as 'Starter' | 'Professional' | 'Enterprise',
     pfRate: '12',
     esicRate: '3.25',
     logo: '',
     logoImage: '',
     primaryColor: '#6c3cf0',
-  });
+  };
+  const [newCompany, setNewCompany] = useState({ ...BLANK_COMPANY });
+
+  // Owner(s) / Director(s) — seeded into the CompanyOwner table. The primary
+  // owner is the company's primary contact person and feeds the {{owner_*}}
+  // document placeholders.
+  type OwnerDraft = { name: string; designation: string; email: string; mobile: string };
+  const BLANK_OWNER: OwnerDraft = { name: '', designation: '', email: '', mobile: '' };
+  const [owners, setOwners] = useState<OwnerDraft[]>([{ ...BLANK_OWNER }]);
+  const [primaryOwner, setPrimaryOwner] = useState(0);
+
+  // Registration certificates — become company-scoped Document rows so the
+  // Company Profile → Company Documents tab needs no re-upload.
+  type DocDraft = { fileData: string; mimeType: string; size: string; fileName: string };
+  const REG_DOC_SLOTS = [
+    { key: 'gstCertificate', label: 'GST Certificate', numberField: 'gstNumber' },
+    { key: 'panCard', label: 'PAN Card', numberField: 'panNumber' },
+    { key: 'cinCertificate', label: 'Certificate of Incorporation', numberField: 'cinNumber' },
+    { key: 'msmeCertificate', label: 'MSME / Udyam Certificate', numberField: 'msmeNumber' },
+    { key: 'iecCertificate', label: 'IEC Certificate', numberField: 'iecCode' },
+  ] as const;
+  const DOC_MAX_MB = 5;
+  const [regDocs, setRegDocs] = useState<Record<string, DocDraft>>({});
+
+  const humanBytes = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(2)} MB`;
+
+  const acceptRegDoc = (slot: string, file?: File | null) => {
+    if (!file) return;
+    if (file.size > DOC_MAX_MB * 1024 * 1024) { ui.toast.warning(`File must be ${DOC_MAX_MB} MB or smaller.`); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setRegDocs(prev => ({
+      ...prev,
+      [slot]: { fileData: String(ev.target?.result || ''), mimeType: file.type || 'application/octet-stream', size: humanBytes(file.size), fileName: file.name },
+    }));
+    reader.readAsDataURL(file);
+  };
+  const removeRegDoc = (slot: string) => setRegDocs(prev => { const n = { ...prev }; delete n[slot]; return n; });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [officerErrors, setOfficerErrors] = useState<Record<string, string>>({});
@@ -466,7 +538,21 @@ export const Companies: React.FC<CompaniesProps> = ({
     const dd = String(trialDate.getDate()).padStart(2, '0');
     const renDate = `${yyyy}-${mm}-${dd}`;
 
-    const fresh: Company = {
+    // Certificates are sent keyed by slot; the backend files them as company
+    // documents and mirrors the ones that report templates read by column.
+    const documents: Record<string, any> = {};
+    for (const slot of REG_DOC_SLOTS) {
+      const d = regDocs[slot.key];
+      if (!d) continue;
+      documents[slot.key] = {
+        fileData: d.fileData, mimeType: d.mimeType, size: d.size,
+        documentNumber: (newCompany as any)[slot.numberField] || '',
+      };
+    }
+
+    // `fresh` carries registration-only keys (owners, documents, defaultBranch)
+    // alongside the Company columns, so it is wider than the Company type.
+    const fresh: Record<string, any> = {
       id: compId,
       name: newCompany.name,
       domain: `${newCompany.name.toLowerCase().replace(/\s+/g, '')}.in`,
@@ -487,6 +573,25 @@ export const Companies: React.FC<CompaniesProps> = ({
       overtimeRate: 1.5,
       profTaxRate: 200,
 
+      // Company master profile — every value below lands on a real Company column
+      // and shows up pre-filled in the Company Head's Company Profile.
+      legalName: newCompany.legalName,
+      tradeName: newCompany.tradeName,
+      companyCode: newCompany.companyCode,
+      companyType: newCompany.companyType,
+      businessCategory: newCompany.businessCategory,
+      employeeCapacity: newCompany.employeeCapacity,
+      website: newCompany.website,
+      city: newCompany.city,
+      state: newCompany.state,
+      pincode: newCompany.pincode,
+      country: newCompany.country,
+      panNumber: newCompany.panNumber,
+      cinNumber: newCompany.cinNumber,
+      registrationNumber: newCompany.registrationNumber,
+      msmeNumber: newCompany.msmeNumber,
+      iecCode: newCompany.iecCode,
+
       // Auto-generated branding parameters matching input specifications
       address: newCompany.address,
       email: newCompany.email,
@@ -499,11 +604,22 @@ export const Companies: React.FC<CompaniesProps> = ({
       // SaaS billing parameters initialized
       paymentStatus: 'Trial Active',
       renewalDate: renDate,
-      gstNumber: '',
+      gstNumber: newCompany.gstNumber,
       billingAddress: newCompany.address,
       subscriptionPrice: price,
       billingCycle: 'Monthly',
-      accountStatus: 'Active'
+      accountStatus: 'Active',
+
+      // Child records seeded alongside the company (all optional).
+      // Flag the primary BEFORE filtering — the primary index refers to the row
+      // the user ticked, not to its position among the non-empty rows.
+      owners: owners
+        .map((o, i) => ({ ...o, isPrimary: i === primaryOwner }))
+        .filter(o => o.name.trim()),
+      documents,
+      defaultBranch: newCompany.defaultBranchName.trim()
+        ? { branchName: newCompany.defaultBranchName, branchCode: newCompany.defaultBranchCode, location: newCompany.address }
+        : undefined,
     };
 
     // Auto-create a Company Head user account for this new company!
@@ -550,30 +666,22 @@ export const Companies: React.FC<CompaniesProps> = ({
     setAddOpen(false);
 
     // Reset state
-    setNewCompany({
-      name: '',
-      email: '',
-      countryCode: '+91',
-      mobileNumber: '',
-      address: '',
-      adminName: '',
-      adminEmail: '',
-      industry: 'Technology',
-      plan: 'Starter',
-      pfRate: '12',
-      esicRate: '3.25',
-      logo: '',
-      logoImage: '',
-      primaryColor: '#6c3cf0',
-    });
+    setNewCompany({ ...BLANK_COMPANY });
+    setOwners([{ ...BLANK_OWNER }]);
+    setPrimaryOwner(0);
+    setRegDocs({});
     setErrors({});
+
+    // The backend seeds the branch / owners / documents best-effort and reports
+    // anything it could not attach — surface that instead of claiming success.
+    const partial: string[] = createdCompany?.warnings || [];
 
     await ui.alert({
       title: 'Company Registered',
-      variant: 'success',
-      message: `Company registered successfully.${headCreated
+      variant: partial.length ? 'warning' : 'success',
+      message: `Company registered successfully. Its profile is pre-filled with everything entered here.${headCreated
         ? `\n\nGenerated Default Company Head Account:\nLogin ID: ${newHead.username}\nPassword: ${newHead.passwordStr}`
-        : headWarning}`
+        : headWarning}${partial.length ? `\n\nNot everything was attached:\n· ${partial.join('\n· ')}` : ''}`
     });
   };
 
@@ -1571,7 +1679,7 @@ export const Companies: React.FC<CompaniesProps> = ({
         }
       >
         <div className="space-y-3.5 max-h-[70vh] overflow-y-auto pr-1">
-          <p className="text-xs text-gray-400">All fields are strictly required. Provisions tenant database and default Company Head credentials.</p>
+          <p className="text-xs text-gray-400">Fields marked * are required. Everything entered here becomes this company's master profile — the Company Head sees it pre-filled and never re-types it.</p>
 
           <div className="grid grid-cols-2 gap-3 text-left">
             <Input
@@ -1587,39 +1695,29 @@ export const Companies: React.FC<CompaniesProps> = ({
               success={newCompany.name !== '' && !errors.name}
             />
             <Input
-              label="Company Official Email *"
-              placeholder="e.g. contact@acme.com"
-              type="email"
-              value={newCompany.email}
-              onChange={e => {
-                const val = e.target.value;
-                setNewCompany({ ...newCompany, email: val });
-                setErrors(prev => ({ ...prev, email: validateEmail(val).error }));
-              }}
-              error={errors.email}
-              success={newCompany.email !== '' && !errors.email}
+              label="Company Legal Name"
+              placeholder="e.g. Acme Tech Pvt Ltd"
+              value={newCompany.legalName}
+              onChange={e => setNewCompany({ ...newCompany, legalName: e.target.value })}
             />
-          </div>
-
-          {/* Validated Phone Number Field using custom PhoneInput */}
-          <PhoneInput
-            label="Company Mobile Number *"
-            countryCode={newCompany.countryCode}
-            mobileNumber={newCompany.mobileNumber}
-            onChangeCountry={handleCountryCodeChange}
-            onChangeNumber={handlePhoneChange}
-            error={errors.mobileNumber}
-            success={newCompany.mobileNumber !== '' && !errors.mobileNumber}
-          />
-
-          <Input
-            label="Corporate HQ Full Address *"
-            placeholder="Street, City, State, ZIP..."
-            value={newCompany.address}
-            onChange={e => setNewCompany({ ...newCompany, address: e.target.value })}
-          />
-
-          <div className="grid grid-cols-2 gap-3 text-left">
+            <Input
+              label="Trade Name"
+              placeholder="e.g. Acme"
+              value={newCompany.tradeName}
+              onChange={e => setNewCompany({ ...newCompany, tradeName: e.target.value })}
+            />
+            <Input
+              label="Company Code"
+              placeholder="e.g. ACME001"
+              value={newCompany.companyCode}
+              onChange={e => setNewCompany({ ...newCompany, companyCode: e.target.value.toUpperCase() })}
+            />
+            <Select
+              label="Company Type"
+              value={newCompany.companyType}
+              onChange={e => setNewCompany({ ...newCompany, companyType: e.target.value })}
+              options={[{ value: '', label: '— Select —' }, ...REG_COMPANY_TYPES.map(t => ({ value: t, label: t }))]}
+            />
             <Select
               label="Industry Sector *"
               value={newCompany.industry}
@@ -1633,35 +1731,191 @@ export const Companies: React.FC<CompaniesProps> = ({
               ]}
             />
             <Input
+              label="Business Category"
+              placeholder="e.g. Manufacturing"
+              value={newCompany.businessCategory}
+              onChange={e => setNewCompany({ ...newCompany, businessCategory: e.target.value })}
+            />
+            <Input
+              label="Employee Strength"
+              placeholder="e.g. 150"
+              value={newCompany.employeeCapacity}
+              onChange={e => setNewCompany({ ...newCompany, employeeCapacity: e.target.value.replace(/[^\d]/g, '') })}
+            />
+          </div>
+
+          {/* ── Contact ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-3 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Contact Details</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Company Official Email *"
+                placeholder="e.g. contact@acme.com"
+                type="email"
+                value={newCompany.email}
+                onChange={e => {
+                  const val = e.target.value;
+                  setNewCompany({ ...newCompany, email: val });
+                  setErrors(prev => ({ ...prev, email: validateEmail(val).error }));
+                }}
+                error={errors.email}
+                success={newCompany.email !== '' && !errors.email}
+              />
+              <Input
+                label="Website"
+                placeholder="e.g. acme.com"
+                value={newCompany.website}
+                onChange={e => setNewCompany({ ...newCompany, website: e.target.value })}
+              />
+            </div>
+
+            {/* Validated Phone Number Field using custom PhoneInput */}
+            <PhoneInput
+              label="Company Mobile Number *"
+              countryCode={newCompany.countryCode}
+              mobileNumber={newCompany.mobileNumber}
+              onChangeCountry={handleCountryCodeChange}
+              onChangeNumber={handlePhoneChange}
+              error={errors.mobileNumber}
+              success={newCompany.mobileNumber !== '' && !errors.mobileNumber}
+            />
+          </div>
+
+          {/* ── Registered address ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-3 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Registered Address</h4>
+            <Input
+              label="Corporate HQ Full Address *"
+              placeholder="Street, Area, Landmark..."
+              value={newCompany.address}
+              onChange={e => setNewCompany({ ...newCompany, address: e.target.value })}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="City" placeholder="e.g. Rajkot" value={newCompany.city} onChange={e => setNewCompany({ ...newCompany, city: e.target.value })} />
+              <Input label="State" placeholder="e.g. Gujarat" value={newCompany.state} onChange={e => setNewCompany({ ...newCompany, state: e.target.value })} />
+              <Input label="PIN Code" placeholder="e.g. 360001" value={newCompany.pincode} onChange={e => setNewCompany({ ...newCompany, pincode: e.target.value.replace(/[^\dA-Za-z\s-]/g, '') })} />
+              <Input label="Country" value={newCompany.country} onChange={e => setNewCompany({ ...newCompany, country: e.target.value })} />
+            </div>
+          </div>
+
+          {/* ── Statutory registration ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-3 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Statutory Registration</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="GST Number" placeholder="e.g. 24ABCDE1234F1Z5" value={newCompany.gstNumber} onChange={e => setNewCompany({ ...newCompany, gstNumber: e.target.value.toUpperCase() })} />
+              <Input label="PAN Number" placeholder="e.g. ABCDE1234F" value={newCompany.panNumber} onChange={e => setNewCompany({ ...newCompany, panNumber: e.target.value.toUpperCase() })} />
+              <Input label="CIN Number" placeholder="e.g. U72900GJ2020PTC000000" value={newCompany.cinNumber} onChange={e => setNewCompany({ ...newCompany, cinNumber: e.target.value.toUpperCase() })} />
+              <Input label="Registration Number" value={newCompany.registrationNumber} onChange={e => setNewCompany({ ...newCompany, registrationNumber: e.target.value })} />
+              <Input label="MSME / Udyam Number" value={newCompany.msmeNumber} onChange={e => setNewCompany({ ...newCompany, msmeNumber: e.target.value.toUpperCase() })} />
+              <Input label="IEC Code" value={newCompany.iecCode} onChange={e => setNewCompany({ ...newCompany, iecCode: e.target.value.toUpperCase() })} />
+            </div>
+          </div>
+
+          {/* ── Company documents ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-2.5 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Company Documents</h4>
+            <p className="text-[11px] text-slate-500">Optional. Uploaded certificates appear in the company's <span className="font-semibold">Company Documents</span> tab — no re-upload needed. Max {DOC_MAX_MB} MB each.</p>
+            <div className="space-y-2">
+              {REG_DOC_SLOTS.map(slot => {
+                const d = regDocs[slot.key];
+                return (
+                  <div key={slot.key} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="flex-1 text-[11px] font-bold text-slate-600">{slot.label}</span>
+                    {d ? (
+                      <>
+                        <span className="truncate max-w-[38%] text-[10px] text-emerald-700 font-semibold flex items-center gap-1"><CheckCircle2 size={12} /> {d.fileName} · {d.size}</span>
+                        <button type="button" onClick={() => removeRegDoc(slot.key)} className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700"><Trash2 size={12} /> Remove</button>
+                      </>
+                    ) : (
+                      <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-brand-600 hover:text-brand-700 cursor-pointer">
+                        <UploadCloud size={13} /> Upload
+                        <input type="file" accept=".png,.jpg,.jpeg,.pdf" className="hidden" onChange={e => acceptRegDoc(slot.key, e.target.files?.[0])} />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ── Owners / Directors ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-2.5 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Owner(s) / Director(s)</h4>
+            <p className="text-[11px] text-slate-500">Optional. The primary owner is the company's primary contact person and fills the owner placeholders on generated letters and reports.</p>
+            {owners.map((o, i) => (
+              <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <Input label="Full Name" placeholder="e.g. Vishy Patel" value={o.name} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, name: e.target.value } : r))} />
+                  <Input label="Designation" placeholder="e.g. Managing Director" value={o.designation} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, designation: e.target.value } : r))} />
+                  <Input label="Email" type="email" value={o.email} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, email: e.target.value } : r))} />
+                  <Input label="Mobile" value={o.mobile} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, mobile: e.target.value } : r))} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">
+                    <input type="radio" name="primaryOwner" checked={primaryOwner === i} onChange={() => setPrimaryOwner(i)} className="h-3.5 w-3.5 accent-[#6c3cf0]" />
+                    Primary contact person
+                  </label>
+                  {owners.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOwners(prev => prev.filter((_, j) => j !== i));
+                        // Keep the tick on the same person after the row shifts.
+                        setPrimaryOwner(p => (p === i ? 0 : p > i ? p - 1 : p));
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700"
+                    ><Trash2 size={12} /> Remove</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={() => setOwners(prev => [...prev, { ...BLANK_OWNER }])} className="inline-flex items-center gap-1 text-[11px] font-bold text-brand-600 hover:text-brand-700">
+              <Plus size={13} /> Add another owner / director
+            </button>
+          </div>
+
+          {/* ── Default branch ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-2.5 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Default Branch</h4>
+            <p className="text-[11px] text-slate-500">Optional. Created immediately and shown in the company's Branch Information tab.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Branch Name" placeholder="e.g. Rajkot Head Office" value={newCompany.defaultBranchName} onChange={e => setNewCompany({ ...newCompany, defaultBranchName: e.target.value })} />
+              <Input label="Branch Code" placeholder="e.g. RJT-HO" value={newCompany.defaultBranchCode} onChange={e => setNewCompany({ ...newCompany, defaultBranchCode: e.target.value.toUpperCase() })} />
+            </div>
+          </div>
+
+          {/* ── Payroll defaults ── */}
+          <div className="border-t border-gray-150 pt-3 space-y-3 text-left">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Payroll Defaults</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="PF Contribution Percentage (%) *"
+                value={newCompany.pfRate}
+                onChange={e => {
+                  const clean = e.target.value.replace(/[^\d.]/g, '');
+                  setNewCompany({ ...newCompany, pfRate: clean });
+                  setErrors(prev => ({ ...prev, pfRate: validatePercentage(clean).error }));
+                }}
+                error={errors.pfRate}
+                success={newCompany.pfRate !== '' && !errors.pfRate}
+              />
+              <Input
+                label="ESIC Contribution Percentage (%) *"
+                value={newCompany.esicRate}
+                onChange={e => {
+                  const clean = e.target.value.replace(/[^\d.]/g, '');
+                  setNewCompany({ ...newCompany, esicRate: clean });
+                  setErrors(prev => ({ ...prev, esicRate: validatePercentage(clean).error }));
+                }}
+                error={errors.esicRate}
+                success={newCompany.esicRate !== '' && !errors.esicRate}
+              />
+            </div>
+            <Input
               label="Company Logo Text (Emblem) *"
               placeholder="e.g. TN"
               value={newCompany.logo}
               onChange={e => setNewCompany({ ...newCompany, logo: e.target.value.toUpperCase().slice(0, 3) })}
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 text-left">
-            <Input
-              label="PF Contribution Percentage (%) *"
-              value={newCompany.pfRate}
-              onChange={e => {
-                const clean = e.target.value.replace(/[^\d.]/g, '');
-                setNewCompany({ ...newCompany, pfRate: clean });
-                setErrors(prev => ({ ...prev, pfRate: validatePercentage(clean).error }));
-              }}
-              error={errors.pfRate}
-              success={newCompany.pfRate !== '' && !errors.pfRate}
-            />
-            <Input
-              label="ESIC Contribution Percentage (%) *"
-              value={newCompany.esicRate}
-              onChange={e => {
-                const clean = e.target.value.replace(/[^\d.]/g, '');
-                setNewCompany({ ...newCompany, esicRate: clean });
-                setErrors(prev => ({ ...prev, esicRate: validatePercentage(clean).error }));
-              }}
-              error={errors.esicRate}
-              success={newCompany.esicRate !== '' && !errors.esicRate}
             />
           </div>
 
@@ -2468,7 +2722,7 @@ export const Companies: React.FC<CompaniesProps> = ({
 
             <div className="p-5 border-t border-slate-200/60 bg-slate-50 flex justify-end gap-3 rounded-b-xl">
               <Button onClick={() => setOffboardCompany(null)} variant="outline">Cancel & Keep Active</Button>
-              <Button onClick={executeCompleteOffboarding} className="bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200">Archive Tender & Workforce</Button>
+              <Button onClick={executeCompleteOffboarding} variant="danger">Archive Tender & Workforce</Button>
             </div>
           </div>
         )}

@@ -608,9 +608,26 @@ export const api = {
     bulk: async (rows: any[], companyId?: any) => { return await apiFetch(`${BASE_URL}/biometric-mappings/bulk`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ rows, companyId }) }); },
   },
 
+  // Attendance Excel Import engine — parses biometric sheets into attendance.
+  // The client sends canonical punch rows; the server matches, derives status and
+  // upserts idempotently (one row per employee+date). dryRun previews without writing.
+  attendanceImport: {
+    process: async (payload: { companyId?: any; fileName?: string; dryRun?: boolean; options?: any; rows: any[] }) => {
+      return await apiFetch(`${BASE_URL}/attendance-import/process`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+    logs: async (status?: string) => {
+      const q = status ? `?status=${encodeURIComponent(status)}` : '';
+      return await apiFetch(`${BASE_URL}/attendance-import/logs${q}`, { headers: getHeaders() });
+    },
+    unmatched: async () => { return await apiFetch(`${BASE_URL}/attendance-import/unmatched`, { headers: getHeaders() }); },
+    history: async () => { return await apiFetch(`${BASE_URL}/attendance-import/history`, { headers: getHeaders() }); },
+  },
+
   // Government Compliance Reports — live statutory reports from DB.
   complianceReports: {
     catalog: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/catalog`, { headers: getHeaders() }); },
+    // Payroll cycles that actually exist for the active workspace, newest first.
+    payrollPeriods: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/payroll-periods`, { headers: getHeaders() }); },
     generate: async (data: any) => { return await apiFetch(`${BASE_URL}/compliance-reports/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Sample preview using the VISHV ENTERPRISE demo company (never touches real data).
     preview: async (reportKey: string) => { return await apiFetch(`${BASE_URL}/compliance-reports/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reportKey }) }); },

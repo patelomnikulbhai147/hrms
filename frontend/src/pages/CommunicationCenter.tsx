@@ -422,7 +422,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
           const active = activeModule.id === m.id;
           return (
             <button key={m.id} onClick={() => setTab(m.groups[0].items[0].id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${active ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs whitespace-nowrap -mb-px nav-tab ${active ? 'nav-tab-active' : ''}`}>
               <Icon size={14} /> {m.label}
             </button>
           );
@@ -443,7 +443,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
                       const on = tab === it.id;
                       return (
                         <button key={it.id} onClick={() => setTab(it.id)}
-                          className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-bold transition-colors ${on ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'}`}>
+                          className={`flex w-full items-center gap-2.5 px-2.5 py-2 text-left text-xs seg-tab ${on ? 'seg-tab-active' : ''}`}>
                           <I size={15} /> <span className="truncate">{it.label}</span>
                         </button>
                       );

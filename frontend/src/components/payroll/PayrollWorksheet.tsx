@@ -10,12 +10,14 @@ const EARNINGS: [string, string][] = [
   ['specialAllowance', 'Special Allowance'], ['educationAllowance', 'Education Allowance'], ['washingAllowance', 'Washing Allowance'],
   ['bonus', 'Bonus'], ['incentive', 'Incentive'], ['overtime', 'Overtime'], ['arrears', 'Arrears'], ['otherEarnings', 'Other Earnings'],
 ];
-const DEDUCTIONS: [string, string][] = [
-  ['pf', 'PF'], ['eps', 'EPS'], ['vpf', 'VPF'], ['esi', 'ESI'], ['professionalTax', 'Professional Tax'], ['tds', 'TDS'],
-  ['lwf', 'Labour Welfare Fund'], ['advanceRecovery', 'Advance Recovery'], ['loanRecovery', 'Loan Recovery'], ['insurance', 'Insurance'], ['otherDeductions', 'Other Deductions'],
-];
+// Deductions are NO LONGER a fixed list. They come from the server as the active
+// components for this company (built-ins + Settings → Payroll → Component
+// Builder), each with its own key, label and editability. Adding a component in
+// settings makes it appear here — and on every payslip — with no code change.
+type DeductionRow = { key: string; label: string; amount: number; editable?: boolean; system?: boolean; archived?: boolean };
+
 const EMPLOYER: [string, string][] = [['employerPf', 'Employer PF'], ['employerEsi', 'Employer ESI']];
-const ALL_KEYS = [...EARNINGS, ...DEDUCTIONS, ...EMPLOYER].map(([k]) => k);
+const STATIC_KEYS = [...EARNINGS, ...EMPLOYER].map(([k]) => k);
 
 const inr = (n: number) => `₹${Math.round((n || 0) as number).toLocaleString('en-IN')}`;
 const n = (v: any) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
@@ -96,14 +98,24 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
   const [error, setError] = useState('');
   const [okMsg, setOkMsg] = useState('');
 
+  // The company's active deduction components, in payslip order.
+  const [deductionRows, setDeductionRows] = useState<DeductionRow[]>([]);
+  // Hide components that are zero AND not being edited, so a slip with three
+  // deductions doesn't render sixteen empty rows. Toggleable — an admin adding a
+  // deduction needs to see the zero rows to type into them.
+  const [showZeroRows, setShowZeroRows] = useState(false);
+
   useEffect(() => {
     if (!open || !payrollId) return;
     setLoading(true); setError(''); setOkMsg(''); setData(null);
     api.payroll.worksheet.get(payrollId)
       .then((res: any) => {
         setData(res);
+        const rows: DeductionRow[] = res.deductions || [];
+        setDeductionRows(rows);
         const f: Record<string, string> = {};
-        for (const k of ALL_KEYS) f[k] = String(res.worksheet?.[k] ?? 0);
+        for (const k of STATIC_KEYS) f[k] = String(res.worksheet?.[k] ?? 0);
+        for (const d of rows) f[d.key] = String(d.amount ?? 0);
         setForm(f);
       })
       .catch((e: any) => setError(e?.message || 'Could not load the salary worksheet.'))
@@ -111,23 +123,33 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
   }, [open, payrollId]);
 
   const editable = !!canEdit && !!data?.meta?.editable;
+  const allKeys = useMemo(() => [...STATIC_KEYS, ...deductionRows.map(d => d.key)], [deductionRows]);
 
   // Stable identity so React.memo'd rows only re-render when their own value changes.
   const setField = useCallback((k: string, v: string) => { setForm(p => ({ ...p, [k]: v })); setOkMsg(''); }, []);
 
   // ── Live recalculation engine ──
+  // Editing any deduction re-derives Total Deductions, Net Salary and CTC in the
+  // same render — no refetch, no page refresh.
   const totals = useMemo(() => {
     const totalEarnings = EARNINGS.reduce((s, [k]) => s + n(form[k]), 0);
-    const totalDeductions = DEDUCTIONS.reduce((s, [k]) => s + n(form[k]), 0);
+    const totalDeductions = deductionRows.reduce((s, d) => s + n(form[d.key]), 0);
     const grossSalary = totalEarnings;
     const netSalary = totalEarnings - totalDeductions;
     const ctcImpact = grossSalary + n(form.employerPf) + n(form.employerEsi);
     return { totalEarnings, totalDeductions, grossSalary, netSalary, ctcImpact };
-  }, [form]);
+  }, [form, deductionRows]);
 
-  const negativeField = ALL_KEYS.find(k => n(form[k]) < 0);
-  const nonNumericField = ALL_KEYS.find(k => { const v = form[k]; return v !== '' && v != null && !/^\d*\.?\d*$/.test(String(v)); });
-  const overMaxField = ALL_KEYS.find(k => n(form[k]) > MAX_AMOUNT);
+  // Rows to render: non-zero always; zero rows only when the user asks, or when
+  // the worksheet is editable and they've opened the full component list.
+  const visibleDeductions = useMemo(
+    () => deductionRows.filter(d => showZeroRows || n(form[d.key]) > 0 || d.archived),
+    [deductionRows, form, showZeroRows],
+  );
+
+  const negativeField = allKeys.find(k => n(form[k]) < 0);
+  const nonNumericField = allKeys.find(k => { const v = form[k]; return v !== '' && v != null && !/^\d*\.?\d*$/.test(String(v)); });
+  const overMaxField = allKeys.find(k => n(form[k]) > MAX_AMOUNT);
   const invalid = !!negativeField || !!nonNumericField || !!overMaxField || totals.netSalary < 0 || totals.totalEarnings <= 0 || totals.totalDeductions > totals.totalEarnings;
   const invalidReason = nonNumericField ? 'Only numbers and decimal values are allowed.'
     : overMaxField ? `Amount exceeds the maximum allowed (₹${MAX_AMOUNT.toLocaleString('en-IN')}).`
@@ -143,7 +165,10 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
     try {
       const earnings: any = {}, deductions: any = {}, employer: any = {};
       EARNINGS.forEach(([k]) => earnings[k] = n(form[k]));
-      DEDUCTIONS.forEach(([k]) => deductions[k] = n(form[k]));
+      // Send every component (zeros included) — the server persists only the
+      // non-zero ones, so clearing a deduction removes its row rather than
+      // leaving a stale value behind.
+      deductionRows.forEach(d => deductions[d.key] = n(form[d.key]));
       EMPLOYER.forEach(([k]) => employer[k] = n(form[k]));
       await api.payroll.worksheet.save(payrollId, { earnings, deductions, employer });
       setOkMsg('Saved. Payroll, payslip, register and reports updated.');
@@ -257,10 +282,35 @@ export const PayrollWorksheet: React.FC<Props> = ({ open, payrollId, canEdit = f
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-150 p-3">
-              <p className="flex items-center gap-1.5 text-[11px] font-bold text-rose-700 mb-2"><TrendingDown size={13} /> Deductions</p>
+            <div className="rounded-xl border border-slate-200 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[11px] font-bold text-rose-700"><TrendingDown size={13} /> Deductions</p>
+                {/* Zero rows are hidden by default; an admin adding a deduction
+                    reveals the full component list to type into it. */}
+                <button
+                  type="button"
+                  onClick={() => setShowZeroRows(v => !v)}
+                  className="text-[10px] font-bold text-brand-600 underline hover:text-brand-700"
+                >
+                  {showZeroRows
+                    ? 'Hide unused components'
+                    : `Show all ${deductionRows.length} components`}
+                </button>
+              </div>
               <div className="divide-y divide-slate-50">
-                {DEDUCTIONS.map(([k, label]) => <MoneyRow key={k} k={k} label={label} value={form[k]} editable={editable} onChange={setField} />)}
+                {visibleDeductions.map(d => (
+                  <MoneyRow
+                    key={d.key}
+                    k={d.key}
+                    label={d.label + (d.archived ? ' (archived)' : '')}
+                    value={form[d.key]}
+                    editable={editable && d.editable !== false}
+                    onChange={setField}
+                  />
+                ))}
+                {visibleDeductions.length === 0 && (
+                  <p className="py-3 text-center text-[11px] text-slate-400">No deductions for this employee.</p>
+                )}
               </div>
               <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-xs font-bold text-rose-800">
                 <span>Total Deductions</span><span className="font-mono">{inr(totals.totalDeductions)}</span>

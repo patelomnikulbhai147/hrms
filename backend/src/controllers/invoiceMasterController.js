@@ -29,7 +29,16 @@ exports.listCustomers = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
     const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized workspace.' });
     const where = { ...base };
-    if (req.query.q) where.OR = [{ companyName: { contains: String(req.query.q) } }, { gstin: { contains: String(req.query.q) } }, { email: { contains: String(req.query.q) } }];
+    if (req.query.q) {
+      const q = String(req.query.q);
+      // Search across every field the Customers grid shows: company/customer name,
+      // contact person, client code, GSTIN, mobile and email.
+      where.OR = [
+        { companyName: { contains: q } }, { contactPerson: { contains: q } },
+        { customerCode: { contains: q } }, { gstin: { contains: q } },
+        { phone: { contains: q } }, { email: { contains: q } },
+      ];
+    }
     if (req.query.active === 'true') where.isActive = true;
     const customers = await prisma.invoiceCustomer.findMany({ where, orderBy: { companyName: 'asc' } });
     // Attach lightweight history (invoice count / outstanding / paid) per customer.

@@ -1,4 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+/* Document fonts offered by the Invoice Visual Designer's text toolbar. Loaded
+   app-wide so the design canvas renders a block in the exact face the printed
+   PDF requests — see FONT_FAMILIES in components/invoicing/richText.ts. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@100;300;400;500;600;700;800&family=Roboto:wght@100;300;400;500;700;900&family=Open+Sans:wght@300;400;500;600;700;800&family=Lato:wght@100;300;400;700;900&family=Montserrat:wght@100;300;400;500;600;700;800&display=swap');
 
 @import "tailwindcss";
 
@@ -372,9 +376,14 @@ html[data-theme="light"] .bg-slate-900\/40 {
 }
 
 /* `text-white` on a coloured surface must stay white. Only neutralise it when
-   it is NOT sitting on a gradient/brand chip. */
-html[data-theme="light"] :not(.bg-gradient-to-r):not(.from-brand-600):not(.from-emerald-600):not(.bg-brand-600) > .text-white,
-html[data-theme="light"] .text-white:not(.from-brand-600):not(.from-emerald-600):not(.bg-brand-600):not(.rounded-full) {
+   it is NOT sitting on a gradient/brand chip.
+   The parent-based selector below used to guard only the PARENT's classes, so a
+   button that carried its own `bg-brand-600 text-white` was still repainted to
+   near-black — 2.5:1 contrast on solid purple. Every element that paints its own
+   background (`bg-…`) or gradient (`from-…`) is now exempt, whichever selector
+   matches it. */
+html[data-theme="light"] :not(.bg-gradient-to-r):not(.from-brand-600):not(.from-emerald-600):not(.bg-brand-600) > .text-white:not([class*="bg-"]):not([class*="from-"]),
+html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):not(.rounded-full) {
   color: var(--ink-primary) !important;
 }
 
@@ -495,6 +504,157 @@ html[data-theme="light"] .text-white:not(.from-brand-600):not(.from-emerald-600)
 :root:not([data-theme="light"]) .info-tile:hover {
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
 }
+
+/* ── Buttons ────────────────────────────────────────────────────────────────
+   Colour carries meaning: purple = primary action, green = success/confirm,
+   amber = recalculate/regenerate, red = destructive/unlock, tinted-outline =
+   secondary (export/download/email), neutral-outline = dismiss (Cancel/Close).
+
+   Same var-per-tone shape as .info-tile above, so components/ui/Button.tsx only
+   ever picks a tone class and dark mode retints by swapping vars. Icons inherit
+   `currentColor` from --btn-fg, so a coloured button never holds a black icon. */
+.btn-tone {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  border: 1px solid var(--btn-border);
+  box-shadow: var(--btn-shadow, none);
+  transition: background 0.2s ease, border-color 0.2s ease,
+              box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.btn-tone:not(:disabled):hover {
+  background: var(--btn-bg-hover);
+  border-color: var(--btn-border-hover, var(--btn-border));
+  box-shadow: var(--btn-shadow-hover, var(--btn-shadow, none));
+}
+
+/* Primary — the only filled button. A lighter 135° gradient rather than a flat
+   dark fill, so a page full of actions doesn't read as heavy. */
+.btn-primary {
+  --btn-bg: linear-gradient(135deg, #7C5CFF 0%, #6C3CF0 100%);
+  --btn-bg-hover: linear-gradient(135deg, #6C3CF0 0%, #5B2DE6 100%);
+  --btn-fg: #FFFFFF;
+  --btn-border: transparent;
+  --btn-shadow: 0 4px 12px rgba(108, 60, 240, 0.18);
+  --btn-shadow-hover: 0 8px 20px rgba(108, 60, 240, 0.25);
+}
+
+/* Secondary — export / download / email. Branded, but not filled. */
+.btn-secondary {
+  --btn-bg: #FFFFFF;
+  --btn-bg-hover: #F5F1FF;
+  --btn-fg: #6C3CF0;
+  --btn-border: #D9CCFF;
+  --btn-border-hover: #6C3CF0;
+}
+
+.btn-success { --btn-bg: #ECFDF5; --btn-bg-hover: #DCFCE7; --btn-fg: #15803D; --btn-border: #BBF7D0; --btn-border-hover: #86EFAC; }
+.btn-warning { --btn-bg: #FFF7ED; --btn-bg-hover: #FFEDD5; --btn-fg: #C2410C; --btn-border: #FED7AA; --btn-border-hover: #FDBA74; }
+.btn-danger  { --btn-bg: #FEF2F2; --btn-bg-hover: #FEE2E2; --btn-fg: #DC2626; --btn-border: #FECACA; --btn-border-hover: #FCA5A5; }
+
+/* Neutral outline — Cancel, Close, filters. Stays grey at rest and only warms
+   to brand on hover; making these purple would drown the page in primary. */
+.btn-outline {
+  --btn-bg: var(--surface-raised);
+  --btn-bg-hover: var(--color-brand-50);
+  --btn-fg: var(--ink-secondary);
+  --btn-border: var(--surface-border);
+  --btn-border-hover: var(--color-brand-300);
+}
+.btn-outline:not(:disabled):hover { color: var(--color-brand-500); }
+
+.btn-ghost {
+  --btn-bg: transparent;
+  --btn-bg-hover: var(--surface-hover);
+  --btn-fg: var(--ink-secondary);
+  --btn-border: transparent;
+}
+.btn-ghost:not(:disabled):hover { color: var(--color-brand-500); }
+
+/* ── Tabs & segmented controls ───────────────────────────────────────────────
+   One active/inactive language for every tab in the app.
+
+   Active is a LAVENDER surface with primary-purple text, not white-on-purple.
+   Both meet WCAG AA, but #4C1FD4 on #F3F0FF measures ~9:1 against ~5.9:1 for
+   white on #5B2DE6 — and it cannot be silently repainted by the legacy
+   `text-white` bridge above, which is what produced the near-black tab labels.
+
+   Three shapes, one palette:
+     .seg-tab        free-standing pill      (Task Manager, Leave, Tenders …)
+     .seg-tab.seg-tab-flat  joined segment inside a bordered group
+     .nav-tab        underline tab           (Company Profile, Invoice …)
+   Each takes `-active` for the selected state. Sizing/padding stay with the
+   call site; these classes only own colour, border, radius, weight, transition. */
+.seg-tab,
+.nav-tab {
+  color: #6B7280;
+  background: transparent;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.seg-tab { border: 1px solid transparent; border-radius: 10px; }
+.seg-tab-flat { border: 0; border-radius: 0; }
+.nav-tab { border-bottom: 2px solid transparent; }
+
+.seg-tab:hover,
+.nav-tab:hover {
+  background: var(--color-brand-50);
+  color: var(--color-brand-600);
+}
+
+.seg-tab-active,
+.seg-tab-active:hover {
+  background: var(--color-brand-50);
+  border-color: var(--color-brand-500);
+  color: var(--color-brand-700);
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(108, 60, 240, 0.10);
+}
+.seg-tab-flat.seg-tab-active,
+.seg-tab-flat.seg-tab-active:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+.nav-tab-active,
+.nav-tab-active:hover {
+  background: transparent;
+  border-bottom-color: var(--color-brand-500);
+  color: var(--color-brand-700);
+  font-weight: 700;
+}
+
+/* Keyboard focus must be visible on every tab, not just on hover. */
+.seg-tab:focus-visible,
+.nav-tab:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* Dark: hold the hue, drop the luminance, lift the text. */
+:root:not([data-theme="light"]) .seg-tab,
+:root:not([data-theme="light"]) .nav-tab { color: var(--ink-muted); }
+:root:not([data-theme="light"]) .seg-tab:hover,
+:root:not([data-theme="light"]) .nav-tab:hover { background: rgba(108, 60, 240, 0.14); color: var(--color-brand-200); }
+:root:not([data-theme="light"]) .seg-tab-active,
+:root:not([data-theme="light"]) .seg-tab-active:hover {
+  background: rgba(108, 60, 240, 0.22);
+  border-color: var(--color-brand-400);
+  color: #CFC2FD;
+}
+:root:not([data-theme="light"]) .nav-tab-active,
+:root:not([data-theme="light"]) .nav-tab-active:hover {
+  background: transparent;
+  border-bottom-color: var(--color-brand-400);
+  color: #CFC2FD;
+}
+
+/* Dark: hold the hue, drop the luminance, lift the text — as with .info-tile.
+   Primary keeps its gradient; the tinted tones become translucent washes. */
+:root:not([data-theme="light"]) .btn-secondary { --btn-bg: transparent; --btn-bg-hover: rgba(108, 60, 240, 0.18); --btn-fg: #B29BFA; --btn-border: rgba(143, 107, 245, 0.42); --btn-border-hover: #8F6BF5; }
+:root:not([data-theme="light"]) .btn-success   { --btn-bg: rgba(22, 163, 74, 0.14);  --btn-bg-hover: rgba(22, 163, 74, 0.24);  --btn-fg: #86EFAC; --btn-border: rgba(74, 222, 128, 0.34); --btn-border-hover: rgba(74, 222, 128, 0.55); }
+:root:not([data-theme="light"]) .btn-warning   { --btn-bg: rgba(217, 119, 6, 0.14);  --btn-bg-hover: rgba(217, 119, 6, 0.24);  --btn-fg: #FCD34D; --btn-border: rgba(251, 191, 36, 0.34); --btn-border-hover: rgba(251, 191, 36, 0.55); }
+:root:not([data-theme="light"]) .btn-danger    { --btn-bg: rgba(220, 38, 38, 0.14);  --btn-bg-hover: rgba(220, 38, 38, 0.24);  --btn-fg: #FCA5A5; --btn-border: rgba(248, 113, 113, 0.34); --btn-border-hover: rgba(248, 113, 113, 0.55); }
 
 /* ── Tables ────────────────────────────────────────────────────────────── */
 tr {

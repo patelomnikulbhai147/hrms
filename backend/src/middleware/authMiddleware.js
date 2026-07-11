@@ -37,13 +37,17 @@ exports.protect = async (req, res, next) => {
     // lock the user out of every request). On error we fail CLOSED to the user's
     // own primary workspace only.
     try {
+      const [companies, branches] = await Promise.all([
+        prisma.company.findMany({ select: { id: true } }),
+        prisma.branch.findMany({ select: { id: true, companyId: true } }),
+      ]);
+      // branchId → parent companyId. Modules whose data has no branch column
+      // (e.g. Invoice masters) resolve a branch workspace to its parent company
+      // so a branch user's reads and writes land in the same, FK-valid company.
+      user.branchCompanyMap = Object.fromEntries(branches.map((b) => [b.id, b.companyId]));
       if (user.role === 'Super Admin') {
         user.accessibleBranchIds = [];
       } else {
-        const [companies, branches] = await Promise.all([
-          prisma.company.findMany({ select: { id: true } }),
-          prisma.branch.findMany({ select: { id: true, companyId: true } }),
-        ]);
         const raw = [user.companyId, ...(Array.isArray(user.accessibleCompanyIds) ? user.accessibleCompanyIds : [])];
         const { branchIds, companyWideIds } = resolveAccess(raw, companies, branches);
         user.accessibleBranchIds = branchIds.map(Number);
@@ -53,6 +57,7 @@ exports.protect = async (req, res, next) => {
       console.error('RBAC scope resolution failed (non-fatal):', scopeErr.message);
       user.accessibleBranchIds = [];
       user.accessibleCompanyIds = [];
+      user.branchCompanyMap = {};
     }
 
     req.user = user;

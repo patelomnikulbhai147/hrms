@@ -23,6 +23,7 @@ import {
 } from '@/utils/attendancePeriods';
 import { AnimatedCounter } from '@/components/common/AnimatedCounter';
 import { ui } from '@/components/ui/feedback';
+import { AttendanceSheetImport } from '@/components/attendance/AttendanceSheetImport';
 interface AttendanceCenterProps {
   role: Role;
   activeCompanyId: string;
@@ -925,7 +926,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <p className="text-xs text-slate-500 mt-1">Fully integrated with Payroll Engine, Leave Balances, and Overtime Processing.</p>
         </div>
         <div className="flex gap-2">
-           <Button variant="outline" size="sm" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }} className="flex items-center gap-1 border-slate-200 text-slate-700 bg-white hover:bg-slate-50">
+           <Button variant="secondary" size="sm" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}>
              <Download size={14}/> Export
            </Button>
            {isAdmin && (
@@ -1157,7 +1158,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           )}
           <span className="text-xs font-bold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">{period.label}</span>
           <div className="ml-auto">
-            <Button size="sm" variant="outline" className="h-8 text-[11px]" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}><Download size={13} className="mr-1" /> Export</Button>
+            <Button size="sm" variant="secondary" className="text-[11px]" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}><Download size={13} className="mr-1" /> Export</Button>
           </div>
         </div>
 
@@ -1763,36 +1764,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
       {/* TAB: IMPORT */}
       {activeTab === 'import' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in">
-          <Card>
-            <h4 className="font-bold text-sm text-slate-800 mb-2">Smart Excel Import</h4>
-            <p className="text-xs text-slate-500 mb-4">Upload biometrics CSV/XLSX. The system will automatically map columns (Employee ID, Punch In, Punch Out) and save permanently to the database.</p>
-            
-            <div className="border-2 border-dashed border-brand-200 bg-brand-50/50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer hover:bg-brand-50 transition-colors" onClick={() => ui.toast.info('File dialogue opened')}>
-              <Upload size={32} className="text-brand-500 mb-3" />
-              <p className="text-sm font-bold text-brand-800">Click to upload or drag and drop</p>
-              <p className="text-xs text-brand-600/70 mt-1">XLSX, XLS, or CSV (Max. 15MB)</p>
-            </div>
-          </Card>
-          
-          <div className="space-y-4">
-            <Card>
-              <h4 className="font-bold text-sm text-slate-800 mb-2">Import Resources</h4>
-              <div className="space-y-3">
-                <Button variant="outline" className="w-full justify-start text-xs h-9" onClick={downloadTemplate}><Download size={14} className="mr-2"/> Download Attendance Template</Button>
-                <Button variant="outline" className="w-full justify-start text-xs h-9" onClick={downloadGuide}><FileText size={14} className="mr-2"/> Download Sample Import Guide</Button>
-              </div>
-            </Card>
-            
-            <Card className="bg-slate-900 text-white border-none">
-              <h4 className="font-bold text-sm text-white mb-2 flex items-center gap-2"><Database size={14} className="text-brand-400"/> Database Ready</h4>
-              <p className="text-xs text-slate-400">Imported files are instantly synced to the cloud database. Missing employee records will trigger smart mapping alerts.</p>
-              <div className="mt-3 flex gap-2">
-                <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300">ZKTeco Ready</span>
-                <span className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-300">eSSL Ready</span>
-              </div>
-            </Card>
+        <div className="space-y-4 animate-in fade-in">
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" className="text-xs h-9" onClick={downloadTemplate}><Download size={14} className="mr-2"/> Attendance Template</Button>
+            <Button variant="outline" className="text-xs h-9" onClick={downloadGuide}><FileText size={14} className="mr-2"/> Import Guide</Button>
           </div>
+          <AttendanceSheetImport role={role} companyId={activeCompanyId} onRefresh={onRefresh} />
         </div>
       )}
 

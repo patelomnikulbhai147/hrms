@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   IdCard, Search, Download, Printer, Layers, QrCode, LayoutGrid, Pencil, FileDown,
-  Plus, Upload, FileImage, FileArchive, Check, Users,
+  Plus, Upload, FileImage, FileArchive, Check, Users, Contact,
 } from 'lucide-react';
 import type { Role, Company, Employee } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -24,6 +24,7 @@ import { resolveBranding } from '@/services/brandingService';
 import { CardCanvas } from '@/components/cards/CardCanvas';
 import { CardDesigner } from '@/components/cards/CardDesigner';
 import { TemplateGallery } from '@/components/cards/TemplateGallery';
+import { EmployeeInfoCards } from '@/components/cards/EmployeeInfoCards';
 import { cardDimensions } from '@/types/cardDesigner';
 import type { CardTemplate, CardSide } from '@/types/cardDesigner';
 import { BUILTIN_BY_ID, DEFAULT_TEMPLATE_ID, cloneTemplate } from '@/data/cardTemplates';
@@ -36,17 +37,27 @@ import {
   type CardItem, type SideMode, type PdfLayout,
 } from '@/utils/cardExport';
 
-interface Props { role: Role; activeCompanyId: string; companies: Company[]; employees: Employee[]; }
+interface Props {
+  role: Role; activeCompanyId: string; companies: Company[]; employees: Employee[];
+  /** Opens the real employee profile in the Employees module. */
+  onOpenProfile?: (employeeId: string) => void;
+}
+/** The two sections of the module. Information Cards = dashboard summary; ID Cards = the printable studio. */
+type Section = 'info' | 'id';
 type Tab = 'generate' | 'templates' | 'designer';
 type ScopeMode = 'selected' | 'department' | 'branch' | 'designation' | 'employmentType' | 'all';
 
 const blankTemplate = (): CardTemplate => cloneTemplate({ ...BUILTIN_BY_ID['minimal-white'], id: `new_${Date.now()}`, name: 'Untitled Template', category: 'Custom', custom: true });
 
-export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companies, employees }) => {
+export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companies, employees, onOpenProfile }) => {
   const { canView } = usePermissions();
   const canEdit = ['Company Head', 'HR'].includes(role);
   const isSuperAdmin = role === 'Super Admin';
 
+  const [section, setSection] = useState<Section>('info');
+  // The Information Cards tab fetches once; keep it mounted after the first visit
+  // so switching back is instant and never refetches.
+  const [infoVisited, setInfoVisited] = useState(true);
   const [tab, setTab] = useState<Tab>('generate');
   const [tset, setTset] = useState<TemplateSet>({ builtins: [], custom: [], all: [], defaultId: DEFAULT_TEMPLATE_ID });
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID]);
@@ -187,6 +198,17 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
     { id: 'templates', label: 'Template Gallery', icon: <LayoutGrid size={14} /> },
     { id: 'designer', label: 'Designer', icon: <Pencil size={14} /> },
   ];
+  const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
+    { id: 'info', label: 'Employee Information Cards', icon: <Contact size={14} /> },
+    { id: 'id', label: 'Employee ID Cards', icon: <IdCard size={14} /> },
+  ];
+  const isId = section === 'id';
+
+  // Falls back to the Employees module when the host page supplied no handler.
+  const openProfile = (employeeId: string) => {
+    if (onOpenProfile) return onOpenProfile(employeeId);
+    ui.toast.info('Open the Employees module to view this profile.');
+  };
 
   return (
     <div className="space-y-4">
@@ -196,27 +218,54 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><IdCard size={20} /></div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">Employee Card Designer</h2>
-              <p className="text-xs text-slate-500">Choose a template, customise it, preview live and generate print-ready cards — {brand?.name || 'your company'}.</p>
+              <h2 className="text-lg font-bold text-slate-800">Employee Cards</h2>
+              <p className="text-xs text-slate-500">
+                {isId
+                  ? `Choose a template, customise it, preview live and generate print-ready cards — ${brand?.name || 'your company'}.`
+                  : `Summary of every active employee — salary, attendance and leave at a glance — ${brand?.name || 'your company'}.`}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="indigo">{scoped.length} employees</Badge>
-            <Button size="sm" variant="outline" icon={<LayoutGrid size={14} />} onClick={() => setTab('templates')}>Choose Template</Button>
+            {isId && <Button size="sm" variant="outline" icon={<LayoutGrid size={14} />} onClick={() => setTab('templates')}>Choose Template</Button>}
           </div>
         </div>
-        <div className="px-5 py-2 flex flex-wrap gap-1 border-b border-slate-100">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-lg ${tab === t.id ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'text-slate-500 hover:text-slate-700'}`}>{t.icon}{t.label}</button>
+
+        {/* ── The two sections of this module ── */}
+        <div className="px-5 pt-2 flex flex-wrap gap-1">
+          {SECTIONS.map((s) => (
+            <button key={s.id} onClick={() => { setSection(s.id); if (s.id === 'info') setInfoVisited(true); }}
+              className={`flex items-center gap-1.5 px-3.5 py-2 text-xs rounded-t-lg nav-tab ${section === s.id ? 'nav-tab-active' : ''}`}>
+              {s.icon}{s.label}
+            </button>
           ))}
-          <div className="ml-auto flex items-center gap-2 py-1">
-            <span className="text-[11px] text-slate-400">Active template:</span>
-            <span className="text-[11px] font-bold text-slate-700">{selectedTemplate?.name}</span>
-          </div>
         </div>
+
+        {/* ID-card sub-tabs (unchanged) */}
+        {isId && (
+          <div className="px-5 py-2 flex flex-wrap gap-1 border-t border-slate-100">
+            {TABS.map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-2 text-xs seg-tab ${tab === t.id ? 'seg-tab-active' : ''}`}>{t.icon}{t.label}</button>
+            ))}
+            <div className="ml-auto flex items-center gap-2 py-1">
+              <span className="text-[11px] text-slate-400">Active template:</span>
+              <span className="text-[11px] font-bold text-slate-700">{selectedTemplate?.name}</span>
+            </div>
+          </div>
+        )}
       </div>
 
-      <DevelopmentBanner status="development" message="Employee Cards is under active development. Additional card templates, branding options, QR enhancements, and bulk generation features are currently being implemented. Existing functionality is safe to use." />
+      {/* ── EMPLOYEE INFORMATION CARDS ──
+          Kept mounted once visited so switching sections never refetches. */}
+      {infoVisited && (
+        <div style={{ display: isId ? 'none' : undefined }}>
+          <EmployeeInfoCards employees={scoped} activeCompanyId={activeCompanyId} onOpenProfile={openProfile} />
+        </div>
+      )}
+
+      {isId && <>
+      <DevelopmentBanner status="development" message="Employee ID Cards is under active development. Additional card templates, branding options, QR enhancements, and bulk generation features are currently being implemented. Existing functionality is safe to use." />
 
       {/* ── GENERATE & PREVIEW (3 panels) ── */}
       {tab === 'generate' && (
@@ -353,6 +402,8 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
           <Card><div className="py-16 text-center text-sm text-slate-400">Pick a template to edit from the <button className="text-[#6C3CF0] font-bold" onClick={() => setTab('templates')}>Template Gallery</button>, or create a new blank one.</div></Card>
         )
       )}
+
+      </>}
 
       {/* Preview modal */}
       {previewTpl && (

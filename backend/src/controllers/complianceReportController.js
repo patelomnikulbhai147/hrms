@@ -37,11 +37,45 @@ function resolveScope(req) {
   const branchScoped = !isSuperAdmin(req) && companyWide.length === 0 && branchIds.length > 0;
   const startDate = b.startDate || null, endDate = b.endDate || null;
   const year = startDate && /^\d{4}/.test(startDate) ? parseInt(startDate.slice(0, 4), 10) : null;
+  // Payroll Period ("YYYY-MM") — the single source of truth for payroll reports.
+  // Payroll is cut month-wise, so a bare year cannot identify a payroll cycle.
+  // Parsed strictly: an unparseable value yields null and the caller rejects the
+  // request rather than silently widening the query to every month on record.
+  // `payrollMonth` is the Super Admin config panel's existing <input type="month">
+  // field (already "YYYY-MM"). It was being sent and silently ignored — accepting
+  // it as an alias makes that panel period-accurate without changing its UI.
+  const rawPeriod = b.payrollPeriod || b.payrollMonth || null;
+  const period = parsePayrollPeriod(rawPeriod);
   // Wage-compliance reports receive the State Wage Master + branch→state map from
   // the client (it lives in the Labour Compliance settings). Additive — every other
   // report ignores these. wageRules: { State: { unskilled, semiSkilled, skilled, highlySkilled } }.
-  return { companyIds, primaryCompanyId, branchScoped, branchIds, branch: b.branch || null, department: b.department || null, startDate, endDate, year, employeeId: idParam(b.employeeId) || null, wageRules: b.wageRules || null, branchStateMap: b.branchStateMap || null };
+  return { companyIds, primaryCompanyId, branchScoped, branchIds, branch: b.branch || null, department: b.department || null, startDate, endDate, year, employeeId: idParam(b.employeeId) || null, wageRules: b.wageRules || null, branchStateMap: b.branchStateMap || null, payrollPeriod: rawPeriod, periodMonth: period?.month || null, periodYear: period?.year || null, periodLabel: period?.label || null };
 }
+
+// Month names as stored in `Payroll.month` (a String column, not an int).
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+/**
+ * Accepts "2026-06" (canonical) or { year, month } with a 1-based month.
+ * Returns { year, month: 'June', label: 'June 2026' } or null. Never guesses:
+ * a missing/invalid period must NOT fall back to today's date or the newest
+ * payroll run — that is precisely the bug this replaces.
+ */
+function parsePayrollPeriod(raw) {
+  if (!raw) return null;
+  let y, m;
+  if (typeof raw === 'string') {
+    const mm = raw.trim().match(/^(\d{4})-(\d{1,2})$/);
+    if (!mm) return null;
+    y = parseInt(mm[1], 10); m = parseInt(mm[2], 10);
+  } else if (typeof raw === 'object' && raw.year && raw.month) {
+    y = parseInt(raw.year, 10); m = parseInt(raw.month, 10);
+  } else return null;
+  if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12 || y < 1970 || y > 9999) return null;
+  return { year: y, month: MONTH_NAMES[m - 1], label: `${MONTH_NAMES[m - 1]} ${y}` };
+}
+exports._parsePayrollPeriod = parsePayrollPeriod; // exported for tests
 
 async function companyMeta(companyId) {
   if (!companyId) return null;
@@ -124,7 +158,19 @@ async function companyMeta(companyId) {
 
 const empWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.branch) w.branchLocation = s.branch; if (s.employeeId) w.id = s.employeeId; if (s.branchScoped) w.branchId = { in: s.branchIds }; return w; };
 const dateWhere = (s) => (s.startDate && s.endDate) ? { date: { gte: s.startDate, lte: s.endDate } } : {};
-const payrollWhere = (s) => { const w = { companyId: { in: s.companyIds } }; if (s.department) w.department = s.department; if (s.employeeId) w.employeeId = s.employeeId; if (s.year) w.year = s.year; if (s.branchScoped) w.employee = { branchId: { in: s.branchIds } }; return w; };
+// A payroll query is scoped to ONE payroll cycle when a Payroll Period is given.
+// Previously only `year` was applied, so "2023" returned every month of 2023 and
+// a missing date returned every month on record — which is why a slip generated
+// under one filter could carry another period's data.
+const payrollWhere = (s) => {
+  const w = { companyId: { in: s.companyIds } };
+  if (s.department) w.department = s.department;
+  if (s.employeeId) w.employeeId = s.employeeId;
+  if (s.periodMonth && s.periodYear) { w.month = s.periodMonth; w.year = s.periodYear; }
+  else if (s.year) w.year = s.year; // financial-year reports (Form 16 etc.)
+  if (s.branchScoped) w.employee = { branchId: { in: s.branchIds } };
+  return w;
+};
 // Branch restriction for related tables (payroll / attendance / leave / overtime)
 // that carry no branchId column — scoped through their `employee` relation so a
 // branch user's totals never include another branch's records. {} for company scope.
@@ -343,7 +389,10 @@ async function nilRegister(s, kind) {
 // ── Payroll generators ───────────────────────────────────────────────────────
 async function salaryReg(s) {
   const pay = await prisma.payroll.findMany({ where: payrollWhere(s), orderBy: { employeeName: 'asc' } });
-  const rows = pay.map((p, i) => ({ sr: i + 1, code: p.employeeId, name: p.employeeName, department: p.department, month: `${p.month} ${p.year}`, basic: r2(p.basicSalary), allowances: r2(p.allowances), deductions: r2(p.deductions), bonus: r2(p.bonus || 0), tax: r2(p.tax || 0), net: r2(p.netSalary), payableDays: p.payableDays }));
+  // `loanDeduction` is additive and already returned by salarySlip(); the register
+  // template needs it to render a Loan Recovery column. No total changes: it is a
+  // component OF `deductions`, never added on top.
+  const rows = pay.map((p, i) => ({ sr: i + 1, code: p.employeeId, name: p.employeeName, department: p.department, month: `${p.month} ${p.year}`, basic: r2(p.basicSalary), allowances: r2(p.allowances), deductions: r2(p.deductions), bonus: r2(p.bonus || 0), tax: r2(p.tax || 0), net: r2(p.netSalary), payableDays: p.payableDays, loanDeduction: r2(p.loanDeduction || 0) }));
   const summary = { employees: pay.length, basic: r2(pay.reduce((t, p) => t + p.basicSalary, 0)), net: r2(pay.reduce((t, p) => t + p.netSalary, 0)) };
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'month', label: 'Period' }, { key: 'basic', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'deductions', label: 'Deductions' }, { key: 'net', label: 'Net Pay' }], rows, summary };
 }
@@ -1232,7 +1281,9 @@ function statusOf(key, def) {
 // Phase 5 — only the filters relevant to each report (the UI renders just these).
 // Filter ids: 'dateRange' (From/To), 'financialYear', 'branch', 'department', 'employee'.
 const FILTERS_BY_CATEGORY = {
-  'Payroll Reports': ['dateRange', 'branch', 'department', 'employee'],
+  // Payroll is cut month-wise: a Payroll Period identifies the cycle exactly,
+  // where a date range or bare year cannot.
+  'Payroll Reports': ['payrollPeriod', 'branch', 'department', 'employee'],
   'Attendance Reports': ['dateRange', 'branch', 'department', 'employee'],
   'Leave Reports': ['dateRange', 'branch', 'department', 'employee'],
   'Employee Reports': ['branch', 'department', 'employee'],
@@ -1249,12 +1300,29 @@ const FILTERS_BY_CATEGORY = {
 const FILTERS_BY_KEY = {
   form16: ['financialYear', 'employee'],
   employee_tax_summary: ['financialYear', 'employee'],
-  tds_report: ['dateRange', 'department', 'employee'],
-  pt_challan: ['dateRange', 'branch'],
-  professional_tax_summary: ['dateRange', 'branch', 'department'],
-  pf_challan: ['dateRange', 'branch'],
-  esi_challan: ['dateRange', 'branch'],
-  esi_coverage: ['dateRange', 'branch'],
+  // ── Reports whose generator reads Payroll through payrollWhere() ──
+  // They are cut month-wise, so a Payroll Period is the only filter that can
+  // identify the cycle. They previously declared `dateRange`, which payrollWhere()
+  // never applies — so PF Register "for January" quietly aggregated every payroll
+  // month on record. A period is now required (see the guard in generate()).
+  tds_report: ['payrollPeriod', 'department', 'employee'],
+  pt_challan: ['payrollPeriod', 'branch'],
+  professional_tax_summary: ['payrollPeriod', 'branch', 'department'],
+  comp_professional_tax: ['payrollPeriod', 'branch', 'department'],
+  comp_salary_register: ['payrollPeriod', 'branch', 'department'],
+  form_15_wages: ['payrollPeriod', 'branch', 'department'],
+  pf_register: ['payrollPeriod', 'branch'],
+  pf_summary: ['payrollPeriod', 'branch'],
+  pf_challan: ['payrollPeriod', 'branch'],
+  pf_inspection: ['payrollPeriod', 'branch'],
+  employee_pf_summary: ['payrollPeriod', 'branch'],
+  ecr_file: ['payrollPeriod', 'branch'],
+  esi_register: ['payrollPeriod', 'branch'],
+  esi_summary: ['payrollPeriod', 'branch'],
+  esi_challan: ['payrollPeriod', 'branch'],
+  esi_inspection: ['payrollPeriod', 'branch'],
+  esi_coverage: ['payrollPeriod', 'branch'],
+  employee_esi_summary: ['payrollPeriod', 'branch'],
   employee_master: ['branch', 'department', 'employee'],
   employee_register: ['branch', 'department', 'employee'],
   employee_birthday: ['dateRange', 'department'],
@@ -1266,6 +1334,12 @@ const FILTERS_BY_KEY = {
   company_annual_salary: ['financialYear'],
   pf_form_5: ['dateRange', 'branch'],
   pf_form_10: ['dateRange', 'branch'],
+  // Payroll Reports that do NOT read Payroll by cycle keep their old filters —
+  // forcing a Payroll Period on them would be a filter the query never applies.
+  ctc_report: ['financialYear', 'branch', 'department', 'employee'],
+  increment_report: ['branch', 'department', 'employee'],
+  loan_report: ['branch', 'department', 'employee'],
+  advance_report: ['branch', 'department', 'employee'],
   // Phase 2 bonus reports
   employee_bonus: ['branch', 'department', 'employee'],
   monthly_bonus: ['financialYear', 'branch', 'department'],
@@ -1433,6 +1507,14 @@ exports.generate = async (req, res) => {
     if (!allowed.includes('department')) scope.department = null;
     if (!allowed.includes('employee')) scope.employeeId = null;
     if (!allowed.includes('dateRange') && !allowed.includes('financialYear')) { scope.startDate = null; scope.endDate = null; scope.year = null; }
+    if (!allowed.includes('payrollPeriod')) { scope.payrollPeriod = null; scope.periodMonth = null; scope.periodYear = null; scope.periodLabel = null; }
+    else {
+      // A period-driven report must be told WHICH cycle. Refusing here is the
+      // whole point: with no period the query would return every month on record
+      // and the slip would silently carry whichever period dominates the rows.
+      if (!scope.payrollPeriod) return res.status(400).json({ error: 'Select a payroll period to generate this report.', code: 'PAYROLL_PERIOD_REQUIRED' });
+      if (!scope.periodMonth || !scope.periodYear) return res.status(400).json({ error: `Invalid payroll period "${scope.payrollPeriod}". Expected YYYY-MM.`, code: 'PAYROLL_PERIOD_INVALID' });
+    }
 
     const meta = await companyMeta(scope.primaryCompanyId);
     // Header identification: keep the main company name on line 1 (unchanged) and
@@ -1447,11 +1529,55 @@ exports.generate = async (req, res) => {
     // Post-process rows to map official Employee Code and naturally sort
     const processedRows = await postProcessReportRows(scope.companyIds, out.rows);
     const warnings = out.warnings || [];
-    if (!processedRows || processedRows.length === 0) warnings.unshift('No records match the selected filters — nothing to generate.');
-    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId }), rowCount: processedRows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => { });
-    res.json({ reportKey: key, reportName: def.label, category: def.category, generatedAt: new Date().toISOString(), generatedBy: req.user?.name || req.user?.email || null, meta, columns: out.columns, rows: processedRows, summary: out.summary || null, warnings, canExport: (processedRows?.length || 0) > 0 });
+    const empty = !processedRows || processedRows.length === 0;
+    if (empty) {
+      // Name the period explicitly and tell the user what to do. We do NOT fall
+      // back to another cycle — an empty report for the requested month is the
+      // correct, auditable answer.
+      warnings.unshift(scope.periodLabel
+        ? `No payroll has been generated for ${scope.periodLabel}. Please generate payroll first.`
+        : 'No records match the selected filters — nothing to generate.');
+    }
+    await prisma.complianceReportLog.create({ data: { companyId: scope.primaryCompanyId, reportKey: key, reportName: def.label, action: 'GENERATE', filters: JSON.stringify({ branch: scope.branch, department: scope.department, startDate: scope.startDate, endDate: scope.endDate, employeeId: scope.employeeId, payrollPeriod: scope.payrollPeriod }), rowCount: processedRows?.length || 0, performedBy: req.user?.id || null, performedByName: req.user?.name || req.user?.email || null } }).catch(() => { });
+    // `filters.period` lets a template print the SELECTED period even when zero
+    // rows came back — the header must never be inferred from rows[0].
+    res.json({ reportKey: key, reportName: def.label, category: def.category, generatedAt: new Date().toISOString(), generatedBy: req.user?.name || req.user?.email || null, meta, columns: out.columns, rows: processedRows, summary: out.summary || null, warnings, canExport: (processedRows?.length || 0) > 0, filters: { period: scope.periodLabel || null, payrollPeriod: scope.payrollPeriod || null, branch: scope.branch, department: scope.department, employeeId: scope.employeeId } });
   } catch (e) { console.error('reports.generate', e); res.status(500).json({ error: e.message || 'Server error' }); }
 }
+
+/**
+ * GET /api/compliance-reports/payroll-periods
+ * Distinct payroll cycles that actually exist for the caller's scope, newest
+ * first. Read-only; the dropdown is populated from this, never from a date
+ * arithmetic guess about "the last 12 months".
+ */
+exports.payrollPeriods = async (req, res) => {
+  try {
+    if (!canAccess(req)) return res.status(403).json({ error: 'You do not have access to reports.' });
+    // GET has no body; resolveScope falls back to the x-workspace-id header,
+    // so branch users still see only their own branches' cycles.
+    const scope = resolveScope(req);
+    if (!scope.companyIds?.length) return res.json([]);
+    const rows = await prisma.payroll.groupBy({
+      by: ['month', 'year'],
+      where: { companyId: { in: scope.companyIds }, ...branchRel(scope) },
+      _count: { _all: true },
+    });
+    const list = rows
+      .map(r => {
+        const mi = MONTH_NAMES.indexOf(r.month);
+        if (mi < 0) return null; // guard against a legacy non-canonical month string
+        return {
+          value: `${r.year}-${String(mi + 1).padStart(2, '0')}`,
+          label: `${r.month} ${r.year}`,
+          month: r.month, year: r.year, count: r._count._all,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.value.localeCompare(a.value)); // newest cycle first
+    res.json(list);
+  } catch (e) { console.error('reports.payrollPeriods', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
 
 exports.logDownload = async (req, res) => {
   try {

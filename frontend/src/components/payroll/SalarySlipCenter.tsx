@@ -158,19 +158,19 @@ export const SalarySlipCenter: React.FC<SalarySlipCenterProps> = ({
             <p className="text-[11px] text-slate-500">Preview, download, print, email or regenerate any slip individually — or export in bulk.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" onClick={() => onDownloadZip(records, `All_Salary_Slips_${safe(monthLabel)}`)}>
+            <Button variant="secondary" onClick={() => onDownloadZip(records, `All_Salary_Slips_${safe(monthLabel)}`)}>
               <FileArchive size={13} className="mr-1" /> Download All ZIP
             </Button>
-            <Button variant="outline" onClick={() => { const recs = selectedRecords(); recs.length ? onDownloadZip(recs, `Selected_Salary_Slips_${safe(monthLabel)}`) : ui.toast.warning('Select at least one employee.'); }}>
+            <Button variant="secondary" onClick={() => { const recs = selectedRecords(); recs.length ? onDownloadZip(recs, `Selected_Salary_Slips_${safe(monthLabel)}`) : ui.toast.warning('Select at least one employee.'); }}>
               <FileArchive size={13} className="mr-1" /> Selected ZIP ({selected.size})
             </Button>
             {canEdit && onApprove && (
-              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onApprove(ids) : ui.toast.warning('Select records to approve.'); }}>
+              <Button variant="success" onClick={() => { const ids = Array.from(selected); ids.length ? onApprove(ids) : ui.toast.warning('Select records to approve.'); }}>
                 <CheckCircle2 size={13} className="mr-1" /> Approve
               </Button>
             )}
             {canEdit && onLock && (
-              <Button variant="outline" onClick={() => { const ids = Array.from(selected); ids.length ? onLock(ids) : ui.toast.warning('Select records to lock.'); }}>
+              <Button variant="success" onClick={() => { const ids = Array.from(selected); ids.length ? onLock(ids) : ui.toast.warning('Select records to lock.'); }}>
                 <Archive size={13} className="mr-1" /> Lock
               </Button>
             )}

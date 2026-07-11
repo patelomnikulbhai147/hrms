@@ -384,7 +384,7 @@ export const Contracts: React.FC<ContractsProps> = ({
           <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm flex flex-wrap gap-1 px-3 py-2">
             {TABS.map(s => (
               <button key={s.id} onClick={() => setTab(s.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === s.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{s.icon}{s.label}</button>
+                className={`flex items-center gap-1.5 px-3 py-1.5 seg-tab text-xs ${tab === s.id ? 'seg-tab-active' : ''}`}>{s.icon}{s.label}</button>
             ))}
           </div>
 

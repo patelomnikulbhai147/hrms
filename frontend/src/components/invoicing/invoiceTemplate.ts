@@ -16,6 +16,7 @@
 // the real print path never passes a QR, so those sections stay preview-only.
 // ─────────────────────────────────────────────────────────────────────────────
 import { resolveBranding } from '@/services/brandingService';
+import { canvasTextCss, googleFontsLink, webFontsUsed } from './richText';
 
 // ── Design model ─────────────────────────────────────────────────────────────
 
@@ -23,7 +24,7 @@ export interface InvoiceColumn { key: string; label: string; visible: boolean; w
 
 export interface CanvasElement {
   id: string;
-  type: 'text' | 'image' | 'logo' | 'companyDetails' | 'customerDetails' | 'itemTable' | 'totals' | 'bankDetails' | 'signature' | 'terms' | 'notes' | 'qr' | 'barcode' | 'stamp' | 'rect' | 'circle' | 'line' | 'customSection';
+  type: 'text' | 'image' | 'logo' | 'companyDetails' | 'customerDetails' | 'itemTable' | 'totals' | 'bankDetails' | 'paymentInfo' | 'signature' | 'terms' | 'notes' | 'qr' | 'barcode' | 'stamp' | 'rect' | 'circle' | 'line' | 'customSection';
   x: number;
   y: number;
   w: number;
@@ -35,12 +36,18 @@ export interface CanvasElement {
   zIndex: number;
   name: string;
   content?: string;
+  /** Editable body text for blocks whose `content` already means "image URL"
+   *  (companyDetails, customerDetails, bankDetails, terms, notes, signature,
+   *  stamp). Undefined = render the block's data-driven default. */
+  text?: string;
   src?: string;
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: string;
   fontStyle?: string;
   textDecoration?: string;
+  /** none | uppercase | lowercase | capitalize */
+  textTransform?: string;
   textAlign?: 'left' | 'center' | 'right' | 'justify';
   color?: string;
   letterSpacing?: number;
@@ -50,9 +57,17 @@ export interface CanvasElement {
   borderColor?: string;
   borderStyle?: string;
   borderRadius?: number;
+  /** Uniform padding. The per-side values below override it when present, so a
+   *  layout saved before they existed keeps rendering exactly as it did. */
   padding?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
   tableCols?: InvoiceColumn[];
   totalsRows?: any;
+  /** Per-row label overrides for the `totals` block, keyed by row id. */
+  totalsLabels?: Record<string, string>;
 }
 
 
@@ -339,15 +354,25 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
   const shipTo = d.customer.showShipTo && (inv.shipToName || shipAddr) ? `<div class="box"><h4>Ship To</h4><div><b>${esc(inv.shipToName || inv.billToName)}</b></div>
       <div class="muted">${esc(shipAddr || '')}</div>
       ${inv.shipToState ? `<div class="muted">${esc(inv.shipToState)}</div>` : ''}</div>` : '';
-  const payment = d.customer.showPayment ? `<div class="box" style="text-align:right"><h4>Payment</h4>
-      <div class="muted">Terms: ${esc(inv.paymentTerms || '—')}</div>
-      <div class="muted">Mode: ${esc(inv.paymentMode || '—')}</div>
-      ${inv.upiId ? `<div class="muted">UPI: ${esc(inv.upiId)}</div>` : ''}</div>` : '';
+  // Payment summary box (top-right) keeps the terms summary; Payment Mode + UPI
+  // render in the footer "Payment Information" section (below Bank Details), so
+  // they are never duplicated. Data-gated — no more "Terms: —" blank label.
+  const payRows = paymentInfoRows(inv);
+  const payTerms = String(inv.paymentTerms ?? '').trim();
+  const payment = d.customer.showPayment && payTerms ? `<div class="box" style="text-align:right"><h4>Payment</h4>
+      <div class="muted">Terms: ${esc(payTerms)}</div></div>` : '';
   const gridInner = [billTo, shipTo, payment].filter(Boolean).join('');
 
   // ── Footer blocks ──
+  // Payment Information (Mode + UPI) sits directly below Bank Details, matching
+  // the invoice layout convention. Fully data-gated: each row only appears when
+  // its value exists, and the whole block is omitted when both are blank.
+  const paymentInfoFooter = payRows.has ? `<h4 class="muted" style="margin-top:8px">Payment Information</h4>`
+    + (payRows.mode ? `<div class="muted">Payment Mode: ${esc(payRows.mode)}</div>` : '')
+    + (payRows.upi ? `<div class="muted">UPI ID: ${esc(payRows.upi)}</div>` : '') : '';
   const footLeft = [
     d.footer.showBank && inv.bankDetails ? `<h4 class="muted">Bank Details</h4><div class="muted">${esc(inv.bankDetails).replace(/\n/g, '<br>')}</div>` : '',
+    paymentInfoFooter,
     d.footer.showNotes && inv.notes ? `<div class="muted" style="margin-top:8px"><b>Notes:</b> ${esc(inv.notes)}</div>` : '',
     d.footer.showTerms && inv.termsConditions ? `<div class="muted" style="margin-top:6px"><b>Terms:</b> ${esc(inv.termsConditions)}</div>` : '',
     // Payment instructions are preview-only (data-gated; real invoices don't carry the field).
@@ -463,6 +488,164 @@ export const SAMPLE_INVOICE = {
   bankDetails: 'Bank: HDFC Bank\nA/C: 5010 0123 4567\nIFSC: HDFC0000123', notes: 'Thank you for your business.', termsConditions: 'Payment due within 30 days.',
 };
 
+// ── Canvas text model ───────────────────────────────────────────────────────
+// The designer edits a block's text in place. `text`/`customSection` have always
+// kept their body in `content`; every other block already uses `content` for an
+// image URL, so their body lives in the additive `text` field. A block with no
+// stored text renders exactly as it always did (data-driven default) — the
+// override only kicks in once the user actually types something.
+
+export const TEXT_EDITABLE_TYPES: CanvasElement['type'][] = [
+  'text', 'customSection', 'companyDetails', 'customerDetails',
+  'bankDetails', 'paymentInfo', 'terms', 'notes', 'signature', 'stamp',
+];
+
+export function isTextEditable(type: CanvasElement['type']): boolean {
+  return TEXT_EDITABLE_TYPES.includes(type);
+}
+
+export function textPropOf(type: CanvasElement['type']): 'content' | 'text' {
+  return type === 'text' || type === 'customSection' ? 'content' : 'text';
+}
+
+export function getElementText(el: CanvasElement): string {
+  const v = (el as any)[textPropOf(el.type)];
+  return typeof v === 'string' ? v : '';
+}
+
+export function hasElementText(el: CanvasElement): boolean {
+  return isTextEditable(el.type) && getElementText(el).trim() !== '';
+}
+
+/** `{{Token}}` → live value. Case-insensitive, unknown tokens are left alone.
+ *  Every token offered by the designer's token picker (`TOKEN_GROUPS`) must have
+ *  an entry here — a token missing from this map prints as literal `{{…}}`. */
+export function fillCanvasTokens(text: string, inv: any, company: any): string {
+  // Company Profile is the master repository; older code read `gstin`/`email`.
+  const companyGst = company?.gstNumber || company?.gstin || '';
+  const companyEmail = company?.email || company?.contactEmail || company?.adminEmail || '';
+  const map: Record<string, string> = {
+    customername: inv?.billToName || '',
+    customeraddress: inv?.billToAddress || '',
+    customeremail: inv?.billToEmail || '',
+    customerphone: inv?.billToPhone || '',
+    customergst: inv?.billToGstin || '',
+    invoicenumber: inv?.invoiceNumber || '',
+    invoicedate: inv?.invoiceDate || '',
+    duedate: inv?.dueDate || '',
+    ponumber: inv?.poNumber || '',
+    paymentmode: inv?.paymentMode || '',
+    paymentterms: inv?.paymentTerms || '',
+    upiid: inv?.upiId || '',
+    companyname: company?.name || '',
+    companyaddress: company?.address || '',
+    companyemail: companyEmail,
+    companyphone: company?.phone || company?.contactNumber || '',
+    companygst: companyGst,
+    gstin: companyGst,
+    bankname: company?.bankName || '',
+    ifsc: company?.ifscCode || '',
+    accountnumber: company?.bankAccountNumber || '',
+    bankdetails: inv?.bankDetails || '',
+    terms: inv?.termsConditions || '',
+    notes: inv?.notes || '',
+    pagenumber: '1',
+    totalpages: '1',
+    customfield1: inv?.customField1 || '',
+  };
+  return String(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (whole, key: string) => {
+    const v = map[key.toLowerCase()];
+    return v === undefined ? whole : esc(v).replace(/\n/g, '<br/>');
+  });
+}
+
+/** The HTML a text-bearing block contributes, tokens resolved. */
+export function canvasTextHtml(el: CanvasElement, inv: any, company: any): string {
+  return fillCanvasTokens(getElementText(el), inv, company).replace(/\n/g, '<br/>');
+}
+
+export const TOTALS_ROWS: { key: string; label: string }[] = [
+  { key: 'subtotal', label: 'Subtotal' },
+  { key: 'discount', label: 'Discount' },
+  { key: 'taxable', label: 'Taxable Amount' },
+  { key: 'cgst', label: 'CGST' },
+  { key: 'sgst', label: 'SGST' },
+  { key: 'igst', label: 'IGST' },
+  { key: 'roundOff', label: 'Round Off' },
+  { key: 'grandTotal', label: 'Grand Total' },
+  { key: 'amountInWords', label: 'Amount in Words' },
+];
+
+export function totalsLabel(el: CanvasElement, key: string): string {
+  const custom = el.totalsLabels?.[key];
+  if (typeof custom === 'string' && custom.trim() !== '') return custom;
+  return TOTALS_ROWS.find((r) => r.key === key)?.label || key;
+}
+
+/** Payment Mode + UPI ID, trimmed, with a `has` flag for the visibility rule. */
+export function paymentInfoRows(inv: any): { mode: string; upi: string; has: boolean } {
+  const mode = String(inv?.paymentMode ?? '').trim();
+  const upi = String(inv?.upiId ?? '').trim();
+  return { mode, upi, has: !!(mode || upi) };
+}
+
+/** The "Payment Information" section HTML (heading + only the rows that carry a
+ *  value). Empty string when NEITHER field is set — so a template never shows a
+ *  blank label or an empty box. Shared by the canvas `paymentInfo` block and the
+ *  auto-inject-below-Bank-Details path; the classic renderer builds its own
+ *  muted-styled version from `paymentInfoRows`. */
+export function paymentInfoHtml(inv: any): string {
+  const { mode, upi, has } = paymentInfoRows(inv);
+  if (!has) return '';
+  return `<strong>Payment Information</strong>`
+    + (mode ? `<div>Payment Mode: ${esc(mode)}</div>` : '')
+    + (upi ? `<div>UPI ID: ${esc(upi)}</div>` : '');
+}
+
+/** [top, right, bottom, left] in px, or null when the block has no padding.
+ *  A per-side value wins over the uniform `padding`; unset sides fall back to it.
+ *  Both the editor and the print renderer read this, so they cannot disagree. */
+export function resolvePadding(el: CanvasElement): [number, number, number, number] | null {
+  const base = el.padding;
+  const sides = [el.paddingTop, el.paddingRight, el.paddingBottom, el.paddingLeft];
+  if (base === undefined && sides.every(v => v === undefined)) return null;
+  return sides.map(v => Number(v ?? base ?? 0)) as [number, number, number, number];
+}
+
+// ── Saved-layout adapters ────────────────────────────────────────────────────
+// A saved canvas template (invoice_layouts.layoutJson) carries its blocks as
+// `CanvasElement[]` under `.blocks` — the exact model the Visual Designer edits
+// and this file renders. These two helpers let the Create-Invoice preview and
+// the print/PDF path render a saved template through THIS renderer (so what the
+// designer showed is what the invoice prints), instead of the older block model.
+
+/** True when a saved layout's blocks are the `CanvasElement` model this renderer
+ *  understands (they carry `zIndex`), vs. the legacy `CanvasBlock` model in
+ *  invoiceCanvas.ts (which uses `z`). Empty/absent → treat as element model. */
+export function layoutIsElementModel(layout: any): boolean {
+  const blocks = layout?.blocks ?? layout?.elements;
+  if (!Array.isArray(blocks) || blocks.length === 0) return true;
+  const b = blocks[0] || {};
+  if ('zIndex' in b) return true;
+  if ('z' in b || 'style' in b) return false;   // legacy CanvasBlock
+  return true;
+}
+
+/** Wrap a saved canvas layout's blocks in the `isCanvas` InvoiceDesign that
+ *  `invoiceDocHtml` renders — identical to what the Visual Designer builds for
+ *  its own live preview, so preview === designer === PDF. */
+export function canvasDesignFromLayout(layout: any): InvoiceDesign {
+  const elements: CanvasElement[] = Array.isArray(layout?.blocks) ? layout.blocks
+    : Array.isArray(layout?.elements) ? layout.elements : [];
+  return {
+    isCanvas: true, template: 'canvas', title: 'TAX INVOICE', paper: 'A4', orientation: 'portrait',
+    elements,
+    colors: {} as any, font: {} as any, layout: {} as any, totals: {} as any,
+    header: {} as any, customer: {} as any, footer: {} as any,
+    columns: [], tableBorders: false, altRows: false, altRowColor: '', totalsPosition: 'right',
+  };
+}
+
 // ── Canvas Renderer ─────────────────────────────────────────────────────────
 
 function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: RenderOpts): string {
@@ -470,12 +653,20 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
   const elements = design.elements || [];
   const pageSize = `${design.paper || 'A4'} ${design.orientation || 'portrait'}`;
   
-  const printScript = opts.print === false ? '' : `<script>window.onload=function(){window.print();}</script>`;
-  
+  // Web fonts must be FACE-loaded before the print dialog samples the page, or
+  // the PDF silently substitutes a fallback. `document.fonts.ready` resolves
+  // once every @font-face the document references has settled (or failed).
+  const fontsLink = googleFontsLink(webFontsUsed(elements));
+  const printScript = opts.print === false ? '' : `<script>window.onload=function(){
+    var go=function(){setTimeout(function(){window.print();},60);};
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(go).catch(go); else go();
+  }</script>`;
+
   let html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(inv.invoiceNumber)}</title>
+  ${fontsLink}
   <style>
     @page { size: ${pageSize}; margin: 0; }
-    * { box-sizing: border-box; } 
+    * { box-sizing: border-box; }
     body { margin: 0; position: relative; width: 100%; height: 100%; display: flex; justify-content: center; }
     .canvas-container { position: relative; width: 794px; height: 1123px; overflow: hidden; background: white; }
     .el { position: absolute; word-wrap: break-word; overflow: hidden; }
@@ -483,6 +674,8 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
     th, td { border: 1px solid #e5e7eb; padding: 4px 6px; text-align: left; font-size: 0.9em; }
     th { background: #f8fafc; font-weight: bold; }
     .r { text-align: right; }
+    /* The same rules the editor canvas applies — see richText.canvasTextCss. */
+    ${canvasTextCss('.el')}
   </style></head><body><div class="canvas-container">`;
 
   // Sort elements by zIndex
@@ -499,6 +692,7 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
     if (el.fontWeight) style += ` font-weight: ${el.fontWeight};`;
     if (el.fontStyle) style += ` font-style: ${el.fontStyle};`;
     if (el.textDecoration) style += ` text-decoration: ${el.textDecoration};`;
+    if (el.textTransform && el.textTransform !== 'none') style += ` text-transform: ${el.textTransform};`;
     if (el.textAlign) style += ` text-align: ${el.textAlign};`;
     if (el.color) style += ` color: ${el.color};`;
     if (el.letterSpacing) style += ` letter-spacing: ${el.letterSpacing}px;`;
@@ -508,26 +702,15 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
     if (el.borderColor) style += ` border-color: ${el.borderColor};`;
     if (el.borderStyle) style += ` border-style: ${el.borderStyle};`;
     if (el.borderRadius) style += ` border-radius: ${el.borderRadius}px;`;
-    if (el.padding) style += ` padding: ${el.padding}px;`;
+    const pad = resolvePadding(el);
+    if (pad) style += ` padding: ${pad.map(v => `${v}px`).join(' ')};`;
 
     let innerHtml = '';
     
     switch (el.type) {
       case 'text':
       case 'customSection': {
-        let textContent = el.content || '';
-        textContent = textContent
-          .replace(/\{\{CustomerName\}\}/gi, esc(inv.billToName || ''))
-          .replace(/\{\{InvoiceNumber\}\}/gi, esc(inv.invoiceNumber || ''))
-          .replace(/\{\{InvoiceDate\}\}/gi, esc(inv.invoiceDate || ''))
-          .replace(/\{\{DueDate\}\}/gi, esc(inv.dueDate || ''))
-          .replace(/\{\{CompanyName\}\}/gi, esc(company?.name || ''))
-          .replace(/\{\{GSTIN\}\}/gi, esc(company?.gstin || ''))
-          .replace(/\{\{CustomerGST\}\}/gi, esc(inv.billToGstin || ''))
-          .replace(/\{\{PageNumber\}\}/gi, '1')
-          .replace(/\{\{TotalPages\}\}/gi, '1')
-          .replace(/\{\{CustomField1\}\}/gi, esc(inv.customField1 || ''));
-        innerHtml = textContent.replace(/\n/g, '<br/>');
+        innerHtml = canvasTextHtml(el, inv, company);
         break;
       }
       case 'rect':
@@ -539,15 +722,26 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
         style += ' height: 0 !important; overflow: visible;';
         break;
       case 'image':
-      case 'stamp':
         innerHtml = `<img src="${el.src || ''}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
         break;
+      case 'stamp': {
+        // A label, when the user has typed one, shares the box with the image.
+        const labelled = hasElementText(el);
+        const imgH = labelled ? '70%' : '100%';
+        innerHtml = `<img src="${el.src || ''}" style="width:100%; height:${imgH}; object-fit:contain;" onerror="this.style.display='none'" />`;
+        if (labelled) innerHtml += `<div>${canvasTextHtml(el, inv, company)}</div>`;
+        break;
+      }
       case 'logo':
         if (b.hasLogo) innerHtml = `<img src="${b.logo}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
         break;
-      case 'signature':
-        if (b.hasSignature) innerHtml = `<img src="${b.signature}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
+      case 'signature': {
+        const labelled = hasElementText(el);
+        const imgH = labelled ? '70%' : '100%';
+        if (b.hasSignature) innerHtml = `<img src="${b.signature}" style="width:100%; height:${imgH}; object-fit:contain;" onerror="this.style.display='none'" />`;
+        if (labelled) innerHtml += `<div>${canvasTextHtml(el, inv, company)}</div>`;
         break;
+      }
       case 'qr':
         if (opts.qrDataUrl) innerHtml = `<img src="${opts.qrDataUrl}" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'" />`;
         break;
@@ -556,14 +750,14 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
         innerHtml = `<div style="width:100%; height:100%; border:1px solid #ccc; display:flex; align-items:center; justify-content:center;">|||||||||||||||</div>`;
         break;
       case 'companyDetails':
-        innerHtml = `<strong>${esc(company?.name || 'Company Name')}</strong><br/>
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : `<strong>${esc(company?.name || 'Company Name')}</strong><br/>
           ${esc(company?.address || '')}<br/>
           ${company?.gstin ? `GSTIN: ${esc(company.gstin)}<br/>` : ''}
           ${company?.email ? `${esc(company.email)}<br/>` : ''}
           ${company?.phone ? `${esc(company.phone)}` : ''}`;
         break;
       case 'customerDetails':
-        innerHtml = `<strong>${esc(inv.billToName || 'Customer')}</strong><br/>
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : `<strong>${esc(inv.billToName || 'Customer')}</strong><br/>
           ${esc(inv.billToAddress || '')}<br/>
           ${inv.billToGstin ? `GSTIN: ${esc(inv.billToGstin)}<br/>` : ''}
           ${inv.billToEmail ? `${esc(inv.billToEmail)}<br/>` : ''}
@@ -586,37 +780,59 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
         {
           const rows = [];
           const tr = el.totalsRows || { subtotal: true, grandTotal: true };
-          if (tr.subtotal) rows.push(`<tr><td>Subtotal</td><td class="r">${money(inv.subtotal)}</td></tr>`);
-          if (tr.discount) rows.push(`<tr><td>Discount</td><td class="r">− ${money(inv.discountTotal)}</td></tr>`);
-          if (tr.taxable) rows.push(`<tr><td>Taxable Amount</td><td class="r">${money(inv.taxableAmount)}</td></tr>`);
+          const L = (k: string) => esc(totalsLabel(el, k));
+          if (tr.subtotal) rows.push(`<tr><td>${L('subtotal')}</td><td class="r">${money(inv.subtotal)}</td></tr>`);
+          if (tr.discount) rows.push(`<tr><td>${L('discount')}</td><td class="r">− ${money(inv.discountTotal)}</td></tr>`);
+          if (tr.taxable) rows.push(`<tr><td>${L('taxable')}</td><td class="r">${money(inv.taxableAmount)}</td></tr>`);
           if (tr.tax) {
             if (inv.cgst > 0) {
-              rows.push(`<tr><td>CGST</td><td class="r">${money(inv.cgst)}</td></tr>`);
-              rows.push(`<tr><td>SGST</td><td class="r">${money(inv.sgst)}</td></tr>`);
+              rows.push(`<tr><td>${L('cgst')}</td><td class="r">${money(inv.cgst)}</td></tr>`);
+              rows.push(`<tr><td>${L('sgst')}</td><td class="r">${money(inv.sgst)}</td></tr>`);
             } else if (inv.igst > 0) {
-              rows.push(`<tr><td>IGST</td><td class="r">${money(inv.igst)}</td></tr>`);
+              rows.push(`<tr><td>${L('igst')}</td><td class="r">${money(inv.igst)}</td></tr>`);
             }
           }
-          if (tr.roundOff) rows.push(`<tr><td>Round Off</td><td class="r">${money(inv.roundOff)}</td></tr>`);
-          if (tr.grandTotal) rows.push(`<tr><td style="font-weight:bold">Grand Total</td><td class="r" style="font-weight:bold">${money(inv.grandTotal)}</td></tr>`);
-          if (tr.amountInWords) rows.push(`<tr><td colspan="2" style="font-size:0.9em">Amount in Words: <b>${esc(amountInWords(inv.grandTotal))}</b></td></tr>`);
+          if (tr.roundOff) rows.push(`<tr><td>${L('roundOff')}</td><td class="r">${money(inv.roundOff)}</td></tr>`);
+          if (tr.grandTotal) rows.push(`<tr><td style="font-weight:bold">${L('grandTotal')}</td><td class="r" style="font-weight:bold">${money(inv.grandTotal)}</td></tr>`);
+          if (tr.amountInWords) rows.push(`<tr><td colspan="2" style="font-size:0.9em">${L('amountInWords')}: <b>${esc(amountInWords(inv.grandTotal))}</b></td></tr>`);
           innerHtml = `<table style="border:none"><tbody>${rows.join('')}</tbody></table>`;
         }
         break;
       case 'bankDetails':
-        innerHtml = inv.bankDetails ? `<strong>Bank Details</strong><br/>${esc(inv.bankDetails).replace(/\n/g, '<br/>')}` : '';
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company)
+          : inv.bankDetails ? `<strong>Bank Details</strong><br/>${esc(inv.bankDetails).replace(/\n/g, '<br/>')}` : '';
+        break;
+      case 'paymentInfo':
+        // Typed override wins; otherwise the data-driven Payment Mode + UPI ID
+        // (empty when neither is set → the block renders nothing).
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : paymentInfoHtml(inv);
         break;
       case 'terms':
-        innerHtml = inv.termsConditions ? `<strong>Terms & Conditions</strong><br/>${esc(inv.termsConditions).replace(/\n/g, '<br/>')}` : '';
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company)
+          : inv.termsConditions ? `<strong>Terms & Conditions</strong><br/>${esc(inv.termsConditions).replace(/\n/g, '<br/>')}` : '';
         break;
       case 'notes':
-        innerHtml = inv.notes ? `<strong>Notes</strong><br/>${esc(inv.notes).replace(/\n/g, '<br/>')}` : '';
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company)
+          : inv.notes ? `<strong>Notes</strong><br/>${esc(inv.notes).replace(/\n/g, '<br/>')}` : '';
         break;
     }
     
     html += `<div class="el" style="${style}">${innerHtml}</div>`;
   }
-  
+
+  // Auto-inject "Payment Information" below Bank Details when the layout has no
+  // dedicated paymentInfo block but the invoice carries Payment Mode / UPI ID.
+  // Data-gated: invoices without those fields render exactly as before.
+  const hasPaymentBlock = sorted.some((el) => el.type === 'paymentInfo' && el.visible !== false);
+  const autoPayHtml = paymentInfoHtml(inv);
+  if (!hasPaymentBlock && autoPayHtml) {
+    const bank = sorted.filter((el) => el.type === 'bankDetails' && el.visible !== false).pop();
+    const anchorX = bank ? bank.x : 40;
+    const anchorW = bank ? bank.w : 300;
+    const anchorY = bank ? Math.min(bank.y + bank.h + 8, 1123 - 60) : 900;
+    html += `<div class="el" style="left:${anchorX}px; top:${anchorY}px; width:${anchorW}px; font-size:12px;">${autoPayHtml}</div>`;
+  }
+
   html += `</div>${printScript}</body></html>`;
   return html;
 }

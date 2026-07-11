@@ -99,7 +99,7 @@ export const LabourCompliance: React.FC<Props> = ({ companyId, branchNames, canE
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 mb-4">
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.icon}{t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-1.5 px-3 py-1.5 seg-tab text-[11px] ${tab === t.id ? 'seg-tab-active' : ''}`}>{t.icon}{t.label}</button>
         ))}
       </div>
 

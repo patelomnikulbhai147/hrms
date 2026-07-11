@@ -206,7 +206,7 @@ export const BonusManagement: React.FC<Props> = ({ role, activeCompanyId, compan
         )}
         <div className="px-3 pt-2 flex flex-wrap gap-1">
           {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} className={`px-3 py-2 text-xs font-semibold border-b-2 transition-colors flex items-center gap-1.5 ${tab === t.key ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>{t.icon}{t.label}</button>
+            <button key={t.key} onClick={() => setTab(t.key)} className={`px-3 py-2 text-xs flex items-center gap-1.5 nav-tab ${tab === t.key ? 'nav-tab-active' : ''}`}>{t.icon}{t.label}</button>
           ))}
         </div>
       </div>
