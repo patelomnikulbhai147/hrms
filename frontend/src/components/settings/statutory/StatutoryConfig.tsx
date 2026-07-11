@@ -102,7 +102,7 @@ export const ConfigModuleShell: React.FC<ConfigModuleShellProps> = ({
       <div className="flex flex-wrap gap-1 mt-3 mb-4">
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center ${tab === t ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}>
+            className={`px-3 py-1.5 text-xs flex items-center seg-tab ${tab === t ? 'seg-tab-active' : ''}`}>
             {TAB_LABEL[t]}{badgeFor(t)}
           </button>
         ))}

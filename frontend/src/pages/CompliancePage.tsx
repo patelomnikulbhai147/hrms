@@ -49,7 +49,7 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
       <div className="flex flex-wrap gap-1 border-b border-slate-200">
         {TABS.map((t) => { const Icon = t.icon; return (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex items-center gap-2 px-3.5 py-2.5 text-xs whitespace-nowrap -mb-px nav-tab ${tab === t.id ? 'nav-tab-active' : ''}`}>
             <Icon size={14} /> {t.label}
           </button>
         ); })}

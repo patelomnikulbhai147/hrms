@@ -47,6 +47,11 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   }, [activeCompanyId, isSuperAdmin, authProfile]);
   const [branch, setBranch] = useState(''); const [department, setDepartment] = useState('');
   const [startDate, setStartDate] = useState(''); const [endDate, setEndDate] = useState(''); const [employeeId, setEmployeeId] = useState('');
+  // Payroll Period ("YYYY-MM") — the single source of truth for payroll reports.
+  // Deliberately NOT seeded from today's date or the newest cycle: the user must
+  // pick the cycle, so a generated slip can never silently belong to another month.
+  const [payrollPeriod, setPayrollPeriod] = useState('');
+  const [periods, setPeriods] = useState<{ value: string; label: string; count: number }[]>([]);
   const [report, setReport] = useState<any>(null);
   const [busy, setBusy] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
@@ -305,10 +310,36 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
   // Reset operational filters when the selected report changes, so a filter that is
   // hidden for the new report can never silently carry over from the previous one.
-  useEffect(() => { setBranch(''); setDepartment(''); setEmployeeId(''); setStartDate(''); setEndDate(''); }, [selectedKey]);
+  useEffect(() => { setBranch(''); setDepartment(''); setEmployeeId(''); setStartDate(''); setEndDate(''); setPayrollPeriod(''); }, [selectedKey]);
+
+  // Payroll cycles that exist for the active workspace. Loaded once per workspace;
+  // the dropdown lists real cycles, not twelve calendar months that may hold nothing.
+  useEffect(() => {
+    let cancelled = false;
+    api.complianceReports.payrollPeriods()
+      .then((p: any) => { if (!cancelled) setPeriods(Array.isArray(p) ? p : []); })
+      .catch(() => { if (!cancelled) setPeriods([]); });
+    return () => { cancelled = true; };
+  }, [activeCompanyId, companyId]);
+
+  const needsPeriod = !!selected && (selected.filters || []).includes('payrollPeriod');
+
+  // Open on the most recent cycle that exists. This is a DEFAULT, not a fallback:
+  // once a period is chosen it is never reassigned, and an empty result for the
+  // chosen month never silently loads a different one.
+  useEffect(() => {
+    if (needsPeriod && !payrollPeriod && periods.length) setPayrollPeriod(periods[0].value);
+  }, [needsPeriod, payrollPeriod, periods]);
 
   const generate = async () => {
     if (!selectedKey) return flash('err', 'Select a report.');
+    // Guard in the UI as well as the API: a period-driven report without a period
+    // would otherwise be a silent whole-history query.
+    if (needsPeriod && !payrollPeriod) {
+      return flash('err', periods.length
+        ? 'Please select a Payroll Period and click Generate.'
+        : 'No payroll has been generated yet. Please generate payroll first.');
+    }
     if (isSuperAdmin) {
       openConfigForReport(selectedKey, 'generate');
       return;
@@ -318,9 +349,15 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
       const wageExtras = selected?.category === 'Wage Reports'
         ? { wageRules: exportWageRules(wageCompanyId), branchStateMap: getWageSettings(wageCompanyId).branchStateMap }
         : {};
-      const r = await api.complianceReports.generate({ reportKey: selectedKey, companyId: companyId || undefined, branch: branch || undefined, department: department || undefined, startDate: startDate || undefined, endDate: endDate || undefined, employeeId: employeeId || undefined, ...wageExtras } as any);
+      const r = await api.complianceReports.generate({ reportKey: selectedKey, companyId: companyId || undefined, branch: branch || undefined, department: department || undefined, startDate: startDate || undefined, endDate: endDate || undefined, employeeId: employeeId || undefined, payrollPeriod: payrollPeriod || undefined, ...wageExtras } as any);
       setReport(r);
-      if (!r.canExport) flash('err', 'No data for the selected filters.');
+      if (!r.canExport) {
+        // Name the cycle. Never fall back to another month.
+        const label = periods.find(p => p.value === payrollPeriod)?.label;
+        flash('err', needsPeriod && label
+          ? `No payroll has been generated for ${label}. Please generate payroll first.`
+          : 'No data for the selected filters.');
+      }
     } catch (e: any) { flash('err', e?.message || 'Generation failed.'); } finally { setBusy(false); }
   };
 
@@ -898,8 +935,8 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-            <button onClick={() => setMode('gallery')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'gallery' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><LayoutGrid size={13} /> Template Gallery</button>
-            <button onClick={() => setMode('generate')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold ${mode === 'generate' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}><Zap size={13} /> Generate</button>
+            <button onClick={() => setMode('gallery')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs seg-tab seg-tab-flat ${mode === 'gallery' ? 'seg-tab-active' : ''}`}><LayoutGrid size={13} /> Template Gallery</button>
+            <button onClick={() => setMode('generate')} className={`flex items-center gap-1.5 px-3 py-1.5 text-xs seg-tab seg-tab-flat ${mode === 'generate' ? 'seg-tab-active' : ''}`}><Zap size={13} /> Generate</button>
           </div>
         </div>
       </div>
@@ -1030,8 +1067,8 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div className="flex items-center gap-2">
                 {!report.isMultiCompany && (
                   <div className="flex rounded-lg border border-slate-200 overflow-hidden">
-                    <button onClick={() => setPreviewMode('document')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'document' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Document</button>
-                    <button onClick={() => setPreviewMode('data')} className={`px-2.5 py-1.5 text-[11px] font-semibold ${previewMode === 'data' ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>Data</button>
+                    <button onClick={() => setPreviewMode('document')} className={`px-2.5 py-1.5 text-[11px] seg-tab seg-tab-flat ${previewMode === 'document' ? 'seg-tab-active' : ''}`}>Document</button>
+                    <button onClick={() => setPreviewMode('data')} className={`px-2.5 py-1.5 text-[11px] seg-tab seg-tab-flat ${previewMode === 'data' ? 'seg-tab-active' : ''}`}>Data</button>
                   </div>
                 )}
                 {(previewMode === 'data' || report.isMultiCompany) && (
@@ -1111,6 +1148,21 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               const fyOptions = [2026, 2025, 2024].map(y => ({ value: String(y), label: `FY ${y}-${String(y + 1).slice(2)}` }));
               return (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mb-1">
+                  {/* Payroll Period replaces the date range for payroll reports:
+                      payroll is cut month-wise, and a range (or a bare year) cannot
+                      name a cycle. Options come from the cycles that actually exist. */}
+                  {f.includes('payrollPeriod') && (
+                    <Select
+                      label="Payroll Period"
+                      value={payrollPeriod}
+                      onChange={e => setPayrollPeriod(e.target.value)}
+                      disabled={!periods.length}
+                      options={[
+                        { value: '', label: periods.length ? 'Select Payroll Period…' : 'No payroll generated yet', disabled: periods.length > 0 },
+                        ...periods.map(p => ({ value: p.value, label: p.label })),
+                      ]}
+                    />
+                  )}
                   {f.includes('financialYear') && <Select label="Financial Year" value={startDate ? startDate.slice(0, 4) : ''} onChange={e => { const y = e.target.value; setStartDate(y ? `${y}-04-01` : ''); setEndDate(y ? `${Number(y) + 1}-03-31` : ''); }} options={[{ value: '', label: 'Select FY…' }, ...fyOptions]} />}
                   {f.includes('branch') && <Select label="Branch" value={branch} onChange={e => setBranch(e.target.value)} options={[{ value: '', label: 'All branches' }, ...branchOptions.map(b => ({ value: b, label: b }))]} />}
                   {f.includes('department') && <Select label="Department" value={department} onChange={e => setDepartment(e.target.value)} options={[{ value: '', label: 'All departments' }, ...deptOptions.map(d => ({ value: d, label: d }))]} />}
@@ -1123,7 +1175,16 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
           )}
           
           {!isSuperAdmin && selected && <p className="text-[10px] text-slate-400 mb-3">Showing only the filters relevant to <strong>{selected.label}</strong>.</p>}
-          <Button icon={<Eye size={14} />} loading={busy} disabled={!selected?.available} onClick={isSuperAdmin ? () => openConfigForReport(selectedKey || catalog[0]?.key, 'generate') : generate}>
+          {/* A period-driven report cannot be generated without a cycle: without one
+              the query would span every month on record. */}
+          {!isSuperAdmin && needsPeriod && !payrollPeriod && (
+            <p className="mb-2 text-[11px] font-semibold text-amber-700">
+              {periods.length
+                ? 'Please select a Payroll Period and click Generate.'
+                : 'No payroll has been generated yet. Please generate payroll first.'}
+            </p>
+          )}
+          <Button icon={<Eye size={14} />} loading={busy} disabled={!selected?.available || (!isSuperAdmin && needsPeriod && !payrollPeriod)} onClick={isSuperAdmin ? () => openConfigForReport(selectedKey || catalog[0]?.key, 'generate') : generate}>
             {isSuperAdmin ? 'Configure & Generate' : 'Generate & Preview'}
           </Button>
 

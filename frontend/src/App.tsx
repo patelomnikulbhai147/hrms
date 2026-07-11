@@ -643,6 +643,9 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     const raw = localStorage.getItem('hrms_current_page');
     return (raw as PageId) || 'dashboard';
   });
+  // Transient cross-page request: "open this employee's profile on the Employees
+  // page". Set by Employee Cards → View Profile, cleared once Employees consumes it.
+  const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
   const [role, setRole] = useState<Role>(() => {
     const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
@@ -1237,6 +1240,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             employees={employees}
             onUpdateEmployees={handleUpdateEmployees}
             leaves={leaves}
+            focusEmployeeId={focusEmployeeId}
+            onFocusHandled={() => setFocusEmployeeId(null)}
           />
         );
       case 'employee-cards':
@@ -1246,6 +1251,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             companies={companies}
             employees={activeEmployees}
+            onOpenProfile={(id) => { setFocusEmployeeId(id); handleNavigate('employees'); }}
           />
         );
       case 'leaves':

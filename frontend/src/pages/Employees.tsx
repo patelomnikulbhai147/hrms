@@ -123,6 +123,10 @@ interface EmployeesProps {
   employees: Employee[];
   onUpdateEmployees: (employees: Employee[]) => void;
   leaves?: any[];
+  /** Deep-link: open this employee's profile on arrival (e.g. from Employee Cards). */
+  focusEmployeeId?: string | null;
+  /** Called once the deep-link has been consumed, so a later re-render does not reopen it. */
+  onFocusHandled?: () => void;
 }
 
 const capitalize = (str: string) => {
@@ -145,7 +149,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   onUpdateAccounts: _onUpdateAccounts,
   employees,
   onUpdateEmployees,
-  leaves = []
+  leaves = [],
+  focusEmployeeId = null,
+  onFocusHandled,
 }) => {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
@@ -190,6 +196,18 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Drawer & Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
+
+  // Deep-link from Employee Cards → "View Profile". Opens the real profile modal
+  // once the employee list has loaded, then clears the request so closing the
+  // modal does not immediately reopen it.
+  useEffect(() => {
+    if (!focusEmployeeId) return;
+    const target = employees.find(e => String(e.id) === String(focusEmployeeId));
+    if (!target) return;
+    setViewEmp(target);
+    onFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEmployeeId, employees]);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [wizardNominees, setWizardNominees] = useState<any[]>([]); // staged nominees during registration

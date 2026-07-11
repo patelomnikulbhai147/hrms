@@ -275,7 +275,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
         <div className="flex flex-wrap gap-1 px-3 py-2">
           {TABS.map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>{t.label}</button>
+              className={`px-3 py-1.5 seg-tab text-xs ${tab === t.id ? 'seg-tab-active' : ''}`}>{t.label}</button>
           ))}
         </div>
       </div>

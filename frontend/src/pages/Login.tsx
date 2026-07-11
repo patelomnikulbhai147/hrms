@@ -364,7 +364,10 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 lg:p-8 font-sans relative overflow-hidden bg-transparent">
+    // Desktop: exactly one viewport tall, never scrolls. Below `lg` the panels
+    // stack and the page is allowed to scroll — clipping a Sign In button off a
+    // phone screen would be worse than a scrollbar.
+    <div className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden flex items-center justify-center p-4 lg:p-6 font-sans relative bg-transparent">
       
       {/* Premium Animated Fluid Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none bg-[#f1f5f9]">
@@ -404,13 +407,13 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
       </div>
 
       {/* Container */}
-      <div className="w-full max-w-[1100px] flex flex-col lg:flex-row items-center justify-between relative z-10 gap-10">
-        
+      <div className="w-full max-w-[1100px] max-h-full flex flex-col lg:flex-row items-center justify-between relative z-10 gap-8 lg:gap-10">
+
         {/* Left Side: Branding & Illustration */}
-        <div className="lg:w-1/2 flex flex-col items-center justify-center p-8 lg:pr-12 z-10 text-center">
-          
+        <div className="lg:w-1/2 flex flex-col items-center justify-center p-4 lg:pr-12 z-10 text-center">
+
           {/* Node Diagram Illustration */}
-          <div className="relative w-64 h-64 mb-10 flex items-center justify-center">
+          <div className="relative w-52 h-52 xl:w-60 xl:h-60 mb-6 flex items-center justify-center">
             {/* Connecting Lines */}
             <svg className="absolute inset-0 w-full h-full text-brand-200" viewBox="0 0 100 100">
               <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" strokeWidth="0.5" strokeDasharray="2,2"/>
@@ -427,7 +430,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             
             {/* Center Logo */}
             <div className="z-10 relative">
-              <ZeniaLogo size={96} radius={220} className="rounded-[22%] shadow-[0_8px_30px_rgba(108,60,240,0.40)]" />
+              <ZeniaLogo size={84} radius={220} className="rounded-[22%] shadow-[0_8px_30px_rgba(108,60,240,0.40)]" />
             </div>
 
             {/* Orbiting Nodes */}
@@ -449,28 +452,33 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             Zenia<span className="text-[#6C3CF0]">HR</span>
           </h1>
 
-          <h2 className="text-[13px] font-semibold text-[#6B7280] mb-4 uppercase tracking-wider">Smart HR Management Simplified</h2>
-          <p className="text-[#6B7280] text-sm leading-relaxed max-w-xs mb-8 mx-auto">
+          <h2 className="text-[13px] font-semibold text-[#6B7280] mb-3 uppercase tracking-wider">Smart HR Management Simplified</h2>
+          <p className="text-[#6B7280] text-sm leading-relaxed max-w-xs mx-auto">
             Manage your employees, payroll, attendance, and more from a single powerful platform.
           </p>
-          
+
         </div>
 
         {/* Right Side: Login Panel */}
-        <div className="lg:w-1/2 flex items-center justify-center w-full relative z-20">
-          <div className="w-full max-w-[460px] bg-white/80 backdrop-blur-2xl rounded-[32px] shadow-[0_20px_60px_rgba(0,0,0,0.06)] p-8 sm:p-12 border border-white/60 relative overflow-hidden">
+        <div className="lg:w-1/2 flex items-center justify-center w-full max-h-full relative z-20">
+          {/* On a viewport too short for even the trimmed card (or when a validation
+              banner pushes it taller), the CARD scrolls internally rather than the
+              page — so the outer `overflow-hidden` can never strand the Sign In
+              button off-screen. The cap must be in viewport units: `max-h-full`
+              would resolve against an auto-height flex parent and be ignored. */}
+          <div className="w-full max-w-[420px] max-h-[calc(100vh-2rem)] lg:max-h-[calc(100vh-3rem)] overflow-y-auto bg-white/80 backdrop-blur-2xl rounded-[28px] shadow-[0_20px_60px_rgba(0,0,0,0.06)] p-6 sm:p-8 border border-white/60 relative">
             {/* Shimmering inner highlight */}
             <div className="absolute inset-0 bg-gradient-to-tr from-white/10 via-white/50 to-white/10 opacity-40 pointer-events-none"></div>
             
             <div className="relative z-10">
             {!isForgotPassword ? (
               <>
-                <div className="mb-8">
+                <div className="mb-[18px]">
                   <h3 className="text-[26px] font-extrabold text-[#111827] mb-1.5 font-heading tracking-tight">Welcome Back!</h3>
                   <p className="text-[#6B7280] text-[13px] font-medium">Sign in to your super admin account</p>
                 </div>
 
-                <form onSubmit={handleLoginSubmit} className="space-y-5">
+                <form onSubmit={handleLoginSubmit} className="space-y-3">
                   {sessionMessage && !error && (
                     <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-semibold">
                       {sessionMessage}
@@ -487,7 +495,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   )}
 
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     <div>
                       <div className="relative flex items-center">
                         <span className="absolute left-4 text-[#9CA3AF]">
@@ -500,7 +508,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                           value={email}
                           onChange={e => setEmail(e.target.value)}
                           onBlur={() => checkCaptchaStatus(email)}
-                          className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
+                          className="w-full h-11 bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                         />
                       </div>
                     </div>
@@ -516,7 +524,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                           placeholder="Password"
                           value={password}
                           onChange={e => setPassword(e.target.value)}
-                          className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
+                          className="w-full h-11 bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                         />
                         <button
                           type="button"
@@ -529,17 +537,20 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
 
                     {captchaInfo?.captchaRequired && (
-                      <div className="space-y-3 pt-1">
+                      <div className="space-y-2.5 pt-0.5">
                         <div>
-                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
                             CAPTCHA
                           </label>
-                          <div className="flex items-center gap-4 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div className="flex items-center gap-3 p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
                             {captchaInfo.captchaType === 'internal' ? (
                               <>
+                                {/* The generated SVG carries a viewBox, so scaling it to a
+                                    48px box in CSS keeps the glyphs sharp and undistorted —
+                                    no change to the CAPTCHA generator or its verification. */}
                                 <div
                                   dangerouslySetInnerHTML={{ __html: captchaSvg }}
-                                  className="shrink-0 rounded-lg overflow-hidden border border-slate-200"
+                                  className="shrink-0 rounded-lg overflow-hidden border border-slate-200 [&>svg]:block [&>svg]:h-12 [&>svg]:w-auto"
                                 />
                                 <button
                                   type="button"
@@ -572,7 +583,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                               placeholder="Enter the characters above"
                               value={captchaAnswer}
                               onChange={e => setCaptchaAnswer(e.target.value)}
-                              className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl px-4 py-3 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-semibold uppercase tracking-wider"
+                              className="w-full h-11 bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl px-4 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-semibold uppercase tracking-wider"
                             />
                           </div>
                         )}
@@ -580,7 +591,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     )}
                   </div>
 
-                  <div className="flex items-center justify-end pt-1">
+                  <div className="flex items-center justify-end">
                     <button
                       type="button"
                       onClick={() => { setError(''); setSuccessMsg(''); resetForgotFlow(); setForgotEmail(email.trim()); setIsForgotPassword(true); }}
@@ -590,17 +601,17 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </button>
                   </div>
 
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <button
                       type="submit"
-                      className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]"
+                      className="btn-tone btn-primary w-full h-11 text-[15px] font-bold rounded-xl active:scale-[0.98]"
                     >
                       Sign In
                     </button>
                   </div>
                 </form>
 
-                <div className="text-center pt-8">
+                <div className="text-center pt-4">
                   <p className="text-[13px] text-[#6B7280] font-medium">
                     Don't have an account? <a href="#" className="text-[#6C3CF0] font-bold hover:underline">Contact Support</a>
                   </p>
@@ -608,7 +619,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
               </>
             ) : (
               <>
-                <div className="mb-8">
+                <div className="mb-[18px]">
                   <h3 className="text-[26px] font-extrabold text-[#111827] mb-1.5 font-heading tracking-tight">
                     {forgotStep === 'email' && 'Forgot Password'}
                     {forgotStep === 'otp' && 'Verify Code'}
@@ -622,7 +633,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                 </div>
 
                 {/* Step indicator */}
-                <div className="flex items-center gap-2 mb-6">
+                <div className="flex items-center gap-2 mb-4">
                   {(['email', 'otp', 'reset'] as const).map((s, i) => {
                     const order = { email: 0, otp: 1, reset: 2 };
                     const active = order[forgotStep] >= i;
@@ -650,7 +661,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
 
                 {/* Step 1: email */}
                 {forgotStep === 'email' && (
-                  <form onSubmit={handleRequestOtp} className="space-y-5">
+                  <form onSubmit={handleRequestOtp} className="space-y-3">
                     <div className="relative flex items-center">
                       <span className="absolute left-4 text-[#9CA3AF]"><Mail size={18} strokeWidth={2} /></span>
                       <input
@@ -659,14 +670,14 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         placeholder="Email address"
                         value={forgotEmail}
                         onChange={e => setForgotEmail(e.target.value)}
-                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 h-11 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                       />
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="btn-tone btn-primary w-full h-11 disabled:opacity-60 text-[15px] font-bold rounded-xl active:scale-[0.98]">
                         {submitting ? 'Sending…' : 'Send Verification Code'}
                       </button>
-                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full h-11 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Back to Sign In
                       </button>
                     </div>
@@ -675,7 +686,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
 
                 {/* Step 2: OTP */}
                 {forgotStep === 'otp' && (
-                  <form onSubmit={handleVerifyOtp} className="space-y-5">
+                  <form onSubmit={handleVerifyOtp} className="space-y-3">
                     <div className="relative flex items-center">
                       <span className="absolute left-4 text-[#9CA3AF]"><KeyRound size={18} strokeWidth={2} /></span>
                       <input
@@ -686,17 +697,17 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         placeholder="6-digit code"
                         value={otp}
                         onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 py-3.5 text-sm text-[#111827] tracking-[0.4em] font-semibold focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-4 h-11 text-sm text-[#111827] tracking-[0.4em] font-semibold focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all"
                       />
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="btn-tone btn-primary w-full h-11 disabled:opacity-60 text-[15px] font-bold rounded-xl active:scale-[0.98]">
                         {submitting ? 'Verifying…' : 'Verify Code'}
                       </button>
                       <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setOtp(''); handleRequestOtp(new Event('submit') as any); }} className="w-full text-[13px] text-[#6C3CF0] font-semibold hover:text-[#8F6BF5] transition-colors">
                         Resend code
                       </button>
-                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setForgotStep('email'); }} className="w-full py-3 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[14px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setForgotStep('email'); }} className="w-full h-11 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[14px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Back
                       </button>
                     </div>
@@ -705,7 +716,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
 
                 {/* Step 3: new password */}
                 {forgotStep === 'reset' && (
-                  <form onSubmit={handleResetPassword} className="space-y-5">
+                  <form onSubmit={handleResetPassword} className="space-y-3">
                     <div className="relative flex items-center">
                       <span className="absolute left-4 text-[#9CA3AF]"><ShieldCheck size={18} strokeWidth={2} /></span>
                       <input
@@ -714,17 +725,17 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         placeholder="New password"
                         value={newPassword}
                         onChange={e => setNewPassword(e.target.value)}
-                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 py-3.5 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
+                        className="w-full bg-white border border-[#E5E7EB] focus:border-[#6C3CF0] rounded-xl pl-11 pr-11 h-11 text-sm text-[#111827] focus:outline-none focus:ring-[3px] focus:ring-[#6C3CF0]/10 placeholder-[#9CA3AF] transition-all font-medium"
                       />
                       <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 text-[#9CA3AF] hover:text-[#6B7280] transition-colors">
                         {showPassword ? <EyeOff size={18} strokeWidth={2} /> : <Eye size={18} strokeWidth={2} />}
                       </button>
                     </div>
                     <div className="pt-2 space-y-3">
-                      <button type="submit" disabled={submitting} className="w-full py-3.5 bg-[#6C3CF0] hover:bg-[#8F6BF5] disabled:opacity-60 text-[15px] font-bold text-white rounded-xl shadow-[0_4px_14px_rgba(79,124,255,0.3)] transition-all duration-200 active:scale-[0.98]">
+                      <button type="submit" disabled={submitting} className="btn-tone btn-primary w-full h-11 disabled:opacity-60 text-[15px] font-bold rounded-xl active:scale-[0.98]">
                         {submitting ? 'Resetting…' : 'Reset Password'}
                       </button>
-                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full py-3.5 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
+                      <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full h-11 bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[15px] font-bold text-[#6B7280] rounded-xl transition-all duration-200 active:scale-[0.98]">
                         Cancel
                       </button>
                     </div>

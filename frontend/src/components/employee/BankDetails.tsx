@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { Input } from '@/components/ui/Input';
+import { SmartInput } from '@/components/ui/SmartInput';
 import { api } from '@/api/apiClient';
 
 export interface BankData {
@@ -84,11 +85,15 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
           onChange={e => onChange({ accountHolderName: e.target.value })} error={errors.accountHolderName} />
         <Input id="field-ifsc" label="IFSC Code *" placeholder="e.g. SBIN0001234" className="font-mono" value={data.ifsc || ''} disabled={disabled}
           onChange={e => onIfscChange(e.target.value)} error={errors.ifsc} />
-        <Input id="field-accountNumber" label="Account Number *" className="font-mono" value={data.accountNumber || ''} disabled={disabled}
-          onChange={e => onChange({ accountNumber: e.target.value.replace(/\D/g, '') })} error={errors.accountNumber} />
-        <Input id="field-confirmAccountNumber" label="Confirm Account Number *" className="font-mono" value={data.confirmAccountNumber || ''} disabled={disabled}
-          onChange={e => onChange({ confirmAccountNumber: e.target.value.replace(/\D/g, '') })}
-          error={acctMismatch ? 'Account numbers do not match.' : errors.confirmAccountNumber} />
+        {/* Reference integration of the global SmartInput: real-time 9–18 digit
+            validation + inline errors, while keeping the confirm-match check. */}
+        <SmartInput id="field-accountNumber" type="bankAccount" label="Account Number" required className="font-mono"
+          value={data.accountNumber || ''} disabled={disabled} externalError={errors.accountNumber}
+          onValueChange={raw => onChange({ accountNumber: raw })} />
+        <SmartInput id="field-confirmAccountNumber" type="bankAccount" label="Confirm Account Number" required className="font-mono"
+          value={data.confirmAccountNumber || ''} disabled={disabled}
+          externalError={acctMismatch ? 'Account numbers do not match.' : errors.confirmAccountNumber}
+          onValueChange={raw => onChange({ confirmAccountNumber: raw })} />
       </div>
 
       {/* Real-time IFSC status */}

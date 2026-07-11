@@ -117,7 +117,8 @@ const BASIC_FIELDS: FieldDef[] = [
   { key: 'industry', label: 'Industry' },
   { key: 'businessCategory', label: 'Business Category' },
   { key: 'dateOfIncorporation', label: 'Date of Incorporation', type: 'date' },
-  { key: 'employeeCount', label: 'Employee Strength', readOnly: true },
+  { key: 'employeeCapacity', label: 'Employee Strength' },
+  { key: 'employeeCount', label: 'Current Headcount', readOnly: true },
 ];
 // Address is rendered by the dedicated <AddressSection/> (structured, searchable).
 // These keys are the EXISTING company columns it reads/writes — no schema change.
@@ -360,7 +361,7 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
-            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+            className={`flex items-center gap-2 px-3.5 py-2.5 text-xs whitespace-nowrap -mb-px nav-tab ${tab === t.id ? 'nav-tab-active' : ''}`}
           >
             {t.icon}{t.label}
           </button>
@@ -378,7 +379,12 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
       )}
 
       {tab === 'statutory' && (
-        <ComplianceManagement companyId={String(company.id)} company={company} editable={editable} generatedBy={authProfile?.name || authProfile?.email} />
+        <div className="space-y-5">
+          {/* Certificates uploaded during company registration land here as
+              company-scoped Document rows — no re-upload needed. */}
+          <CompanyDocuments profile={profile} editable={editable} reload={load} />
+          <ComplianceManagement companyId={String(company.id)} company={company} editable={editable} generatedBy={authProfile?.name || authProfile?.email} />
+        </div>
       )}
 
       {tab === 'branding' && (
@@ -866,7 +872,7 @@ const CompanyDocuments: React.FC<{ profile: any; editable: boolean; reload: () =
             const exp = expiryInfo(d.expiryDate);
             return (
               <Tr key={d.id}>
-                <Td className="!text-slate-200">{d.name}</Td>
+                <Td className="!font-bold !text-slate-700">{d.name}</Td>
                 <Td>{d.category || d.type || '—'}</Td>
                 <Td>{d.documentNumber || '—'}</Td>
                 <Td>{d.issueDate ? formatDate(d.issueDate) : '—'}</Td>

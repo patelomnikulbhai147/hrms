@@ -10,6 +10,8 @@ router.use(require('../middleware/readOnlyMiddleware')); // offboarded company �
 
 // ── Salary Worksheet (enhancement layer — granular earnings/deductions) ──
 // Registered before the generic /:id routes so the specific paths win.
+// Static path first: '/deduction-components' must not be captured by '/:id'.
+router.get('/deduction-components', requirePermission('payroll', 'view'), worksheet.deductionComponents);
 router.get('/:id/worksheet', requirePermission('payroll', 'view'), worksheet.get);
 router.put('/:id/worksheet', requirePermission('payroll', 'edit'), worksheet.save);
 router.get('/:id/worksheet/audit', requirePermission('payroll', 'view'), worksheet.audit);

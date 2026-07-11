@@ -9,10 +9,23 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
+import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, canvasDesignFromLayout, layoutIsElementModel, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
 import { InvoiceDesigner } from '@/components/invoicing/InvoiceDesigner';
-import { InvoiceCanvasDesigner } from '@/components/invoicing/InvoiceCanvasDesigner';
 import { canvasDocHtml, resolveLayout, type InvoiceLayout } from '@/components/invoicing/invoiceCanvas';
+
+// One renderer decision for BOTH the live preview and the print/PDF path. A saved
+// canvas layout renders through the Visual Designer's own renderer (invoiceDocHtml
+// with isCanvas) when its blocks are the element model, so what the designer showed
+// is what the invoice prints. A legacy block-model layout keeps the old renderer.
+// No layout → the classic flow design. GST/totals are never touched here.
+function renderInvoiceHtml(inv: any, company: any, design: InvoiceDesign | undefined, layout: InvoiceLayout | null | undefined, opts: { print?: boolean; qrDataUrl?: string }): string {
+  if (layout) {
+    return layoutIsElementModel(layout)
+      ? invoiceDocHtml(inv, company, canvasDesignFromLayout(layout), opts)
+      : canvasDocHtml(inv, company, layout, opts);
+  }
+  return invoiceDocHtml(inv, company, design, opts);
+}
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -26,7 +39,7 @@ import {
   LayoutDashboard, FilePlus2, ReceiptText, Users, Package, Wallet, Settings as SettingsIcon,
   Plus, Trash2, Search, Eye, Edit, Copy, Printer, IndianRupee, X, Save, RefreshCw, Ban,
   CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette, Maximize2,
-  ZoomIn, ZoomOut, Download,
+  ZoomIn, ZoomOut, Download, Star,
 } from 'lucide-react';
 
 interface Props { role: Role; activeCompanyId?: string; companies?: any[]; }
@@ -105,7 +118,6 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   // unaffected: generated invoices always pick up the saved template automatically.
   const canBranding = ['Company Head', 'Super Admin'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
-  const [designerMode, setDesignerMode] = useState<'flow' | 'canvas'>('flow'); // classic flow templates vs visual canvas
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
   const activeCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
   const companyState: string = activeCompany?.state || '';
@@ -140,7 +152,7 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'create') setEditInvoiceId(null); }}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs whitespace-nowrap -mb-px nav-tab ${tab === t.id ? 'nav-tab-active' : ''}`}>
               <Icon size={14} /> {t.label}
             </button>
           );
@@ -166,21 +178,9 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
       {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'payments' && <PaymentsTab canEdit={canEdit} />}
-      {tab === 'designer' && (canBranding ? (
-        <div className="space-y-3">
-          {/* Flow (classic templates) vs Canvas (visual drag-and-drop). Additive:
-              Flow is the default and unchanged; Canvas is opt-in per company. */}
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
-            {([['flow', 'Classic Templates'], ['canvas', 'Visual Designer']] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setDesignerMode(m)}
-                className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${designerMode === m ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>
-            ))}
-          </div>
-          {designerMode === 'flow'
-            ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
-            : <InvoiceCanvasDesigner company={activeCompany} />}
-        </div>
-      ) : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
+      {tab === 'designer' && (canBranding
+        ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
+        : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} />}
     </div>
   );
@@ -316,7 +316,10 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const [customers, setCustomers] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>(null);
-  const [activeLayout, setActiveLayout] = useState<InvoiceLayout | null>(null);
+  // All of the company's saved canvas templates + which one is picked for THIS
+  // invoice's preview. `selectedLayoutId === null` → use a classic flow preset.
+  const [savedLayouts, setSavedLayouts] = useState<any[]>([]);
+  const [selectedLayoutId, setSelectedLayoutId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   // Per-invoice template choice. '' = follow the company default from Templates &
   // Branding; picking another preset only re-styles THIS invoice's live preview
@@ -344,16 +347,40 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
     paymentMode: '', bankDetails: '', upiId: '', items: [blankItem()],
   });
 
+  // Load the company's saved templates. On FIRST load we pre-select the default
+  // one (Step 6: a new invoice starts on the default template); later live-sync
+  // reloads preserve whatever the user has chosen (including a flow preset).
+  const pickedDefaultOnce = useRef(false);
+  const refreshLayouts = useCallback(async () => {
+    const rows = await loadSavedLayoutRows();
+    setSavedLayouts(rows);
+    setSelectedLayoutId((prev) => {
+      if (prev != null && !rows.some((r) => r.id === prev)) return null; // the picked template was deleted
+      if (pickedDefaultOnce.current) return prev;                        // respect the user's choice
+      pickedDefaultOnce.current = true;
+      const def = rows.find((r) => r.isDefault);
+      return def ? def.id : null;
+    });
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
         const [cs, ps, st] = await Promise.all([api.invoicing.listCustomers({ active: 'true' }), api.invoicing.listProducts({ active: 'true' }), api.invoicing.getSettings()]);
         setCustomers(Array.isArray(cs) ? cs : []); setProducts(Array.isArray(ps) ? ps : []); setSettings(st);
-        loadActiveLayout().then(setActiveLayout);
+        refreshLayouts();
         setForm((f: any) => ({ ...f, paymentTerms: f.paymentTerms || st?.defaultPaymentTerms || 'Net 30', currency: st?.defaultCurrency || 'INR', notes: f.notes || st?.defaultNotes || '', termsConditions: f.termsConditions || st?.defaultTerms || '', bankDetails: f.bankDetails || st?.bankDetails || '', upiId: f.upiId || st?.upiId || '' }));
       } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
     })();
   }, []);
+
+  // Live sync: the Visual Designer broadcasts when templates change (save/rename/
+  // delete/set-default), so the gallery here updates without a page refresh.
+  useEffect(() => {
+    const onChanged = () => { refreshLayouts(); };
+    window.addEventListener('hrms:invoice-templates-changed', onChanged);
+    return () => window.removeEventListener('hrms:invoice-templates-changed', onChanged);
+  }, [refreshLayouts]);
 
   // Load an existing invoice when editing.
   useEffect(() => {
@@ -415,6 +442,15 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       : buildDesignForTemplate(companyDefaultDesign, selectedTemplateId)
   ), [companyDefaultDesign, defaultTemplateId, selectedTemplateId]);
 
+  // The picked saved canvas template (or null → use a flow preset). Resolved to
+  // the layout the shared renderer consumes.
+  const selectedLayoutRow = selectedLayoutId != null ? savedLayouts.find((l) => l.id === selectedLayoutId) : null;
+  const selectedCanvasLayout = useMemo<InvoiceLayout | null>(
+    () => (selectedLayoutRow ? resolveLayout(selectedLayoutRow.layout) : null),
+    [selectedLayoutRow],
+  );
+  const activeTemplateLabel = selectedLayoutRow ? selectedLayoutRow.name : presetName(effectiveTemplateId);
+
   // A live invoice object built from the form + computed totals so the preview
   // shows the real customer, items and amounts. Purely presentational — the
   // server still recomputes GST/totals authoritatively on save.
@@ -430,15 +466,15 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
     cgst: totals.cgst, sgst: totals.sgst, igst: totals.igst, roundOff: totals.roundOff, grandTotal: totals.grandTotal,
     amountPaid: 0, balanceDue: totals.grandTotal,
   }), [form, totals]);
-  // When a canvas layout is ACTIVE it takes precedence (same renderer as print).
-  const previewHtml = useMemo(() => activeLayout
-    ? canvasDocHtml(previewInvoice, company, activeLayout, { print: false })
-    : invoiceDocHtml(previewInvoice, company, activeDesign, { print: false }), [previewInvoice, company, activeDesign, activeLayout]);
+  // A picked saved canvas template renders through the designer's own renderer
+  // (preview === PDF); otherwise the chosen flow preset. Same helper as print.
+  const previewHtml = useMemo(
+    () => renderInvoiceHtml(previewInvoice, company, activeDesign, selectedCanvasLayout, { print: false }),
+    [previewInvoice, company, activeDesign, selectedCanvasLayout],
+  );
   const [pw, ph] = (PREVIEW_PAGE_PX[activeDesign.paper] || PREVIEW_PAGE_PX.A4)[activeDesign.orientation] || PREVIEW_PAGE_PX.A4.portrait;
   const openFullPreview = () => {
-    const html = activeLayout
-      ? canvasDocHtml(previewInvoice, company, activeLayout, { print: true })
-      : invoiceDocHtml(previewInvoice, company, activeDesign, { print: true });
+    const html = renderInvoiceHtml(previewInvoice, company, activeDesign, selectedCanvasLayout, { print: true });
     const w = window.open('', '_blank', 'width=900,height=1000');
     if (!w) { ui.toast.error('Allow pop-ups to open the full preview.'); return; }
     w.document.write(html); w.document.close();
@@ -585,6 +621,40 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       </div>
   );
 
+  // Gallery ordering: the DEFAULT saved template is pinned first, then the flow
+  // presets, then the remaining saved templates. `savedLayouts` already arrives
+  // default-first / updatedAt-desc from the API (company-scoped), so we only
+  // split off the default here — the rest keep their order.
+  const galleryLayouts = savedLayouts.filter((l) => (l.layout?.status || 'Active') !== 'Draft');
+  const defaultLayout = galleryLayouts.find((l) => l.isDefault) || null;
+  const otherLayouts = galleryLayouts.filter((l) => !l.isDefault);
+
+  /** One saved-template card. `pinned` marks the company default (⭐ Default). */
+  const renderLayoutCard = (l: any, pinned: boolean) => {
+    const active = selectedLayoutId === l.id;
+    return (
+      <button key={`layout-${l.id}`} type="button" onClick={() => setSelectedLayoutId(l.id)} title={`${l.name}${pinned ? ' (default template)' : ' (custom)'}`}
+        className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#6C3CF0] ring-2 ring-[#6C3CF0]/20 bg-brand-50/40' : pinned ? 'border-amber-300 hover:border-amber-400' : 'border-slate-200 hover:border-slate-300'}`}>
+        <div className="rounded-md overflow-hidden border border-slate-100 bg-gradient-to-br from-brand-100 to-white">
+          <div className="h-4 bg-brand-600" />
+          <div className="p-1 space-y-0.5">
+            <div className="h-1 w-3/4 rounded-sm bg-slate-200" />
+            <div className="h-1 w-1/2 rounded-sm bg-slate-100" />
+            <div className="mt-1 h-1.5 w-full rounded-sm bg-brand-200" />
+            <div className="mt-1 h-1.5 w-1/2 rounded-sm ml-auto bg-brand-500" />
+          </div>
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-1">
+          <span className={`text-[10px] font-bold truncate ${active ? 'text-[#6C3CF0]' : 'text-slate-600'}`}>{l.name}</span>
+          {active && <CheckCircle2 size={11} className="text-[#6C3CF0] shrink-0" />}
+        </div>
+        {pinned
+          ? <span className="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>
+          : <span className="absolute top-1 left-1 rounded-full bg-brand-600/90 px-1 py-px text-[7px] font-bold text-white uppercase">Custom</span>}
+      </button>
+    );
+  };
+
   // ── RIGHT panel — Template selector + preview controls (zoom / full screen /
   // print / download) + the sticky live A4 preview. Built once; placed by the
   // layout below (right column when split, below the form when stacked, or inside
@@ -598,11 +668,18 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           <span className="text-[10px] text-slate-400">This invoice only</span>
         </div>
         <div className="flex gap-2.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+          {/* The company DEFAULT template is always pinned first (Step: Default
+              Template Always First). Selecting a new default reorders instantly
+              because savedLayouts re-sorts on the live-sync refresh. */}
+          {defaultLayout && renderLayoutCard(defaultLayout, true)}
+
           {TEMPLATE_PRESETS.map((p) => {
-            const active = effectiveTemplateId === p.id;
-            const isDefault = defaultTemplateId === p.id;
+            // A preset is only "active" when no saved canvas template is picked.
+            const active = selectedLayoutId == null && effectiveTemplateId === p.id;
+            // The preset "default" badge only shows when there is NO canvas default.
+            const isDefault = selectedLayoutId == null && !defaultLayout && defaultTemplateId === p.id;
             return (
-              <button key={p.id} type="button" onClick={() => setSelectedTemplateId(p.id)} title={isDefault ? `${p.name} (company default)` : p.name}
+              <button key={p.id} type="button" onClick={() => { setSelectedTemplateId(p.id); setSelectedLayoutId(null); }} title={isDefault ? `${p.name} (company default)` : p.name}
                 className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#6C3CF0] ring-2 ring-[#6C3CF0]/20 bg-brand-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="rounded-md overflow-hidden border border-slate-100 bg-white">
                   <div className="h-4" style={{ background: p.swatch }} />
@@ -617,14 +694,19 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
                   <span className={`text-[10px] font-bold truncate ${active ? 'text-[#6C3CF0]' : 'text-slate-600'}`}>{p.name}</span>
                   {active && <CheckCircle2 size={11} className="text-[#6C3CF0] shrink-0" />}
                 </div>
-                {isDefault && <span className="absolute top-1 right-1 rounded-full bg-slate-900/80 px-1.5 py-px text-[8px] font-bold text-white">Default</span>}
+                {isDefault && <span className="absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>}
               </button>
             );
           })}
+
+          {/* Remaining saved canvas templates (non-default), in updatedAt order. */}
+          {otherLayouts.map((l) => renderLayoutCard(l, false))}
         </div>
-        {selectedTemplateId && selectedTemplateId !== defaultTemplateId && (
+        {selectedLayoutRow ? (
+          <button type="button" onClick={() => { const def = savedLayouts.find((l) => l.isDefault); setSelectedLayoutId(def ? def.id : null); }} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#6C3CF0]">↺ Reset to default ({savedLayouts.find((l) => l.isDefault)?.name || presetName(defaultTemplateId)})</button>
+        ) : selectedTemplateId && selectedTemplateId !== defaultTemplateId ? (
           <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#6C3CF0]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
-        )}
+        ) : null}
       </Card>
 
       {/* Preview + controls */}
@@ -642,7 +724,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           </div>
         </div>
         <InvoicePreviewFrame html={previewHtml} pw={pw} ph={ph} zoom={zoom} maxHeightVh={82} />
-        <p className="mt-1 text-center text-[10px] text-slate-400">Template “{presetName(effectiveTemplateId)}” · A4 · matches the exported PDF.</p>
+        <p className="mt-1 text-center text-[10px] text-slate-400">Template “{activeTemplateLabel}” · A4 · matches the exported PDF.</p>
       </div>
     </div>
   );
@@ -677,7 +759,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6" onClick={() => setFullOpen(false)}>
           <div className="flex max-h-[94vh] w-full max-w-3xl flex-col rounded-2xl bg-white p-3" onClick={(e) => e.stopPropagation()}>
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-sm font-bold text-slate-700">Invoice Preview — {presetName(effectiveTemplateId)}</p>
+              <p className="text-sm font-bold text-slate-700">Invoice Preview — {activeTemplateLabel}</p>
               <div className="flex items-center gap-1.5">
                 <Button size="sm" variant="outline" icon={<Printer size={13} />} onClick={openFullPreview}>Print / PDF</Button>
                 <button type="button" onClick={() => setFullOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><X size={16} /></button>
@@ -710,6 +792,12 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   // Load the company's saved Invoice Designer template so print output matches it,
   // plus any ACTIVE canvas layout (which takes precedence when set).
   useEffect(() => { api.invoicing.getSettings().then((s: any) => setDesign(resolveDesign(s))).catch(() => {}); loadActiveLayout().then(setActiveLayout); }, []);
+  // Keep the print layout in sync when the default template changes elsewhere.
+  useEffect(() => {
+    const onChanged = () => { loadActiveLayout().then(setActiveLayout); };
+    window.addEventListener('hrms:invoice-templates-changed', onChanged);
+    return () => window.removeEventListener('hrms:invoice-templates-changed', onChanged);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1089,11 +1177,9 @@ function printInvoice(inv: any, company: any, design?: InvoiceDesign, activeLayo
   // Renders through the shared invoiceDocHtml so the print output is IDENTICAL to
   // the Invoice Designer's live preview. Branding still comes from BrandingService
   // inside the renderer. `design` defaults to the standard layout (unchanged output).
-  // When the company has an ACTIVE canvas layout, render via canvasDocHtml instead
-  // (same renderer as the visual designer → preview === PDF). Opt-in only.
-  const html = activeLayout
-    ? canvasDocHtml(inv, company, activeLayout, { print: true })
-    : invoiceDocHtml(inv, company, design, { print: true });
+  // When the company has an ACTIVE canvas layout, render via the same renderer the
+  // visual designer uses (preview === PDF). Opt-in only.
+  const html = renderInvoiceHtml(inv, company, design, activeLayout, { print: true });
   const w = window.open('', '_blank', 'width=900,height=1000');
   if (!w) { ui.toast.error('Allow pop-ups to print / download the invoice.'); return; }
   w.document.write(html); w.document.close();
@@ -1106,6 +1192,16 @@ async function loadActiveLayout(): Promise<InvoiceLayout | null> {
     const active = (r?.layouts || []).find((l: any) => l.isDefault);
     return active ? resolveLayout(active.layout) : null;
   } catch { return null; }
+}
+
+// All of a company's saved canvas templates as raw rows ({ id, name, isDefault,
+// layout }). Powers the Create-Invoice template gallery. Company isolation is
+// enforced server-side (scopedWhere), so this only ever returns the caller's.
+async function loadSavedLayoutRows(): Promise<any[]> {
+  try {
+    const r = await api.invoicing.listLayouts();
+    return r?.layouts || [];
+  } catch { return []; }
 }
 
 export default InvoiceManagement;

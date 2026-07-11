@@ -172,7 +172,7 @@ export const ContractForm: React.FC<Props> = ({ editing, activeCompanyId, onCanc
       <div className="flex flex-wrap gap-1">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === t.id ? 'bg-brand-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}>
+            className={`px-3 py-1.5 seg-tab text-xs ${tab === t.id ? 'seg-tab-active' : ''}`}>
             {t.label}{t.id === 'documents' && documents.length ? <span className="ml-1 opacity-80">({documents.length})</span> : null}
           </button>
         ))}

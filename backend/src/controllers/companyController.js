@@ -55,6 +55,9 @@ const BRANDING_FIELDS = [
   'companyCode', 'registrationNumber', 'panNumber', 'cinNumber',
   'city', 'state', 'pincode', 'emailSignature',
   'faviconImage', 'stampImage', 'digitalSignatureImage',
+  // `industry` is the column the Company Profile's "Industry" field reads, so it
+  // must also be writable here — without it, editing Industry silently no-oped.
+  'industry', 'employeeCapacity',
   // Department management (Settings → Manage Departments) — writable here so a
   // Company Head can add/rename/delete/reorder departments (the full company PUT
   // is Super-Admin-only). customDepartments is a Json array column; departmentMeta
@@ -87,6 +90,53 @@ const COMPANY_FIELDS = [
   'faviconImage', 'stampImage', 'digitalSignatureImage',
   ...COMPANY_MASTER_FIELDS,
 ];
+
+// ── Registration → Company Profile sync ──────────────────────────────────────
+// The Company row is the master profile. Everything the Super Admin types on the
+// registration form must land on a real column so the Company Head's Company
+// Profile opens pre-filled instead of blank. Two rules govern the mapping:
+//
+//  1. Mirrors — one value the app reads under two column names (the profile UI
+//     and the report/template engine disagree on some names). We copy, never
+//     rename, so both readers keep working.
+//  2. Blank-safety — an empty box means "not supplied", so it is dropped rather
+//     than written as ''. The Company Head fills it in later; nothing that was
+//     entered is ever clobbered by a blank.
+const REGISTRATION_MIRRORS = [
+  ['email', 'contactEmail'],           // form key → column (Company has no `email`)
+  ['phone', 'contactNumber'],          // profile "Mobile Number" reads contactNumber
+  ['industry', 'companyIndustry'],     // reports read companyIndustry
+  ['address', 'registeredOfficeAddress'],
+  ['name', 'legalName'],               // profile header shows legalName first
+];
+
+// Registration document uploads → the `Document` rows the Company Profile's
+// Documents tab lists (company-scoped docs are Document rows with employeeId
+// null). `column` additionally mirrors the file onto the Company row where an
+// existing report/certificate template already reads it.
+const REGISTRATION_DOCS = [
+  { key: 'gstCertificate', name: 'GST Certificate', category: 'Tax', column: 'gstCertificateImage' },
+  { key: 'panCard', name: 'PAN Card', category: 'Tax', column: 'panCardImage' },
+  { key: 'cinCertificate', name: 'Certificate of Incorporation', category: 'Legal', column: 'registrationCertImage' },
+  { key: 'msmeCertificate', name: 'MSME / Udyam Certificate', category: 'Business' },
+  { key: 'iecCertificate', name: 'IEC Certificate', category: 'Business' },
+];
+
+const isBlank = (v) => v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+
+// Apply the mirrors and drop blanks. Mutates and returns `data`.
+function applyRegistrationDefaults(data, body) {
+  for (const [from, to] of REGISTRATION_MIRRORS) {
+    const src = body[from] !== undefined ? body[from] : data[from];
+    if (isBlank(data[to]) && !isBlank(src)) data[to] = src;
+  }
+  for (const k of Object.keys(data)) if (typeof data[k] === 'string' && data[k].trim() === '') delete data[k];
+  if (data.employeeCapacity !== undefined) {
+    const n = parseInt(data.employeeCapacity, 10);
+    if (Number.isFinite(n)) data.employeeCapacity = n; else delete data.employeeCapacity;
+  }
+  return data;
+}
 
 // Build a Prisma-safe Company payload from an arbitrary request body:
 //  • keep only real columns,
@@ -174,6 +224,12 @@ exports.updateBranding = async (req, res) => {
 
     const data = {};
     for (const f of BRANDING_FIELDS) if (req.body[f] !== undefined) data[f] = req.body[f];
+    // `employeeCapacity` is an Int column but arrives from the profile form as a
+    // string; an empty box means "not set", not 0.
+    if (data.employeeCapacity !== undefined) {
+      const n = parseInt(data.employeeCapacity, 10);
+      data.employeeCapacity = Number.isFinite(n) ? n : null;
+    }
     if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'No branding fields supplied.' });
     }
@@ -372,18 +428,117 @@ exports.createCompany = async (req, res) => {
     if (!companyData.name || String(companyData.name).trim() === '') {
       return res.status(400).json({ error: 'Company name is required.', code: 'REQUIRED_MISSING' });
     }
+    applyRegistrationDefaults(companyData, req.body);
+
+    // Registration document uploads also live on the Company row where a report
+    // or certificate template already reads them by column.
+    const uploads = (req.body.documents && typeof req.body.documents === 'object') ? req.body.documents : {};
+    for (const d of REGISTRATION_DOCS) {
+      const file = uploads[d.key];
+      if (d.column && file && file.fileData) companyData[d.column] = file.fileData;
+    }
+
     const company = await prisma.company.create({
       data: { ...companyData, id: await nextEntityId() }
     });
 
+    // The company row is authoritative. Everything below enriches the profile and
+    // must never fail the registration — a bad owner row or an oversized upload is
+    // reported as a warning, not a lost company.
+    const warnings = [];
+    const actor = req.user?.name || req.user?.email || 'System';
+    const today = new Date().toISOString().split('T')[0];
+
+    // ── Default branch ────────────────────────────────────────────────────────
+    // Shows up in Company Profile → Branch Information with no manual entry.
+    // The global prisma audit middleware already logs the Branch/Document creates
+    // below, so nothing here writes its own AuditLog row.
+    const db = req.body.defaultBranch;
+    if (db && !isBlank(db.branchName)) {
+      try {
+        await prisma.branch.create({
+          data: {
+            id: await nextEntityId(),
+            branchNo: await nextBranchNo(company.id),
+            companyId: company.id,
+            branchName: String(db.branchName).trim(),
+            branchCode: isBlank(db.branchCode) ? undefined : String(db.branchCode).trim(),
+            location: isBlank(db.location) ? (companyData.address || undefined) : String(db.location).trim(),
+            email: companyData.contactEmail || undefined,
+            phone: companyData.contactNumber || undefined,
+            adminName: companyData.adminName || undefined,
+            adminEmail: companyData.adminEmail || undefined,
+          },
+        });
+      } catch (e) {
+        console.error('createCompany: default branch failed', e);
+        warnings.push('The default branch could not be created. Add it from Branch Management.');
+      }
+    }
+
+    // ── Owner(s) / Director(s) ────────────────────────────────────────────────
+    // Exactly one owner is primary; the primary feeds the {{owner_*}} placeholders.
+    const owners = Array.isArray(req.body.owners) ? req.body.owners.filter(o => o && !isBlank(o.name)) : [];
+    if (owners.length) {
+      try {
+        const primaryIdx = Math.max(0, owners.findIndex(o => o.isPrimary));
+        await prisma.companyOwner.createMany({
+          data: owners.map((o, i) => ({
+            companyId: company.id,
+            name: String(o.name).trim(),
+            designation: isBlank(o.designation) ? null : String(o.designation).trim(),
+            email: isBlank(o.email) ? null : String(o.email).trim(),
+            mobile: isBlank(o.mobile) ? null : String(o.mobile).trim(),
+            ownershipPercentage: isBlank(o.ownershipPercentage) ? null : String(o.ownershipPercentage).trim(),
+            isPrimary: i === primaryIdx,
+            sortOrder: i,
+          })),
+        });
+      } catch (e) {
+        console.error('createCompany: owners failed', e);
+        warnings.push('Owner / Director details could not be saved. Add them from Company Profile.');
+      }
+    }
+
+    // ── Company documents ─────────────────────────────────────────────────────
+    // Written as company-scoped Document rows (employeeId = null) so the Company
+    // Profile → Company Documents tab lists them without a re-upload.
+    for (const d of REGISTRATION_DOCS) {
+      const file = uploads[d.key];
+      if (!file || (!file.fileData && !file.url)) continue;
+      try {
+        await prisma.document.create({
+          data: {
+            companyId: company.id,
+            employeeId: null,
+            name: d.name,
+            type: d.category,
+            category: d.category,
+            documentNumber: isBlank(file.documentNumber) ? null : String(file.documentNumber).trim(),
+            fileData: file.fileData || null,
+            url: file.url || null,
+            mimeType: file.mimeType || null,
+            size: file.size || '—',
+            status: 'Pending',
+            uploadedBy: actor,
+            uploadedOn: today,
+            remarks: 'Uploaded during company registration.',
+          },
+        });
+      } catch (e) {
+        console.error(`createCompany: document ${d.key} failed`, e);
+        warnings.push(`"${d.name}" could not be attached. Upload it from Company Profile → Company Documents.`);
+      }
+    }
+
     // Audit the creation (best-effort — never block the create on an audit write).
     if (req.user?.id) {
       AuditService.logAudit(req.user.id, 'CREATE_COMPANY', 'Companies', String(company.id), {
-        name: company.name, plan: company.plan, by: req.user.name || req.user.email,
+        name: company.name, plan: company.plan, by: actor,
       }).catch(() => {});
     }
 
-    res.status(201).json(company);
+    res.status(201).json(warnings.length ? { ...company, warnings } : company);
   } catch (error) {
     return respondError(res, error);
   }

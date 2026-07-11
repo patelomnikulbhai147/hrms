@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { formatPan } from '@/utils/idFormat';
 import { resolveBranding, isRasterImage } from '@/services/brandingService';
+import { buildDeductionRows } from '@/utils/deductionBreakdown';
 
 // Helper to convert numbers to words
 const numberToWords = (value: number): string => {
@@ -56,26 +57,15 @@ export const generateDynamicComponents = (record: any, employee: any, company: a
     earnings.push({ name: 'Special Allowance', amount: totalExpectedEarnings - currentTotal });
   }
 
-  // Deductions
-  const pf = Math.round(basic * ((company?.pfRate || 12) / 100));
-  const esic = Math.round(basic * ((company?.esicRate || 0.75) / 100));
-  const pt = company?.profTaxRate || 200;
-  const tds = record.tax || 0;
-  
-  const deductions = [
-    { name: 'PF Employee Share', amount: pf },
-    { name: 'ESIC Employee Share', amount: esic },
-    { name: 'Professional Tax', amount: pt },
-  ];
-
-  if (tds > 0) {
-    deductions.push({ name: 'TDS (Income Tax)', amount: tds });
-  }
-
-  const currentTotalDeductions = deductions.reduce((sum, d) => sum + d.amount, 0);
-  if (record.deductions > currentTotalDeductions) {
-    deductions.push({ name: 'Other Deductions / LWP', amount: record.deductions - currentTotalDeductions });
-  }
+  // Deductions — one row per real component, sourced by the shared engine.
+  // `record.worksheet` (a saved payroll_worksheet row) is authoritative when
+  // present; otherwise PF/ESIC/PT are derived and the remainder pools into
+  // "Other Deductions". The engine guarantees sum(rows) === record.deductions,
+  // which is why Total Deductions and Net Salary below can never drift from the
+  // stored payroll figures. The old catch-all "Other Deductions / LWP" row is
+  // gone: it asserted the remainder was leave-without-pay, which was a guess.
+  const breakdown = buildDeductionRows(record, company, record?.worksheet);
+  const deductions = breakdown.rows.map(r => ({ name: r.label, amount: r.amount }));
 
   // Employer Contributions
   const employerContributions = [

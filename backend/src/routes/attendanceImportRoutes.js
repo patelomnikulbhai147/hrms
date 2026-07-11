@@ -9,8 +9,10 @@ const ctrl = require('../controllers/attendanceImportController');
 router.use(protect);
 router.use(require('../middleware/readOnlyMiddleware')); // archived company → read-only (Super Admin bypass inside)
 
-router.post('/validate', ctrl.validate);
+router.post('/validate', ctrl.validate);        // dry-run safety validation (no attendance)
+router.post('/process', ctrl.process);          // REAL import — creates/updates attendance
 router.get('/logs', ctrl.getLogs);
+router.get('/history', ctrl.getHistory);        // past Excel import runs (audit)
 router.get('/unmatched', ctrl.getUnmatched);
 router.put('/unmatched/:id/resolve', ctrl.resolveUnmatched);
 

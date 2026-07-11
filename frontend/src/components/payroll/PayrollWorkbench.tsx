@@ -7,8 +7,8 @@ import {
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { ui } from '@/components/ui/feedback';
 import { byEmployeeCode } from '@/utils/employeeSort';
-import { api } from '@/api/apiClient';
 
 // ── Payment status (only Pending / Approved / Paid) ───────────────────────
 // Enterprise payroll workflow: Draft → Pending Approval → Approved → Paid.
@@ -140,12 +140,21 @@ export const PayrollWorkbench: React.FC<Props> = ({
       && (!q || x.name.toLowerCase().includes(q) || x.code.toLowerCase().includes(q));
   }), [rows, companyFilter, branchFilter, deptFilter, search, company]);
 
-  // Server-Side Pagination State
+  // Pagination over `filtered`, the client's own scoped set.
+  //
+  // This used to fetch each page from GET /payroll?page=… . That server query
+  // scopes by companyId, while the client scopes with isRecordInWorkspace() —
+  // and the two disagree: on a branch workspace the server returned 777 rows
+  // where the client's `records` held 774. The table therefore showed rows that
+  // were absent from `filtered`, so "select all" could never tick them.
+  //
+  // App already loads the whole payroll list into state and passes it as
+  // `records`, so paginating it here costs no memory and drops a request per
+  // page. One dataset now backs the rows, the totals and the selection.
   const [page, setPage] = useState(() => Number(sessionStorage.getItem('payroll_page')) || 1);
   const limit = 15;
-  const [paginatedData, setPaginatedData] = useState<any[]>([]);
-  const [totalRows, setTotalRows] = useState(0);
-  const [isTableLoading, setIsTableLoading] = useState(false);
+  const totalRows = filtered.length;
+  const isTableLoading = false;
 
   useEffect(() => {
     sessionStorage.setItem('payroll_company', companyFilter);
@@ -164,70 +173,65 @@ export const PayrollWorkbench: React.FC<Props> = ({
     setPage(1);
   }, [search, deptFilter, branchFilter, companyFilter]);
 
+  // Clamp the page if the filtered set shrank beneath the current offset
+  // (e.g. a restored sessionStorage page that no longer exists).
+  const pageCount = Math.max(1, Math.ceil(totalRows / limit));
   useEffect(() => {
-    let isMounted = true;
-    const fetchPaginated = async () => {
-      setIsTableLoading(true);
-      try {
-        const params: Record<string, any> = {
-          page, limit, month: monthLabel.split(' ')[0]
-        };
-        if (search) params.search = search;
-        if (deptFilter) params.department = deptFilter;
-        if (branchFilter) params.branch = branchFilter;
-        if (companyFilter || company?.id) params.companyId = companyFilter || company?.id;
-        
-        const res = await api.payroll.getPaginated(params) as any;
-        if (isMounted && res && Array.isArray(res.data)) {
-          setPaginatedData(res.data);
-          setTotalRows(res.total || 0);
-        }
-      } catch (err) {
-        console.error("Error fetching paginated payroll:", err);
-      } finally {
-        if (isMounted) setIsTableLoading(false);
-      }
-    };
-    
-    fetchPaginated();
-    return () => { isMounted = false; };
-  }, [page, limit, search, deptFilter, branchFilter, companyFilter, monthLabel, company?.id]);
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
-  const paginatedRows = useMemo(() => paginatedData.map(r => {
-    const emp = getEmployee(r.employeeId);
-    return {
-      r,
-      code: emp?.employeeId || '—',
-      name: r.employeeName || emp?.name || '—',
-      branch: emp?.branchLocation || r.employee?.branchLocation || 'Head Office',
-      dept: r.department || emp?.department || '—',
-      gross: (r.basicSalary || 0) + (r.allowances || 0) + (r.bonus || 0),
-      overtime: (r as any).overtime || 0,
-      bonus: r.bonus || 0,
-      deductions: (r.deductions || 0) + (r.tax || 0),
-      net: r.netSalary || 0,
-    };
-  }), [paginatedData, getEmployee]);
+  const paginatedRows = useMemo(
+    () => filtered.slice((page - 1) * limit, page * limit),
+    [filtered, page, limit],
+  );
 
-  // ── selection ──
-  // Clear selection when filters or pagination change
+  // ── selection ────────────────────────────────────────────────────────────
+  // Selection is over the whole FILTERED dataset, not the visible page. The
+  // table paginates server-side (15 rows), but `filtered` already holds every
+  // matching record client-side — `records` is the month- and workspace-scoped
+  // payroll list — so "select all" needs no extra fetch. Only ids are stored.
+  //
+  // Selection deliberately survives page changes; it is cleared only when the
+  // filters change (see the filter guards below), because ids outside the new
+  // filter would otherwise sit invisibly in the set and feed the bulk actions.
   useEffect(() => {
     setSelected(new Set());
-  }, [page, search, deptFilter, branchFilter, companyFilter]);
+  }, [search, deptFilter, branchFilter, companyFilter]);
 
-  const pageIds = paginatedRows.map(x => x.r.id);
-  const allSelected = pageIds.length > 0 && pageIds.every(id => selected.has(id));
-  const someSelected = pageIds.some(id => selected.has(id));
-  const toggleAll = () => setSelected(prev => {
-    const n = new Set(prev);
-    if (allSelected) pageIds.forEach(id => n.delete(id));
-    else pageIds.forEach(id => n.add(id));
-    return n;
-  });
+  const filteredIds = useMemo(() => filtered.map(x => x.r.id), [filtered]);
+  const selectedIds = useMemo(
+    // Guard against ids left over from a wider filter.
+    () => filteredIds.filter(id => selected.has(id)),
+    [filteredIds, selected],
+  );
+  const selCountAll = filteredIds.length;
+  const allSelected = selCountAll > 0 && selectedIds.length === selCountAll;
+  const someSelected = selectedIds.length > 0;
+
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filteredIds));
   const toggleOne = (id: string) => setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const selectedRecords = paginatedRows.filter(x => selected.has(x.r.id)).map(x => x.r);
-  const selectedIds = Array.from(selected);
+
+  // Bulk actions must see every selected record, not just the ones on screen.
+  const selectedRecords = useMemo(
+    () => filtered.filter(x => selected.has(x.r.id)).map(x => x.r),
+    [filtered, selected],
+  );
   const clearSel = () => setSelected(new Set());
+
+  // A filter change discards the selection. Confirm first when something is
+  // selected, and restore the previous value if the user backs out.
+  const guardFilterChange = async (apply: () => void) => {
+    if (selected.size > 0) {
+      const ok = await ui.confirm({
+        title: 'Change filter?',
+        message: 'Changing filters will clear the current employee selection. Continue?',
+        confirmText: 'Yes',
+        cancelText: 'Cancel',
+      });
+      if (!ok) return;
+    }
+    apply();
+  };
 
   // ── Status pipeline: Draft → Generated → Approved → Paid ──────────────────
   // Counts are CUMULATIVE (a later stage implies the earlier ones are done), so
@@ -274,10 +278,18 @@ export const PayrollWorkbench: React.FC<Props> = ({
 
   // ── Single workflow that respects the grid selection ──────────────────────
   // With rows selected → the action targets ONLY those employees. With nothing
-  // selected → it falls back to the current filtered/whole-month set. The card
-  // label shows the live scope so the user always knows what will run.
+  // selected → it falls back to the current filtered/whole-month set.
+  //
+  // Button labels stay SHORT and constant. The live scope is surfaced by the
+  // `scoped` badge on each card (and by the sticky banner over the grid), never
+  // baked into the label — a "(774 Selected)" suffix blows the grid column out
+  // to its min-content width and breaks the card layout.
+  //
+  // `scoped: true` marks the steps whose action is actually narrowed by the grid
+  // selection. Attendance Verification has no action, and Lock/Unlock always
+  // spans the whole month — badging either would misstate what the button does.
   const selCount = selectedIds.length;
-  const selSuffix = selCount > 0 ? ` (${selCount} Selected)` : '';
+  const hasSel = selCount > 0;
   const genAction = () => (selCount > 0 && onGenerateSelected ? onGenerateSelected(selectedRecords) : onGeneratePayroll());
   const approveAction = () => (selCount > 0 && onApprove ? onApprove(selectedIds) : onApproveAll());
   const slipsAction = () => (selCount > 0 && onGenerateSlips ? onGenerateSlips(selectedRecords) : onGenerateSlipsAll());
@@ -285,19 +297,19 @@ export const PayrollWorkbench: React.FC<Props> = ({
 
   const steps = [
     { key: 'attendance', title: 'Attendance Verification', icon: <CalendarCheck size={15} />, done: total > 0, status: total > 0 ? 'Attendance Ready' : 'No data',
-      btn: null as any },
+      scoped: false, btn: null as any },
     { key: 'generate', title: 'Generate Payroll', icon: <Calculator size={15} />, done: allGenerated, status: allGenerated ? 'Generated' : (total > 0 ? `${m.generated}/${total}` : 'Pending'),
-      btn: perms.generate && { label: `Generate Payroll${selSuffix}`, onClick: genAction } },
+      scoped: true, btn: perms.generate && { label: 'Generate Payroll', onClick: genAction } },
     { key: 'approve', title: 'Approve Payroll', icon: <ShieldCheck size={15} />, done: approveDone,
       // Show records AWAITING approval (generated, not yet approved) so the card
       // immediately reflects freshly generated payroll. "Approved" when none pending.
       status: !perms.approve ? 'No access' : approveDone ? 'Approved' : m.pendingApproval > 0 ? `${m.pendingApproval}/${total || 0} to approve` : 'Pending',
-      btn: perms.approve && { label: `Approve Payroll${selSuffix}`, onClick: approveAction } },
+      scoped: true, btn: perms.approve && { label: 'Approve Payroll', onClick: approveAction } },
     { key: 'slips', title: 'Generate Salary Slips', icon: <FileText size={15} />, done: allGenerated, status: allGenerated ? 'Slips Ready' : 'Pending',
-      btn: perms.generateSlips && { label: `Generate Slips${selSuffix}`, onClick: slipsAction } },
+      scoped: true, btn: perms.generateSlips && { label: 'Generate Slips', onClick: slipsAction } },
     { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
-      btn: null },
-    { key: 'lock', title: anyLocked ? 'Unlock Month' : 'Lock Month', icon: anyLocked ? <Unlock size={15} /> : <Lock size={15} />, done: anyLocked,
+      scoped: true, btn: null },
+    { key: 'lock', title: anyLocked ? 'Unlock Month' : 'Lock Month', icon: anyLocked ? <Unlock size={15} /> : <Lock size={15} />, done: anyLocked, scoped: false,
       // Locking is only allowed once the month is fully Paid; before that the
       // step stays open and the button is withheld. A locked month can be
       // reopened by a Company Head / Super Admin (override authority).
@@ -338,46 +350,62 @@ export const PayrollWorkbench: React.FC<Props> = ({
             </p>
           </div>
         </div>
-        <div className="grid grid-cols-1 gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
+        {/* `auto-rows-fr` keeps every card the same height once the strip wraps —
+            Salary Payment stacks two buttons and would otherwise set a taller row. */}
+        <div className="grid auto-rows-fr grid-cols-1 gap-2 p-4 md:grid-cols-3 xl:grid-cols-6">
           {steps.map((s, i) => {
             const isActive = i === activeIdx;
             return (
-              <div key={s.key} className={`rounded-xl border p-3 flex flex-col gap-2 ${s.done ? 'border-emerald-200 bg-emerald-50/40' : isActive ? 'border-brand-300 bg-brand-50/40' : 'border-slate-150 bg-white'}`}>
+              // `min-w-0` is load-bearing: a grid item defaults to min-width:auto,
+              // so a long nowrap label would push the column past its track and
+              // break the row. With min-w-0 the card holds its share and the
+              // label truncates inside it instead.
+              <div key={s.key} className={`min-w-0 rounded-xl border p-3 flex flex-col gap-2 ${s.done ? 'border-emerald-200 bg-emerald-50/40' : isActive ? 'border-brand-300 bg-brand-50/40' : 'border-slate-200 bg-white'}`}>
                 <div className="flex items-center gap-2">
                   <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${s.done ? 'bg-emerald-600 text-white' : isActive ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
                     {s.done ? '✓' : i + 1}
                   </span>
                   <span className="text-slate-500">{s.icon}</span>
                 </div>
-                <div>
-                  <p className="text-[11px] font-bold text-slate-800 leading-tight">{s.title}</p>
-                  <p className={`text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-brand-600' : 'text-slate-400'}`}>{s.status}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-bold text-slate-800 leading-tight" title={s.title}>{s.title}</p>
+                  <p className={`truncate text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-brand-600' : 'text-slate-400'}`} title={s.status}>{s.status}</p>
+                  {s.scoped && hasSel && (
+                    <span className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
+                      <span className="truncate">{selCount} Selected</span>
+                    </span>
+                  )}
                 </div>
                 {s.key === 'pay' ? (
                   perms.markPaid && (
                     <div className="mt-auto flex flex-col gap-1.5">
-                      <Button size="sm" variant="outline" onClick={onExportBank}><Banknote size={12} className="mr-1" />Bank Sheet</Button>
-                      <Button size="sm" variant="primary" onClick={payAction}>{`Mark Paid${selSuffix}`}</Button>
+                      <Button size="sm" variant="secondary" className="w-full" onClick={onExportBank}>
+                        <Banknote size={12} className="mr-1 shrink-0" /><span className="truncate">Bank Sheet</span>
+                      </Button>
+                      {/* Confirming payment is a success action, not a primary one. */}
+                      <Button size="sm" variant="success" className="w-full" onClick={payAction}>
+                        <span className="truncate">Mark Paid</span>
+                      </Button>
                     </div>
                   )
                 ) : s.btn ? (
-                  // Lock/Unlock carries its own colour language: a locked month
-                  // shows a red "Unlock Month", an unlocked one a green "Lock Month".
+                  // Lock/Unlock carries its own colour language: unlocking a month
+                  // is destructive (danger), locking it confirms (success). The
+                  // remaining steps are primary while active, neutral once past.
                   <Button
                     size="sm"
-                    variant={(s.btn as any).tone ? 'outline' : isActive ? 'primary' : 'outline'}
-                    loading={s.key === 'lock' && lockBusy === (s.btn as any).tone}
-                    icon={(s.btn as any).tone === 'unlock' ? <Unlock size={12} /> : (s.btn as any).tone === 'lock' ? <Lock size={12} /> : undefined}
-                    className={
-                      (s.btn as any).tone === 'unlock'
-                        ? 'mt-auto border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 hover:text-red-700'
-                        : (s.btn as any).tone === 'lock'
-                          ? 'mt-auto border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-400'
-                          : 'mt-auto'
+                    variant={
+                      (s.btn as any).tone === 'unlock' ? 'danger'
+                        : (s.btn as any).tone === 'lock' ? 'success'
+                          : isActive ? 'primary' : 'outline'
                     }
+                    loading={s.key === 'lock' && lockBusy === (s.btn as any).tone}
+                    icon={(s.btn as any).tone === 'unlock' ? <Unlock size={12} className="shrink-0" /> : (s.btn as any).tone === 'lock' ? <Lock size={12} className="shrink-0" /> : undefined}
+                    className="mt-auto w-full"
                     onClick={s.btn.onClick}
                   >
-                    {s.btn.label}
+                    <span className="truncate">{s.btn.label}</span>
                   </Button>
                 ) : <div className="mt-auto h-[1px]" />}
               </div>
@@ -397,30 +425,30 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 className="w-44 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-brand-400" />
             </div>
             {perms.filterCompany && (
-              <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
+              <select value={companyFilter} onChange={e => { const v = e.target.value; guardFilterChange(() => setCompanyFilter(v)); }} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
                 <option value="">All Companies</option>
                 {companies.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             )}
             {perms.filterBranch && (
-              <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
+              <select value={branchFilter} onChange={e => { const v = e.target.value; guardFilterChange(() => setBranchFilter(v)); }} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
                 <option value="">All Branches</option>
                 {branches.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             )}
-            <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
+            <select value={deptFilter} onChange={e => { const v = e.target.value; guardFilterChange(() => setDeptFilter(v)); }} className="rounded-lg border border-slate-200 bg-white py-1.5 px-2 text-xs outline-none focus:border-brand-400">
               <option value="">All Departments</option>
               {depts.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {perms.download && (
-              <Button size="sm" variant="outline" onClick={() => onDownloadZip(filtered.map(x => x.r), `${branchFilter || deptFilter || 'All'}_Salary_Slips_${safe(monthLabel)}`)}>
+              <Button size="sm" variant="secondary" onClick={() => onDownloadZip(filtered.map(x => x.r), `${branchFilter || deptFilter || 'All'}_Salary_Slips_${safe(monthLabel)}`)}>
                 <FileArchive size={13} className="mr-1" /> Download Slips ZIP{branchFilter || deptFilter ? ' (filtered)' : ' (all)'}
               </Button>
             )}
             {perms.email && (
-              <Button size="sm" variant="outline" onClick={() => onEmailAll(filtered.map(x => x.r))}>
+              <Button size="sm" variant="secondary" onClick={() => onEmailAll(filtered.map(x => x.r))}>
                 <Send size={13} className="mr-1" /> Email All Slips
               </Button>
             )}
@@ -436,7 +464,8 @@ export const PayrollWorkbench: React.FC<Props> = ({
               <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">{outdatedRecords.length} record(s)</span>
             </div>
             {perms.recalc && onRecalculate && (
-              <Button size="sm" onClick={() => onRecalculate(outdatedRecords.map((x: any) => x.id))}>
+              // Regenerating overwrites computed payroll — amber, not primary.
+              <Button size="sm" variant="warning" onClick={() => onRecalculate(outdatedRecords.map((x: any) => x.id))}>
                 <Calculator size={13} className="mr-1" /> Recalculate Payroll
               </Button>
             )}
@@ -446,10 +475,20 @@ export const PayrollWorkbench: React.FC<Props> = ({
         {/* ── Selection status (feedback only — the Payroll Workflow cards above run
             the actions, scoped to this selection). NOT a duplicate action bar. ── */}
         {someSelected && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2">
-            <span className="text-xs font-bold text-brand-700">{selectedIds.length} Employee{selectedIds.length === 1 ? '' : 's'} Selected</span>
-            <span className="text-[11px] text-brand-500">↑ Use the <strong>Payroll Workflow</strong> cards above — they now act on these {selectedIds.length}.</span>
-            <button onClick={clearSel} className="ml-auto text-[11px] font-semibold text-slate-500 underline hover:text-slate-700">Clear selection</button>
+          <div className="sticky top-0 z-20 flex flex-wrap items-center gap-2 border-b border-brand-100 bg-brand-50 px-4 py-2">
+            <CheckCircle2 size={14} className="text-brand-600" />
+            <span className="text-xs font-bold text-brand-700">
+              {allSelected
+                ? `All ${selCountAll} employee${selCountAll === 1 ? '' : 's'} are selected.`
+                : `${selectedIds.length} of ${selCountAll} employee${selCountAll === 1 ? '' : 's'} selected.`}
+            </span>
+            {!allSelected && selCountAll > selectedIds.length && (
+              <button onClick={() => setSelected(new Set(filteredIds))} className="text-[11px] font-bold text-brand-600 underline hover:text-brand-700">
+                Select all {selCountAll}
+              </button>
+            )}
+            <span className="text-[11px] text-brand-500">The <strong>Payroll Workflow</strong> actions above will apply to the selected employees.</span>
+            <button onClick={clearSel} className="ml-auto text-[11px] font-semibold text-slate-500 underline hover:text-slate-700">Clear Selection</button>
           </div>
         )}
 

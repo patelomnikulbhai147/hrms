@@ -106,10 +106,10 @@ export const Reports: React.FC<ReportsProps> = ({
           <h2 className="text-base font-semibold text-gray-900">Operational Reports</h2>
           <p className="text-xs text-gray-505 mt-0.5">Generate and download compliance reports for <strong>{currentCompany.name}</strong></p>
         </div>
-        <Button 
-          icon={<Download size={14} />} 
+        {/* Primary tone comes from the Button variant now — no local gradient. */}
+        <Button
+          icon={<Download size={14} />}
           onClick={() => setExportModalOpen(true)}
-          className="bg-gradient-to-r from-brand-600 to-brand-600 hover:from-brand-700 hover:to-brand-700 text-white border-0 shadow-lg shadow-brand-500/20"
         >
           Enterprise Export Engine
         </Button>
@@ -164,8 +164,8 @@ export const Reports: React.FC<ReportsProps> = ({
               />
             </div>
           )}
-          <Button onClick={() => downloadAttendancePDF(companyAttendance, monthFilter, '2026', currentCompany.name)} variant="outline" icon={<Download size={13} />}>Download PDF</Button>
-          <Button onClick={() => downloadAttendanceExcel(companyAttendance, monthFilter, '2026')} variant="outline" icon={<Download size={13} />}>Download Excel</Button>
+          <Button onClick={() => downloadAttendancePDF(companyAttendance, monthFilter, '2026', currentCompany.name)} variant="secondary" icon={<Download size={13} />}>Download PDF</Button>
+          <Button onClick={() => downloadAttendanceExcel(companyAttendance, monthFilter, '2026')} variant="secondary" icon={<Download size={13} />}>Download Excel</Button>
         </div>
       </Card>
 
