@@ -1,9 +1,33 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import { Company } from '@/types';
-import { Building2, ArrowRight, CheckCircle2, ShieldCheck, MapPin, Star, LayoutGrid, Search } from 'lucide-react';
+import { Building2, ArrowRight, CheckCircle2, MapPin, Star, LayoutGrid, Search } from 'lucide-react';
 import type { UserAccount } from '@/pages/Login';
 import { cn } from '@/utils/cn';
 import { buildWorkspaceHierarchy, logWorkspaceAudit } from '@/utils/workspaceUtils';
+import { ZeniaLogo } from '@/components/brand/ZeniaLogo';
+
+// Header brand mark. Renders a custom branding image when one exists, and always
+// falls back to the default ZeniaHR logo so the header is never broken/blank/missing.
+// Fixed 36×36 box (object-contain) so the logo never stretches and the header
+// layout doesn't shift while an image loads.
+const BrandLogo: React.FC<{ src?: string }> = ({ src }) => {
+  const [failed, setFailed] = useState(false);
+  const useImg = !!src && !failed;
+  return (
+    <div className="w-9 h-9 shrink-0 flex items-center justify-center">
+      {useImg ? (
+        <img
+          src={src}
+          alt="ZeniaHR logo"
+          className="w-full h-full object-contain rounded-xl bg-white ring-1 ring-slate-200 shadow-sm"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <ZeniaLogo size={36} radius={200} className="w-full h-full rounded-xl shadow-sm ring-1 ring-black/[0.06]" />
+      )}
+    </div>
+  );
+};
 
 interface SelectWorkspaceProps {
   companies: Company[];
@@ -93,6 +117,10 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
   const selectedGroup = hierarchy.find(g => g.cards.some((c: any) => String(c.id) === String(selectedId)));
   const initials = (user.name || user.username || 'U').trim().slice(0, 1).toUpperCase();
 
+  // Header branding source: a custom logo image from the user's primary company
+  // if one is set, otherwise the default ZeniaHR mark (handled by BrandLogo).
+  const brandLogoSrc = (companies.find(c => String(c.id) === String(user.companyId)) as any)?.logoImage || undefined;
+
   if (isLoading || (companies.length === 0 && isLoading !== false)) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4">
@@ -107,13 +135,11 @@ export const SelectWorkspace: React.FC<SelectWorkspaceProps> = ({ companies, onS
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/85 backdrop-blur-xl">
         <div className="mx-auto w-full max-w-7xl px-6 lg:px-10 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
-              <ShieldCheck size={18} className="text-white" />
-            </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold tracking-tight text-slate-900">Enterprise HRMS</div>
-              <div className="text-[11px] text-slate-500">Workspace access</div>
+          <div className="flex items-center gap-3 min-w-0">
+            <BrandLogo src={brandLogoSrc} />
+            <div className="leading-tight min-w-0">
+              <div className="text-sm font-bold tracking-tight text-slate-900 truncate">Enterprise HRMS</div>
+              <div className="text-[11px] font-medium text-slate-500 truncate">Workspace access</div>
             </div>
           </div>
           <div className="flex items-center gap-3">

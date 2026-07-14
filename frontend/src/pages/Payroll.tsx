@@ -9,7 +9,6 @@ import {
   EyeOff,
   Building2,
   Gift,
-  Scale, Wallet, FileText, Clock, ShieldCheck, BarChart3
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -44,6 +43,7 @@ import {
 import { generateEnterprisePayslipPDF, generateEnterprisePayslipExcel, printPayslipPDF, payslipBase64, payslipFileName, downloadPayslipsZip, type PayslipBundleItem } from '@/utils/salarySlipGenerator';
 import { PayrollWorkbench } from '@/components/payroll/PayrollWorkbench';
 import { PayrollWorksheet } from '@/components/payroll/PayrollWorksheet';
+import { SyncAttendanceModal, type SyncResult } from '@/components/payroll/SyncAttendanceModal';
 import { ApplyBonusModal } from '@/components/payroll/ApplyBonusModal';
 import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee } from '@/utils/employeeStatus';
@@ -51,7 +51,6 @@ import { deriveCompanyPayrollStatus } from '@/utils/payroll';
 import { type UserAccount } from '@/pages/Login';
 import { getUniqueEmployees } from '@/utils/deduplication';
 import { usePermissions } from '@/context/PermissionContext';
-import { generateAutomatedPayroll } from '@/utils/payrollAutomation';
 import { ui } from '@/components/ui/feedback';
 
 interface PayrollProps {
@@ -123,7 +122,12 @@ export const Payroll: React.FC<PayrollProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [monthFilter, setMonthFilter] = useState('June');
+  // Default to the CURRENT month so freshly pushed/generated payroll (e.g. from
+  // Attendance Synchronization → Push to Payroll Engine) is visible immediately,
+  // instead of landing on a stale past month with zero-value rows.
+  const [monthFilter, setMonthFilter] = useState(
+    () => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][new Date().getMonth()]
+  );
   // Drives the Lock/Unlock Month button's loading state.
   const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
 
@@ -254,7 +258,10 @@ export const Payroll: React.FC<PayrollProps> = ({
   // keyed by employeeId for the selected month.
   const [dbSummaryByEmp, setDbSummaryByEmp] = useState<Record<string, any>>({});
   useEffect(() => {
-    api.attendanceSummary.getAll(monthFilter, 2026)
+    // includeComputed → for employees who have raw attendance but no materialized
+    // summary yet, the API returns LIVE-computed figures (never a missing/empty
+    // cache), so the Salary Worksheet's attendance matches the Attendance module.
+    api.attendanceSummary.getAll(monthFilter, 2026, true)
       .then((rows: any[]) => {
         const map: Record<string, any> = {};
         (rows || []).forEach(r => { map[String(r.employeeId)] = r; });
@@ -262,6 +269,28 @@ export const Payroll: React.FC<PayrollProps> = ({
       })
       .catch(() => {});
   }, [activeCompanyId, monthFilter, payroll]);
+
+  // ── Attendance Recalculation (workflow Step 2 — runs before Generate Payroll) ─
+  // Frontend-only state: the last successful recalc per company+month, persisted
+  // to localStorage so the "Last Recalculated" line and the Generate-Payroll gate
+  // survive reloads. No schema/API change — the recalc reuses the existing
+  // attendance-summary recompute engine (rebuilds working/present/absent/leave/
+  // half/OT/LOP/payable days from raw attendance + approved leaves).
+  const attRecalcKey = (cid: any, m: string) => `hrms_att_recalc_${cid}_${m}`;
+  const [attRecalc, setAttRecalc] = useState<{ at: string; by: string; employees: number; records: number } | null>(null);
+  // Synchronize-Attendance modal state (progress → success/partial → error).
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncOpen, setSyncOpen] = useState(false);
+  const [syncPhase, setSyncPhase] = useState(-1);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  useEffect(() => {
+    try { const raw = localStorage.getItem(attRecalcKey(activeCompanyId, monthFilter)); setAttRecalc(raw ? JSON.parse(raw) : null); }
+    catch { setAttRecalc(null); }
+  }, [activeCompanyId, monthFilter]);
+  // Employees can never recalculate; Super Admin / Company Head always; HR only
+  // when the Payroll module grants edit.
+  const canRecalcAttendance = role !== 'Employee' && (role === 'Super Admin' || role === 'Company Head' || (role === 'HR' && canEdit));
 
   const scopedRecords = useMemo(() => {
     let records = payroll.filter(p => p.month === monthFilter);
@@ -274,6 +303,47 @@ export const Payroll: React.FC<PayrollProps> = ({
 
     return records;
   }, [payroll, monthFilter, activeCompanyId, role, authProfile, scopedEmpIds, companies]);
+
+  // ── Payroll ROSTER — Employee Management is the source of truth ──────────────
+  // The payroll table is a LIVE ROSTER of every payroll-eligible employee, not
+  // just the rows that already have a generated payroll. For each active,
+  // in-scope employee that has no real payroll record for the selected month we
+  // surface a lightweight "pending" placeholder so the employee is always
+  // visible (and can be generated). Real records always take precedence, so no
+  // duplicates. Because `companyEmployees` is derived reactively from the shared
+  // employee list, add / deactivate / reactivate / transfer / exit / delete all
+  // refresh this roster automatically with no manual sync. Changing the month
+  // never removes employees — only which rows are real vs pending changes.
+  //
+  // NOTE: `scopedRecords` (real records only) still backs stats, exports and all
+  // id-based actions — placeholders are display-only and never persisted.
+  const rosterRecords = useMemo(() => {
+    if (role === 'Employee') return scopedRecords; // self-service: only own record
+    const covered = new Set<string>();
+    scopedRecords.forEach(r => { if (r.employeeId != null) covered.add(String(r.employeeId)); });
+    const placeholders = companyEmployees
+      .filter(e => !covered.has(String(e.id)) && !covered.has(String((e as any).employeeId)))
+      .map(e => ({
+        id: `PENDING::${e.id}`,
+        employeeId: e.id,
+        employeeName: e.name,
+        department: (e as any).department || '',
+        month: monthFilter,
+        year: 2026,
+        payrollStatus: 'draft',
+        paymentStatus: 'pending',
+        basicSalary: 0, allowances: 0, bonus: 0, overtime: 0, deductions: 0, tax: 0, netSalary: 0,
+        companyId: activeCompanyId,
+        __pending: true,
+      } as any));
+    return [...scopedRecords, ...placeholders];
+  }, [scopedRecords, companyEmployees, monthFilter, activeCompanyId, role]);
+
+  // Placeholder rows carry no real payroll id — guard id-based mutations so a
+  // "pending" (not-yet-generated) employee can never be approved / paid / locked /
+  // recalculated / slipped. Generation deliberately KEEPS them (that is how a
+  // pending employee gets its first payroll).
+  const isPendingPayrollId = (id: any): boolean => typeof id === 'string' && id.startsWith('PENDING::');
 
   useEffect(() => {
     const hasRealPayroll = payroll.some(p => p.companyId === activeCompanyId);
@@ -576,7 +646,8 @@ export const Payroll: React.FC<PayrollProps> = ({
     records.map(r => { const emp = getFullEmployee(r.employeeId); return { record: r, employee: emp, attendance: buildAttendanceSummary(emp) }; });
 
   const handleDownloadZip = async (records: PayrollRecord[], zipName: string) => {
-    if (!records.length) { ui.toast.warning('No payroll records in this selection to export.'); return; }
+    records = records.filter(r => !(r as any).__pending && !isPendingPayrollId(r.id));
+    if (!records.length) { ui.toast.warning('No generated payroll in this selection to export.'); return; }
     try {
       const n = await downloadPayslipsZip(buildBundle(records), currentCompany, zipName);
       saveAuditLog('bulk', `Downloaded ${n} salary slips as ZIP (${zipName}).`);
@@ -587,6 +658,8 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   const handleApprovePayroll = async (ids: string[]) => {
+    ids = ids.filter(id => !isPendingPayrollId(id));
+    if (!ids.length) { ui.toast.warning('No generated payroll to approve. Generate payroll first.'); return; }
     try {
       await api.payroll.approve(ids);
       onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'approved', approvedAt: new Date().toISOString() } as any : r));
@@ -682,7 +755,8 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   // Recalculate outdated payroll from the latest attendance summaries.
   const handleRecalculate = async (ids?: string[]) => {
-    const targetIds = ids && ids.length ? ids : scopedRecords.filter(r => (r as any).isOutdated).map(r => r.id);
+    const targetIds = (ids && ids.length ? ids : scopedRecords.filter(r => (r as any).isOutdated).map(r => r.id))
+      .filter(id => !isPendingPayrollId(id));
     if (!targetIds.length) { ui.toast.warning('No payroll records require regeneration.'); return; }
     if (!(await ui.confirm({ message: `Recalculate ${targetIds.length} payroll record(s) from the latest attendance? Locked records are skipped.` }))) return;
     try {
@@ -694,6 +768,88 @@ export const Payroll: React.FC<PayrollProps> = ({
     } catch (e: any) {
       console.error('Recalculate failed:', e);
       ui.toast.error(`Failed to recalculate payroll: ${e?.message || 'Unknown error'}`);
+    }
+  };
+
+  // ── Synchronize Attendance → Payroll (Step 1) ───────────────────────────────
+  // ONE intelligent action that runs the whole chain in order: validate month →
+  // fetch attendance → recalculate (working/present/weekly-off/holiday/leave/half/
+  // absent/OT/payable/LOP) → create/update the Payroll Attendance Snapshot → LOP
+  // deduction + OT amount → write into payroll → refresh the payroll table → show
+  // the summary. It is ONE server call (`syncPayroll`, the single unified engine),
+  // so attendance is calculated exactly once and payroll reads that snapshot; no
+  // duplicate calculation, no hardcoded values. A live stepper shows progress and
+  // a summary (or per-employee partial-failure list) reports the outcome.
+  const MONTH_NUM: Record<string, number> = {
+    january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+    july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  };
+  const handleSynchronizeAttendance = async () => {
+    // Step 1 — validate permission + payroll month.
+    if (!canRecalcAttendance) { ui.toast.error('You do not have permission to synchronize attendance.'); return; }
+    const monthLocked = scopedRecords.some(r => isLocked(r));
+    if (monthLocked) { ui.toast.warning('Payroll month is locked. Unlock the month before synchronizing attendance.'); return; }
+    const monthNum = MONTH_NUM[String(monthFilter).toLowerCase()];
+    if (!monthNum) { ui.toast.error('Invalid payroll month.'); return; }
+
+    // Open the modal in progress mode and start advancing the compute phases.
+    setSyncResult(null); setSyncError(null); setSyncPhase(0); setSyncOpen(true); setSyncBusy(true);
+    let ph = 0;
+    const timer = setInterval(() => { ph = Math.min(4, ph + 1); setSyncPhase(ph); }, 550);
+
+    try {
+      const isSuper = role === 'Super Admin';
+      // Steps 2–7 (fetch → recalc → snapshot → LOP → OT → write) all happen inside
+      // this ONE call. Scoped to the active workspace; server enforces isolation.
+      const res: any = await api.attendance.syncPayroll({
+        companyId: activeCompanyId ? String(activeCompanyId) : undefined,
+        month: monthNum, year: 2026, dryRun: false,
+      });
+      clearInterval(timer);
+
+      // Step 8/9 — writing done → refresh the payroll table + the summary cache the
+      // worksheet/draft rows read (so every screen shows the one snapshot).
+      setSyncPhase(5);
+      await refreshPayroll();
+      try {
+        const sums = await api.attendanceSummary.getAll(monthFilter, 2026, true);
+        const map: Record<string, any> = {};
+        (sums || []).forEach((s: any) => { map[String(s.employeeId)] = s; });
+        setDbSummaryByEmp(map);
+      } catch { /* summary refresh is best-effort */ }
+      setSyncPhase(6); // completed
+
+      // Step 10 — aggregate the success summary from the returned rows (scoped).
+      const rows: any[] = Array.isArray(res?.rows) ? res.rows : [];
+      const scopedIdSet = new Set(companyEmployees.map(e => String(e.id)));
+      const rel = isSuper ? rows : rows.filter(r => scopedIdSet.has(String(r.employeeId)));
+      const agg = rel.reduce((a, r) => ({
+        workingDays: a.workingDays + Math.max(0, (Number(r.daysInMonth) || 0) - (Number(r.weeklyOff) || 0) - (Number(r.holiday) || 0)),
+        present: a.present + (Number(r.present) || 0),
+        payableDays: a.payableDays + (Number(r.payableDays) || 0),
+        lop: a.lop + (Number(r.lopDays) || 0),
+      }), { workingDays: 0, present: 0, payableDays: 0, lop: 0 });
+
+      const failures = Array.isArray(res?.failures) ? res.failures : [];
+      const processed = Number(res?.processed) || rel.length;
+      const failed = Number(res?.failed) || failures.length;
+      const synced = (typeof res?.synced === 'number') ? res.synced : Math.max(0, processed - failed);
+
+      setSyncResult({ processed, synced, failed, failures, ...agg });
+
+      // Step 8 (status) — persist the synchronized marker (drives the green badge +
+      // the Generate-Payroll gate). Editing attendance later flags payroll rows
+      // `isOutdated` → the badge auto-resets and the button re-enables (DB-driven).
+      const info = { at: new Date().toISOString(), by: role, employees: synced, records: Math.round(agg.present + agg.lop) };
+      setAttRecalc(info);
+      try { localStorage.setItem(attRecalcKey(activeCompanyId, monthFilter), JSON.stringify(info)); } catch { /* non-fatal */ }
+      saveAuditLog('attendance-sync', `${roleAudit} (${role}) synchronized attendance → payroll for ${monthFilter} 2026 — ${synced}/${processed} employee(s) synced, ${failed} failed.`);
+    } catch (e: any) {
+      clearInterval(timer);
+      console.error('Attendance synchronization failed:', e);
+      setSyncError(getApiErrorMessage(e, 'Failed to synchronize attendance.'));
+    } finally {
+      setSyncBusy(false);
     }
   };
 
@@ -725,7 +881,8 @@ export const Payroll: React.FC<PayrollProps> = ({
   const roleAudit = role === 'Super Admin' ? 'Super Admin' : role === 'Company Head' ? 'Company Admin' : 'Branch HR';
 
   const handleMarkPaid = async (ids: string[]) => {
-    if (!ids.length) { ui.toast.warning('No employees selected.'); return; }
+    ids = ids.filter(id => !isPendingPayrollId(id));
+    if (!ids.length) { ui.toast.warning('No generated payroll selected. Generate payroll first.'); return; }
     if (!(await ui.confirm({ message: `Mark ${ids.length} employee salar${ids.length === 1 ? 'y' : 'ies'} as Paid?` }))) return;
     try {
       await api.payroll.markPaid(ids);
@@ -742,7 +899,8 @@ export const Payroll: React.FC<PayrollProps> = ({
 
   // Generate slips for the given records: stamp generatedAt + filename, bundle PDFs.
   const handleGenerateSlips = async (recs: PayrollRecord[]) => {
-    if (!recs.length) { ui.toast.warning('No employees selected. Generate payroll first.'); return; }
+    recs = recs.filter(r => !(r as any).__pending && !isPendingPayrollId(r.id));
+    if (!recs.length) { ui.toast.warning('No generated payroll selected. Generate payroll first.'); return; }
     try {
       await Promise.all(recs.map(r => {
         const emp = getFullEmployee(r.employeeId);
@@ -762,6 +920,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   const handleGenerateSlipsAll = () => handleGenerateSlips(scopedRecords);
 
   const handleEmailAll = async (records: PayrollRecord[]) => {
+    records = records.filter(r => !(r as any).__pending && !isPendingPayrollId(r.id));
     if (!records.length) { ui.toast.warning('No salary slips to email.'); return; }
     if (!(await ui.confirm({ message: `Email salary slips to ${records.length} employee(s)?` }))) return;
     let sent = 0, failed = 0;
@@ -786,13 +945,18 @@ export const Payroll: React.FC<PayrollProps> = ({
     // present/CL/PL/SL/LWP/OT and the recomputed payable days.
     const s = dbSummaryByEmp[String(emp?.id)];
     if (s) {
+      const totalDays = (Number(s.workingDays) || 0) + (Number(s.weeklyOffDays) || 0) + (Number(s.holidayDays) || 0);
       return {
-        totalDays: 30, workingDays: 26,
+        // Working days / weekly-off / holiday now come from the synchronized
+        // AttendanceSummary snapshot (single source of truth) — no longer hardcoded.
+        totalDays: totalDays || 30,
+        workingDays: Number(s.workingDays) || 0,
         present: s.presentDays, absent: s.absentDays,
         leave: (s.cl || 0) + (s.pl || 0) + (s.sl || 0),
-        cl: s.cl, pl: s.pl, sl: s.sl, lwp: s.lwp,
-        weeklyOff: 0, holiday: 0,
+        cl: s.cl, pl: s.pl, sl: s.sl, lwp: s.lwp, halfDays: s.halfDays || 0,
+        weeklyOff: Number(s.weeklyOffDays) || 0, holiday: Number(s.holidayDays) || 0,
         lop: s.lwp, overtimeHours: s.otHours, payableDays: s.payableDays,
+        attendanceSource: s.attendanceSource || 'Attendance module',
       };
     }
     // Fallback: derive from raw daily attendance rows.
@@ -855,41 +1019,32 @@ export const Payroll: React.FC<PayrollProps> = ({
         return;
       }
 
-      // Enterprise Local Automation Engine Trigger (attendance + leave + OT aware)
-      const generatedRecords = generateAutomatedPayroll(
-        currentCompany,
-        targetEmployees,
-        attendance,
-        leaves,
-        currentMonth,
-        currentYear
-      );
-
-      // Save generated records to the database
-      const dbSavedRecords = await Promise.all(
-         generatedRecords.map(async (record) => {
-            // Generated payroll enters PENDING APPROVAL (salary computed from
-            // attendance/leave/OT) — awaiting "Approve", then a separate "Mark Paid".
-            const cleanRecord = { ...record, payrollStatus: 'pending_approval', status: 'pending_approval', paymentStatus: 'pending', id: undefined };
-            return await api.payroll.create(cleanRecord);
-         })
-      );
+      // ── SINGLE PAYROLL ENGINE ──────────────────────────────────────────────
+      // Generation goes through the ONE backend engine (recalcOne), which prorates
+      // salary from the synchronized AttendanceSummary (gross = dailyRate ×
+      // payableDays). The old client-side automation engine is retired — it was a
+      // divergent second formula (it even divided salary by 12) and could write the
+      // full monthly salary regardless of attendance. One engine, one result.
+      const genEmployeeIds = targetEmployees.map(e => Number(e.id)).filter(Boolean);
+      const genRes: any = await api.payroll.generate({
+        companyId: activeCompanyId,
+        month: currentMonth,
+        year: currentYear,
+        role,
+        employeeIds: genEmployeeIds,
+      });
+      const generatedCount = genRes?.count ?? genEmployeeIds.length;
 
       // Re-fetch the authoritative payroll list from the DATABASE (the single source
       // of truth) so the dashboard count always equals the UNIQUE employees for the
-      // month and never inflates on re-generation. Fall back to a per-employee merge
-      // (deduped by employeeId, ignoring companyId) only if the refetch fails.
+      // month and never inflates on re-generation.
       try {
         const fresh = await api.payroll.getAll();
         onUpdatePayroll(fresh);
-      } catch {
-        const genEmpIds = new Set(dbSavedRecords.map((r: any) => String(r.employeeId)));
-        const filteredPayroll = payroll.filter(p => !(p.month === currentMonth && p.year === currentYear && genEmpIds.has(String(p.employeeId))));
-        onUpdatePayroll([...filteredPayroll, ...dbSavedRecords]);
-      }
+      } catch { /* keep current list; backend already persisted the rows */ }
 
-      saveAuditLog('bulk', `${roleAudit} generated payroll for ${dbSavedRecords.length} employee(s) — ${currentMonth} ${currentYear}.`);
-      await ui.alert({ title: 'Enterprise Payroll Generated', message: `${dbSavedRecords.length} employee(s) processed for ${currentMonth} ${currentYear}. Attendance, Unpaid Leaves, and Overtime were applied. Records are saved to the database (existing records updated — no duplicates).`, variant: 'success' });
+      saveAuditLog('bulk', `${roleAudit} generated payroll for ${generatedCount} employee(s) — ${currentMonth} ${currentYear}.`);
+      await ui.alert({ title: 'Enterprise Payroll Generated', message: `${generatedCount} employee(s) processed for ${currentMonth} ${currentYear}. Salary was prorated from synchronized attendance (payable days), with Unpaid Leaves and approved Overtime applied. Records are saved to the database (existing records updated — no duplicates).`, variant: 'success' });
       setShowPayrollModal(false);
       setGenSelectedIds(new Set());
 
@@ -1097,32 +1252,40 @@ export const Payroll: React.FC<PayrollProps> = ({
     );
   }
 
+  // ── Salary Worksheet — dedicated FULL PAGE (replaces the old modal popup) ──
+  // When a worksheet is open, it becomes the center content of the app shell
+  // (sidebar + top nav stay). Returning here keeps Payroll mounted, so the month
+  // selection is retained in state; the workbench's filters/search/pagination are
+  // restored from sessionStorage when the list re-renders on Back.
+  if (worksheetRecord) {
+    // Draft mode when the selected row is a roster placeholder (no generated
+    // payroll yet): pass that employee's profile + recalculated attendance so the
+    // worksheet opens a Draft preview for THAT employee — never another's data.
+    const wsPending = !!(worksheetRecord as any).__pending;
+    const wsEmpId = String((worksheetRecord as any).employeeId);
+    return (
+      <PayrollWorksheet
+        payrollId={worksheetRecord.id ?? null}
+        record={worksheetRecord}
+        canEdit={canEdit}
+        onBack={() => setWorksheetRecord(null)}
+        onSaved={async () => { try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ } }}
+        onRecalculate={(r) => handleRecalculate([r.id])}
+        onApprove={canEdit ? (r) => handleApprovePayroll([r.id]) : undefined}
+        onGenerateSlip={canCreate ? (r) => handleGenerateSlips([r]) : undefined}
+        onMarkPaid={canEdit ? (r) => handleMarkPaid([r.id]) : undefined}
+        onPrint={handlePrintPayslip}
+        onDownloadPdf={(r) => handleDownloadPayslip(r, 'pdf')}
+        draftEmployee={wsPending ? getFullEmployee(wsEmpId) : undefined}
+        draftAttendance={wsPending ? dbSummaryByEmp[wsEmpId] : undefined}
+        onGenerateDraft={wsPending && canCreate ? async (r) => { await handleGeneratePayroll([String(r.employeeId)]); setWorksheetRecord(null); } : undefined}
+        onAssignSalary={() => { if (onNavigate) onNavigate('employees' as any); else ui.toast.info('Assign this employee\'s monthly salary in Employees → Edit Employee.'); }}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5 font-sans">
-
-      {/* ── Bonus & Wages — shared navigation grouping only (Bonus & Wage logic stay separate) ── */}
-      <div className="bg-white rounded-2xl border border-brand-100 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-2.5">
-          <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale size={15} className="text-brand-600" /> Bonus &amp; Wages</h3>
-          <span className="text-[10px] text-slate-400">Quick access · Bonus and Wage logic remain separate</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-          {[
-            { label: 'Bonus Management', icon: <Gift size={15} />, onClick: () => { if (canEdit) setShowBonusModal(true); } },
-            { label: 'Wages Management', icon: <Wallet size={15} />, onClick: () => onNavigate?.('reports') },
-            { label: 'Wage Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
-            { label: 'Overtime Register', icon: <Clock size={15} />, onClick: () => onNavigate?.('reports') },
-            { label: 'Advance Register', icon: <FileText size={15} />, onClick: () => onNavigate?.('reports') },
-            { label: 'Minimum Wage Compliance', icon: <ShieldCheck size={15} />, onClick: () => onNavigate?.('settings') },
-            { label: 'Wage Reports', icon: <BarChart3 size={15} />, onClick: () => onNavigate?.('reports') },
-          ].map(it => (
-            <button key={it.label} onClick={it.onClick} className="flex flex-col items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-brand-50 hover:border-brand-200 px-2 py-3 text-center transition-colors">
-              <span className="text-brand-600">{it.icon}</span>
-              <span className="text-[10px] font-semibold text-slate-700 leading-tight">{it.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
@@ -1155,7 +1318,7 @@ export const Payroll: React.FC<PayrollProps> = ({
 
       {/* ── Simple 6-step payroll workflow + slip management (live data) ── */}
       <PayrollWorkbench
-        records={scopedRecords}
+        records={rosterRecords}
         company={currentCompany}
         getEmployee={getFullEmployee}
         monthLabel={`${monthFilter} 2026`}
@@ -1183,6 +1346,10 @@ export const Payroll: React.FC<PayrollProps> = ({
         onLock={handleLockPayroll}
         onUnlock={handleUnlockPayroll}
         onRecalculate={handleRecalculate}
+        onSynchronizeAttendance={handleSynchronizeAttendance}
+        attendanceRecalc={attRecalc}
+        attendanceRecalcBusy={syncBusy}
+        canRecalcAttendance={canRecalcAttendance}
       />
 
       {/* ── Apply Bonus inside payroll (selected / department / company) ── */}
@@ -1196,14 +1363,19 @@ export const Payroll: React.FC<PayrollProps> = ({
         onApplied={refreshPayroll}
       />
 
-      {/* ── Salary Worksheet (spreadsheet-style earnings/deductions editor) ── */}
-      <PayrollWorksheet
-        open={!!worksheetRecord}
-        payrollId={worksheetRecord?.id ?? null}
-        canEdit={canEdit}
-        onClose={() => setWorksheetRecord(null)}
-        onSaved={async () => { try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep current */ } }}
+      {/* ── Synchronize Attendance → Payroll: progress + summary ── */}
+      <SyncAttendanceModal
+        open={syncOpen}
+        phase={syncPhase}
+        result={syncResult}
+        error={syncError}
+        monthLabel={`${monthFilter} 2026`}
+        onClose={() => { if (!syncBusy) setSyncOpen(false); }}
+        onViewDetailedReport={onNavigate ? () => { setSyncOpen(false); onNavigate('attendance-sync'); } : undefined}
       />
+
+      {/* The Salary Worksheet now opens as a dedicated FULL PAGE (see the early
+          return above) instead of a modal — no popup, natural page scrolling. */}
 
       <Modal
         open={!!auditRecord}

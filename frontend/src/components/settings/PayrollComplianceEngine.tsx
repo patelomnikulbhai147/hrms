@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
-import { ShieldCheck, FileText, Database, Plus, Trash2, Save, Download, Upload, Activity, Layers, PenTool, BarChart3, GripVertical, CheckCircle2, History } from 'lucide-react';
+import { ShieldCheck, FileText, Database, Plus, Trash2, Save, Download, Upload, Activity, Layers, PenTool, BarChart3, GripVertical, CheckCircle2, History, CalendarClock } from 'lucide-react';
 import { type Company } from '@/data/mockData';
 import { ui } from '@/components/ui/feedback';
 import { EsicSettings, PtSettings, LwfSettings, OvertimeSettings } from '@/components/settings/statutory/StatutoryConfig';
 import { PayrollComponentBuilder } from '@/components/settings/PayrollComponentBuilder';
+import { FormulaBuilder } from '@/components/settings/FormulaBuilder';
+import { PayrollSettings } from '@/components/settings/PayrollSettings';
 
 interface PayrollComplianceEngineProps {
   currentCompany: Company;
@@ -152,15 +154,18 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
     setEngineState((prev: any) => ({ ...prev, auditLogs: [log, ...prev.auditLogs] }));
   };
 
-  const addFormula = async () => {
-    const target = await ui.prompt({ message: "Enter Target Field (e.g. Special Allowance):" });
-    if (!target) return;
-    const expression = await ui.prompt({ message: "Enter Formula Expression (e.g. CTC - Basic - HRA):" });
-    if (!expression) return;
-    
-    const nextFormulas = [...engineState.formulas, { id: `f${Date.now()}`, target, expression }];
-    setEngineState({ ...engineState, formulas: nextFormulas });
-    logAudit(`Defined new formula for: ${target}`, 'Formula Builder');
+  // Persist a formula-list change from the redesigned Formula Builder: update the
+  // engine snapshot, append an audit entry, and write the existing localStorage
+  // store — all in one atomic state update. No payroll/API/schema change.
+  const commitFormulas = (next: any[], auditAction?: string) => {
+    setEngineState((prev: any) => {
+      const logs = auditAction
+        ? [{ user: performedBy || 'Company Head', role: 'Payroll Administrator', action: auditAction, module: 'Formula Builder', ip: '—', time: new Date().toLocaleString() }]
+        : [];
+      const nextState = { ...prev, formulas: next, auditLogs: [...logs, ...(prev.auditLogs || [])] };
+      try { localStorage.setItem(`hrms_compliance_${currentCompany.id}`, JSON.stringify(nextState)); } catch { /* storage optional */ }
+      return nextState;
+    });
   };
 
   const exportSettings = () => {
@@ -178,13 +183,14 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
     { id: 'customComponents', label: '1. Component Builder', icon: Layers },
     { id: 'formulas', label: '2. Formula Builder', icon: PenTool },
     { id: 'templateDesigner', label: '3. Salary Slip Designer', icon: FileText },
-    { id: 'reports', label: '4. Compliance Reports', icon: BarChart3 },
-    { id: 'pf', label: '5. PF Settings', icon: ShieldCheck },
-    { id: 'esic', label: '6. ESIC Settings', icon: ShieldCheck },
-    { id: 'pt', label: '7. Professional Tax', icon: ShieldCheck },
-    { id: 'lwf', label: '8. Labour Welfare Fund', icon: ShieldCheck },
-    { id: 'overtime', label: '9. Overtime Settings', icon: Activity },
-    { id: 'audit', label: '10. Advanced Audit Logs', icon: History },
+    { id: 'payrollCycle', label: '4. Payroll Cycle & Leave Policy', icon: CalendarClock },
+    { id: 'reports', label: '5. Compliance Reports', icon: BarChart3 },
+    { id: 'pf', label: '6. PF Settings', icon: ShieldCheck },
+    { id: 'esic', label: '7. ESIC Settings', icon: ShieldCheck },
+    { id: 'pt', label: '8. Professional Tax', icon: ShieldCheck },
+    { id: 'lwf', label: '9. Labour Welfare Fund', icon: ShieldCheck },
+    { id: 'overtime', label: '10. Overtime Settings', icon: Activity },
+    { id: 'audit', label: '11. Advanced Audit Logs', icon: History },
   ];
 
   return (
@@ -212,21 +218,21 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
         {/* Sidebar Nav */}
         <div className="w-full md:w-64 border-r border-slate-200 bg-white flex flex-col p-2 gap-1 overflow-y-auto max-h-[650px] shadow-sm z-10">
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-2 mb-1">Core Architecture</div>
-          {sections.slice(0, 4).map(s => (
+          {sections.slice(0, 5).map(s => (
             <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2.5 text-xs font-semibold rounded-lg transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 border border-brand-100 shadow-sm' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
               <s.icon size={15} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
           ))}
           
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-1">Statutory Compliance</div>
-          {sections.slice(4, 9).map(s => (
+          {sections.slice(5, 10).map(s => (
             <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 shadow-sm border border-brand-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
               <s.icon size={14} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
           ))}
 
           <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mt-4 mb-1">System Administration</div>
-          {sections.slice(9).map(s => (
+          {sections.slice(10).map(s => (
             <button key={s.id} onClick={() => setActiveSection(s.id)} className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-md transition-all text-left ${activeSection === s.id ? 'bg-brand-50 text-brand-700 shadow-sm border border-brand-100' : 'text-slate-600 hover:bg-slate-50 border border-transparent'}`}>
               <s.icon size={14} className={activeSection === s.id ? "text-brand-600" : "text-slate-400"} /> {s.label}
             </button>
@@ -241,36 +247,27 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
             <PayrollComponentBuilder isSuperOrHead={isSuperOrHead} performedBy={performedBy} />
           )}
 
-          {/* Section 2: Formula Builder */}
+          {/* Section 2: Formula Builder — professional editable cards with live
+              validation, preview, version history & rollback (see FormulaBuilder). */}
           {activeSection === 'formulas' && (
-            <div className="space-y-4 animate-in fade-in duration-300">
-              <div className="flex justify-between items-end border-b border-slate-200 pb-3">
-                <div>
-                  <h4 className="font-bold text-slate-800 text-lg">Mathematical Formula Builder</h4>
-                  <p className="text-xs text-slate-500 mt-1">Define complex rules for salary computation. E.g. ESIC = Gross * 0.75%</p>
-                </div>
-                {isSuperOrHead && <Button size="sm" onClick={addFormula} className="flex items-center gap-1 bg-slate-900 text-white"><Plus size={14}/> Define Formula</Button>}
-              </div>
+            <FormulaBuilder
+              formulas={engineState.formulas || []}
+              canEdit={isSuperOrHead}
+              performedBy={performedBy}
+              onCommit={commitFormulas}
+            />
+          )}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                {engineState.formulas.map((f: any, idx: number) => (
-                  <div key={f.id} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm relative group">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Target Field</span>
-                      <button className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => {
-                         const next = [...engineState.formulas];
-                         next.splice(idx, 1);
-                         setEngineState({...engineState, formulas: next});
-                      }}><Trash2 size={14}/></button>
-                    </div>
-                    <div className="font-bold text-lg text-slate-800 mb-3">{f.target}</div>
-                    <div className="bg-slate-900 rounded-lg p-3 text-emerald-400 font-mono text-sm shadow-inner overflow-x-auto whitespace-nowrap">
-                      = {f.expression}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* Section 4: Payroll Cycle & Leave Policy — moved out of the Settings
+              bottom accordion into this nav (loads here in the content panel).
+              Company Head edits; HR / others read-only. Configuration only — no
+              payroll/leave/attendance calculation, API or schema change. */}
+          {activeSection === 'payrollCycle' && (
+            <PayrollSettings
+              companyId={String((currentCompany as any).parentCompanyId || currentCompany.id)}
+              canEdit={performedBy === 'Company Head' && isSuperOrHead}
+              performedBy={performedBy}
+            />
           )}
 
           {/* Section 3: Template Designer */}

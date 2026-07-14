@@ -37,9 +37,9 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
   return (
     <div className="space-y-4 animate-fade-in">
-      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#6C3CF0]" /> Compliance Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#C77E52]" /> Compliance Management</h2>
           <p className="text-[11px] text-slate-400">Statutory filing calendar, due-date tracking &amp; challans — PF · ESI · PT · TDS · GST · LWF — {activeCompany?.name || 'your company'}.</p>
         </div>
         {canEdit && <Button size="sm" variant="outline" icon={<Bell size={14} />} onClick={async () => { try { const r = await api.compliance.runReminders(); ui.toast.success(`Reminders sent: ${r.sent} of ${r.checked} filing(s) due.`); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }}>Send Reminders</Button>}
@@ -66,7 +66,7 @@ export const CompliancePage: React.FC<Props> = ({ role = '', activeCompanyId, co
 
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#FCF4EE] text-[#C77E52]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -102,7 +102,7 @@ export const DashboardTab: React.FC<{ onGoto: (t: TabId) => void }> = ({ onGoto 
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Statutory Categories (pending)</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {CATEGORIES.filter((c) => cats[c]).map((c) => (
-            <button key={c} onClick={() => onGoto('filings')} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-left hover:border-[#6C3CF0] transition">
+            <button key={c} onClick={() => onGoto('filings')} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-left hover:border-[#C77E52] transition">
               <p className="text-[10px] font-bold uppercase text-slate-400">{c}</p>
               <p className="text-lg font-extrabold text-slate-800">{cats[c].pending}</p>
               <p className="text-[10px] text-slate-500">{inr(cats[c].amount)}</p>

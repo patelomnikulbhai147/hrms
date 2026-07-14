@@ -193,8 +193,14 @@ export interface Employee {
     hrApproved?: boolean;
     completedOn?: string;
     workflowStatus?: 'INITIATED' | 'DOCUMENT_PENDING' | 'PAYROLL_PENDING' | 'ACCESS_REVOCATION_PENDING' | 'HR_APPROVAL_PENDING' | 'COMPLETED' | 'ARCHIVED';
+    // Final HR Approval — structured exit reason + clearance checklist + remarks.
+    exitReasonCode?: string;
+    exitReasonLabel?: string;
+    exitReasonOther?: string;
+    exitChecklist?: Record<string, boolean>;
+    hrRemarks?: string;
   };
-  
+
   employmentHistory?: {
     companyId: string;
     companyName: string;

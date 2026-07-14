@@ -454,7 +454,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[11px] font-bold text-slate-500">Template</span>
-          <select value={tplId} onChange={e => onTemplateChange(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none">
+          <select value={tplId} onChange={e => onTemplateChange(e.target.value)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#C77E52] focus:outline-none">
             <option value="">{templates[0]?.title || 'Default template'}</option>
             {templates.map(t => <option key={t.id} value={String(t.id)}>{t.title}</option>)}
           </select>
@@ -668,7 +668,7 @@ export const CommunicationEventModule: React.FC<{ config: EventConfig; branding:
 };
 
 // Filter field wrapper + shared input class.
-const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none';
+const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#C77E52] focus:outline-none';
 const Filter: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>{children}</div>
 );

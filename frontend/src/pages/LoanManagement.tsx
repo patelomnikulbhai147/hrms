@@ -63,9 +63,9 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><HandCoins size={16} className="text-[#6C3CF0]" /> Employee Loan Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><HandCoins size={16} className="text-[#C77E52]" /> Employee Loan Management</h2>
           <p className="text-[11px] text-slate-400">Loans &amp; advances, EMI schedules, approvals and automatic payroll deduction — {activeCompany?.name || 'your company'}.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -85,7 +85,7 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === t.id ? 'border-[#C77E52] text-[#C77E52]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {t.label}
             </button>
           );
@@ -109,7 +109,7 @@ export const LoanManagement: React.FC<Props> = ({ role = '', activeCompanyId, co
 // ── KPI card ────────────────────────────────────────────────────────────────
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#FCF4EE] text-[#C77E52]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -139,8 +139,8 @@ const ActivityCard: React.FC<{ icon: React.ReactNode; title: string; empty?: str
   </Card>
 );
 const QuickAction: React.FC<{ icon: React.ReactNode; label: string; onClick: () => void }> = ({ icon, label, onClick }) => (
-  <button onClick={onClick} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#6C3CF0] hover:shadow-sm">
-    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#F3F0FF] text-[#6C3CF0] transition group-hover:bg-[#6C3CF0] group-hover:text-white">{icon}</span>
+  <button onClick={onClick} className="group flex flex-col items-start gap-2 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-[#C77E52] hover:shadow-sm">
+    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FCF4EE] text-[#C77E52] transition group-hover:bg-[#C77E52] group-hover:text-white">{icon}</span>
     <span className="text-xs font-bold text-slate-700">{label}</span>
   </button>
 );
@@ -388,7 +388,7 @@ export const NewLoanTab: React.FC<{ canEdit: boolean; companyId?: string; editId
             <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
               <p className="text-xs font-bold text-amber-700 flex items-center gap-1.5"><AlertTriangle size={13} /> No loan types available</p>
               <p className="text-[11px] text-amber-600 mt-0.5">Configure at least one active loan type before creating a loan.</p>
-              {onManageTypes && <button type="button" onClick={onManageTypes} className="mt-1.5 text-[11px] font-bold text-[#6C3CF0] hover:underline">Go to Loan Type Settings →</button>}
+              {onManageTypes && <button type="button" onClick={onManageTypes} className="mt-1.5 text-[11px] font-bold text-[#C77E52] hover:underline">Go to Loan Type Settings →</button>}
             </div>
           ) : (
             <Select label="Loan Type" value={form.loanTypeId} onChange={(e) => onType(e.target.value)}
@@ -477,13 +477,13 @@ export const LoansTab: React.FC<{
     if (action === 'close') { const ok = await ui.confirm({ message: 'Force-close this loan? Remaining EMIs will stop deducting.', variant: 'danger', confirmText: 'Close' }); if (!ok) return; }
     try { await api.loans.setStatus(id, action, extra); ui.toast.success('Loan updated.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
-  const del = async (id: number) => { if (!(await ui.confirm({ message: 'Delete this loan? This can only be done for Draft/Rejected loans.', variant: 'danger', confirmText: 'Delete' }))) return; try { await api.loans.remove(id); ui.toast.success('Loan deleted.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
+  const del = async (id: number) => { if (!(await ui.confirm({ title: 'Delete this draft loan?', message: 'This action cannot be undone.', variant: 'danger', confirmText: 'Delete Draft' }))) return; try { await api.loans.remove(id); ui.toast.success('Draft loan deleted.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
   const dup = async (id: number) => { try { await api.loans.duplicate(id); ui.toast.success('Draft copy created.'); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or loan #…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none" /></div>
+        <div className="relative flex-1 min-w-[180px]"><Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or loan #…" className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#C77E52] outline-none" /></div>
         {!lockStatus && (
           <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
             <option value="">All statuses</option>
@@ -518,7 +518,8 @@ export const LoansTab: React.FC<{
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Reject" onClick={() => act(l.id, 'reject')}><XCircle size={14} className="text-rose-600" /></IconBtn>}
                         {(canApprove || canEdit) && l.status === 'Approved' && <IconBtn title="Disburse" onClick={() => act(l.id, 'disburse')}><Banknote size={14} className="text-emerald-600" /></IconBtn>}
                         {canManage && ['Approved', 'Disbursed', 'Running'].includes(l.status) && <IconBtn title="Close" onClick={() => act(l.id, 'close')}><Ban size={14} className="text-slate-500" /></IconBtn>}
-                        {canManage && ['Draft', 'Rejected'].includes(l.status) && <IconBtn title="Delete" onClick={() => del(l.id)}><Trash2 size={14} className="text-rose-600" /></IconBtn>}
+                        {canManage && l.status === 'Draft' && <IconBtn title="Delete draft" onClick={() => del(l.id)}><Trash2 size={14} className="text-rose-600" /></IconBtn>}
+                        {canManage && DELETE_BLOCKED_TIP[l.status] && <IconBtn title={DELETE_BLOCKED_TIP[l.status]} disabled><Trash2 size={14} className="text-slate-300" /></IconBtn>}
                       </div>
                     </td>
                   </tr>
@@ -529,9 +530,19 @@ export const LoansTab: React.FC<{
     </div>
   );
 };
-const IconBtn: React.FC<{ title: string; onClick: () => void; children: React.ReactNode }> = ({ title, onClick, children }) => (
-  <button title={title} onClick={onClick} className="p-1.5 rounded-lg hover:bg-slate-100 transition">{children}</button>
+const IconBtn: React.FC<{ title: string; onClick?: () => void; children: React.ReactNode; disabled?: boolean }> = ({ title, onClick, children, disabled }) => (
+  <button title={title} onClick={disabled ? undefined : onClick} disabled={disabled} aria-disabled={disabled}
+    className={`p-1.5 rounded-lg transition ${disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-slate-100'}`}>{children}</button>
 );
+
+// Loans that are NOT deletable — only a Draft can be removed; every other status
+// is a permanent company record. Maps status → the reason shown as a tooltip on a
+// disabled delete icon (mirrors the backend 403 guard in loanController.remove).
+const DELETE_BLOCKED_TIP: Record<string, string> = {
+  'Pending Approval': 'Pending approval records cannot be deleted.',
+  Approved: 'Approved loan records are permanent company records.',
+  Rejected: 'Rejected loan records are retained for audit purposes.',
+};
 
 // ── Loan Types ────────────────────────────────────────────────────────────────
 export const TypesTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {

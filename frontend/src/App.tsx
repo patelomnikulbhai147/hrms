@@ -5,11 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const NotificationsPage = React.lazy(() => import('@/pages/Notifications').then(m => ({ default: m.Notifications })));
 const SelectWorkspace = React.lazy(() => import('@/pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
 const Employees = React.lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })));
 const LeaveManagement = React.lazy(() => import('@/pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
 const Attendance = React.lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })));
 const AttendanceApiIntegration = React.lazy(() => import('@/pages/AttendanceApiIntegration').then(m => ({ default: m.AttendanceApiIntegration })));
+const AttendanceSync = React.lazy(() => import('@/pages/AttendanceSync').then(m => ({ default: m.AttendanceSync })));
 const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default: m.Payroll })));
 const InvoiceManagement = React.lazy(() => import('@/pages/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
 const LoanManagement = React.lazy(() => import('@/pages/LoanManagement').then(m => ({ default: m.LoanManagement })));
@@ -73,6 +75,7 @@ const pageTitles: Record<PageId, string> = {
   bonus: 'Bonus Management',
   attendance: 'Attendance',
   'attendance-integration': 'Attendance API Integration',
+  'attendance-sync': 'Attendance Synchronization',
   documents: 'Documents',
   reports: 'Reports',
   settings: 'Settings',
@@ -83,6 +86,7 @@ const pageTitles: Record<PageId, string> = {
   contracts: 'Contract Management',
   'company-profile': 'Company Profile',
   communication: 'Communication Center',
+  notifications: 'Notifications',
   'select-workspace': 'Select Workspace'
 };
 
@@ -90,8 +94,8 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
-  'attendance-integration', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'company-profile', 'communication', 'select-workspace',
+  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'company-profile', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -1058,8 +1062,12 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     if (permissionRole !== 'Super Admin') {
       const permCurrent = (currentPage === 'employee-cards' ? 'employees'
         : currentPage === 'attendance-integration' ? 'attendance'
+        : currentPage === 'attendance-sync' ? 'payroll'
         : currentPage === 'bonus' ? 'payroll'
         : currentPage === 'invoice-management' ? 'invoicing'
+        // Notifications is a cross-cutting page reached from the Dashboard / bell;
+        // it rides on the Dashboard permission (anyone who can see the dashboard).
+        : currentPage === 'notifications' ? 'dashboard'
         // Finance & Compliance aggregates loans + compliance: allow if the user
         // can view EITHER (resolve to whichever key they actually hold).
         : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1106,8 +1114,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // dedicated permission-matrix row).
     const permPage = (currentPage === 'employee-cards' ? 'employees'
       : currentPage === 'attendance-integration' ? 'attendance'
+      : currentPage === 'attendance-sync' ? 'payroll'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage === 'invoice-management' ? 'invoicing'
+      // Notifications rides on the Dashboard permission (cross-cutting page).
+      : currentPage === 'notifications' ? 'dashboard'
       // Finance & Compliance aggregates loans + compliance: allow if the user
       // can view EITHER (resolve to whichever key they actually hold).
       : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1175,6 +1186,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onUpdateEmployees={handleUpdateEmployees}
             onUpdatePayroll={handleUpdatePayroll}
             superAdminStats={superAdminStats}
+          />
+        );
+      case 'notifications':
+        return (
+          <NotificationsPage
+            notifications={notifications}
+            onUpdateNotifications={handleUpdateNotifications}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            role={resolvedRole}
+            onNavigate={handleNavigate}
           />
         );
       case 'companies':
@@ -1317,6 +1339,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             leaves={leaves}
             onRefresh={hydrateAll}
+            onNavigate={(p) => setCurrentPage(p as PageId)}
           />
         );
       case 'attendance-integration':
@@ -1326,6 +1349,21 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             companies={companies}
             authProfile={authProfile}
+          />
+        );
+      case 'attendance-sync':
+        return (
+          <AttendanceSync
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            employees={activeEmployees}
+            attendance={attendance}
+            leaves={leaves}
+            payroll={payroll}
+            authProfile={authProfile}
+            onRefresh={hydrateAll}
+            onNavigate={(p) => setCurrentPage(p as PageId)}
           />
         );
       case 'bonus':

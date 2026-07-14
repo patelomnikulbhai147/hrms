@@ -206,10 +206,10 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
   return (
     <div className="space-y-4">
       {/* ── Period-based Top Actions (monthly batch workflow) ──────────────── */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#BFDBFE] bg-[#F3F0FF] p-3">
-        <span className="text-[11px] font-bold text-[#4C1FD4] uppercase tracking-wider mr-1">Monthly Batch:</span>
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#BFDBFE] bg-[#FCF4EE] p-3">
+        <span className="text-[11px] font-bold text-[#99552F] uppercase tracking-wider mr-1">Monthly Batch:</span>
         <TopBtn id="Generate All Payroll" label="Generate All Payroll" onClick={() => runTop('Generate All Payroll', onGenerateAll)}
-          tone="bg-[#2563EB] text-white border-[#2563EB] hover:bg-[#4C1FD4]" />
+          tone="bg-[#2563EB] text-white border-[#2563EB] hover:bg-[#99552F]" />
         <TopBtn id="Approve All" label="Approve All" onClick={approveAll}
           tone="bg-white text-brand-700 border-brand-200 hover:bg-brand-50" />
         <TopBtn id="Generate All Payslips" label="Generate All Payslips" onClick={() => runTop('Generate All Payslips', onGenerateAllPayslips)}
@@ -226,7 +226,7 @@ export const EnterprisePayrollBatch: React.FC<Props> = ({
       </div>
 
       {/* ── Payroll Month Header ───────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-[#E6E0FE] bg-gradient-to-r from-[#F3F0FF] to-white p-5">
+      <div className="rounded-2xl border border-[#F7E3D3] bg-gradient-to-r from-[#FCF4EE] to-white p-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <p className="text-[11px] font-bold text-[#2563EB] uppercase tracking-wider">Payroll Month</p>

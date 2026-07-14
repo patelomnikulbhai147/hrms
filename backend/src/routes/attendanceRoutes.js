@@ -10,6 +10,10 @@ router.use(require('../middleware/readOnlyMiddleware')); // offboarded company â
 router.get('/', requirePermission('attendance', 'view'), controller.getAll);
 router.get('/analytics', requirePermission('attendance', 'view'), controller.getAnalytics);
 router.post('/sync-payroll', requirePermission('attendance', 'edit'), controller.syncPayroll);
+// Push to Payroll Engine â€” transfer the finalized attendance calculation into the
+// Payroll module (creates payroll records from the snapshot; NO recalculation).
+// Gated on payroll edit since it writes payroll records.
+router.post('/push-to-payroll', requirePermission('payroll', 'edit'), controller.pushToPayroll);
 router.post('/', requirePermission('attendance', 'create'), controller.create);
 router.put('/:id', requirePermission('attendance', 'edit'), controller.update);
 router.delete('/:id', requirePermission('attendance', 'delete'), controller.delete);

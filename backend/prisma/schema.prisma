@@ -884,6 +884,16 @@ model Payroll {
   halfDays         Float     @default(0)
   otHours          Float     @default(0)
   payableDays      Float     @default(0)
+  // Full attendance snapshot mirrored from the AttendanceSummary at sync time, so
+  // the payslip / salary register / reports can show the exact synced figures
+  // (working/weekly-off/holiday) WITHOUT re-deriving attendance in payroll.
+  workingDays      Float     @default(0)
+  weeklyOffDays    Float     @default(0)
+  holidayDays      Float     @default(0)
+  // Set when attendance was written to payroll via Attendance Synchronization.
+  // Null → this month has NOT been synchronized (salary actions stay blocked).
+  attendanceSyncedAt DateTime?
+  attendanceSource String?
   isOutdated       Boolean   @default(false)
   summarySyncedAt  DateTime?
   processedOn      String?
@@ -1109,6 +1119,16 @@ model AttendanceSummary {
   otHours     Float    @default(0)
   shift       String?
   payableDays Float    @default(0)
+  // Attendance snapshot fields — the single source of truth the Payroll engine
+  // reads. workingDays = daysInMonth − weeklyOff − holiday (payroll's proration
+  // denominator). weeklyOff/holiday are kept explicit so the Salary Worksheet and
+  // Salary Slip can show them and match the Attendance Synchronization page exactly.
+  workingDays      Float   @default(0)
+  weeklyOffDays    Float   @default(0)
+  holidayDays      Float   @default(0)
+  attendanceStatus String? // Complete | Partial | Missing (recorded days vs working days)
+  attendanceSource String? // e.g. Biometric / Manual / System Computed
+  syncedAt         DateTime? // set on "Confirm & Write to Payroll"
   locked      Boolean  @default(false)
   updatedBy   String?
   createdAt   DateTime @default(now())

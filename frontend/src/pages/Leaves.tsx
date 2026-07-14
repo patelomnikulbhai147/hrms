@@ -27,6 +27,9 @@ import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
+import { useLeavePolicy } from '@/hooks/useLeavePolicy';
+import { LEAVE_FIELDS } from '@/utils/payrollSettings';
+import { buildLeaveWallet, walletTotalRemaining, walletTotalUsed, WALLET_TONE, walletPalette } from '@/utils/leaveWallet';
 
 const LEAVE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Employee', key: 'employeeName', width: 24 },
@@ -52,6 +55,7 @@ interface LeavesProps {
 const leaveTypes: LeaveType[] = ['Annual', 'Sick', 'Casual', 'Maternity', 'Paternity', 'Unpaid'];
 const leaveStatuses: LeaveStatus[] = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
+
 export const Leaves: React.FC<LeavesProps> = ({
   role,
   activeCompanyId,
@@ -61,6 +65,15 @@ export const Leaves: React.FC<LeavesProps> = ({
   companies = [],
   authProfile
 }) => {
+  // ── Leave policy = single source of truth (Settings → Payroll Cycle & Leave
+  // Policy). Resolve a branch to its parent company so both share one policy,
+  // then read it live via the shared hook (auto-refreshes when Settings saves).
+  const policyCompanyId = useMemo(() => {
+    const c = companies.find((x: any) => String(x.id) === String(activeCompanyId));
+    return String((c as any)?.parentCompanyId || activeCompanyId);
+  }, [companies, activeCompanyId]);
+  const { policy: leavePolicy, totalPool: totalAbsencePool } = useLeavePolicy(policyCompanyId);
+
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -115,11 +128,14 @@ export const Leaves: React.FC<LeavesProps> = ({
 
   const todayStr = '2026-05-20'; // Standard system anchor date
 
-  // Dynamic Allowed Leaves limits
-  const ALLOWED_SICK = 8;
-  const ALLOWED_CASUAL = 6;
-  const ALLOWED_ANNUAL = 4;
+  // Allowed leave caps come LIVE from the company Leave Policy (single source of
+  // truth — Settings → Payroll Cycle & Leave Policy). NEVER hardcoded: updating
+  // the policy refreshes these instantly via useLeavePolicy (no manual reload).
+  const ALLOWED_SICK = leavePolicy.sick;
+  const ALLOWED_CASUAL = leavePolicy.casual;
+  const ALLOWED_ANNUAL = leavePolicy.annual;
   const TOTAL_ALLOWED = ALLOWED_SICK + ALLOWED_CASUAL + ALLOWED_ANNUAL;
+  const hasLeavePolicy = TOTAL_ALLOWED > 0;
 
   const [form, setForm] = useState({
     employeeName: '',
@@ -225,7 +241,22 @@ export const Leaves: React.FC<LeavesProps> = ({
       const annualUsed = empLeaves.filter(l => l.leaveType === 'Annual').reduce((sum, l) => sum + l.days, 0);
       const otherUsed = empLeaves.filter(l => !['Sick', 'Casual', 'Annual'].includes(l.leaveType)).reduce((sum, l) => sum + l.days, 0);
       const totalUsed = sickUsed + casualUsed + annualUsed + otherUsed;
+
+      // Remaining = policy cap − approved leave taken, per type, clamped at ≥ 0
+      // (no negative balances). Total Remaining = sum of the three buckets.
+      const sickRemaining = Math.max(0, ALLOWED_SICK - sickUsed);
+      const casualRemaining = Math.max(0, ALLOWED_CASUAL - casualUsed);
+      const annualRemaining = Math.max(0, ALLOWED_ANNUAL - annualUsed);
+      const bucketUsed = sickUsed + casualUsed + annualUsed;
+      const totalRemaining = sickRemaining + casualRemaining + annualRemaining;
       const remaining = Math.max(0, TOTAL_ALLOWED - totalUsed);
+
+      // ── Dynamic wallet — ONE entry per configured leave type, in Settings
+      // order (see utils/leaveWallet). Add a type in Settings and it appears
+      // here automatically; remove it and it disappears. No hardcoding.
+      const wallet = buildLeaveWallet(leavePolicy, empLeaves);
+      const walletTotalRem = walletTotalRemaining(wallet);
+      const walletUsedTotal = walletTotalUsed(wallet);
 
       const sortedLeaves = [...empLeaves].sort((a, b) => new Date(b.fromDate).getTime() - new Date(a.fromDate).getTime());
       const lastLeave = sortedLeaves.length > 0 ? `${sortedLeaves[0].fromDate} (${sortedLeaves[0].leaveType})` : 'None';
@@ -234,15 +265,15 @@ export const Leaves: React.FC<LeavesProps> = ({
         employeeId: emp.id,
         employeeName: emp.name,
         department: emp.department,
-        sickUsed,
-        casualUsed,
-        annualUsed,
-        totalUsed,
+        wallet, walletTotalRemaining: walletTotalRem, walletUsedTotal,
+        sickUsed, casualUsed, annualUsed, otherUsed, totalUsed, bucketUsed,
+        sickTotal: ALLOWED_SICK, casualTotal: ALLOWED_CASUAL, annualTotal: ALLOWED_ANNUAL,
+        sickRemaining, casualRemaining, annualRemaining, totalRemaining,
         remaining,
         lastLeave
       };
     });
-  }, [uniqueLeaves, uniqueEmployees, activeCompanyId]);
+  }, [uniqueLeaves, uniqueEmployees, activeCompanyId, leavePolicy, ALLOWED_SICK, ALLOWED_CASUAL, ALLOWED_ANNUAL, TOTAL_ALLOWED]);
 
   // 2b. Real-time Allowed vs Used Balance calculations for the currently selected employee in Log modal
   const selectedEmpLeaves = useMemo(() => {
@@ -266,7 +297,7 @@ export const Leaves: React.FC<LeavesProps> = ({
       totalUsed,
       remaining
     };
-  }, [uniqueLeaves, selectedEmp, activeCompanyId]);
+  }, [uniqueLeaves, selectedEmp, activeCompanyId, TOTAL_ALLOWED]);
 
   // 3. Dynamic top metric card counts
   const totalCount = companyLeaves.length;
@@ -499,26 +530,27 @@ export const Leaves: React.FC<LeavesProps> = ({
 
         {/* Dynamic Allowed Rules details panel */}
         <Card className="p-5">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-1">
             <Award size={16} className="text-emerald-400" />
             <h3 className="text-xs font-semibold text-ink uppercase tracking-wide">Corporate Allowed Leave Caps</h3>
           </div>
-          <div className="space-y-2.5 text-xs">
+          <p className="text-[10px] text-slate-400 mb-3">Live from Settings → Payroll Cycle &amp; Leave Policy. Configure once; every module updates automatically.</p>
+          {/* Values are read live from the company Leave Policy — NEVER hardcoded.
+              LOP is loss-of-pay, so it is shown separately and excluded from the pool. */}
+          <div className="space-y-1.5 text-xs">
+            {LEAVE_FIELDS.filter(f => f.key !== 'lop').map(f => (
+              <div key={f.key} className="flex items-center justify-between py-1 border-b border-white/5">
+                <span className="text-slate-400 font-medium">{f.label} Cap (Annual)</span>
+                <span className="font-bold text-white">{leavePolicy[f.key]} Days</span>
+              </div>
+            ))}
             <div className="flex items-center justify-between py-1 border-b border-white/5">
-              <span className="text-slate-400 font-medium">Sick Leave Cap (Annual)</span>
-              <span className="font-bold text-white">8 Days</span>
-            </div>
-            <div className="flex items-center justify-between py-1 border-b border-white/5">
-              <span className="text-slate-400 font-medium">Casual Leave Cap (Annual)</span>
-              <span className="font-bold text-white">6 Days</span>
-            </div>
-            <div className="flex items-center justify-between py-1 border-b border-white/5">
-              <span className="text-slate-400 font-medium">Annual Leave Cap (Annual)</span>
-              <span className="font-bold text-white">4 Days</span>
+              <span className="text-slate-400 font-medium">LOP (Loss of Pay)</span>
+              <span className="font-bold text-slate-300">{leavePolicy.lop} Days</span>
             </div>
             <div className="flex items-center justify-between py-2 bg-emerald-500/10 px-3 rounded-xl border border-emerald-500/20 font-bold text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.15)] mt-2">
               <span className="uppercase tracking-wider text-[10px]">Total Allowed Absence Pool</span>
-              <span className="text-xs">18 Days per Annum</span>
+              <span className="text-xs">{totalAbsencePool} Days per Annum</span>
             </div>
           </div>
         </Card>
@@ -651,38 +683,33 @@ export const Leaves: React.FC<LeavesProps> = ({
                     {expandedRowId === l.id && (
                       <tr className="bg-surface-muted">
                         <td colSpan={9} className="px-6 py-4 border-b border-hairline">
-                          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-left">
-                            <InfoCard
-                              tone="red"
-                              icon={<Stethoscope size={14} />}
-                              label="Sick Leaves Used"
-                              value={`${empSummary?.sickUsed || 0} / ${ALLOWED_SICK} days`}
-                            />
-                            <InfoCard
-                              tone="green"
-                              icon={<Coffee size={14} />}
-                              label="Casual Leaves Used"
-                              value={`${empSummary?.casualUsed || 0} / ${ALLOWED_CASUAL} days`}
-                            />
-                            <InfoCard
-                              tone="blue"
-                              icon={<Plane size={14} />}
-                              label="Annual Leaves Used"
-                              value={`${empSummary?.annualUsed || 0} / ${ALLOWED_ANNUAL} days`}
-                            />
-                            <InfoCard
-                              tone="purple"
-                              icon={<Layers size={14} />}
-                              label="Dynamic Absence Pool"
-                              value={`Used: ${empSummary?.totalUsed || 0} | Rem: ${empSummary?.remaining || 0} days`}
-                            />
-                            <InfoCard
-                              tone="purple"
-                              icon={<History size={14} />}
-                              label="Last Absence Taken"
-                              value={empSummary?.lastLeave}
-                            />
-                          </div>
+                          {/* Employee Leave Wallet — generated DYNAMICALLY, one card
+                              per configured leave type (in Settings order). Remaining /
+                              Total come LIVE from the Leave Policy; Used from approved
+                              leave. Add/remove a type in Settings and it appears/
+                              disappears here with no code change. Nothing hardcoded. */}
+                          {!hasLeavePolicy ? (
+                            <div className="py-3 text-sm font-semibold text-slate-500">No leave policy configured.</div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 text-left">
+                                {(empSummary?.wallet || []).map((w) => (
+                                  <InfoCard
+                                    key={w.key}
+                                    tone={WALLET_TONE[w.key] || 'purple'}
+                                    icon={<Layers size={14} />}
+                                    label={w.label}
+                                    value={w.key === 'lop' ? `${w.used} days` : `${w.remaining} / ${w.total} days`}
+                                  />
+                                ))}
+                              </div>
+                              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[11px] font-semibold text-slate-500">
+                                <span>Total Remaining: <span className="text-emerald-600 font-bold">{empSummary?.walletTotalRemaining ?? 0} days</span></span>
+                                <span>Used: <span className="text-slate-700 font-bold">{empSummary?.walletUsedTotal ?? 0} days</span></span>
+                                <span>Last Absence: <span className="text-slate-700">{empSummary?.lastLeave || 'None'}</span></span>
+                              </div>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )}
@@ -818,31 +845,39 @@ export const Leaves: React.FC<LeavesProps> = ({
             )}
           </div>
 
-          {/* Dynamic Leave Balance Ratios Panel */}
+          {/* Employee Leave Wallet — rendered 100% dynamically from the company
+              Leave Policy. ONE card per configured leave type, in Settings order.
+              Add / rename / remove a type in Settings and it reflects here with no
+              code change. No hardcoded CL / PL / SL, no type mapping. */}
           {selectedEmp && (() => {
-            const w = walletByEmp[String(selectedEmp.id)];
-            const cl = w ? w.clBalance : '—', pl = w ? w.plBalance : '—', sl = w ? w.slBalance : '—';
+            const empLeaves = uniqueLeaves.filter(l =>
+              (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && l.status === 'Approved'
+            );
+            const wallet = buildLeaveWallet(leavePolicy, empLeaves);
             return (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
-                  <span className="font-bold text-slate-800">Leave Wallet — available balance</span>
+                  <span className="font-bold text-slate-800">Leave Wallet — remaining / total</span>
                   <span className="text-[10px] text-slate-500 font-semibold">{(selectedEmp as any).employeeId || ''} · {selectedEmp.department}</span>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className={`bg-white p-2 rounded border text-center ${Number(cl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
-                    <p className="text-[9px] text-gray-400 font-medium">Casual (CL)</p>
-                    <p className={`font-bold mt-0.5 ${Number(cl) <= 0 ? 'text-red-600' : 'text-emerald-600'}`}>{cl}d</p>
+                {!hasLeavePolicy ? (
+                  <p className="text-slate-500 font-semibold py-2">No leave policy configured.</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {wallet.map((wt, i) => {
+                      const isLop = wt.key === 'lop';
+                      const zero = !isLop && wt.remaining <= 0;
+                      const c = walletPalette(wt.key, i);
+                      return (
+                        <div key={wt.key} className={`p-2 rounded border text-center ${zero ? 'bg-red-50 border-red-100' : c.bg}`}>
+                          <p className={`text-[9px] font-medium truncate ${zero ? 'text-red-400' : c.label}`} title={wt.label}>{wt.label}</p>
+                          <p className={`font-bold mt-0.5 ${zero ? 'text-red-600' : c.value}`}>{isLop ? `${wt.used}d` : `${wt.remaining} / ${wt.total}`}</p>
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div className={`bg-white p-2 rounded border text-center ${Number(pl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
-                    <p className="text-[9px] text-gray-400 font-medium">Privilege (PL)</p>
-                    <p className={`font-bold mt-0.5 ${Number(pl) <= 0 ? 'text-red-600' : 'text-brand-600'}`}>{pl}d</p>
-                  </div>
-                  <div className={`bg-white p-2 rounded border text-center ${Number(sl) <= 0 ? 'border-red-200' : 'border-slate-150'}`}>
-                    <p className="text-[9px] text-gray-400 font-medium">Sick (SL)</p>
-                    <p className={`font-bold mt-0.5 ${Number(sl) <= 0 ? 'text-red-600' : 'text-brand-700'}`}>{sl}d</p>
-                  </div>
-                </div>
-                <p className="text-[10px] text-slate-500">Zero-balance categories are disabled. Take leave beyond balance as <strong>Unpaid (LWP)</strong>.</p>
+                )}
+                <p className="text-[10px] text-slate-500">Balances come live from the company Leave Policy. Take leave beyond balance as <strong>Unpaid (LWP)</strong>.</p>
               </div>
             );
           })()}

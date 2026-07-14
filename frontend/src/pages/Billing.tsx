@@ -766,7 +766,7 @@ export const Billing: React.FC<BillingProps> = ({
     <div className="relative min-h-screen">
       {/* Soft Frosted Background blobs exclusively for Billing section */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-        <div className="absolute top-[-5%] right-[-2%] w-[600px] h-[600px] bg-[#F3F0FF] rounded-full blur-[120px] opacity-70"></div>
+        <div className="absolute top-[-5%] right-[-2%] w-[600px] h-[600px] bg-[#FCF4EE] rounded-full blur-[120px] opacity-70"></div>
         <div className="absolute bottom-[-5%] left-[-2%] w-[500px] h-[500px] bg-[#F0F6FF] rounded-full blur-[120px] opacity-70"></div>
       </div>
       
@@ -798,7 +798,7 @@ export const Billing: React.FC<BillingProps> = ({
                 <div className="mt-2 text-3xl font-extrabold text-[#111827] tracking-tight">₹{mrr.toLocaleString('en-IN')}</div>
                 <div className="mt-1 text-[11px] text-[#6B7280]">Projected monthly run-rate</div>
               </div>
-              <div className="text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] rounded-xl p-2.5">
+              <div className="text-[#C77E52] bg-[#FCF4EE] border border-[#E9D5FF] rounded-xl p-2.5">
                 <DollarSign size={20} />
               </div>
             </div>
@@ -835,7 +835,7 @@ export const Billing: React.FC<BillingProps> = ({
                 </div>
                 <div className="mt-1 text-[11px] text-[#6B7280]">Paid or trial workspaces</div>
               </div>
-              <div className="text-[#6C3CF0] bg-[#F0F6FF] border border-[#E6E0FE] rounded-xl p-2.5">
+              <div className="text-[#C77E52] bg-[#F0F6FF] border border-[#F7E3D3] rounded-xl p-2.5">
                 <UserCheck size={20} />
               </div>
             </div>
@@ -862,7 +862,7 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'overview'
-              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              ? 'bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
               : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
@@ -874,7 +874,7 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'plans'
-              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              ? 'bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
               : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
@@ -886,7 +886,7 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 cursor-pointer",
             activeTab === 'payments'
-              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              ? 'bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
               : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
@@ -898,7 +898,7 @@ export const Billing: React.FC<BillingProps> = ({
           className={cn(
             "px-5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex items-center gap-2 relative cursor-pointer",
             activeTab === 'alerts'
-              ? 'bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
+              ? 'bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] text-white shadow-[0_4px_12px_rgba(109,93,252,0.25)]'
               : 'text-[#6B7280] hover:bg-[#F8FAFC] hover:text-[#111827]'
           )}
         >
@@ -927,7 +927,7 @@ export const Billing: React.FC<BillingProps> = ({
                 placeholder="Search companies, domain, or admin..."
                 value={companySearch}
                 onChange={(e) => setCompanySearch(e.target.value)}
-                className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-xs focus:ring-1 focus:ring-[#6C3CF0] focus:border-[#6C3CF0] outline-none shadow-sm transition-all"
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-[#E5E7EB] rounded-xl text-xs focus:ring-1 focus:ring-[#C77E52] focus:border-[#C77E52] outline-none shadow-sm transition-all"
               />
             </div>
 
@@ -999,13 +999,13 @@ export const Billing: React.FC<BillingProps> = ({
                   {/* Parent Company Header */}
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-5 border-b border-[#E5E7EB]">
                     <div className="flex items-center gap-4">
-                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md border border-black/5" style={{ backgroundColor: comp.primaryColor || '#6C3CF0' }}>
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center font-bold text-white text-lg shadow-md border border-black/5" style={{ backgroundColor: comp.primaryColor || '#C77E52' }}>
                         {comp.logo}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="text-xl font-extrabold text-[#111827] tracking-tight">{comp.name}</h3>
-                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6C3CF0] border border-[#E9D5FF] uppercase tracking-wider">Parent Company</span>
+                          <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#FCF4EE] text-[#C77E52] border border-[#E9D5FF] uppercase tracking-wider">Parent Company</span>
                         </div>
                         <p className="text-xs text-[#6B7280] mt-1">{comp.domain} • Admin: {comp.adminName} ({comp.adminEmail})</p>
                       </div>
@@ -1033,7 +1033,7 @@ export const Billing: React.FC<BillingProps> = ({
                           </button>
                           <button
                             onClick={() => handleQuickExtend(comp.id)}
-                            className="px-4 py-2 bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white font-bold rounded-xl text-xs transition-colors shadow-[0_4px_12px_rgba(109,93,252,0.25)] cursor-pointer"
+                            className="px-4 py-2 bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white font-bold rounded-xl text-xs transition-colors shadow-[0_4px_12px_rgba(109,93,252,0.25)] cursor-pointer"
                           >
                             Renew Subscription
                           </button>
@@ -1094,14 +1094,14 @@ export const Billing: React.FC<BillingProps> = ({
                       <div className="mt-6 border-t border-[#E5E7EB] pt-6">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-2">
-                            <Building2 size={16} className="text-[#6C3CF0]" />
+                            <Building2 size={16} className="text-[#C77E52]" />
                             <h4 className="font-extrabold text-[#111827] text-sm">Branches Directory ({comp.name} subsidiary network)</h4>
                           </div>
                         </div>
 
                         {/* Frosted Glass Title Header */}
                         <div className="flex items-center gap-2 mb-4 mt-8">
-                          <Building size={16} className="text-[#6C3CF0]" />
+                          <Building size={16} className="text-[#C77E52]" />
                           <h3 className="text-[15px] font-bold text-slate-800">Branches Directory</h3>
                           <span className="text-[13px] text-slate-500 font-medium">(vishv enterprise subsidiary network)</span>
                         </div>
@@ -1109,7 +1109,7 @@ export const Billing: React.FC<BillingProps> = ({
                         {/* Frosted Glass License Allocation Summary Bar */}
                         <div className="bg-[#F5FAFF] border border-[#E6EEF7] rounded-[14px] p-5 mb-5 flex flex-col xl:flex-row xl:items-center justify-between gap-4 shadow-sm">
                           <div>
-                            <h4 className="text-[11px] font-bold text-[#6C3CF0] uppercase tracking-wider mb-3">Manage Branch License Allocations</h4>
+                            <h4 className="text-[11px] font-bold text-[#C77E52] uppercase tracking-wider mb-3">Manage Branch License Allocations</h4>
                             <div className="flex items-center gap-8 text-[12px]">
                               <div>
                                 <p className="text-slate-500 uppercase text-[10px] mb-0.5">Included Slots</p>
@@ -1124,8 +1124,8 @@ export const Billing: React.FC<BillingProps> = ({
                                 <p className="font-bold text-slate-800">{allowedBranchLimit} branch(es)</p>
                               </div>
                               <div>
-                                <p className="text-[#6C3CF0] uppercase text-[10px] mb-0.5 font-semibold">Active Slots</p>
-                                <p className="font-bold text-[#6C3CF0]">
+                                <p className="text-[#C77E52] uppercase text-[10px] mb-0.5 font-semibold">Active Slots</p>
+                                <p className="font-bold text-[#C77E52]">
                                   {compBranches.filter(b => {
                                     const isSuspended = b.status === 'Inactive' || b.accountStatus === 'Suspended';
                                     const licenseLabel = b.branchLicenseStatus || 'Active License';
@@ -1147,13 +1147,13 @@ export const Billing: React.FC<BillingProps> = ({
                                 </button>
                                 <button
                                   onClick={() => handleAdjustBranchSlots(comp.id, 'add')}
-                                  className="px-4 py-2 bg-white border border-[#6C3CF0] hover:bg-brand-50 text-[#6C3CF0] rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                                  className="px-4 py-2 bg-white border border-[#C77E52] hover:bg-brand-50 text-[#C77E52] rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                                 >
                                   <Plus size={14} /> Add Slot (+₹999/mo)
                                 </button>
                                 <button
                                   onClick={() => handleOpenCreateBranch(comp.id)}
-                                  className="px-5 py-2 bg-[#6C3CF0] hover:bg-brand-600 text-white rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+                                  className="px-5 py-2 bg-[#C77E52] hover:bg-brand-600 text-white rounded-full text-[12px] font-medium flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                                 >
                                   <Rocket size={14} /> Deploy Branch
                                 </button>
@@ -1182,7 +1182,7 @@ export const Billing: React.FC<BillingProps> = ({
                                   {/* Top Section */}
                                   <div className="flex justify-between items-start mb-5 pb-4 border-b border-[#E6EEF7]">
                                     <div className="flex items-center gap-3">
-                                      <span className="font-bold text-[#6C3CF0] bg-[#F3F0FF] px-3 py-1.5 rounded-full border border-[#E6E0FE] text-[11px] uppercase">
+                                      <span className="font-bold text-[#C77E52] bg-[#FCF4EE] px-3 py-1.5 rounded-full border border-[#F7E3D3] text-[11px] uppercase">
                                         {br.branchCode || 'BR'}
                                       </span>
                                       <div>
@@ -1194,7 +1194,7 @@ export const Billing: React.FC<BillingProps> = ({
                                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-semibold ${
                                         licenseLabel === 'Suspended'
                                           ? 'bg-rose-50 text-rose-600 border border-rose-200 shadow-sm'
-                                          : 'bg-[#F3F0FF] text-[#6C3CF0] border border-[#E6E0FE] shadow-sm'
+                                          : 'bg-[#FCF4EE] text-[#C77E52] border border-[#F7E3D3] shadow-sm'
                                       }`}>
                                         <ShieldCheck size={12} /> {licenseLabel}
                                       </span>
@@ -1228,7 +1228,7 @@ export const Billing: React.FC<BillingProps> = ({
                                       <>
                                         <button
                                           onClick={() => onStartMasquerade(br.id, 'branch')}
-                                          className="px-4 py-2.5 bg-[#6C3CF0] hover:bg-brand-600 text-white rounded-md text-[12px] font-medium transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
+                                          className="px-4 py-2.5 bg-[#C77E52] hover:bg-brand-600 text-white rounded-md text-[12px] font-medium transition-colors shadow-sm flex items-center gap-1.5 cursor-pointer"
                                         >
                                           <Users size={14} className="opacity-80" /> Masquerade
                                         </button>
@@ -1314,7 +1314,7 @@ export const Billing: React.FC<BillingProps> = ({
                                 <div key={br.id} className="bg-white border border-[#E5E7EB] shadow-sm rounded-[20px] p-4 transition-all duration-300">
                                   <div className="flex items-center justify-between mb-3">
                                     <div className="font-bold text-[#111827] text-xs">{br.name} Usage Overview</div>
-                                    <span className="text-[10px] font-bold bg-[#F0F6FF] text-[#6C3CF0] border border-[#E6E0FE] px-2.5 py-0.5 rounded-full shadow-sm">
+                                    <span className="text-[10px] font-bold bg-[#F0F6FF] text-[#C77E52] border border-[#F7E3D3] px-2.5 py-0.5 rounded-full shadow-sm">
                                       Usage: {capacityPercent}%
                                     </span>
                                   </div>
@@ -1360,12 +1360,12 @@ export const Billing: React.FC<BillingProps> = ({
                                           defaultValue={br.branchRenewalDate || '2027-05-22'}
                                           disabled={!canEdit}
                                           onChange={(e) => handleUpdateBranchRenewal(br.id, e.target.value)}
-                                          className="text-[10px] border border-[#E5E7EB] rounded px-1.5 py-0.5 bg-white text-[#111827] focus:outline-none focus:ring-1 focus:ring-[#6C3CF0] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="text-[10px] border border-[#E5E7EB] rounded px-1.5 py-0.5 bg-white text-[#111827] focus:outline-none focus:ring-1 focus:ring-[#C77E52] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         <span className="text-[9px] text-[#6B7280] font-bold uppercase">Limit:</span>
-                                        <span className="text-[10px] font-extrabold text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] px-2 py-0.5 rounded-lg shadow-sm">
+                                        <span className="text-[10px] font-extrabold text-[#C77E52] bg-[#FCF4EE] border border-[#E9D5FF] px-2 py-0.5 rounded-lg shadow-sm">
                                           {capacity} staff
                                         </span>
 
@@ -1455,7 +1455,7 @@ export const Billing: React.FC<BillingProps> = ({
                           <>
                             Unified price: <strong className="text-[#111827]">₹{displayPrice.toLocaleString('en-IN')}</strong> / {comp.billingCycle === 'Yearly' ? 'year' : 'month'}
                             {!isSingleCompanyMode && compBranches.length > 0 && totalBranchAddonCost > 0 && (
-                              <span className="ml-2 text-[#6C3CF0] bg-[#F3F0FF] border border-[#E9D5FF] px-2.5 py-0.5 rounded-full font-bold shadow-sm">
+                              <span className="ml-2 text-[#C77E52] bg-[#FCF4EE] border border-[#E9D5FF] px-2.5 py-0.5 rounded-full font-bold shadow-sm">
                                 Includes ₹{totalBranchAddonCost.toLocaleString('en-IN')}/mo add-ons
                               </span>
                             )}
@@ -1466,7 +1466,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setShowInvoiceModal(comp)}
-                        className="text-[#6C3CF0] hover:text-[#5b4be8] font-bold transition-colors cursor-pointer"
+                        className="text-[#C77E52] hover:text-[#5b4be8] font-bold transition-colors cursor-pointer"
                       >
                         View Latest Payment Receipt
                       </button>
@@ -1485,7 +1485,7 @@ export const Billing: React.FC<BillingProps> = ({
       {activeTab === 'plans' && (
         <div className="space-y-6">
           {plans.map(plan => {
-            let planColor = '#6c3cf0';
+            let planColor = '#C77E52';
             let planIcon = <Users size={24} />;
             let isEnterprise = plan.name === 'Enterprise';
 
@@ -1508,7 +1508,7 @@ export const Billing: React.FC<BillingProps> = ({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-xl font-extrabold text-[#111827] tracking-tight">{plan.name}</h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#F3F0FF] text-[#6C3CF0] border border-[#E9D5FF] uppercase tracking-wider">
+                        <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold bg-[#FCF4EE] text-[#C77E52] border border-[#E9D5FF] uppercase tracking-wider">
                           {isEnterprise ? '👑 Enterprise' : 'SaaS Tier'}
                         </span>
                       </div>
@@ -1540,21 +1540,21 @@ export const Billing: React.FC<BillingProps> = ({
                   <div>
                     <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Included Workforce</div>
                     <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
-                      <Users size={13} className="text-[#6C3CF0]" />
+                      <Users size={13} className="text-[#C77E52]" />
                       {plan.employeeLimit === 'Unlimited' ? 'Unlimited' : plan.employeeLimit} <span className="text-[10px] font-normal text-[#6B7280]">Active Employees</span>
                     </div>
                   </div>
                   <div>
                     <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Management Quota</div>
                     <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
-                      <UserCheck size={13} className="text-[#6C3CF0]" />
+                      <UserCheck size={13} className="text-[#C77E52]" />
                       {plan.hrLimit === 'Unlimited' ? 'Unlimited' : plan.hrLimit} <span className="text-[10px] font-normal text-[#6B7280]">HR Admins</span>
                     </div>
                   </div>
                   <div>
                     <div className="text-[9px] uppercase font-bold text-[#6B7280] tracking-wider">Secure Storage</div>
                     <div className="mt-1 text-sm font-extrabold text-[#111827] flex items-center gap-1.5">
-                      <CreditCard size={13} className="text-[#6C3CF0]" />
+                      <CreditCard size={13} className="text-[#C77E52]" />
                       {plan.storageLimit} <span className="text-[10px] font-normal text-[#6B7280]">Vault</span>
                     </div>
                   </div>
@@ -1634,7 +1634,7 @@ export const Billing: React.FC<BillingProps> = ({
               <tbody className="divide-y divide-[#E5E7EB] text-sm text-[#111827] bg-transparent">
                 {payments.map(pay => (
                   <tr key={pay.id} className="hover:bg-[#F8FAFC] transition-colors">
-                    <td className="py-4 px-6 font-mono text-xs font-semibold text-[#6C3CF0]">
+                    <td className="py-4 px-6 font-mono text-xs font-semibold text-[#C77E52]">
                       {pay.invoiceNumber}
                     </td>
                     <td className="py-4 px-6 font-bold text-[#111827]">
@@ -1769,7 +1769,7 @@ export const Billing: React.FC<BillingProps> = ({
                     {canEdit && (
                       <button
                         onClick={() => handleQuickExtend(comp.id)}
-                        className="px-3.5 py-2 bg-gradient-to-r from-[#6C3CF0] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-[0_4px_12px_rgba(109,93,252,0.25)]"
+                        className="px-3.5 py-2 bg-gradient-to-r from-[#C77E52] to-[#7C6BFF] hover:from-[#5b4be8] hover:to-[#6a58f0] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-[0_4px_12px_rgba(109,93,252,0.25)]"
                       >
                         Renew Plan
                       </button>

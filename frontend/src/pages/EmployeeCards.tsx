@@ -1,14 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Employee Card Designer — a template-based card studio that REPLACES the old
-// single fixed design while preserving all of its behaviour (company-tree
-// scoping, per-employee branding, active-employee filtering). HR can pick from
-// 20 built-in templates, customise them in a drag-and-drop designer, preview
-// live against any employee, and bulk-generate print-ready PDF / PNG / ZIP / QR.
+// Employee Cards — a template-based card studio that REPLACES the old single
+// fixed design while preserving all of its behaviour (company-tree scoping,
+// per-employee branding, active-employee filtering). HR can pick from 20
+// built-in templates in the gallery, preview live against any employee, and
+// bulk-generate print-ready PDF / PNG / ZIP / QR.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  IdCard, Search, Download, Printer, Layers, QrCode, LayoutGrid, Pencil, FileDown,
-  Plus, Upload, FileImage, FileArchive, Check, Users, Contact,
+  IdCard, Search, Download, Printer, Layers, QrCode, LayoutGrid,
+  FileImage, FileArchive, Check, Users, Contact,
 } from 'lucide-react';
 import type { Role, Company, Employee } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -22,7 +22,6 @@ import { usePermissions } from '@/context/PermissionContext';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { resolveBranding } from '@/services/brandingService';
 import { CardCanvas } from '@/components/cards/CardCanvas';
-import { CardDesigner } from '@/components/cards/CardDesigner';
 import { TemplateGallery } from '@/components/cards/TemplateGallery';
 import { EmployeeInfoCards } from '@/components/cards/EmployeeInfoCards';
 import { cardDimensions } from '@/types/cardDesigner';
@@ -30,7 +29,7 @@ import type { CardTemplate, CardSide } from '@/types/cardDesigner';
 import { BUILTIN_BY_ID, DEFAULT_TEMPLATE_ID, cloneTemplate } from '@/data/cardTemplates';
 import {
   loadTemplates, saveCustomTemplate, removeCustomTemplate, setDefaultTemplate, setTemplateShared,
-  exportTemplateJson, parseImportedTemplate, type TemplateSet,
+  type TemplateSet,
 } from '@/store/cardTemplateStore';
 import {
   exportCardsPdf, exportCardsZip, exportCardPng, exportQrZip, printCards,
@@ -44,10 +43,8 @@ interface Props {
 }
 /** The two sections of the module. Information Cards = dashboard summary; ID Cards = the printable studio. */
 type Section = 'info' | 'id';
-type Tab = 'generate' | 'templates' | 'designer';
+type Tab = 'generate' | 'templates';
 type ScopeMode = 'selected' | 'department' | 'branch' | 'designation' | 'employmentType' | 'all';
-
-const blankTemplate = (): CardTemplate => cloneTemplate({ ...BUILTIN_BY_ID['minimal-white'], id: `new_${Date.now()}`, name: 'Untitled Template', category: 'Custom', custom: true });
 
 export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companies, employees, onOpenProfile }) => {
   const { canView } = usePermissions();
@@ -61,10 +58,8 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const [tab, setTab] = useState<Tab>('generate');
   const [tset, setTset] = useState<TemplateSet>({ builtins: [], custom: [], all: [], defaultId: DEFAULT_TEMPLATE_ID });
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID]);
-  const [working, setWorking] = useState<CardTemplate | null>(null);
   const [previewTpl, setPreviewTpl] = useState<CardTemplate | null>(null);
   const [side, setSide] = useState<CardSide>('front');
-  const [saving, setSaving] = useState(false);
 
   // Employee selection
   const [search, setSearch] = useState('');
@@ -155,7 +150,6 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
 
   // ── template actions ─────────────────────────────────────────────────────────
   const useTpl = (t: CardTemplate) => { setSelectedTemplate(t); setTab('generate'); ui.toast.success(`Template “${t.name}” selected.`); };
-  const editTpl = (t: CardTemplate) => { setWorking(cloneTemplate(t)); setTab('designer'); };
   const previewOf = (t: CardTemplate) => setPreviewTpl(t);
   const duplicateTpl = async (t: CardTemplate) => {
     if (!canEdit) return;
@@ -172,20 +166,6 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const makeDefault = async (t: CardTemplate) => { if (!t.dbId) return; try { await setDefaultTemplate(t.dbId); await reload(); ui.toast.success(`“${t.name}” is now the default template.`); } catch (e: any) { ui.toast.error(e?.message || 'error'); } };
   const shareTpl = async (t: CardTemplate) => { if (!t.dbId) return; try { await setTemplateShared(t.dbId, !t.shared); await reload(); ui.toast.success(t.shared ? 'Unshared.' : 'Shared to all companies.'); } catch (e: any) { ui.toast.error(e?.message || 'error'); } };
 
-  const saveWorking = async () => {
-    if (!working) return;
-    setSaving(true);
-    try { const saved = await saveCustomTemplate(working); const s = await reload(); setSelectedTemplate(saved); setWorking(cloneTemplate(saved)); void s; ui.toast.success('Template saved.'); }
-    catch (e: any) { ui.toast.error(e?.message || 'Could not save the template.'); }
-    finally { setSaving(false); }
-  };
-  const importTemplate = (file?: File | null) => {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => { try { const t = parseImportedTemplate(JSON.parse(String(r.result))); if (!t) return ui.toast.error('Not a valid card template file.'); setWorking(t); setTab('designer'); ui.toast.success('Template imported — review and save.'); } catch { ui.toast.error('Could not read that file.'); } };
-    r.readAsText(file);
-  };
-
   // Contain a template inside a fixed box (like object-fit: contain) so portrait
   // and landscape cards share one box, centred, never cropped or stretched — the
   // renderer derives the scale from each template's own dimensions/orientation
@@ -196,7 +176,6 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'generate', label: 'Generate & Preview', icon: <QrCode size={14} /> },
     { id: 'templates', label: 'Template Gallery', icon: <LayoutGrid size={14} /> },
-    { id: 'designer', label: 'Designer', icon: <Pencil size={14} /> },
   ];
   const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
     { id: 'info', label: 'Employee Information Cards', icon: <Contact size={14} /> },
@@ -213,8 +192,8 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="bg-white rounded-[14px] border border-[#E6E0FE] shadow-sm">
-        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#E6E0FE]">
+      <div className="bg-white rounded-[14px] border border-[#F7E3D3] shadow-sm">
+        <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-[#F7E3D3]">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-brand-50 flex items-center justify-center text-brand-600"><IdCard size={20} /></div>
             <div>
@@ -292,7 +271,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
               <span>{scopeMode === 'selected' ? `${bulkIds.length || (previewEmp ? 1 : 0)} selected` : `${targets.length} in scope`}</span>
-              {scopeMode === 'selected' && <button className="text-[#6C3CF0] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>}
+              {scopeMode === 'selected' && <button className="text-[#C77E52] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>}
             </div>
             <div className="max-h-[460px] overflow-y-auto space-y-1">
               {filtered.length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No employees match.</p>}
@@ -317,11 +296,11 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600 flex-shrink-0"><LayoutGrid size={14} className="text-brand-600" /> Templates <span className="text-slate-400 font-normal">· click to apply</span></div>
             <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-2 pr-1 auto-rows-min content-start">
               {tset.all.map((t) => (
-                <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`rounded-xl border p-2 text-left transition ${selectedTemplate?.id === t.id ? 'border-[#6C3CF0] ring-1 ring-[#6C3CF0]/30 bg-[#F3F0FF]' : 'border-slate-200 hover:border-slate-300'}`}>
+                <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`rounded-xl border p-2 text-left transition ${selectedTemplate?.id === t.id ? 'border-[#C77E52] ring-1 ring-[#C77E52]/30 bg-[#FCF4EE]' : 'border-slate-200 hover:border-slate-300'}`}>
                   <div className="flex items-center justify-center bg-slate-50 rounded-lg p-2 h-[104px] overflow-hidden">
                     <CardCanvas template={t} side="front" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(t, 140, 88)} style={{ boxShadow: '0 1px 5px rgba(0,0,0,.12)', borderRadius: 6 }} />
                   </div>
-                  <p className="mt-1.5 text-[10px] font-bold text-slate-700 truncate flex items-center gap-1">{selectedTemplate?.id === t.id && <Check size={10} className="text-[#6C3CF0]" />}{t.name}</p>
+                  <p className="mt-1.5 text-[10px] font-bold text-slate-700 truncate flex items-center gap-1">{selectedTemplate?.id === t.id && <Check size={10} className="text-[#C77E52]" />}{t.name}</p>
                   <p className="text-[9px] text-slate-400">{t.category}{t.custom ? ' · Custom' : ''}</p>
                 </button>
               ))}
@@ -333,7 +312,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-brand-600" /> Live Preview</div>
               <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#6C3CF0] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
+                {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#C77E52] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
               </div>
             </div>
             {!previewEmp ? <div className="py-16 text-center text-sm text-slate-400">Select an employee to preview.</div> : (
@@ -347,12 +326,12 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             <div className="mt-3 space-y-2.5">
               <div className="flex flex-wrap items-center gap-2 text-[11px]">
                 <span className="text-slate-400 font-bold">Sides</span>
-                {(['front', 'back', 'both'] as SideMode[]).map((s) => <button key={s} onClick={() => setSideMode(s)} className={`px-2 py-1 rounded-lg border font-semibold capitalize ${sideMode === s ? 'border-[#6C3CF0] text-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 text-slate-500'}`}>{s}</button>)}
+                {(['front', 'back', 'both'] as SideMode[]).map((s) => <button key={s} onClick={() => setSideMode(s)} className={`px-2 py-1 rounded-lg border font-semibold capitalize ${sideMode === s ? 'border-[#C77E52] text-[#C77E52] bg-[#FCF4EE]' : 'border-slate-200 text-slate-500'}`}>{s}</button>)}
                 <span className="text-slate-400 font-bold ml-2">Layout</span>
-                {([['card', 'Card'], ['sheet', 'A4 Sheet'], ['duplex', 'Duplex']] as [PdfLayout, string][]).map(([v, l]) => <button key={v} onClick={() => setPdfLayout(v)} className={`px-2 py-1 rounded-lg border font-semibold ${pdfLayout === v ? 'border-[#6C3CF0] text-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 text-slate-500'}`}>{l}</button>)}
+                {([['card', 'Card'], ['sheet', 'A4 Sheet'], ['duplex', 'Duplex']] as [PdfLayout, string][]).map(([v, l]) => <button key={v} onClick={() => setPdfLayout(v)} className={`px-2 py-1 rounded-lg border font-semibold ${pdfLayout === v ? 'border-[#C77E52] text-[#C77E52] bg-[#FCF4EE]' : 'border-slate-200 text-slate-500'}`}>{l}</button>)}
               </div>
 
-              {progress && <div className="text-[11px] text-slate-500">Generating {progress.done}/{progress.total}… <div className="mt-1 h-1.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-[#6C3CF0]" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} /></div></div>}
+              {progress && <div className="text-[11px] text-slate-500">Generating {progress.done}/{progress.total}… <div className="mt-1 h-1.5 rounded bg-slate-100 overflow-hidden"><div className="h-full bg-[#C77E52]" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} /></div></div>}
 
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" icon={<Download size={13} />} loading={busy === 'pdf'} onClick={doPdf}>PDF{targets.length > 1 ? ` (${targets.length})` : ''}</Button>
@@ -370,37 +349,10 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
       {/* ── TEMPLATE GALLERY ── */}
       {tab === 'templates' && (
         <div className="space-y-3">
-          {canEdit && (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" icon={<Plus size={14} />} onClick={() => { setWorking(blankTemplate()); setTab('designer'); }}>New Blank Template</Button>
-              <label className="inline-flex">
-                <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importTemplate(e.target.files?.[0]); e.target.value = ''; }} />
-                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 text-slate-600 hover:border-[#6C3CF0] cursor-pointer"><Upload size={14} /> Import Template</span>
-              </label>
-            </div>
-          )}
           <TemplateGallery templates={tset.all} activeId={selectedTemplate?.id} sample={previewEmp} branding={pv.branding} companyId={pv.companyId}
             canEdit={canEdit} isSuperAdmin={isSuperAdmin}
-            onUse={useTpl} onPreview={previewOf} onEdit={editTpl} onDuplicate={duplicateTpl} onDelete={deleteTpl} onSetDefault={makeDefault} onShare={shareTpl} />
+            onUse={useTpl} onPreview={previewOf} onDuplicate={duplicateTpl} onDelete={deleteTpl} onSetDefault={makeDefault} onShare={shareTpl} />
         </div>
-      )}
-
-      {/* ── DESIGNER ── */}
-      {tab === 'designer' && (
-        working ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500">Editing <b className="text-slate-700">{working.name}</b>{working.dbId ? '' : ' (unsaved — Save to keep it)'} </p>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" icon={<FileDown size={13} />} onClick={() => exportTemplateJson(working)}>Export JSON</Button>
-                <Button size="sm" variant="outline" onClick={() => { setWorking(null); setTab('templates'); }}>Close</Button>
-              </div>
-            </div>
-            <CardDesigner template={working} onChange={setWorking} employee={previewEmp} branding={pv.branding} companyId={pv.companyId} onSave={saveWorking} saving={saving} canEdit={canEdit} />
-          </div>
-        ) : (
-          <Card><div className="py-16 text-center text-sm text-slate-400">Pick a template to edit from the <button className="text-[#6C3CF0] font-bold" onClick={() => setTab('templates')}>Template Gallery</button>, or create a new blank one.</div></Card>
-        )
       )}
 
       </>}
@@ -408,7 +360,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
       {/* Preview modal */}
       {previewTpl && (
         <Modal open onClose={() => setPreviewTpl(null)} title={previewTpl.name} size="lg"
-          footer={<><Button variant="outline" size="sm" onClick={() => setPreviewTpl(null)}>Close</Button>{canEdit && <Button variant="outline" size="sm" onClick={() => { editTpl(previewTpl); setPreviewTpl(null); }}>Edit</Button>}<Button size="sm" onClick={() => { useTpl(previewTpl); setPreviewTpl(null); }}>Use Template</Button></>}>
+          footer={<><Button variant="outline" size="sm" onClick={() => setPreviewTpl(null)}>Close</Button><Button size="sm" onClick={() => { useTpl(previewTpl); setPreviewTpl(null); }}>Use Template</Button></>}>
           <div className="flex flex-wrap items-center justify-center gap-6 py-4">
             <div className="text-center"><CardCanvas template={previewTpl} side="front" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(previewTpl, 380, 360)} style={{ boxShadow: '0 8px 30px rgba(0,0,0,.2)', borderRadius: 12 }} /><p className="mt-2 text-[11px] font-bold text-slate-400 uppercase">Front</p></div>
             <div className="text-center"><CardCanvas template={previewTpl} side="back" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(previewTpl, 380, 360)} style={{ boxShadow: '0 8px 30px rgba(0,0,0,.2)', borderRadius: 12 }} /><p className="mt-2 text-[11px] font-bold text-slate-400 uppercase">Back</p></div>

@@ -83,19 +83,20 @@ export const generateDynamicComponents = (record: any, employee: any, company: a
 // to safe defaults only when no data exists.
 const attendanceRow = (att: any, record: any): string[] => {
   const a = att || {};
+  const paidLeave = (Number(a.cl) || 0) + (Number(a.pl) || 0) + (Number(a.sl) || 0);
   return [
-    String(a.totalDays ?? 30),
+    String(a.workingDays ?? 0),
     String(a.present ?? 0),
-    String(a.absent ?? 0),
-    String(a.cl ?? 0),
-    String(a.pl ?? 0),
-    String(a.sl ?? 0),
+    String(a.weeklyOff ?? 0),
+    String(a.holiday ?? 0),
+    String(paidLeave),
+    String(a.halfDays ?? 0),
     String(a.lwp ?? a.lop ?? 0),
-    String(a.payableDays ?? ((a.present ?? 0) + (a.cl ?? 0) + (a.pl ?? 0) + (a.sl ?? 0))),
+    String(a.payableDays ?? ((a.present ?? 0) + paidLeave + (a.weeklyOff ?? 0) + (a.holiday ?? 0))),
     Number(a.overtimeHours ?? record?.overtimeHours ?? 0).toFixed(1),
   ];
 };
-const ATTENDANCE_HEAD = ['Total Days', 'Present', 'Absent', 'CL', 'PL', 'SL', 'LWP', 'Payable', 'OT Hrs'];
+const ATTENDANCE_HEAD = ['Working Days', 'Present', 'Weekly Off', 'Holiday', 'Paid Leave', 'Half Day', 'LOP', 'Payable', 'OT Hrs'];
 
 // Professional, audit-suitable file name:  VE-AHMD-0048_June_2026_Salary_Slip.pdf
 export const payslipFileName = (record: any, employee: any): string => {
@@ -197,7 +198,25 @@ export const buildPayslipDoc = (record: any, employee: any, company: any, attend
     body: [attendanceRow(attendanceSummary, record)]
   });
 
-  const nextY2 = (doc as any).lastAutoTable.finalY + 5;
+  let nextY2 = (doc as any).lastAutoTable.finalY + 5;
+
+  // Attendance-driven pay basis — the exact formula payroll used:
+  //   Daily Rate = Monthly Salary ÷ Working Days ;  Gross Pay = Daily Rate × Payable Days.
+  const wDays = Number(attendanceSummary?.workingDays) || 0;
+  const pDays = Number(attendanceSummary?.payableDays) || 0;
+  const monthlyGross = Number(employee?.salary) || 0;
+  if (wDays > 0) {
+    const dailyRate = monthlyGross / wDays;
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(90);
+    doc.text(
+      `Daily Rate (Monthly Salary Rs. ${Math.round(monthlyGross).toLocaleString('en-IN')} / ${wDays} Working Days) = Rs. ${dailyRate.toFixed(2)}  |  Gross Pay = Daily Rate x ${pDays} Payable Days = Rs. ${Math.round(dailyRate * pDays).toLocaleString('en-IN')}`,
+      14, nextY2,
+    );
+    doc.setTextColor(0);
+    nextY2 += 5;
+  }
 
   // 4 & 5. EARNINGS & DEDUCTIONS DYNAMIC SECTION
   const maxRows = Math.max(earnings.length, deductions.length);
@@ -401,9 +420,9 @@ export const generateEnterprisePayslipExcel = (record: any, employee: any, compa
     ['Department', employee?.department || record.department, 'Aadhaar Number', maskString(employee?.aadhaar, 4)],
     ['Date of Joining', employee?.joinDate || 'N/A', 'Bank Account', maskString(employee?.accountNumber, 4)],
     [],
-    // Attendance
+    // Attendance — same order as attendanceRow() / the PDF slip.
     ['Attendance & Leaves'],
-    ['Total Days', 'Working Days', 'Present', 'Absent', 'Leave', 'Weekly Off', 'Holiday', 'LOP', 'Overtime Hrs'],
+    ['Working Days', 'Present', 'Weekly Off', 'Holiday', 'Paid Leave', 'Half Day', 'LOP', 'Payable', 'OT Hrs'],
     attendanceRow(attendanceSummary, record),
     [],
     // Salary Breakdown Header

@@ -45,16 +45,18 @@ interface CompanyBrandProps {
   compact?: boolean;
   size?: number;
   className?: string;
+  /** 'onDark' renders light text for the dark-slate sidebar. */
+  tone?: 'default' | 'onDark';
 }
 
 /** Logo + company name (max 2 lines, full name on hover) + the user's role. */
-export const CompanyBrand: React.FC<CompanyBrandProps> = ({ name, role, logo, compact, size = 44, className }) => (
+export const CompanyBrand: React.FC<CompanyBrandProps> = ({ name, role, logo, compact, size = 44, className, tone = 'default' }) => (
   <div className={cn('flex items-center gap-3 min-w-0', className)}>
-    <CompanyLogo logo={logo} name={name} size={size} />
+    <CompanyLogo logo={logo} name={name} size={size} className={tone === 'onDark' ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.25)]' : undefined} />
     {!compact && (
       <div className="min-w-0 flex-1">
         <p
-          className="text-[14px] font-bold text-ink leading-snug font-heading"
+          className={cn('leading-snug font-heading', tone === 'onDark' ? 'text-[16px] font-semibold text-white' : 'text-[14px] font-bold text-ink')}
           title={name}
           style={{
             display: '-webkit-box',
@@ -65,7 +67,7 @@ export const CompanyBrand: React.FC<CompanyBrandProps> = ({ name, role, logo, co
         >
           {name}
         </p>
-        <p className="text-[11px] text-ink-secondary mt-0.5 font-semibold truncate">{role}</p>
+        <p className={cn('mt-0.5 truncate', tone === 'onDark' ? 'text-[13px] font-normal text-[#CBD5E1]' : 'text-[11px] font-semibold text-ink-secondary')}>{role}</p>
       </div>
     )}
   </div>

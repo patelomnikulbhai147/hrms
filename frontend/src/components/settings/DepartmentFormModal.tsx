@@ -64,7 +64,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   <p className="text-[11px] font-bold text-slate-600 uppercase tracking-wide col-span-full mt-1 mb-0.5 pb-1 border-b border-slate-100">{children}</p>
 );
 
-const EMPTY: DeptFormValue = { name: '', code: '', description: '', status: 'Active', color: '#6C3CF0', icon: '', order: null, branchId: '', parent: '', reportsTo: '', head: '', allowEmployees: true, email: '', phone: '' };
+const EMPTY: DeptFormValue = { name: '', code: '', description: '', status: 'Active', color: '#C77E52', icon: '', order: null, branchId: '', parent: '', reportsTo: '', head: '', allowEmployees: true, email: '', phone: '' };
 
 export const DepartmentFormModal: React.FC<Props> = ({ open, onClose, initial, existingNames, existingCodes, branches, allDepartments, onSubmit }) => {
   const [form, setForm] = useState<DeptFormValue>(EMPTY);
@@ -148,8 +148,8 @@ export const DepartmentFormModal: React.FC<Props> = ({ open, onClose, initial, e
         </Field>
         <Field label="Colour">
           <div className="flex items-center gap-2">
-            <input type="color" value={form.color || '#6C3CF0'} onChange={e => set('color', e.target.value)} className="h-8 w-10 rounded border border-slate-200 p-0" />
-            <input className={`${inputCls} font-mono`} value={form.color || ''} onChange={e => set('color', e.target.value)} placeholder="#6C3CF0" />
+            <input type="color" value={form.color || '#C77E52'} onChange={e => set('color', e.target.value)} className="h-8 w-10 rounded border border-slate-200 p-0" />
+            <input className={`${inputCls} font-mono`} value={form.color || ''} onChange={e => set('color', e.target.value)} placeholder="#C77E52" />
           </div>
         </Field>
         <Field label="Icon (emoji or name)">

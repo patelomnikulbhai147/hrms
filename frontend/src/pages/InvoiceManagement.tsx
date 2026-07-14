@@ -127,9 +127,9 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
+      <div className="rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ReceiptText size={16} className="text-[#6C3CF0]" /> Invoice Management</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ReceiptText size={16} className="text-[#C77E52]" /> Invoice Management</h2>
           <p className="text-[11px] text-slate-400">Generate GST invoices, track payments & outstanding, manage customers and billable items — {activeCompany?.name || 'your company'}.</p>
         </div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => goCreate(null)}>New Invoice</Button>}
@@ -189,7 +189,7 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
 // ── KPI card ──────────────────────────────────────────────────────────────────
 const Kpi: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#FCF4EE] text-[#C77E52]'}`}>{icon}</div>
     <p className="text-xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -229,7 +229,7 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
             <div className="flex items-end gap-3 h-40">
               {months.map(([m, v]) => (
                 <div key={m} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full rounded-t bg-[#6C3CF0]/80" style={{ height: `${Math.max(4, (Number(v) / maxM) * 130)}px` }} title={inr(v)} />
+                  <div className="w-full rounded-t bg-[#C77E52]/80" style={{ height: `${Math.max(4, (Number(v) / maxM) * 130)}px` }} title={inr(v)} />
                   <span className="text-[9px] text-slate-400">{m.slice(5)}/{m.slice(2, 4)}</span>
                 </div>
               ))}
@@ -246,7 +246,7 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
                 <span className="flex items-center gap-2 shrink-0">{inr(i.grandTotal)} {statusBadge(i.status)}</span>
               </button>
             ))}
-            {(d?.recent || []).length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No invoices yet. <button onClick={onNew} className="text-[#6C3CF0] font-bold">Create one</button>.</p>}
+            {(d?.recent || []).length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No invoices yet. <button onClick={onNew} className="text-[#C77E52] font-bold">Create one</button>.</p>}
           </div>
           {(d?.upcoming || []).length > 0 && <>
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mt-3 mb-2">Upcoming Due</h3>
@@ -512,11 +512,11 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             <Input label="Mobile" value={form.billToPhone} onChange={(e: any) => set('billToPhone', e.target.value)} />
             <div className="md:col-span-2">
               <label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label>
-              <textarea value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
+              <textarea value={form.billToAddress} onChange={(e) => set('billToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" />
             </div>
             <div className="md:col-span-2">
               <label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(shown only if enabled in Templates &amp; Branding → Customer)</span></label>
-              <textarea value={form.billToShipAddress} onChange={(e) => set('billToShipAddress', e.target.value)} rows={2} placeholder="Leave blank to reuse billing address" className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
+              <textarea value={form.billToShipAddress} onChange={(e) => set('billToShipAddress', e.target.value)} rows={2} placeholder="Leave blank to reuse billing address" className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" />
             </div>
           </div>
         </Card>
@@ -524,7 +524,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
         <Card>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide">Invoice Details</h3>
-            {form.invoiceNumber && <span className="text-xs font-mono font-bold text-[#6C3CF0]">{form.invoiceNumber}</span>}
+            {form.invoiceNumber && <span className="text-xs font-mono font-bold text-[#C77E52]">{form.invoiceNumber}</span>}
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Input label="Invoice Date *" type="date" value={form.invoiceDate} onChange={(e: any) => set('invoiceDate', e.target.value)} />
@@ -586,11 +586,11 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             <Input label="Payment Mode" value={form.paymentMode} onChange={(e: any) => set('paymentMode', e.target.value)} placeholder="Bank Transfer / UPI / Cheque" />
             <Input label="UPI ID" value={form.upiId} onChange={(e: any) => set('upiId', e.target.value)} />
             <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Bank Details</label>
-              <textarea value={form.bankDetails} onChange={(e) => set('bankDetails', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+              <textarea value={form.bankDetails} onChange={(e) => set('bankDetails', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
             <div><label className="mb-1 block text-[11px] font-bold text-slate-500">Notes</label>
-              <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+              <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
             <div><label className="mb-1 block text-[11px] font-bold text-slate-500">Terms & Conditions</label>
-              <textarea value={form.termsConditions} onChange={(e) => set('termsConditions', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+              <textarea value={form.termsConditions} onChange={(e) => set('termsConditions', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
           </div>
         </Card>
 
@@ -604,7 +604,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           <Row label="Round Off" value={inr(totals.roundOff)} />
           <div className="border-t border-slate-200 mt-2 pt-2 flex items-center justify-between">
             <span className="text-sm font-extrabold text-slate-800">Grand Total</span>
-            <span className="text-lg font-extrabold text-[#6C3CF0]">{inr(totals.grandTotal)}</span>
+            <span className="text-lg font-extrabold text-[#C77E52]">{inr(totals.grandTotal)}</span>
           </div>
           <p className="text-[10px] text-slate-400 mt-2">{intraState ? 'Intra-state supply → CGST + SGST.' : 'Inter-state supply → IGST.'} Totals are re-verified on the server.</p>
         </Card>
@@ -634,7 +634,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
     const active = selectedLayoutId === l.id;
     return (
       <button key={`layout-${l.id}`} type="button" onClick={() => setSelectedLayoutId(l.id)} title={`${l.name}${pinned ? ' (default template)' : ' (custom)'}`}
-        className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#6C3CF0] ring-2 ring-[#6C3CF0]/20 bg-brand-50/40' : pinned ? 'border-amber-300 hover:border-amber-400' : 'border-slate-200 hover:border-slate-300'}`}>
+        className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#C77E52] ring-2 ring-[#C77E52]/20 bg-brand-50/40' : pinned ? 'border-amber-300 hover:border-amber-400' : 'border-slate-200 hover:border-slate-300'}`}>
         <div className="rounded-md overflow-hidden border border-slate-100 bg-gradient-to-br from-brand-100 to-white">
           <div className="h-4 bg-brand-600" />
           <div className="p-1 space-y-0.5">
@@ -645,8 +645,8 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           </div>
         </div>
         <div className="mt-1 flex items-center justify-between gap-1">
-          <span className={`text-[10px] font-bold truncate ${active ? 'text-[#6C3CF0]' : 'text-slate-600'}`}>{l.name}</span>
-          {active && <CheckCircle2 size={11} className="text-[#6C3CF0] shrink-0" />}
+          <span className={`text-[10px] font-bold truncate ${active ? 'text-[#C77E52]' : 'text-slate-600'}`}>{l.name}</span>
+          {active && <CheckCircle2 size={11} className="text-[#C77E52] shrink-0" />}
         </div>
         {pinned
           ? <span className="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>
@@ -664,7 +664,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       {/* Invoice Template selector */}
       <Card>
         <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#6C3CF0]" /> Invoice Template</h3>
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#C77E52]" /> Invoice Template</h3>
           <span className="text-[10px] text-slate-400">This invoice only</span>
         </div>
         <div className="flex gap-2.5 overflow-x-auto pb-1.5 -mx-1 px-1">
@@ -680,7 +680,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
             const isDefault = selectedLayoutId == null && !defaultLayout && defaultTemplateId === p.id;
             return (
               <button key={p.id} type="button" onClick={() => { setSelectedTemplateId(p.id); setSelectedLayoutId(null); }} title={isDefault ? `${p.name} (company default)` : p.name}
-                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#6C3CF0] ring-2 ring-[#6C3CF0]/20 bg-brand-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
+                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#C77E52] ring-2 ring-[#C77E52]/20 bg-brand-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
                 <div className="rounded-md overflow-hidden border border-slate-100 bg-white">
                   <div className="h-4" style={{ background: p.swatch }} />
                   <div className="p-1 space-y-0.5">
@@ -691,8 +691,8 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
                   </div>
                 </div>
                 <div className="mt-1 flex items-center justify-between gap-1">
-                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#6C3CF0]' : 'text-slate-600'}`}>{p.name}</span>
-                  {active && <CheckCircle2 size={11} className="text-[#6C3CF0] shrink-0" />}
+                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#C77E52]' : 'text-slate-600'}`}>{p.name}</span>
+                  {active && <CheckCircle2 size={11} className="text-[#C77E52] shrink-0" />}
                 </div>
                 {isDefault && <span className="absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>}
               </button>
@@ -703,9 +703,9 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
           {otherLayouts.map((l) => renderLayoutCard(l, false))}
         </div>
         {selectedLayoutRow ? (
-          <button type="button" onClick={() => { const def = savedLayouts.find((l) => l.isDefault); setSelectedLayoutId(def ? def.id : null); }} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#6C3CF0]">↺ Reset to default ({savedLayouts.find((l) => l.isDefault)?.name || presetName(defaultTemplateId)})</button>
+          <button type="button" onClick={() => { const def = savedLayouts.find((l) => l.isDefault); setSelectedLayoutId(def ? def.id : null); }} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#C77E52]">↺ Reset to default ({savedLayouts.find((l) => l.isDefault)?.name || presetName(defaultTemplateId)})</button>
         ) : selectedTemplateId && selectedTemplateId !== defaultTemplateId ? (
-          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#6C3CF0]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
+          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#C77E52]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
         ) : null}
       </Card>
 
@@ -714,13 +714,13 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
         <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
           <p className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><Eye size={13} className="text-brand-500" /> Live Preview</p>
           <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-            <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><ZoomOut size={13} /></button>
+            <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#C77E52]"><ZoomOut size={13} /></button>
             <span className="w-9 text-center text-[10px] font-bold text-slate-500">{Math.round(zoom * 100)}%</span>
-            <button type="button" title="Zoom in" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><ZoomIn size={13} /></button>
+            <button type="button" title="Zoom in" onClick={() => setZoom((z) => Math.min(2, +(z + 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#C77E52]"><ZoomIn size={13} /></button>
             <span className="mx-0.5 h-4 w-px bg-slate-200" />
-            <button type="button" title="Full screen" onClick={() => setFullOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Maximize2 size={13} /></button>
-            <button type="button" title="Print" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Printer size={13} /></button>
-            <button type="button" title="Download PDF" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#6C3CF0]"><Download size={13} /></button>
+            <button type="button" title="Full screen" onClick={() => setFullOpen(true)} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#C77E52]"><Maximize2 size={13} /></button>
+            <button type="button" title="Print" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#C77E52]"><Printer size={13} /></button>
+            <button type="button" title="Download PDF" onClick={openFullPreview} className="rounded-md p-1 text-slate-500 hover:bg-white hover:text-[#C77E52]"><Download size={13} /></button>
           </div>
         </div>
         <InvoicePreviewFrame html={previewHtml} pw={pw} ph={ph} zoom={zoom} maxHeightVh={82} />
@@ -748,7 +748,7 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
 
       {layout === 'compact' && (
         <button type="button" onClick={() => setFullOpen(true)}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#6C3CF0] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-brand-500/30">
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-[#C77E52] px-4 py-3 text-xs font-bold text-white shadow-lg shadow-brand-500/30">
           <Eye size={15} /> Preview
         </button>
       )}
@@ -819,7 +819,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
           {['All', 'Draft', 'Generated', 'Sent', 'Partially Paid', 'Paid', 'Cancelled'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
         </select>
@@ -904,7 +904,7 @@ const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolea
             <Row label="Taxable" value={inr(invoice.taxableAmount)} />
             {intra ? <><Row label="CGST" value={inr(invoice.cgst)} /><Row label="SGST" value={inr(invoice.sgst)} /></> : <Row label="IGST" value={inr(invoice.igst)} />}
             <Row label="Round Off" value={inr(invoice.roundOff)} />
-            <div className="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold"><span>Grand Total</span><span className="text-[#6C3CF0]">{inr(invoice.grandTotal)}</span></div>
+            <div className="border-t border-slate-200 pt-1 flex justify-between text-sm font-extrabold"><span>Grand Total</span><span className="text-[#C77E52]">{inr(invoice.grandTotal)}</span></div>
             <Row label="Paid" value={inr(invoice.amountPaid)} />
             <div className="flex justify-between text-xs font-bold text-orange-600"><span>Balance Due</span><span>{inr(invoice.balanceDue)}</span></div>
           </div>
@@ -963,7 +963,7 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true })}>Add Customer</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -974,7 +974,7 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
             {!loading && rows.length === 0 && <tr><td colSpan={9}><Empty icon={<Users size={26} />} title="No customers yet" /></td></tr>}
             {rows.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50/60">
-                <td className="p-3 font-mono text-[11px] font-bold text-[#6C3CF0]">{c.customerCode || '—'}</td>
+                <td className="p-3 font-mono text-[11px] font-bold text-[#C77E52]">{c.customerCode || '—'}</td>
                 <td className="p-3"><p className="font-bold text-slate-800">{c.companyName}</p><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
                 <td className="p-3 text-slate-600 font-mono text-[11px]">{c.gstin || '—'}</td>
                 <td className="p-3 text-slate-600">{c.contactPerson || '—'}<span className="block text-[10px] text-slate-400">{[c.city, c.state].filter(Boolean).join(', ')}</span></td>
@@ -1001,7 +1001,7 @@ const CustomerModal: React.FC<{ customer: any; onClose: () => void; onSave: (d: 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <label className="mb-1 block text-[11px] font-bold text-slate-500">Client Code</label>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono font-bold text-[#6C3CF0]">{f.customerCode || 'Auto-assigned on save'}</div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono font-bold text-[#C77E52]">{f.customerCode || 'Auto-assigned on save'}</div>
         </div>
         <Input label="Company Name *" value={f.companyName || ''} onChange={(e: any) => set('companyName', e.target.value)} />
         <Input label="Contact Person" value={f.contactPerson || ''} onChange={(e: any) => set('contactPerson', e.target.value)} />
@@ -1015,8 +1015,8 @@ const CustomerModal: React.FC<{ customer: any; onClose: () => void; onSave: (d: 
         <Input label="Payment Terms" value={f.paymentTerms || ''} onChange={(e: any) => set('paymentTerms', e.target.value)} placeholder="e.g. Net 30" />
         <Input label="Credit Days" type="number" value={f.creditDays ?? ''} onChange={(e: any) => set('creditDays', e.target.value)} placeholder="e.g. 30" />
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label><textarea value={f.addressLine || ''} onChange={(e) => set('addressLine', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(default; auto-filled onto new invoices)</span></label><textarea value={f.shipToAddress || ''} onChange={(e) => set('shipToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label><textarea value={f.addressLine || ''} onChange={(e) => set('addressLine', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(default; auto-filled onto new invoices)</span></label><textarea value={f.shipToAddress || ''} onChange={(e) => set('shipToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
       </div>
     </Modal>
   );
@@ -1035,7 +1035,7 @@ const ProductsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEd
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search products…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
         {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ name: '', unit: 'Nos', rate: 0, taxRate: 18, isActive: true })}>Add Product / Service</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1075,7 +1075,7 @@ const ProductModal: React.FC<{ product: any; onClose: () => void; onSave: (d: an
         <Input label="Rate (₹)" type="number" value={f.rate ?? 0} onChange={(e: any) => set('rate', e.target.value)} />
         <Input label="GST %" type="number" value={f.taxRate ?? 0} onChange={(e: any) => set('taxRate', e.target.value)} />
         <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label><textarea value={f.description || ''} onChange={(e) => set('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" /></div>
+        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label><textarea value={f.description || ''} onChange={(e) => set('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
       </div>
     </Modal>
   );
@@ -1148,7 +1148,7 @@ const SettingsTab: React.FC<{ canManage: boolean }> = ({ canManage }) => {
           <Input label="Next Number" type="number" value={f.nextNumber} onChange={(e: any) => set('nextNumber', e.target.value)} disabled={!canManage} />
           <Input label="Seq Padding" type="number" value={f.seqPadding} onChange={(e: any) => set('seqPadding', e.target.value)} disabled={!canManage} />
         </div>
-        <p className="text-[11px] text-slate-500 mt-2">Tokens: <code>{'{PREFIX} {FY} {YYYY} {MM} {SEQ}'}</code> · Next invoice: <b className="text-[#6C3CF0]">{preview}</b></p>
+        <p className="text-[11px] text-slate-500 mt-2">Tokens: <code>{'{PREFIX} {FY} {YYYY} {MM} {SEQ}'}</code> · Next invoice: <b className="text-[#C77E52]">{preview}</b></p>
       </Card>
       <Card>
         <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide mb-3">Defaults</h3>

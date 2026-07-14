@@ -57,7 +57,7 @@ exports.getAll = async (req, res) => {
       where: { ...(month ? { month } : {}), ...(year ? { year } : {}), employee: empWhere },
       include: { employee: { select: { id: true, employeeId: true, name: true, branchId: true, companyId: true, branchLocation: true, department: true } } },
     });
-    res.json(rows.map(s => ({
+    const out = rows.map(s => ({
       id: s.id, employeeId: s.employeeId, month: s.month, year: s.year,
       employeeCode: s.employee?.employeeId, employeeName: s.employee?.name,
       department: s.employee?.department, branchId: s.employee?.branchId,
@@ -65,7 +65,55 @@ exports.getAll = async (req, res) => {
       presentDays: s.presentDays, absentDays: s.absentDays, cl: s.cl, pl: s.pl, sl: s.sl,
       lwp: s.lwp, halfDays: s.halfDays, otHours: s.otHours, shift: s.shift,
       payableDays: s.payableDays, locked: s.locked, updatedBy: s.updatedBy, updatedAt: s.updatedAt,
-    })));
+    }));
+
+    // ── Self-heal: include LIVE attendance for in-scope employees who have raw
+    // Attendance-module rows this month but no materialized summary yet. Payroll
+    // reads THIS endpoint, so without this it would show 0 / "Not Loaded" while
+    // the Attendance module (which computes live from raw rows) shows the real
+    // count. We NEVER persist here (no write-on-read) and a stored/edited row
+    // always wins — only genuine gaps are filled. Bounded to a real company
+    // scope to avoid a platform-wide compute for a Super Admin viewing everyone.
+    // Opt-in (Payroll passes includeComputed): the Attendance page keeps getting
+    // only persisted, editable rows so its Edit-summary flow is unaffected.
+    const includeComputed = String(req.query.includeComputed) === 'true';
+    const scoped = !isSuper(req) || !!companyId;
+    if (includeComputed && month && year && scoped) {
+      const haveSummary = new Set(out.map(r => Number(r.employeeId)));
+      const emps = await prisma.employee.findMany({
+        where: { status: { notIn: OFFBOARDED_STATUSES }, ...empWhere },
+        select: { id: true, employeeId: true, name: true, department: true, branchId: true, branchLocation: true, companyId: true },
+      });
+      const candidates = emps.filter(e => !haveSummary.has(Number(e.id)));
+      if (candidates.length) {
+        const mi = summaryService.monthIndex(month);
+        const pad = (x) => String(x).padStart(2, '0');
+        const last = new Date(year, mi + 1, 0).getDate();
+        const gte = `${year}-${pad(mi + 1)}-01`;
+        const lte = `${year}-${pad(mi + 1)}-${pad(last)}`;
+        // One query → which candidates actually have raw attendance this month.
+        const raw = await prisma.attendance.findMany({
+          where: { employeeId: { in: candidates.map(e => e.id) }, date: { gte, lte } },
+          select: { employeeId: true },
+        });
+        const withRaw = new Set(raw.map(r => Number(r.employeeId)));
+        for (const e of candidates) {
+          if (!withRaw.has(Number(e.id))) continue; // no attendance → correctly omitted
+          const f = await summaryService.compute(e.id, month, year).catch(() => null);
+          if (!f) continue;
+          out.push({
+            id: null, employeeId: e.id, month, year,
+            employeeCode: e.employeeId, employeeName: e.name, department: e.department,
+            branchId: e.branchId, branchLocation: e.branchLocation, companyId: e.companyId,
+            presentDays: f.presentDays, absentDays: f.absentDays, cl: f.cl, pl: f.pl, sl: f.sl,
+            lwp: f.lwp, halfDays: f.halfDays, otHours: f.otHours, shift: null,
+            payableDays: f.payableDays, locked: false, updatedBy: null, updatedAt: null, computed: true,
+          });
+        }
+      }
+    }
+
+    res.json(out);
   } catch (e) {
     console.error('summary getAll', e);
     res.status(500).json({ error: e.message || 'Server error' });

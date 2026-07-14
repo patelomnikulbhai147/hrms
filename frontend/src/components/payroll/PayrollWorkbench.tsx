@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Users, FileCheck2, CheckCircle2, Wallet, Clock, IndianRupee,
-  CalendarCheck, Calculator, ShieldCheck, FileText, Banknote, Lock, Unlock,
+  Calculator, ShieldCheck, FileText, Banknote, Lock, Unlock,
   Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
 import { byEmployeeCode } from '@/utils/employeeSort';
+import { formatDate } from '@/utils/formatDate';
 
 // ── Payment status (only Pending / Approved / Paid) ───────────────────────
 // Enterprise payroll workflow: Draft → Pending Approval → Approved → Paid.
@@ -48,6 +49,18 @@ interface Props {
   /** Which lock action is in flight, so the button can show a spinner. */
   lockBusy?: 'lock' | 'unlock' | null;
   onRecalculate?: (ids?: string[]) => void;
+  // ── Synchronize Attendance step (Step 1 — runs before Generate Payroll) ──
+  /** ONE combined action: fetch attendance → recalculate → snapshot → LOP/OT →
+   *  write to payroll → refresh. Replaces the old two-button (Recalculate + Sync)
+   *  flow. Owned by Payroll (validate + progress + summary + audit + API). */
+  onSynchronizeAttendance?: () => void;
+  /** Last successful synchronization for the selected month — powers the "Last
+   *  Synchronized" line and gates Generate Payroll (null = not yet synced). */
+  attendanceRecalc?: { at: string; by: string; employees: number; records: number } | null;
+  /** True while the synchronize operation is in flight (spinner on the button). */
+  attendanceRecalcBusy?: boolean;
+  /** Whether the current user may synchronize attendance (Employees cannot). */
+  canRecalcAttendance?: boolean;
   // workflow step actions
   onGeneratePayroll: () => void;
   onApproveAll: () => void;
@@ -72,6 +85,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
   onGeneratePayroll, onApproveAll, onGenerateSlipsAll, onExportBank, onMarkPaidAll, onLockMonth,
   onView, onOpenWorksheet, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
   onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onUnlock, onRecalculate, lockBusy = null,
+  onSynchronizeAttendance, attendanceRecalc = null, attendanceRecalcBusy = false, canRecalcAttendance = false,
 }) => {
   const [companyFilter, setCompanyFilter] = useState(() => sessionStorage.getItem('payroll_company') || '');
   const [branchFilter, setBranchFilter] = useState(() => sessionStorage.getItem('payroll_branch') || '');
@@ -112,12 +126,24 @@ export const PayrollWorkbench: React.FC<Props> = ({
 
   const rows = useMemo(() => records.map(r => {
     const emp = getEmployee(r.employeeId);
+    // Attendance figures are read STRAIGHT from the stored payroll row (written by
+    // Attendance Synchronization → Push to Payroll Engine). Payroll never
+    // recalculates them here — it only displays the finalized values.
+    const workingDays = Number((r as any).workingDays) || 0;
+    const monthly = Number(emp?.salary) || 0; // full monthly gross (source: employee)
     return {
       r,
       code: emp?.employeeId || '—',
       name: r.employeeName || emp?.name || '—',
       branch: emp?.branchLocation || r.employee?.branchLocation || 'Head Office',
       dept: r.department || emp?.department || '—',
+      monthly,
+      workingDays,
+      present: Number((r as any).presentDays) || 0,
+      payable: Number((r as any).payableDays) || 0,
+      // Daily salary is a display derivation of stored values (monthly ÷ working),
+      // matching the Attendance page — it does NOT re-derive payable/net salary.
+      daily: workingDays > 0 ? monthly / workingDays : 0,
       gross: (r.basicSalary || 0) + (r.allowances || 0) + (r.bonus || 0),
       // Overtime & Bonus are broken out as their own columns (both are already
       // part of gross — overtime sits inside allowances, bonus is added on top).
@@ -295,26 +321,86 @@ export const PayrollWorkbench: React.FC<Props> = ({
   const slipsAction = () => (selCount > 0 && onGenerateSlips ? onGenerateSlips(selectedRecords) : onGenerateSlipsAll());
   const payAction = () => (selCount > 0 && onMarkPaid ? onMarkPaid(selectedIds) : onMarkPaidAll());
 
-  const steps = [
-    { key: 'attendance', title: 'Attendance Verification', icon: <CalendarCheck size={15} />, done: total > 0, status: total > 0 ? 'Attendance Ready' : 'No data',
-      scoped: false, btn: null as any },
-    { key: 'generate', title: 'Generate Payroll', icon: <Calculator size={15} />, done: allGenerated, status: allGenerated ? 'Generated' : (total > 0 ? `${m.generated}/${total}` : 'Pending'),
-      scoped: true, btn: perms.generate && { label: 'Generate Payroll', onClick: genAction } },
+  // ── Locked-month workflow (enterprise standard) ───────────────────────────
+  // Once the month is locked, editing/generation/approval/recalculation are
+  // frozen (steps 1–3), while Salary Slips (view/print/download) and Salary
+  // Payment (bank sheet / history) stay AVAILABLE (steps 4–5). This changes only
+  // the post-lock workflow presentation — no payroll/attendance/leave calc, no API.
+  const monthLocked = anyLocked;
+  const lockedRec = monthLocked
+    ? (records.find(r => r.lockedAt) || records.find(r => String(r.payrollStatus).toLowerCase() === 'locked'))
+    : null;
+  const lockedOn = lockedRec?.lockedAt || null;
+  // No `lockedBy` column exists (schema unchanged); fall back to the approver, then
+  // to the authority that can lock — never fabricate a specific name.
+  const lockedBy = lockedRec?.lockedBy || lockedRec?.approvedBy || null;
+  const downloadAllSlips = () => onDownloadZip(filtered.map(x => x.r), `${branchFilter || deptFilter || 'All'}_Salary_Slips_${safe(monthLabel)}`);
+
+  // ── Synchronize Attendance gate (enterprise workflow order) ────────────────
+  // Generate Payroll unlocks only after attendance has been SYNCHRONIZED for this
+  // month AND that snapshot is still current. `outdatedRecords` (DB-driven: any
+  // later attendance/leave edit flags the payroll row `isOutdated`) is the reset
+  // signal — when set, the green "Synchronized" badge clears and the button
+  // re-enables, so payroll is never generated from a stale snapshot.
+  const attRecalcDone = !!attendanceRecalc;
+  const attChanged = outdatedRecords.length > 0;
+  const attSynced = attRecalcDone && !attChanged;
+  const attReady = total > 0 && attSynced;
+  // After generation, any attendance change flags records "outdated" → approval is
+  // blocked until payroll is re-synchronized / regenerated.
+  const approveBlocked = attChanged;
+
+  const steps: any[] = [
+    // Step 1 — Synchronize Attendance is the first, mandatory step. ONE action
+    // fetches attendance, recalculates, snapshots, computes LOP/OT and writes to
+    // payroll. Rendered specially (green badge when synced) in the card body.
+    { key: 'attRecalc', title: 'Synchronize Attendance', icon: <RefreshCw size={15} />, done: attSynced,
+      status: monthLocked ? 'Locked'
+        : attChanged ? 'Attendance changed — re-sync'
+          : attSynced ? 'Attendance Synchronized'
+            : 'Pending',
+      subStatus: !monthLocked && attSynced && attendanceRecalc ? `Last: ${formatDate(attendanceRecalc.at)} · by ${attendanceRecalc.by}` : undefined,
+      locked: monthLocked, lockedHint: 'Payroll month is locked. Unlock the month before synchronizing attendance.',
+      scoped: false },
+    { key: 'generate', title: 'Generate Payroll', icon: <Calculator size={15} />, done: allGenerated,
+      status: monthLocked ? 'Locked' : (!attReady ? 'Synchronize attendance first' : (allGenerated ? 'Generated' : `${m.generated}/${total}`)),
+      locked: monthLocked, scoped: !monthLocked,
+      // Disabled (not hidden) until attendance is synchronized, so the required
+      // workflow order is visible and enforced.
+      btn: !monthLocked && perms.generate
+        ? (attReady
+            ? { label: 'Generate Payroll', onClick: genAction }
+            : { label: 'Generate Payroll', onClick: () => {}, disabled: true, hint: 'Synchronize attendance before generating payroll.' })
+        : false },
     { key: 'approve', title: 'Approve Payroll', icon: <ShieldCheck size={15} />, done: approveDone,
       // Show records AWAITING approval (generated, not yet approved) so the card
       // immediately reflects freshly generated payroll. "Approved" when none pending.
-      status: !perms.approve ? 'No access' : approveDone ? 'Approved' : m.pendingApproval > 0 ? `${m.pendingApproval}/${total || 0} to approve` : 'Pending',
-      scoped: true, btn: perms.approve && { label: 'Approve Payroll', onClick: approveAction } },
-    { key: 'slips', title: 'Generate Salary Slips', icon: <FileText size={15} />, done: allGenerated, status: allGenerated ? 'Slips Ready' : 'Pending',
-      scoped: true, btn: perms.generateSlips && { label: 'Generate Slips', onClick: slipsAction } },
-    { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid, status: allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`,
-      scoped: true, btn: null },
-    { key: 'lock', title: anyLocked ? 'Unlock Month' : 'Lock Month', icon: anyLocked ? <Unlock size={15} /> : <Lock size={15} />, done: anyLocked, scoped: false,
+      // Approval is BLOCKED while attendance changed after generation (outdated).
+      status: monthLocked ? 'Locked' : (approveBlocked ? 'Attendance changed — regenerate' : (!perms.approve ? 'No access' : approveDone ? 'Approved' : m.pendingApproval > 0 ? `${m.pendingApproval}/${total || 0} to approve` : 'Pending')),
+      locked: monthLocked, scoped: !monthLocked,
+      btn: !monthLocked && perms.approve
+        ? (approveBlocked
+            ? { label: 'Approve Payroll', onClick: () => {}, disabled: true, hint: 'Attendance changed since payroll was generated. Re-synchronize attendance & regenerate payroll before approving.' }
+            : { label: 'Approve Payroll', onClick: approveAction })
+        : false },
+    { key: 'slips', title: monthLocked ? 'Salary Slips' : 'Generate Salary Slips', icon: <FileText size={15} />, done: allGenerated,
+      status: monthLocked ? 'Available' : (allGenerated ? 'Slips Ready' : 'Pending'),
+      scoped: !monthLocked,
+      // After lock, generation is frozen but download/view/print stay available.
+      btn: monthLocked
+        ? (perms.download && { label: 'Download All', onClick: downloadAllSlips, tone: 'download' as const })
+        : (perms.generateSlips && { label: 'Generate Slips', onClick: slipsAction }) },
+    { key: 'pay', title: 'Salary Payment', icon: <Banknote size={15} />, done: allPaid,
+      status: monthLocked ? 'Available' : (allPaid ? 'Paid' : `${m.paid}/${total || 0} paid`),
+      scoped: false, btn: null },
+    { key: 'lock', title: monthLocked ? 'Payroll Locked' : 'Lock Month', icon: monthLocked ? <Lock size={15} /> : <Lock size={15} />, done: monthLocked, scoped: false,
       // Locking is only allowed once the month is fully Paid; before that the
       // step stays open and the button is withheld. A locked month can be
       // reopened by a Company Head / Super Admin (override authority).
-      status: anyLocked ? 'Locked' : (allPaid ? 'Ready to lock' : 'Pay first'),
-      btn: anyLocked
+      status: monthLocked ? (lockedOn ? `Locked on ${formatDate(lockedOn)}` : 'Locked') : (allPaid ? 'Ready to lock' : 'Pay first'),
+      subStatus: monthLocked ? (lockedBy ? `by ${lockedBy}` : 'by Company Head / Super Admin') : undefined,
+      lockedBadge: monthLocked,
+      btn: monthLocked
         ? (canOverrideLock && onUnlock && { label: 'Unlock Month', onClick: () => onUnlock(lockedIds), tone: 'unlock' as const })
         : (perms.lock && allPaid && { label: 'Lock Month', onClick: onLockMonth, tone: 'lock' as const }) },
   ];
@@ -337,7 +423,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
         ))}
       </div>
 
-      {/* ── 6-step workflow ── */}
+      {/* ── 6-step workflow (Attendance Recalculation is Step 1) ── */}
       <Card padding={false}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
           <div>
@@ -369,7 +455,17 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-[11px] font-bold text-slate-800 leading-tight" title={s.title}>{s.title}</p>
-                  <p className={`truncate text-[10px] font-semibold mt-0.5 ${s.done ? 'text-emerald-600' : isActive ? 'text-brand-600' : 'text-slate-400'}`} title={s.status}>{s.status}</p>
+                  <p className={`truncate text-[10px] font-semibold mt-0.5 flex items-center gap-1 ${s.lockedBadge || s.done ? 'text-emerald-600' : s.locked ? 'text-slate-400' : isActive ? 'text-brand-600' : 'text-slate-400'}`} title={s.status}>
+                    {(s.locked || s.lockedBadge) && <Lock size={9} className="shrink-0" />}
+                    <span className="truncate">{s.status}</span>
+                  </p>
+                  {s.subStatus && <p className="truncate text-[10px] text-slate-400 mt-0.5" title={s.subStatus}>{s.subStatus}</p>}
+                  {/* Step 6 — green "Payroll Locked" badge (enterprise standard). */}
+                  {s.lockedBadge && (
+                    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                      <CheckCircle2 size={10} className="shrink-0" /> Payroll Locked
+                    </span>
+                  )}
                   {s.scoped && hasSel && (
                     <span className="mt-1.5 inline-flex max-w-full items-center gap-1 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-bold text-brand-700">
                       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
@@ -380,28 +476,79 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 {s.key === 'pay' ? (
                   perms.markPaid && (
                     <div className="mt-auto flex flex-col gap-1.5">
+                      {/* Bank sheet download stays available after lock. */}
                       <Button size="sm" variant="secondary" className="w-full" onClick={onExportBank}>
                         <Banknote size={12} className="mr-1 shrink-0" /><span className="truncate">Bank Sheet</span>
                       </Button>
-                      {/* Confirming payment is a success action, not a primary one. */}
-                      <Button size="sm" variant="success" className="w-full" onClick={payAction}>
-                        <span className="truncate">Mark Paid</span>
-                      </Button>
+                      {/* Mark Paid is a mutation — frozen once the month is locked. */}
+                      {!monthLocked && (
+                        <Button size="sm" variant="success" className="w-full" onClick={payAction}>
+                          <span className="truncate">Mark Paid</span>
+                        </Button>
+                      )}
                     </div>
                   )
+                ) : s.key === 'attRecalc' ? (
+                  // ── ONE combined action ── When attendance is synchronized AND
+                  // still current, show a green "Attendance Synchronized" badge and
+                  // no button. Otherwise show the single purple "Synchronize
+                  // Attendance" button. It re-enables automatically when attendance
+                  // changes (attSynced is cleared by outdatedRecords above).
+                  s.locked ? (
+                    <div className="mt-auto" title={s.lockedHint || 'Payroll month is locked.'}>
+                      <div className="flex w-full cursor-not-allowed select-none items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-400">
+                        <Lock size={11} className="shrink-0" /> Locked
+                      </div>
+                    </div>
+                  ) : attSynced ? (
+                    <div className="mt-auto flex w-full items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700">
+                      <CheckCircle2 size={12} className="shrink-0" /> Attendance Synchronized
+                    </div>
+                  ) : (canRecalcAttendance && onSynchronizeAttendance) ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={attendanceRecalcBusy}
+                      icon={<RefreshCw size={12} className="shrink-0" />}
+                      className="mt-auto w-full"
+                      onClick={onSynchronizeAttendance}
+                    >
+                      <span className="truncate">Synchronize Attendance</span>
+                    </Button>
+                  ) : <div className="mt-auto h-[1px]" />
+                ) : s.locked ? (
+                  // Steps after lock: disabled control + tooltip (step-specific hint
+                  // when provided, e.g. Synchronize Attendance's unlock guidance).
+                  <div className="mt-auto" title={s.lockedHint || 'Payroll month is locked.'}>
+                    <div className="flex w-full cursor-not-allowed select-none items-center justify-center gap-1 rounded-lg bg-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-400">
+                      <Lock size={11} className="shrink-0" /> Locked
+                    </div>
+                  </div>
+                ) : s.btn && (s.btn as any).disabled ? (
+                  // Gated action (Generate before recalc, Approve while outdated):
+                  // shown disabled with the reason on hover — the required order stays
+                  // visible and enforced rather than the button silently vanishing.
+                  <div className="mt-auto" title={(s.btn as any).hint}>
+                    <div className="flex w-full cursor-not-allowed select-none items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-100 px-2 py-1.5 text-[11px] font-bold text-slate-400">
+                      <span className="truncate">{(s.btn as any).label}</span>
+                    </div>
+                  </div>
                 ) : s.btn ? (
                   // Lock/Unlock carries its own colour language: unlocking a month
-                  // is destructive (danger), locking it confirms (success). The
-                  // remaining steps are primary while active, neutral once past.
+                  // is destructive (danger), locking it confirms (success), download
+                  // is neutral-secondary, recalc is primary. Other steps are primary
+                  // while active.
                   <Button
                     size="sm"
                     variant={
                       (s.btn as any).tone === 'unlock' ? 'danger'
                         : (s.btn as any).tone === 'lock' ? 'success'
-                          : isActive ? 'primary' : 'outline'
+                          : (s.btn as any).tone === 'download' ? 'secondary'
+                            : (s.btn as any).tone === 'recalc' ? 'primary'
+                              : isActive ? 'primary' : 'outline'
                     }
-                    loading={s.key === 'lock' && lockBusy === (s.btn as any).tone}
-                    icon={(s.btn as any).tone === 'unlock' ? <Unlock size={12} className="shrink-0" /> : (s.btn as any).tone === 'lock' ? <Lock size={12} className="shrink-0" /> : undefined}
+                    loading={(s.key === 'lock' && lockBusy === (s.btn as any).tone) || (s.key === 'attRecalc' && attendanceRecalcBusy)}
+                    icon={(s.btn as any).tone === 'unlock' ? <Unlock size={12} className="shrink-0" /> : (s.btn as any).tone === 'lock' ? <Lock size={12} className="shrink-0" /> : (s.btn as any).tone === 'download' ? <Download size={12} className="shrink-0" /> : (s.btn as any).tone === 'recalc' ? <RefreshCw size={12} className="shrink-0" /> : undefined}
                     className="mt-auto w-full"
                     onClick={s.btn.onClick}
                   >
@@ -463,12 +610,16 @@ export const PayrollWorkbench: React.FC<Props> = ({
               <span className="text-xs font-bold">Attendance Updated — Payroll Regeneration Required</span>
               <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">{outdatedRecords.length} record(s)</span>
             </div>
-            {perms.recalc && onRecalculate && (
+            {perms.recalc && onRecalculate && !monthLocked ? (
               // Regenerating overwrites computed payroll — amber, not primary.
               <Button size="sm" variant="warning" onClick={() => onRecalculate(outdatedRecords.map((x: any) => x.id))}>
                 <Calculator size={13} className="mr-1" /> Recalculate Payroll
               </Button>
-            )}
+            ) : monthLocked ? (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-400" title="Payroll month is locked.">
+                <Lock size={12} /> Recalculation locked
+              </span>
+            ) : null}
           </div>
         )}
 
@@ -503,6 +654,11 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 <th className="px-2 py-2.5">Employee Name</th>
                 <th className="px-2 py-2.5">Branch</th>
                 <th className="px-2 py-2.5">Department</th>
+                <th className="px-2 py-2.5 text-right">Monthly Salary</th>
+                <th className="px-2 py-2.5 text-center">Working</th>
+                <th className="px-2 py-2.5 text-center">Present</th>
+                <th className="px-2 py-2.5 text-center">Payable</th>
+                <th className="px-2 py-2.5 text-right">Daily Salary</th>
                 <th className="px-2 py-2.5 text-right">Gross Salary</th>
                 <th className="px-2 py-2.5 text-right">Overtime</th>
                 <th className="px-2 py-2.5 text-right">Bonus</th>
@@ -515,7 +671,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
             <tbody className="divide-y divide-slate-50">
               {isTableLoading ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center text-slate-500 text-sm">
+                  <td colSpan={18} className="px-4 py-10 text-center text-slate-500 text-sm">
                     <div className="flex flex-col items-center gap-2">
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-brand-600"></div>
                       Loading...
@@ -523,29 +679,44 @@ export const PayrollWorkbench: React.FC<Props> = ({
                   </td>
                 </tr>
               ) : paginatedRows.length === 0 ? (
-                <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-400">No payroll records. Run “Generate Payroll” to begin.</td></tr>
+                <tr><td colSpan={18} className="px-4 py-10 text-center text-slate-400">No payroll records. Run “Generate Payroll” to begin.</td></tr>
               ) : paginatedRows.map((x, i) => {
                 const pb = paymentBadge(x.r);
                 const sel = selected.has(x.r.id);
+                // A "pending" row is an eligible employee from Employee Management
+                // that has no generated payroll yet (roster placeholder). It shows
+                // as Not Generated with dashes and no slip actions — selecting it
+                // and running Generate Payroll creates its real record.
+                const pending = !!(x.r as any).__pending;
                 return (
-                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${sel ? 'bg-brand-50/50' : ''}`}>
+                  <tr key={x.r.id} className={`hover:bg-slate-50/60 ${sel ? 'bg-brand-50/50' : ''} ${pending ? 'bg-slate-50/40' : ''}`}>
                     <td className="px-3 py-2 text-center"><input type="checkbox" checked={sel} onChange={() => toggleOne(x.r.id)} className="rounded border-slate-300" /></td>
                     <td className="px-3 py-2 text-center text-slate-400">{(page - 1) * limit + i + 1}</td>
                     <td className="px-2 py-2 font-bold text-slate-800">{x.code}</td>
                     <td className="px-2 py-2 font-semibold text-slate-900">
                       {onOpenWorksheet
-                        ? <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="text-left hover:text-brand-600 hover:underline">{x.name}</button>
+                        ? <button title={pending ? 'Open Salary Worksheet (Draft)' : 'Open Salary Worksheet'} onClick={() => onOpenWorksheet(x.r)} className="text-left hover:text-brand-600 hover:underline">{x.name}</button>
                         : x.name}
                     </td>
                     <td className="px-2 py-2 text-slate-600">{x.branch}</td>
                     <td className="px-2 py-2 text-slate-600">{x.dept}</td>
-                    <td className="px-2 py-2 text-right text-slate-700">{inr(x.gross)}</td>
-                    <td className="px-2 py-2 text-right text-brand-600">{x.overtime ? inr(x.overtime) : '—'}</td>
-                    <td className={`px-2 py-2 text-right font-semibold ${x.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{x.bonus ? inr(x.bonus) : '—'}</td>
-                    <td className="px-2 py-2 text-right text-rose-600">{inr(x.deductions)}</td>
-                    <td className="px-2 py-2 text-right font-bold text-slate-900">{inr(x.net)}</td>
-                    <td className="px-2 py-2"><Badge variant={pb.variant}>{pb.label}</Badge></td>
+                    <td className="px-2 py-2 text-right text-slate-700">{pending ? '—' : inr(x.monthly)}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-slate-700">{pending ? '—' : x.workingDays}</td>
+                    <td className="px-2 py-2 text-center tabular-nums text-emerald-600 font-semibold">{pending ? '—' : x.present}</td>
+                    <td className="px-2 py-2 text-center tabular-nums font-bold text-slate-900">{pending ? '—' : x.payable}</td>
+                    <td className="px-2 py-2 text-right text-slate-600">{pending ? '—' : inr(x.daily)}</td>
+                    <td className="px-2 py-2 text-right text-slate-700">{pending ? '—' : inr(x.gross)}</td>
+                    <td className="px-2 py-2 text-right text-brand-600">{pending ? '—' : (x.overtime ? inr(x.overtime) : '—')}</td>
+                    <td className={`px-2 py-2 text-right font-semibold ${!pending && x.bonus ? 'text-amber-600' : 'text-slate-400'}`}>{pending ? '—' : (x.bonus ? inr(x.bonus) : '—')}</td>
+                    <td className="px-2 py-2 text-right text-rose-600">{pending ? '—' : inr(x.deductions)}</td>
+                    <td className="px-2 py-2 text-right font-bold text-slate-900">{pending ? '—' : inr(x.net)}</td>
+                    <td className="px-2 py-2">{pending ? <Badge variant="gray">Not Generated</Badge> : <Badge variant={pb.variant}>{pb.label}</Badge>}</td>
                     <td className="px-2 py-2">
+                      {pending ? (
+                        <div className="flex items-center justify-center gap-1">
+                          {onOpenWorksheet && <button title="Open Salary Worksheet (Draft)" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><FileSpreadsheet size={14} /></button>}
+                        </div>
+                      ) : (
                       <div className="relative flex items-center justify-center gap-1">
                         {onOpenWorksheet && <button title="Open Salary Worksheet" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><FileSpreadsheet size={14} /></button>}
                         <button title="View Salary Slip" onClick={() => onView(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><Eye size={14} /></button>
@@ -559,13 +730,17 @@ export const PayrollWorkbench: React.FC<Props> = ({
                               { ic: <Download size={13} />, label: 'Download PDF', fn: () => onDownloadPdf(x.r) },
                               { ic: <Printer size={13} />, label: 'Print Slip', fn: () => onPrint(x.r) },
                               { ic: <Mail size={13} />, label: 'Email Slip', fn: () => onEmail(x.r) },
-                              { ic: <RefreshCw size={13} />, label: 'Regenerate Slip', fn: () => onRegenerate(x.r) },
+                              // Regeneration is a mutation — hidden once the row is locked.
+                              ...((String(x.r.payrollStatus).toLowerCase() === 'locked' || x.r.lockedAt)
+                                ? []
+                                : [{ ic: <RefreshCw size={13} />, label: 'Regenerate Slip', fn: () => onRegenerate(x.r) }]),
                             ].map(a => (
                               <button key={a.label} onClick={() => { setOpenMenu(null); a.fn(); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-50">{a.ic} {a.label}</button>
                             ))}
                           </div>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, RefreshCcw, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '@/types';
 import { Badge } from '@/components/ui/Badge';
@@ -33,6 +33,8 @@ interface AttendanceCenterProps {
   companies: Company[];
   leaves?: LeaveRequest[];
   onRefresh?: () => void;
+  /** Navigate to another module — used to open the Attendance Synchronization page. */
+  onNavigate?: (page: string) => void;
 }
 
 const today = new Date().toISOString().split('T')[0];
@@ -75,7 +77,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   employees,
   companies,
   leaves = [],
-  onRefresh
+  onRefresh,
+  onNavigate
 }) => {
   const [activeTab, setActiveTab] = useState<'dashboard'|'entry'|'overtime'|'shifts'|'import'|'reports'|'config'>('dashboard');
   const [selectedDate, setSelectedDate] = useState(today);
@@ -96,18 +99,43 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const [filterDesignation, setFilterDesignation] = useState('');
   const [filterEmployee, setFilterEmployee] = useState('');
 
+  // ── Future-date policy (enterprise rule) ────────────────────────────────────
+  // Attendance can NEVER be marked for a date after today, UNLESS the company has
+  // explicitly enabled future scheduling in the Config tab (default OFF), bounded
+  // by a Maximum Future Days window. `today` is derived from the real clock — no
+  // hardcoded dates. The server enforces the same rule independently (defence in
+  // depth); this state only drives the read-only UI + the allowance we send along.
+  const [futurePolicy, setFuturePolicy] = useState<{ allow: boolean; maxDays: number }>(() => {
+    try {
+      const raw = localStorage.getItem(`hrms_attendance_future_${activeCompanyId}`);
+      if (raw) { const p = JSON.parse(raw); return { allow: !!p.allow, maxDays: Math.max(0, Math.min(30, Number(p.maxDays) || 0)) }; }
+    } catch { /* fall through to default */ }
+    return { allow: false, maxDays: 0 };
+  });
+  const updateFuturePolicy = (patch: Partial<{ allow: boolean; maxDays: number }>) => {
+    setFuturePolicy(prev => {
+      const next = { allow: patch.allow ?? prev.allow, maxDays: Math.max(0, Math.min(30, patch.maxDays ?? prev.maxDays)) };
+      try { localStorage.setItem(`hrms_attendance_future_${activeCompanyId}`, JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
+  };
+  // Latest date a user may edit: today, or today + N when future scheduling is on.
+  const maxEditableDate = useMemo(() => {
+    if (!futurePolicy.allow || futurePolicy.maxDays <= 0) return today;
+    const d = new Date(today); d.setDate(d.getDate() + futurePolicy.maxDays);
+    return d.toISOString().split('T')[0];
+  }, [futurePolicy]);
+  // A date is locked (read-only) when it is after the latest editable date.
+  const isFutureLocked = (date: string) => !!date && date > maxEditableDate;
+  // Allowance echoed to the server so it applies the identical rule (0 = none).
+  const futureDaysParam = futurePolicy.allow ? futurePolicy.maxDays : 0;
+
   // Export modal
   const [exportOpen, setExportOpen] = useState(false);
   const [exportMode, setExportMode] = useState<PeriodMode>('monthly');
   const [exportFormat, setExportFormat] = useState<ExportFormat>('excel');
   const [exportScope, setExportScope] = useState<'all'|'company'|'multiple'|'branch'|'department'|'individual'>('all');
   const [exportCompanyIds, setExportCompanyIds] = useState<string[]>([]);
-
-  // Payroll sync modal
-  const [syncOpen, setSyncOpen] = useState(false);
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [syncPreview, setSyncPreview] = useState<any>(null);
-  const [syncDone, setSyncDone] = useState<any>(null);
 
   // Mode Configuration State
   const [attendanceMode, setAttendanceMode] = useState<string>(() => {
@@ -442,6 +470,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const handleBulkMark = async (status: string) => {
     if (!isAdmin) return;
+    if (isFutureLocked(selectedDate)) { ui.toast.warning('Attendance cannot be marked for future dates.'); return; }
     if (selectedIds.length === 0) { ui.toast.warning('Select employees first.'); return; }
     
     const updatedAttendance = [...attendance];
@@ -455,13 +484,13 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           // updated.id is numeric for persisted rows and a "new-…" string only for
           // unsaved ones — coerce so numeric ids don't throw on .startsWith.
           if (!String(updated.id).startsWith('new-')) {
-            await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance' });
+            await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance', allowFutureDays: futureDaysParam });
           }
         } else {
           // Is new
           const rec = dailyRecords.find(r => r.id === id);
           if (rec) {
-             const newRec = { ...rec, id: undefined, status: status as any, source: 'Daily Attendance' };
+             const newRec = { ...rec, id: undefined, status: status as any, source: 'Daily Attendance', allowFutureDays: futureDaysParam };
              const dbRes = await api.attendance.create(newRec);
              updatedAttendance.push(dbRes);
           }
@@ -484,24 +513,25 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const handleSingleMark = async (id: string, status: string) => {
     if (!isAdmin) return;
+    if (isFutureLocked(selectedDate)) { ui.toast.warning('Attendance cannot be marked for future dates.'); return; }
     const updatedAttendance = [...attendance];
     const existingIdx = updatedAttendance.findIndex(a => a.id === id);
-    
+
     try {
       if (existingIdx >= 0) {
         const updated = { ...updatedAttendance[existingIdx], status: status as any };
         updatedAttendance[existingIdx] = updated;
         // Coerce: numeric ids (persisted rows) must not throw on .startsWith.
         if (!String(updated.id).startsWith('new-')) {
-           await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance' });
+           await api.attendance.update(updated.id, { ...updated, source: 'Daily Attendance', allowFutureDays: futureDaysParam });
         } else {
-           const dbRes = await api.attendance.create({...updated, id: undefined, source: 'Daily Attendance'});
+           const dbRes = await api.attendance.create({...updated, id: undefined, source: 'Daily Attendance', allowFutureDays: futureDaysParam});
            updatedAttendance[existingIdx] = dbRes;
         }
       } else {
         const rec = dailyRecords.find(r => r.id === id);
         if (rec) {
-          const dbRes = await api.attendance.create({ ...rec, id: undefined, status: status as any, source: 'Daily Attendance' });
+          const dbRes = await api.attendance.create({ ...rec, id: undefined, status: status as any, source: 'Daily Attendance', allowFutureDays: futureDaysParam });
           updatedAttendance.push(dbRes);
         }
       }
@@ -600,6 +630,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
 
   const markCell = async (emp: any, date: string, status: string) => {
     if (!isAdmin) return;
+    if (isFutureLocked(date)) { setCellMenu(null); ui.toast.warning('Attendance cannot be marked for future dates.'); return; }
     setCellMenu(null);
     const existing = attendance.find(a => String(a.employeeId) === String(emp.id) && a.date === date);
     const current = resolveStatus(emp.id, date, attendance, leaves).status;
@@ -612,10 +643,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     try {
       let dbRes: any;
       if (existing && !String(existing.id).startsWith('new-')) {
-        dbRes = await api.attendance.update(existing.id, { ...existing, status, source: 'Weekly Attendance' });
+        dbRes = await api.attendance.update(existing.id, { ...existing, status, source: 'Weekly Attendance', allowFutureDays: futureDaysParam });
         onUpdateAttendance(attendance.map(a => a.id === existing.id ? dbRes : a));
       } else {
-        dbRes = await api.attendance.create(buildNewRecord(emp, date, status));
+        dbRes = await api.attendance.create({ ...buildNewRecord(emp, date, status), allowFutureDays: futureDaysParam });
         onUpdateAttendance([...attendance.filter(a => !(String(a.employeeId) === String(emp.id) && a.date === date)), dbRes]);
       }
       // ── Debug: DB response + AFTER state, and value-match check ──
@@ -795,46 +826,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     downloadImportGuidePDF();
   };
 
-  // ── Attendance → Payroll synchronization (real DB write with dry-run preview) ──
-  const openPayrollSync = async () => {
-    setSyncOpen(true);
-    setSyncDone(null);
-    setSyncPreview(null);
-    setSyncLoading(true);
-    try {
-      const d = new Date(selectedDate);
-      const res = await api.attendance.syncPayroll({
-        companyId: activeCompanyId || undefined,
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        dryRun: true,
-      });
-      setSyncPreview(res);
-    } catch (e: any) {
-      ui.toast.error(`Failed to compute payroll sync: ${e.message || e}`);
-      setSyncOpen(false);
-    } finally {
-      setSyncLoading(false);
-    }
-  };
-
-  const commitPayrollSync = async () => {
-    setSyncLoading(true);
-    try {
-      const d = new Date(selectedDate);
-      const res = await api.attendance.syncPayroll({
-        companyId: activeCompanyId || undefined,
-        month: d.getMonth() + 1,
-        year: d.getFullYear(),
-        dryRun: false,
-      });
-      setSyncDone(res);
-    } catch (e: any) {
-      ui.toast.error(`Failed to write payroll: ${e.message || e}`);
-    } finally {
-      setSyncLoading(false);
-    }
-  };
+  // ── Attendance → Payroll synchronization lives on the dedicated Attendance
+  //    Synchronization page, reached ONLY from Payroll → Payroll Workflow →
+  //    "Sync Attendance" (it is a step of the payroll process, not a module here).
 
   // ── Build the export dataset for a given period mode + employee scope ──
   const buildExportDataset = (mode: PeriodMode, emps: Employee[]) => {
@@ -929,9 +923,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
            <Button variant="secondary" size="sm" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}>
              <Download size={14}/> Export
            </Button>
-           {isAdmin && (
-             <Button variant="outline" size="sm" onClick={openPayrollSync} className="flex items-center gap-1 border-brand-200 text-brand-700 bg-brand-50 hover:bg-brand-100">
-               <RefreshCcw size={14}/> Push to Payroll Engine
+           {/* Attendance is the source of truth. This is the ONLY button that sends
+               finalized attendance to payroll — it opens the full-page
+               "Attendance → Payroll Synchronization" engine. */}
+           {role !== 'Employee' && (
+             <Button size="sm" onClick={() => onNavigate?.('attendance-sync')}>
+               <Send size={14}/> Push to Payroll Engine
              </Button>
            )}
         </div>
@@ -1151,9 +1148,13 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             </div>
           ) : (
             <div className="flex items-center gap-1">
-              <button onClick={() => shiftPeriod(-1)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronLeft size={16} /></button>
-              <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" />
-              <button onClick={() => shiftPeriod(1)} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronRight size={16} /></button>
+              <button onClick={() => shiftPeriod(-1)} title={`Previous ${periodMode === 'weekly' ? 'week' : periodMode === 'monthly' ? 'month' : periodMode === 'yearly' ? 'year' : 'day'}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronLeft size={16} /></button>
+              <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" title="Jump to date" />
+              <button onClick={() => shiftPeriod(1)} title={`Next ${periodMode === 'weekly' ? 'week' : periodMode === 'monthly' ? 'month' : periodMode === 'yearly' ? 'year' : 'day'}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronRight size={16} /></button>
+              <button onClick={() => setSelectedDate(today)} title="Jump to the current period"
+                className="ml-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md border border-slate-200 text-brand-700 hover:bg-brand-50">
+                {periodMode === 'weekly' ? 'Current Week' : periodMode === 'monthly' ? 'Current Month' : periodMode === 'yearly' ? 'Current Year' : 'Today'}
+              </button>
             </div>
           )}
           <span className="text-xs font-bold text-slate-700 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">{period.label}</span>
@@ -1181,6 +1182,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         {/* DAILY view — original entry grid (unchanged behaviour) */}
         {periodMode === 'daily' && (
         <Card padding={false} className="overflow-hidden border-slate-200">
+          {isFutureLocked(selectedDate) && (
+            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-500 flex items-center gap-2">
+              <Clock size={13} className="text-slate-400" /> Upcoming date — attendance is read-only. Attendance cannot be marked for {formatDate(selectedDate)}.
+            </div>
+          )}
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2 items-center">
               <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" />
@@ -1194,8 +1200,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             
             {isAdmin && (
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Present')}><CheckCircle2 size={12} className="mr-1 text-emerald-500"/> Bulk Present</Button>
-                <Button size="sm" variant="outline" className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Holiday')}><Calendar size={12} className="mr-1 text-brand-500"/> Bulk Holiday</Button>
+                <Button size="sm" variant="outline" disabled={isFutureLocked(selectedDate)} className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Present')}><CheckCircle2 size={12} className="mr-1 text-emerald-500"/> Bulk Present</Button>
+                <Button size="sm" variant="outline" disabled={isFutureLocked(selectedDate)} className="h-8 text-[10px] bg-white" onClick={() => handleBulkMark('Holiday')}><Calendar size={12} className="mr-1 text-brand-500"/> Bulk Holiday</Button>
               </div>
             )}
           </div>
@@ -1228,15 +1234,19 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <Td><span className="text-xs font-mono">{r.clockOut || '--:--'}</span></Td>
                   <Td>
                     <div className="flex flex-col gap-1">
-                      <span className={`px-2 py-1 w-max rounded-full text-[10px] font-bold 
-                        ${r.status === 'Present' ? 'bg-emerald-100 text-emerald-700' : 
-                          r.status === 'Absent' ? 'bg-rose-100 text-rose-700' : 
-                          r.status === 'Leave' ? 'bg-brand-100 text-brand-700' : 
+                      {isFutureLocked(selectedDate) ? (
+                        <span className="px-2 py-1 w-max rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">Upcoming</span>
+                      ) : (
+                      <span className={`px-2 py-1 w-max rounded-full text-[10px] font-bold
+                        ${r.status === 'Present' ? 'bg-emerald-100 text-emerald-700' :
+                          r.status === 'Absent' ? 'bg-rose-100 text-rose-700' :
+                          r.status === 'Leave' ? 'bg-brand-100 text-brand-700' :
                           r.status === 'Holiday' ? 'bg-fuchsia-100 text-fuchsia-700' :
                           r.status === 'Weekly Off' ? 'bg-slate-200 text-slate-700' :
                           'bg-slate-100 text-slate-700'}`}>
                         {r.status} {r.leaveType ? `(${r.leaveType})` : ''}
                       </span>
+                      )}
                       {r.flags && r.flags.length > 0 && (
                         <div className="flex gap-1 flex-wrap mt-1">
                           {r.flags.map((f: string) => <span key={f} className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded">{f}</span>)}
@@ -1246,13 +1256,17 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </Td>
                   {isAdmin && (
                     <Td className="text-right">
-                      <select 
+                      {isFutureLocked(selectedDate) ? (
+                        <span className="text-[10px] text-slate-300 italic pr-1" title="Future dates are read-only">—</span>
+                      ) : (
+                      <select
                         className="text-[10px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
                         value={r.status}
                         onChange={e => handleSingleMark(r.id, e.target.value)}
                       >
                         {ATTENDANCE_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
+                      )}
                     </Td>
                   )}
                 </Tr>
@@ -1294,6 +1308,19 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Tr key={emp.id} className="hover:bg-slate-50 group">
                         <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]"><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
                         {periodDates.map(d => {
+                          const dateLabel = new Date(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+                          // Future dates are READ-ONLY: greyed "Upcoming" cell, no
+                          // click / menu / keyboard / hover — never counted or saved.
+                          if (isFutureLocked(d)) {
+                            return (
+                              <Td key={d} className="text-center">
+                                <span aria-disabled="true" title={`Upcoming · ${dateLabel} — future dates are read-only`}
+                                  className="inline-block w-9 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-300 cursor-not-allowed select-none">
+                                  --
+                                </span>
+                              </Td>
+                            );
+                          }
                           const { status, leaveType } = resolveStatus(emp.id, d, attendance, leaves);
                           const bucket = bucketOf(status);
                           if (bucket === 'present') present++;
@@ -1303,7 +1330,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                           const key = `${emp.id}|${d}`;
                           const isSaving = savingCell === key;
                           const isEditing = cellMenu?.key === key;
-                          const dateLabel = new Date(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
                           const fullLabel = `${status}${leaveType ? ` (${leaveType})` : ''} · ${dateLabel}`;
                           return (
                             <Td key={d} className="text-center">
@@ -1421,7 +1447,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Td className="text-center text-xs font-bold text-brand-600">{s.payableDays}</Td>
                       {isAdmin && (
                         <Td className="text-center sticky right-0 z-10 bg-white group-hover:bg-slate-50 shadow-[-2px_0_4px_-2px_rgba(0,0,0,0.15)]">
-                          {dbSummaries[String(s.employeeId)]?.locked ? (
+                          {period.start > maxEditableDate ? (
+                            <span title="Future period — attendance is read-only" className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">Upcoming</span>
+                          ) : dbSummaries[String(s.employeeId)]?.locked ? (
                             <span className="text-[9px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">Month Locked</span>
                           ) : (
                             <button onClick={() => openEditSummary(s.employeeId, s.employeeName, s.employeeCode)}
@@ -1464,9 +1492,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               <Table>
                 <Thead className="bg-slate-100"><tr><Th>Month</Th><Th className="text-center">Present</Th><Th className="text-center">Absent</Th><Th className="text-center">Leave</Th><Th className="text-center">Half Day</Th><Th className="text-center">WFH</Th><Th className="text-center">OT Hrs</Th><Th className="text-center">Attendance %</Th></tr></Thead>
                 <Tbody>
-                  {yearlyData.map(m => (
+                  {yearlyData.map(m => {
+                    const monthStart = `${new Date(selectedDate).getFullYear()}-${String(m.monthIndex + 1).padStart(2, '0')}-01`;
+                    const monthFuture = monthStart > maxEditableDate;
+                    return (
                     <Tr key={m.month} className="hover:bg-slate-50">
-                      <Td className="font-bold text-xs">{m.month}</Td>
+                      <Td className="font-bold text-xs">{m.month}{monthFuture && <span title="Future month — read-only" className="ml-1.5 text-[8px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-1 rounded align-middle">Upcoming</span>}</Td>
                       <Td className="text-center text-xs text-emerald-600 font-bold">{m.present}</Td>
                       <Td className="text-center text-xs text-rose-600 font-bold">{m.absent}</Td>
                       <Td className="text-center text-xs">{m.leave}</Td>
@@ -1475,7 +1506,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Td className="text-center text-xs text-fuchsia-600 font-bold">{m.otHours}</Td>
                       <Td className="text-center text-xs font-bold text-brand-600">{m.attendanceRate}%</Td>
                     </Tr>
-                  ))}
+                    );
+                  })}
                 </Tbody>
               </Table>
             </Card>
@@ -1849,6 +1881,32 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       {/* TAB: CONFIG / SETTINGS */}
       {activeTab === 'config' && isAdmin && (
         <div className="space-y-4 animate-in fade-in">
+          {/* ── Attendance Date Policy (future-date rule) ─────────────────────── */}
+          <Card>
+            <div className="mb-4">
+              <h3 className="text-lg font-bold text-slate-800">Attendance Date Policy</h3>
+              <p className="text-xs text-slate-500">Control whether attendance may be marked for dates after today. Past dates &amp; today are always editable (subject to permissions).</p>
+            </div>
+            <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/50 cursor-pointer">
+              <input type="checkbox" className="mt-0.5 rounded border-slate-300 text-brand-600"
+                checked={futurePolicy.allow} onChange={e => updateFuturePolicy({ allow: e.target.checked })} />
+              <span>
+                <span className="block text-sm font-bold text-slate-800">Allow Future Attendance</span>
+                <span className="block text-[11px] text-slate-500">Default: OFF. When off, dates after today can never be edited or saved — in any view, for any role.</span>
+              </span>
+            </label>
+            {futurePolicy.allow && (
+              <div className="mt-3 flex flex-wrap items-center gap-3 p-3 rounded-xl border border-amber-200 bg-amber-50">
+                <span className="text-xs font-bold text-amber-800">Maximum Future Days Allowed</span>
+                <div className="w-28">
+                  <Select value={String(futurePolicy.maxDays || 1)} onChange={e => updateFuturePolicy({ maxDays: Number(e.target.value) })}
+                    options={[1, 3, 7, 30].map(n => ({ value: String(n), label: `${n} day${n > 1 ? 's' : ''}` }))} className="text-xs h-8" />
+                </div>
+                <span className="text-[11px] text-amber-700">Editable through <b>{formatDate(maxEditableDate)}</b>. The server enforces the same limit.</span>
+              </div>
+            )}
+          </Card>
+
           <Card>
             <div className="flex justify-between items-center mb-6">
               <div>
@@ -2015,66 +2073,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           )}
 
           <p className="text-[10px] text-slate-400">Exports the selected period &amp; scope. Excel/CSV for spreadsheets, PDF for sharing, Print for hard copy.</p>
-        </div>
-      </Modal>
-
-      {/* PAYROLL SYNC MODAL */}
-      <Modal
-        open={syncOpen}
-        onClose={() => { setSyncOpen(false); setSyncPreview(null); setSyncDone(null); }}
-        title="Sync Attendance → Payroll"
-        footer={
-          syncDone ? (
-            <Button onClick={() => { setSyncOpen(false); setSyncDone(null); setSyncPreview(null); }}>Done</Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={() => setSyncOpen(false)}>Cancel</Button>
-              <Button onClick={commitPayrollSync} disabled={syncLoading || !syncPreview || syncPreview.count === 0} className="flex items-center gap-2">
-                {syncLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />} Confirm &amp; Write to Payroll
-              </Button>
-            </>
-          )
-        }
-      >
-        <div className="space-y-3">
-          <p className="text-xs text-slate-500">Computes payable days, Loss-of-Pay (LOP) and approved overtime for <b>{getPeriodRange('monthly', selectedDate).label}</b> and writes them into the Payroll deductions/allowances. Review before confirming.</p>
-
-          {syncLoading && !syncPreview && <div className="py-8 text-center text-xs text-slate-500 flex items-center justify-center gap-2"><Loader2 size={16} className="animate-spin" /> Calculating…</div>}
-
-          {syncDone && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700 font-semibold">
-              ✅ Payroll updated. {syncDone.updated} record(s) updated, {syncDone.created} created for {getPeriodRange('monthly', selectedDate).label}.
-            </div>
-          )}
-
-          {syncPreview && (
-            <>
-              <div className="grid grid-cols-4 gap-2">
-                <StatCard label="Employees" value={syncPreview.totals?.employees || 0} icon={<Users size={16} className="text-slate-600" />} color="bg-slate-50" />
-                <StatCard label="LOP Days" value={syncPreview.totals?.lopDays || 0} icon={<XCircle size={16} className="text-rose-600" />} color="bg-rose-50" />
-                <StatCard label="OT Hours" value={(syncPreview.totals?.otHours || 0).toFixed(1)} icon={<Clock size={16} className="text-fuchsia-600" />} color="bg-fuchsia-50" />
-                <StatCard label="OT Amount" value={`₹${(syncPreview.totals?.otAmount || 0).toLocaleString()}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
-              </div>
-              <div className="max-h-64 overflow-y-auto border border-slate-200 rounded-lg">
-                <Table>
-                  <Thead className="bg-slate-100"><tr><Th>Employee</Th><Th className="text-center">Payable</Th><Th className="text-center">LOP</Th><Th className="text-center">OT Hrs</Th><Th className="text-right">LOP Ded.</Th><Th className="text-right">OT Amt</Th></tr></Thead>
-                  <Tbody>
-                    {(syncPreview.rows || []).map((r: any) => (
-                      <Tr key={r.employeeId}>
-                        <Td><span className="text-xs font-bold">{r.employeeName}</span></Td>
-                        <Td className="text-center text-xs">{r.payableDays}</Td>
-                        <Td className="text-center text-xs text-rose-600 font-bold">{r.lopDays}</Td>
-                        <Td className="text-center text-xs text-fuchsia-600">{r.otHours}</Td>
-                        <Td className="text-right text-xs">₹{r.lopDeduction.toLocaleString()}</Td>
-                        <Td className="text-right text-xs">₹{r.otAmount.toLocaleString()}</Td>
-                      </Tr>
-                    ))}
-                    {(!syncPreview.rows || syncPreview.rows.length === 0) && <Tr><Td colSpan={6} className="text-center text-xs text-slate-500 py-6">No active employees in scope.</Td></Tr>}
-                  </Tbody>
-                </Table>
-              </div>
-            </>
-          )}
         </div>
       </Modal>
 

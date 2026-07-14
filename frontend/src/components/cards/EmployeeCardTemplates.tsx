@@ -67,7 +67,7 @@ const fmtINR = (n: any) => {
 
 const brandOf = (company: any) => ({
   name: company?.name || 'Enterprise',
-  color: company?.primaryColor || '#5B2DE6',
+  color: company?.primaryColor || '#B5673A',
   logo: company?.logoImage || company?.logo || '',
   tagline: company?.tagline || company?.headerText || '',
 });

@@ -952,6 +952,11 @@ export const api = {
       return await apiFetch(`${BASE_URL}/payroll?${query.toString()}`, { headers: getHeaders() });
     },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Generate payroll via the SINGLE backend engine (recalcOne) — salary is
+    // prorated from the synchronized AttendanceSummary (gross = dailyRate ×
+    // payableDays). Replaces the old client-side automation engine so there is
+    // exactly one payroll calculation everywhere.
+    generate: async (data: { companyId?: any; branchId?: any; month: string; year: number; role?: string; employeeIds?: any[] }) => { return await apiFetch(`${BASE_URL}/payroll/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     // Payslip lifecycle + bulk actions
@@ -970,14 +975,23 @@ export const api = {
       get: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { headers: getHeaders() }); },
       save: async (payrollId: string | number, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
       audit: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet/audit`, { headers: getHeaders() }); },
+      // Active deduction components for a company (built-ins + Component Builder).
+      // Lets a Draft worksheet render every applicable deduction row at ₹0 so the
+      // section is never empty. Reads the existing endpoint — no API change.
+      deductionComponents: async (companyId?: any) => { const p = new URLSearchParams(); if (companyId != null && companyId !== '') p.append('companyId', String(companyId)); return await apiFetch(`${BASE_URL}/payroll/deduction-components?${p.toString()}`, { headers: getHeaders() }); },
     }
   },
 
   attendanceSummary: {
-    getAll: async (month?: string, year?: number) => {
+    getAll: async (month?: string, year?: number, includeComputed?: boolean) => {
       const p = new URLSearchParams();
       if (month) p.append('month', month);
       if (year) p.append('year', String(year));
+      // includeComputed → also return LIVE attendance for employees with raw
+      // rows but no materialized summary (so Payroll reads the Attendance
+      // module's real numbers, never a missing/empty cache). Off by default so
+      // the Attendance page keeps getting only persisted, editable rows.
+      if (includeComputed) p.append('includeComputed', 'true');
       return await apiFetch(`${BASE_URL}/attendance-summary?${p.toString()}`, { headers: getHeaders() });
     },
     recompute: async (data: { employeeIds?: any[]; month: string; year: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/attendance-summary/recompute`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
@@ -995,8 +1009,13 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean }) => {
+    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean; snapshotOnly?: boolean; markSynced?: boolean }) => {
       return await apiFetch(`${BASE_URL}/attendance/sync-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
+    },
+    // Push to Payroll Engine — transfer the finalized attendance calculation into
+    // the Payroll module (creates payroll records verbatim; NO recalculation).
+    pushToPayroll: async (data: { companyId?: string; month: string | number; year: number; rows: any[]; replace?: boolean }) => {
+      return await apiFetch(`${BASE_URL}/attendance/push-to-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
     }
   },
 

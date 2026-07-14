@@ -15,11 +15,29 @@ const canApprove = (req) => ['Company Head', 'Finance'].includes(req.user?.role)
 const canManage = (req) => ['Company Head', 'Finance'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])]
+  .map((c) => idParam(c)).filter(Boolean);
 
-// Which company a WRITE targets — Super Admin must name one; others are pinned.
+// Can the caller create/read data for this company? Super Admin → any; others →
+// only companies inside their scope (home + accessible).
+const canAccessCompany = (req, companyId) => {
+  const cid = idParam(companyId);
+  if (!cid) return false;
+  if (isSuperAdmin(req)) return true;
+  return companyScopeFor(req).includes(cid);
+};
+
+// Which company a WRITE targets. A non–Super-Admin who named a workspace they can
+// reach WRITES INTO IT — identical to how `scopedWhere`/`readCompanyId` READ — so a
+// loan created inside an accessible company/workspace lands in, and stays visible
+// from, that same workspace. Falls back to the home company when none is named.
+// (Before this, writes pinned to the home company while reads followed the active
+// workspace, so a loan a multi-company Company Head created in another accessible
+// company was saved under their home company and then vanished from the list.)
 function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested || req.query.companyId || req.headers['x-workspace-id']) || null;
+  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
+  if (isSuperAdmin(req)) return workspaceId || null;
+  if (workspaceId && companyScopeFor(req).includes(workspaceId)) return workspaceId;
   return req.user?.companyId || null;
 }
 
@@ -50,4 +68,5 @@ function scopedWhere(req) {
 module.exports = {
   isSuperAdmin, isEmployee, canView, canEdit, canApprove, canManage,
   actorOf, targetCompanyId, readCompanyId, scopedWhere,
+  companyScopeFor, canAccessCompany,
 };
