@@ -54,6 +54,22 @@ import {
 } from 'recharts';
 import { motion } from 'framer-motion';
 
+// Premium warm enterprise dashboard background — soft off-white base (#FAF8F5)
+// with layered, very-low-opacity radial gradients: a bronze glow from the
+// top-right, a subtle navy wash bottom-left, and soft cream organic blobs. Sits
+// as the page background BEHIND all cards (which keep their white surface and
+// "float" above it). Presentation-only — no layout/spacing/card changes.
+const PREMIUM_BG: React.CSSProperties = {
+  backgroundColor: '#FAF8F5',
+  backgroundImage: [
+    'radial-gradient(1200px 820px at 100% -6%, rgba(184,116,60,0.06), transparent 55%)',
+    'radial-gradient(1000px 760px at -8% 106%, rgba(30,42,68,0.035), transparent 55%)',
+    'radial-gradient(680px 560px at 12% 16%, rgba(239,231,222,0.55), transparent 60%)',
+    'radial-gradient(760px 620px at 88% 78%, rgba(245,241,235,0.6), transparent 60%)',
+    'radial-gradient(560px 480px at 60% 42%, rgba(184,116,60,0.03), transparent 65%)',
+  ].join(', '),
+};
+
 const AnimatedCounter: React.FC<{ value: number; duration?: number }> = ({ value, duration = 800 }) => {
   const [count, setCount] = useState(0);
 
@@ -441,6 +457,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
         className="space-y-6 relative pb-10"
+        style={PREMIUM_BG}
       >
 
         {/* Dynamic Expiring Notification Toast Banner */}
@@ -1001,6 +1018,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
         className="space-y-6 pb-10 font-sans"
+        style={PREMIUM_BG}
       >
         {/* Header */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
@@ -1390,6 +1408,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
       className="space-y-4"
+      style={PREMIUM_BG}
     >
       <div>
         <h2 className="text-base font-bold text-slate-800 font-heading">HR Operations Dashboard</h2>
