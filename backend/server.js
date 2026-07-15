@@ -131,6 +131,10 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payroll', pii('Payroll'), payrollRoutes);
 app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payrollComponentRoutes'));
+// Attendance & Salary Deduction Policy — the master attendance→salary calc config
+// (isolated deduction_policy table). Company-scoped CONFIG (not employee PII), so
+// it is NOT wrapped in pii() — the router protects + role-gates edits to SA/CH.
+app.use('/api/deduction-policy', require('./src/routes/deductionPolicyRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
 app.use('/api/invoicing', require('./src/routes/invoiceRoutes'));
 app.use('/api/loans', require('./src/routes/loanRoutes'));

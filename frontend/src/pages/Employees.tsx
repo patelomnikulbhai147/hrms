@@ -209,6 +209,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [paginatedData, setPaginatedData] = useState<Employee[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [isTableLoading, setIsTableLoading] = useState(false);
+  // Authoritative real-employee counts — read from the SAME server query that
+  // drives the table (single source of truth), so the count cards can never
+  // disagree with the employee list. Temporary/Pending come from a separate table.
+  const [serverCounts, setServerCounts] = useState<{ all: number; active: number; previous: number } | null>(null);
 
   // Kind-aware: a plain find returns the parent company when a branch shares
   // its id, which would wrongly flip isBranchWorkspace to false and mis-scope
@@ -903,6 +907,16 @@ export const Employees: React.FC<EmployeesProps> = ({
     return unique;
   }, [employees, activeCompanyId, companies]);
 
+  // A compact fingerprint of the client roster (id + status). It changes on any
+  // add / delete / archive / offboard / status-edit / import / temp-conversion —
+  // every mutation flows through onUpdateEmployees — so using it as a fetch
+  // dependency re-pulls the authoritative table AND counts together, keeping them
+  // synchronized in real time without a page refresh.
+  const rosterSignature = useMemo(
+    () => companyEmployees.map(e => `${e.id}:${e.status}`).join('|'),
+    [companyEmployees]
+  );
+
   const filterDepartments = useMemo(() => {
     const set = new Set<string>();
     const branchEmps = employees.filter(e => {
@@ -1005,12 +1019,14 @@ export const Employees: React.FC<EmployeesProps> = ({
     setPage(1);
   }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
-  // Fetch server-side paginated data for the current table view
+  // Fetch server-side paginated data + authoritative counts for the current view.
+  // The Temporary/Approvals tabs render their own dataset, but we still refresh the
+  // real-employee counts (using tab='all') so the Active/Previous/All cards stay
+  // correct while those tabs are open. rosterSignature in the deps re-runs this on
+  // every mutation, so the table and the cards always refresh together.
   useEffect(() => {
-    // We only paginate the real employee table tabs, not temporary/approvals
-    if (activeMainTab === 'temporary' || activeMainTab === 'approvals') return;
-    
     let isMounted = true;
+    const isTempView = activeMainTab === 'temporary' || activeMainTab === 'approvals';
     const fetchPaginated = async () => {
       setIsTableLoading(true);
       try {
@@ -1018,15 +1034,25 @@ export const Employees: React.FC<EmployeesProps> = ({
           page,
           limit,
           companyId: activeCompanyId,
-          tab: activeMainTab
+          tab: isTempView ? 'all' : activeMainTab
         };
         if (search) params.search = search;
         if (deptFilter) params.department = deptFilter;
         if (statusFilter) params.status = statusFilter;
         if (branchFilter) params.branch = branchFilter;
-        
+
         const res = await api.employees.getPaginated(params) as any;
-        if (isMounted && res && Array.isArray(res.data)) {
+        if (!isMounted || !res) return;
+        // Counts come from the same query as the table → the single source of truth.
+        if (res.counts) {
+          setServerCounts({
+            all: res.counts.all || 0,
+            active: res.counts.active || 0,
+            previous: res.counts.previous || 0,
+          });
+        }
+        // Only drive the real-employee table on the real tabs.
+        if (!isTempView && Array.isArray(res.data)) {
           setPaginatedData(res.data);
           setTotalRows(res.total || 0);
         }
@@ -1036,10 +1062,10 @@ export const Employees: React.FC<EmployeesProps> = ({
         if (isMounted) setIsTableLoading(false);
       }
     };
-    
+
     fetchPaginated();
     return () => { isMounted = false; };
-  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab]);
+  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab, rosterSignature]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
@@ -1064,29 +1090,38 @@ export const Employees: React.FC<EmployeesProps> = ({
   // (a status that is BOTH active & offboarded, or NEITHER) instead of silently
   // losing or double-counting a record.
   const countAudit = useMemo(() => {
-    const total = companyEmployees.length;
-    const activeN = companyEmployees.filter(isActiveEmployee).length;
-    const both = companyEmployees.filter(e => isActiveEmployee(e) && isOffboarded(e.status)).length;
-    const neither = companyEmployees.filter(e => !isActiveEmployee(e) && !isOffboarded(e.status)).length;
-    const active = activeN;
-    const previous = total - activeN;            // every non-active record (no record lost)
+    // Active / Previous / All Staff are the REAL employee roster and come straight
+    // from the server counts that also produced the table rows — so each tab's card
+    // exactly equals the rows that tab shows. (Before the first fetch, fall back to
+    // the client roster so the cards aren't blank on the very first paint.)
+    const active = serverCounts ? serverCounts.active
+      : companyEmployees.filter(isActiveEmployee).length;
+    const previous = serverCounts ? serverCounts.previous
+      : (companyEmployees.length - companyEmployees.filter(isActiveEmployee).length);
+    // "All Staff" = the real roster shown by the All-Staff tab table (active +
+    // previous). Temporary / Pending Approval are a SEPARATE dataset with their own
+    // tabs and counts, so they are not folded into All Staff (that folding was the
+    // reason the All-Staff card never matched the list).
+    const allStaff = serverCounts ? serverCounts.all : (active + previous);
     const temporary = inProgressTemps.length;
     const pendingApproval = pendingApprovals.length;
-    const allStaff = active + previous + temporary + pendingApproval;
-    // Reconciliation: the displayed All Staff must equal the sum of categories,
-    // and Active/Offboarded must be a clean partition of the real roster.
-    const reconciles = allStaff === (total + temporary + pendingApproval);
+    // Integrity guard on the loaded prop: a status that is BOTH active & offboarded
+    // (or NEITHER) would indicate bad data. The headline counts no longer depend on
+    // this, but we still surface it.
+    const both = companyEmployees.filter(e => isActiveEmployee(e) && isOffboarded(e.status)).length;
+    const neither = companyEmployees.filter(e => !isActiveEmployee(e) && !isOffboarded(e.status)).length;
+    const reconciles = allStaff === active + previous;
     const partitionOk = both === 0 && neither === 0;
     const ok = reconciles && partitionOk;
     if (!ok) {
       // eslint-disable-next-line no-console
       console.error('[Employee Count Mismatch Detected]', {
-        scope: activeCompanyId, total, active, previous, temporary, pendingApproval, allStaff,
+        scope: activeCompanyId, active, previous, allStaff, temporary, pendingApproval,
         anomalies: { bothActiveAndOffboarded: both, neither }, reconciles, partitionOk,
       });
     }
     return { ok, allStaff, active, previous, temporary, pendingApproval, both, neither };
-  }, [companyEmployees, inProgressTemps, pendingApprovals, activeCompanyId]);
+  }, [companyEmployees, inProgressTemps, pendingApprovals, activeCompanyId, serverCounts]);
 
   // Add Validation & Execution
   const handleAddSubmit = async () => {
@@ -1825,7 +1860,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <div className="text-[11px] leading-snug">
             <p className="font-bold">Employee Count Mismatch Detected</p>
-            <p>All Staff ({countAudit.allStaff}) ≠ Active ({countAudit.active}) + Previous ({countAudit.previous}) + Temporary ({countAudit.temporary}) + Pending Approval ({countAudit.pendingApproval}).
+            <p>All Staff ({countAudit.allStaff}) ≠ Active ({countAudit.active}) + Previous ({countAudit.previous}).
             {countAudit.both > 0 && ` ${countAudit.both} record(s) are both Active & Offboarded.`}
             {countAudit.neither > 0 && ` ${countAudit.neither} record(s) have an unrecognised status.`} Details logged to the console.</p>
           </div>

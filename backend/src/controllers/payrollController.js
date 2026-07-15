@@ -13,6 +13,10 @@ const { applyLoanToPayrollRow } = require('../services/loanPayroll');
 // payroll recalc always reflects current verified attendance (self-heals a
 // missing/stale summary). recompute() preserves locked months.
 const attendanceSummaryService = require('../services/attendanceSummaryService');
+// Attendance & Salary Deduction Policy — the master calc config. recalcOne
+// resolves the effective policy (per company/branch) for the OT multiplier and
+// stamps the version used onto the payroll row.
+const policyService = require('../services/deductionPolicyService');
 
 // ── Payroll money guard (pre-deployment audit fix) ───────────────────────────
 // The create/update endpoints persist a client-supplied `payload` directly. This
@@ -163,6 +167,16 @@ async function recalcOne(payroll, summary, emp, company) {
   const monthlyGross = emp?.salary || payroll.basicSalary || 0;
   const dim = daysInMonthOf(payroll.month, payroll.year);
 
+  // Resolve the Attendance & Salary Deduction Policy for this employee's scope.
+  // The attendance→days math already lives in the synced AttendanceSummary (which
+  // honoured the policy); here we only need the OT multiplier and the version to
+  // stamp. Defaults (version 0) reproduce the historical 1.5× OT behaviour.
+  const effectivePolicy = await policyService
+    .resolveEffectivePolicy({ companyId: emp?.companyId ?? payroll.companyId, branchId: emp?.branchId })
+    .catch(() => null);
+  const policyCfg = effectivePolicy ? effectivePolicy.config : policyService.POLICY_DEFAULTS;
+  const policyVersion = effectivePolicy ? effectivePolicy.version : null;
+
   const present = summary?.presentDays || 0;
   const cl = summary?.cl || 0, pl = summary?.pl || 0, sl = summary?.sl || 0;
   const lwp = summary?.lwp || 0, half = summary?.halfDays || 0, ot = summary?.otHours || 0;
@@ -189,8 +203,13 @@ async function recalcOne(payroll, summary, emp, company) {
   const hra = Math.round(basic * 0.4);
   const special = Math.max(0, grossPay - basic - hra); // remainder ⇒ basic + hra + special === grossPay
 
-  // OT is EXTRA hours actually worked — paid on top, never prorated down.
-  const overtimeRate = company?.overtimeRate || 1.5;
+  // OT is EXTRA hours actually worked — paid on top, never prorated down. The
+  // multiplier comes from the deduction policy WHEN a policy has been saved
+  // (single source of truth); otherwise we keep the company field so a company
+  // that set a custom OT rate pre-policy is never silently reset to the default.
+  const overtimeRate =
+    (effectivePolicy && effectivePolicy.exists ? Number(policyCfg.overtimeMultiplier) : 0) ||
+    company?.overtimeRate || 1.5;
   const hourlyRate = workingDays > 0 ? monthlyGross / (workingDays * 8) : 0;
   const otAmount = Math.round(ot * hourlyRate * overtimeRate);
   const allowances = hra + special + otAmount;
@@ -228,6 +247,8 @@ async function recalcOne(payroll, summary, emp, company) {
       workingDays, weeklyOffDays: weeklyOff, holidayDays: holiday,
       attendanceSyncedAt: summary?.syncedAt || null,
       attendanceSource: summary?.attendanceSource || null,
+      // Stamp the policy version this row was computed under (null pre-policy).
+      policyVersion,
       isOutdated: false, summarySyncedAt: new Date(),
       notes: `Recalc: ₹${Math.round(dailyRate)}/day × ${payableDays}/${workingDays} payable day(s) (${Math.round(ratio * 100)}%) = gross ₹${grossPay}, ${lwp} LWP, ${ot} OT hr(s)${bonus ? `, bonus ₹${bonus}` : ''}.`,
     },
@@ -398,6 +419,13 @@ exports.getAll = async (req, res) => {
 
     // Pagination & Filters
     const { page, limit, search, department, status, branch } = req.query;
+
+    // Cycle scope: a payroll cycle is month + year. Filter the SELECT by both when
+    // supplied so a caller asking for "July" never receives July of every year on
+    // record (which double-counted the roster: 64 employees appeared as 113). The
+    // global (month-less) load is unchanged — it still returns the full history.
+    if (month) whereClause.month = month;
+    if (req.query.year) whereClause.year = Number(req.query.year);
 
     if (search) {
       whereClause.AND = whereClause.AND || [];

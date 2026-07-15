@@ -537,6 +537,8 @@ export const api = {
     save: async (data: any) => apiFetch(`${BASE_URL}/card-templates`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     remove: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
     setDefault: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}/default`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    getActive: async () => apiFetch(`${BASE_URL}/card-templates/active`, { headers: getHeaders() }),
+    setActive: async (templateId: string) => apiFetch(`${BASE_URL}/card-templates/active`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ templateId }) }),
     setShared: async (id: any, shared: boolean) => apiFetch(`${BASE_URL}/card-templates/${id}/share`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ shared }) }),
   },
 
@@ -1033,5 +1035,14 @@ export const api = {
     archive: async (id: string) => { return await apiFetch(`${BASE_URL}/shifts/${id}/archive`, { method: 'PATCH', headers: getHeaders() }); },
     assign: async (id: string, employeeIds: number[]) => { return await apiFetch(`${BASE_URL}/shifts/${id}/assign`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ employeeIds }) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/shifts/${id}`, { method: 'DELETE', headers: getHeaders() }); }
+  },
+
+  // Attendance & Salary Deduction Policy — the master attendance→salary calc
+  // config (backend deduction_policy table). Read by the payroll engine.
+  deductionPolicy: {
+    get: async () => { return await apiFetch(`${BASE_URL}/deduction-policy`, { headers: getHeaders() }); },
+    versions: async (branchLevel = false) => { return await apiFetch(`${BASE_URL}/deduction-policy/versions${branchLevel ? '?branchLevel=true' : ''}`, { headers: getHeaders() }); },
+    save: async (data: { config: any; enabled?: boolean; reason?: string; branchLevel?: boolean }) => { return await apiFetch(`${BASE_URL}/deduction-policy`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    recalculate: async (data: { month?: string; year?: number } = {}) => { return await apiFetch(`${BASE_URL}/deduction-policy/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
   }
 };

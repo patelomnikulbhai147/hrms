@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   IdCard, Search, Download, Printer, Layers, QrCode, LayoutGrid,
-  FileImage, FileArchive, Check, Users, Contact,
+  FileImage, FileArchive, Users, Contact,
 } from 'lucide-react';
 import type { Role, Company, Employee } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -22,6 +22,7 @@ import { usePermissions } from '@/context/PermissionContext';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { resolveBranding } from '@/services/brandingService';
 import { CardCanvas } from '@/components/cards/CardCanvas';
+import { CardTemplateEditor } from '@/components/cards/CardTemplateEditor';
 import { TemplateGallery } from '@/components/cards/TemplateGallery';
 import { EmployeeInfoCards } from '@/components/cards/EmployeeInfoCards';
 import { cardDimensions } from '@/types/cardDesigner';
@@ -29,6 +30,7 @@ import type { CardTemplate, CardSide } from '@/types/cardDesigner';
 import { BUILTIN_BY_ID, DEFAULT_TEMPLATE_ID, cloneTemplate } from '@/data/cardTemplates';
 import {
   loadTemplates, saveCustomTemplate, removeCustomTemplate, setDefaultTemplate, setTemplateShared,
+  getActiveTemplateId, setActiveTemplateId,
   type TemplateSet,
 } from '@/store/cardTemplateStore';
 import {
@@ -48,8 +50,9 @@ type ScopeMode = 'selected' | 'department' | 'branch' | 'designation' | 'employm
 
 export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companies, employees, onOpenProfile }) => {
   const { canView } = usePermissions();
-  const canEdit = ['Company Head', 'HR'].includes(role);
   const isSuperAdmin = role === 'Super Admin';
+  // Template authoring (Edit / Duplicate / Save) — Super Admin, Company Head, HR.
+  const canEdit = isSuperAdmin || ['Company Head', 'HR'].includes(role);
 
   const [section, setSection] = useState<Section>('info');
   // The Information Cards tab fetches once; keep it mounted after the first visit
@@ -59,6 +62,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const [tset, setTset] = useState<TemplateSet>({ builtins: [], custom: [], all: [], defaultId: DEFAULT_TEMPLATE_ID });
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID]);
   const [previewTpl, setPreviewTpl] = useState<CardTemplate | null>(null);
+  const [editingTpl, setEditingTpl] = useState<CardTemplate | null>(null);
   const [side, setSide] = useState<CardSide>('front');
 
   // Employee selection
@@ -125,7 +129,18 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
     }
   }, [scopeMode, scopeValue, scoped, bulkIds, previewEmp]);
 
-  useEffect(() => { (async () => { const s = await loadTemplates(); setTset(s); const def = s.all.find((t) => t.id === s.defaultId) || BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID]; setSelectedTemplate(def); })(); }, []);
+  // Resolve THE active template for this company: the persisted active id wins,
+  // then the custom default, then the shipped default — so Generate & Preview and
+  // the gallery always agree on a single active design. Re-runs when the workspace
+  // changes so each company shows its own active template.
+  useEffect(() => { (async () => {
+    const s = await loadTemplates(); setTset(s);
+    const activeId = await getActiveTemplateId(activeCompanyId);
+    const resolved = (activeId && s.all.find((t) => t.id === activeId))
+      || s.all.find((t) => t.id === s.defaultId)
+      || BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID];
+    setSelectedTemplate(resolved);
+  })(); }, [activeCompanyId]);
   const reload = async () => { const s = await loadTemplates(); setTset(s); return s; };
 
   if (!canView('employees')) {
@@ -149,8 +164,47 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const doPng = async () => { if (!previewEmp) return; const { branding, companyId } = brandFor(previewEmp); setBusy('png'); try { await exportCardPng(selectedTemplate, { employee: previewEmp, branding, companyId }, side, `${(previewEmp.employeeId || 'employee')}-${side}.png`); } catch (e: any) { ui.toast.error(e?.message || 'error'); } finally { setBusy(null); } };
 
   // ── template actions ─────────────────────────────────────────────────────────
-  const useTpl = (t: CardTemplate) => { setSelectedTemplate(t); setTab('generate'); ui.toast.success(`Template “${t.name}” selected.`); };
+  // Apply = make this the company's single ACTIVE template. Confirms, persists to
+  // the DB, then refreshes Generate & Preview (which shows only the active template)
+  // and the gallery "In Use" badge. Only Company Head / HR may change it.
+  const applyTemplate = async (t: CardTemplate) => {
+    if (!t) return;
+    if (t.id === selectedTemplate?.id) { setPreviewTpl(null); setTab('generate'); return; } // already active
+    if (!canEdit) { ui.toast.warning('You do not have permission to change the active template.'); return; }
+    const confirmed = await ui.confirm({
+      title: 'Change Active Template',
+      message: `Are you sure you want to make “${t.name}” the active Employee ID Card template?`,
+      confirmText: 'Apply Template',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
+    const prev = selectedTemplate;
+    setSelectedTemplate(t);          // optimistic: label + gallery badge + preview update at once
+    setPreviewTpl(null);
+    setTab('generate');              // refresh Generate & Preview to the new active template
+    try {
+      await setActiveTemplateId(activeCompanyId, t.id);
+      ui.toast.success(`“${t.name}” is now the active template.`);
+    } catch (e: any) {
+      setSelectedTemplate(prev);     // revert if the server rejected the change
+      ui.toast.error(e?.message || 'Could not set the active template.');
+    }
+  };
   const previewOf = (t: CardTemplate) => setPreviewTpl(t);
+  // Open the dedicated Template Editor on a working copy (never edits the gallery
+  // in place). Editing a template does NOT change the active template.
+  const editTpl = (t: CardTemplate) => { setPreviewTpl(null); setEditingTpl(cloneTemplate(t)); };
+  // After a save: refresh the gallery and, if the ACTIVE template was edited in
+  // place, adopt its new design in Generate & Preview — without changing which
+  // template is active.
+  const onTemplateSaved = async (saved: CardTemplate) => {
+    const s = await reload();
+    const fresh = s.all.find((t) => t.id === saved.id) || saved;
+    if (selectedTemplate && (selectedTemplate.id === saved.id || (selectedTemplate.dbId != null && selectedTemplate.dbId === saved.dbId))) {
+      setSelectedTemplate(fresh);
+    }
+    setEditingTpl(cloneTemplate(fresh)); // keep editing the saved template (now with its dbId)
+  };
   const duplicateTpl = async (t: CardTemplate) => {
     if (!canEdit) return;
     const copy = { ...cloneTemplate(t), id: `new_${Date.now()}`, name: `${t.name} (Copy)`, category: 'Custom', custom: true, dbId: undefined, isDefault: false, shared: false };
@@ -246,9 +300,10 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
       {isId && <>
       <DevelopmentBanner status="development" message="Employee ID Cards is under active development. Additional card templates, branding options, QR enhancements, and bulk generation features are currently being implemented. Existing functionality is safe to use." />
 
-      {/* ── GENERATE & PREVIEW (3 panels) ── */}
+      {/* ── GENERATE & PREVIEW (2 panels) ──
+          Shows ONLY the active template. Template switching lives in the gallery. */}
       {tab === 'generate' && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.1fr_1.4fr] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-4">
           {/* Left: employees + scope */}
           <Card>
             <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600"><Users size={14} className="text-brand-600" /> Employees</div>
@@ -290,27 +345,10 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
             </div>
           </Card>
 
-          {/* Middle: template chooser (compare) — fills the panel height and
-              scrolls independently; the Live Preview on the right stays put. */}
-          <Card className="flex flex-col min-h-[480px] max-h-[760px]">
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600 flex-shrink-0"><LayoutGrid size={14} className="text-brand-600" /> Templates <span className="text-slate-400 font-normal">· click to apply</span></div>
-            <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-2 gap-2 pr-1 auto-rows-min content-start">
-              {tset.all.map((t) => (
-                <button key={t.id} onClick={() => setSelectedTemplate(t)} className={`rounded-xl border p-2 text-left transition ${selectedTemplate?.id === t.id ? 'border-[#C77E52] ring-1 ring-[#C77E52]/30 bg-[#FCF4EE]' : 'border-slate-200 hover:border-slate-300'}`}>
-                  <div className="flex items-center justify-center bg-slate-50 rounded-lg p-2 h-[104px] overflow-hidden">
-                    <CardCanvas template={t} side="front" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(t, 140, 88)} style={{ boxShadow: '0 1px 5px rgba(0,0,0,.12)', borderRadius: 6 }} />
-                  </div>
-                  <p className="mt-1.5 text-[10px] font-bold text-slate-700 truncate flex items-center gap-1">{selectedTemplate?.id === t.id && <Check size={10} className="text-[#C77E52]" />}{t.name}</p>
-                  <p className="text-[9px] text-slate-400">{t.category}{t.custom ? ' · Custom' : ''}</p>
-                </button>
-              ))}
-            </div>
-          </Card>
-
           {/* Right: live preview + generation */}
           <Card>
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-brand-600" /> Live Preview</div>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-brand-600" /> Live Preview <span className="font-normal text-slate-400 truncate max-w-[160px]">· {selectedTemplate?.name}</span></div>
               <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
                 {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#C77E52] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
               </div>
@@ -351,16 +389,30 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
         <div className="space-y-3">
           <TemplateGallery templates={tset.all} activeId={selectedTemplate?.id} sample={previewEmp} branding={pv.branding} companyId={pv.companyId}
             canEdit={canEdit} isSuperAdmin={isSuperAdmin}
-            onUse={useTpl} onPreview={previewOf} onDuplicate={duplicateTpl} onDelete={deleteTpl} onSetDefault={makeDefault} onShare={shareTpl} />
+            onUse={applyTemplate} onPreview={previewOf} onEdit={editTpl} onDuplicate={duplicateTpl} onDelete={deleteTpl} onSetDefault={makeDefault} onShare={shareTpl} />
         </div>
       )}
 
       </>}
 
+      {/* Dedicated Template Editor (full page) — opened from the gallery Edit button.
+          Editing never changes the active template; that stays a Use Template action. */}
+      {editingTpl && (
+        <CardTemplateEditor
+          template={editingTpl}
+          employee={previewEmp}
+          branding={pv.branding}
+          companyId={pv.companyId}
+          canEdit={canEdit}
+          onClose={() => setEditingTpl(null)}
+          onSaved={onTemplateSaved}
+        />
+      )}
+
       {/* Preview modal */}
       {previewTpl && (
         <Modal open onClose={() => setPreviewTpl(null)} title={previewTpl.name} size="lg"
-          footer={<><Button variant="outline" size="sm" onClick={() => setPreviewTpl(null)}>Close</Button><Button size="sm" onClick={() => { useTpl(previewTpl); setPreviewTpl(null); }}>Use Template</Button></>}>
+          footer={<><Button variant="outline" size="sm" onClick={() => setPreviewTpl(null)}>Close</Button>{previewTpl.id === selectedTemplate?.id ? <Button size="sm" disabled>In Use</Button> : <Button size="sm" onClick={() => applyTemplate(previewTpl)}>Apply Template</Button>}</>}>
           <div className="flex flex-wrap items-center justify-center gap-6 py-4">
             <div className="text-center"><CardCanvas template={previewTpl} side="front" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(previewTpl, 380, 360)} style={{ boxShadow: '0 8px 30px rgba(0,0,0,.2)', borderRadius: 12 }} /><p className="mt-2 text-[11px] font-bold text-slate-400 uppercase">Front</p></div>
             <div className="text-center"><CardCanvas template={previewTpl} side="back" employee={previewEmp} branding={pv.branding} companyId={pv.companyId} sample scale={fitScale(previewTpl, 380, 360)} style={{ boxShadow: '0 8px 30px rgba(0,0,0,.2)', borderRadius: 12 }} /><p className="mt-2 text-[11px] font-bold text-slate-400 uppercase">Back</p></div>

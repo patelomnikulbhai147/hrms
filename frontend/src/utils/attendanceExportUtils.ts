@@ -2,15 +2,33 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ui } from '@/components/ui/feedback';
+import { ATTENDANCE_SHEET_COLUMNS, attendanceSheetHeaders, attendanceSampleRows } from '@/utils/attendanceSchema';
 
 export const downloadAttendanceTemplateExcel = (columns: string[]) => {
   const ws = XLSX.utils.aoa_to_sheet([columns]);
-  
+
   // Set column widths dynamically based on header length
   ws['!cols'] = columns.map(c => ({ wch: Math.max(15, c.length + 5) }));
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Attendance_Template');
+  XLSX.writeFile(wb, 'Attendance_Import_Template.xlsx');
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Attendance Import Template — generated from the SHARED attendance schema
+// (utils/attendanceSchema), so it is column-for-column identical to the export.
+// The ONLY difference is content: the template carries a couple of sample rows,
+// the export carries real attendance. Structure is guaranteed to match, so an
+// exported file re-imports without any column edits.
+// ─────────────────────────────────────────────────────────────────────────────
+export const downloadAttendanceSheetTemplate = () => {
+  const headers = attendanceSheetHeaders();
+  const rows = attendanceSampleRows().map((r) => ATTENDANCE_SHEET_COLUMNS.map((c) => r[c.key] ?? ''));
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = ATTENDANCE_SHEET_COLUMNS.map((c) => ({ wch: Math.max(14, c.header.length + 4) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Attendance');
   XLSX.writeFile(wb, 'Attendance_Import_Template.xlsx');
 };
 

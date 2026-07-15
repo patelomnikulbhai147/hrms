@@ -3,7 +3,7 @@
 // previews, and act (Preview / Use / Duplicate / Edit / Set Default / Delete).
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo, useState } from 'react';
-import { Eye, Check, Copy, Pencil, Star, Trash2, Share2, Search } from 'lucide-react';
+import { Eye, Check, Pencil, Star, Trash2, Share2, Search } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { CardCanvas } from './CardCanvas';
@@ -67,14 +67,17 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {shown.map((t) => (
-          <div key={t.id} className={`rounded-2xl border bg-white p-3 transition ${activeId === t.id ? 'border-[#C77E52] ring-1 ring-[#C77E52]/30' : 'border-slate-200 hover:border-slate-300'}`}>
+        {shown.map((t) => {
+          const isActive = activeId === t.id;
+          return (
+          <div key={t.id} className={`rounded-2xl border p-3 transition ${isActive ? 'border-[#C77E52] ring-2 ring-[#C77E52]/30 bg-[#FCF4EE]' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
             <div className="flex items-start justify-between gap-2 mb-2">
               <div className="min-w-0">
                 <p className="text-sm font-extrabold text-slate-800 truncate flex items-center gap-1.5">{t.name}{t.isDefault && <Star size={12} className="text-amber-500 fill-amber-400" />}</p>
                 <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{t.category} · {t.size}</p>
               </div>
               <div className="flex flex-col items-end gap-1">
+                {isActive && <span className="inline-flex items-center gap-1 rounded-full bg-[#C77E52] text-white px-2 py-0.5 text-[10px] font-extrabold shadow-sm"><Check size={10} /> In Use</span>}
                 {t.custom ? <Badge variant="indigo">Custom</Badge> : <Badge variant="gray">Built-in</Badge>}
                 {t.shared && <Badge variant="green">Shared</Badge>}
               </div>
@@ -90,16 +93,18 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
               </div>
             </div>
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <Button size="sm" icon={<Check size={13} />} onClick={() => onUse(t)}>Use</Button>
+              {isActive
+                ? <Button size="sm" variant="outline" icon={<Check size={13} />} disabled className="!border-[#C77E52] !text-[#C77E52] !opacity-100">In Use</Button>
+                : <Button size="sm" icon={<Check size={13} />} onClick={() => onUse(t)}>Use Template</Button>}
               <Button size="sm" variant="outline" icon={<Eye size={13} />} onClick={() => onPreview(t)}>Preview</Button>
               {canEdit && onEdit && <Button size="sm" variant="outline" icon={<Pencil size={13} />} onClick={() => onEdit(t)}>Edit</Button>}
-              {canEdit && <Button size="sm" variant="outline" icon={<Copy size={13} />} onClick={() => onDuplicate(t)}>Duplicate</Button>}
               {canEdit && t.custom && onSetDefault && !t.isDefault && <button title="Set as default" onClick={() => onSetDefault(t)} className="p-1.5 rounded-lg hover:bg-amber-50"><Star size={14} className="text-amber-500" /></button>}
               {isSuperAdmin && t.custom && onShare && <button title={t.shared ? 'Unshare' : 'Share to all companies'} onClick={() => onShare(t)} className="p-1.5 rounded-lg hover:bg-emerald-50"><Share2 size={14} className={t.shared ? 'text-emerald-600' : 'text-slate-400'} /></button>}
               {canEdit && t.custom && onDelete && <button title="Delete" onClick={() => onDelete(t)} className="p-1.5 rounded-lg hover:bg-rose-50"><Trash2 size={14} className="text-rose-600" /></button>}
             </div>
           </div>
-        ))}
+          );
+        })}
         {shown.length === 0 && <p className="col-span-full text-center text-xs text-slate-400 py-10">No templates match your search.</p>}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Users, CalendarClock, CalendarCheck, XCircle, Clock, Database, Wallet,
   CheckCircle2, RefreshCcw, Loader2, Search, ArrowLeft, ArrowRight, X,
@@ -111,6 +111,14 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
 }) => {
   const { canEdit: canEditModule } = usePermissions();
   const canWrite = canEditModule('payroll');
+
+  // If this engine was opened from the Payroll Workflow's "Push to Payroll" button,
+  // capture (and clear) the return flag once on entry, so a successful push routes
+  // back to Payroll — and a later entry from the Attendance module never inherits it.
+  const pushReturnRef = useRef<string | null>(null);
+  useEffect(() => {
+    try { pushReturnRef.current = sessionStorage.getItem('hrms_push_return'); sessionStorage.removeItem('hrms_push_return'); } catch { /* ignore */ }
+  }, []);
 
   const now = new Date();
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
@@ -415,6 +423,13 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
       });
       setDone(res);
       onRefresh?.();
+      // When opened from the Payroll Workflow's "Push to Payroll" button, return
+      // there automatically so the payroll counts/list/summary/progress refresh.
+      if (pushReturnRef.current === 'payroll' && onNavigate) {
+        pushReturnRef.current = null;
+        ui.toast.success('Attendance successfully pushed to Payroll. Payroll records have been generated.');
+        onNavigate('payroll');
+      }
     } catch (e: any) {
       // Duplicate payroll for the period → offer to replace the existing batch.
       if (e?.status === 409 || e?.data?.error === 'PAYROLL_EXISTS') {
@@ -710,7 +725,24 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
       {/* ── Step 2 — Employee table (DESKTOP: essential columns, NO horizontal
              scroll). Secondary figures live in the row drawer. ─────────────── */}
       <div className="hidden md:block">
-        <Table>
+        {/* table-fixed + colgroup makes the table lay out to exactly the
+            container width — every column (incl. Action) stays fully visible
+            with NO horizontal scroll. Long text columns truncate; full values
+            remain available in the row drawer (View). Padding is compacted for
+            this instance only so the fixed columns keep breathing room. */}
+        <Table className="[&_th]:px-2.5 [&_td]:px-2.5 [&>table]:table-fixed">
+          <colgroup>
+            <col style={{ width: '104px' }} />{/* Emp Code */}
+            <col />{/* Employee Name — absorbs remaining width */}
+            <col style={{ width: '110px' }} />{/* Department */}
+            <col style={{ width: '118px' }} />{/* Monthly Salary */}
+            <col style={{ width: '66px' }} />{/* Working */}
+            <col style={{ width: '66px' }} />{/* Present */}
+            <col style={{ width: '72px' }} />{/* Payable */}
+            <col style={{ width: '120px' }} />{/* Payable Salary */}
+            <col style={{ width: '146px' }} />{/* Status */}
+            <col style={{ width: '86px' }} />{/* Action */}
+          </colgroup>
           <Thead>
             <tr>
               <SortTh label="Emp Code" col="code" {...{ sortKey, sortDir, toggleSort }} />
@@ -737,8 +769,8 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
             ) : sortedRows.map(r => (
               <Tr key={String(r.employeeId)} onClick={() => setDetail(r)}>
                 <Td className="font-bold text-ink">{r.code}</Td>
-                <Td className="font-semibold text-ink">{r.employeeName}</Td>
-                <Td className="text-ink-secondary">{r.department}</Td>
+                <Td className="font-semibold text-ink truncate">{r.employeeName}</Td>
+                <Td className="text-ink-secondary truncate">{r.department}</Td>
                 <Td className="text-right tabular-nums text-ink-secondary">{inr(r.salary)}</Td>
                 <Td className="text-center tabular-nums">{r.workingDays}</Td>
                 <Td className="text-center tabular-nums text-emerald-600 font-semibold">{r.present}</Td>
@@ -871,11 +903,12 @@ const MobileStat: React.FC<{ label: string; value: string; tone?: string }> = ({
 const SortTh: React.FC<{
   label: string; col: keyof ViewRow; align?: 'left' | 'center' | 'right';
   sortKey: keyof ViewRow; sortDir: 'asc' | 'desc'; toggleSort: (k: keyof ViewRow) => void;
-}> = ({ label, col, align = 'left', sortKey, sortDir, toggleSort }) => {
+  className?: string;
+}> = ({ label, col, align = 'left', sortKey, sortDir, toggleSort, className }) => {
   const active = sortKey === col;
   const alignCls = align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start';
   return (
-    <Th className={align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'}>
+    <Th className={`${align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left'} ${className || ''}`}>
       <button type="button" onClick={() => toggleSort(col)}
         className={`inline-flex items-center gap-1 w-full ${alignCls} hover:text-brand-600 transition-colors ${active ? 'text-brand-600' : ''}`}>
         {label}

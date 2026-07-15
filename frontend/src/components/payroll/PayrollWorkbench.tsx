@@ -2,7 +2,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   Users, FileCheck2, CheckCircle2, Wallet, Clock, IndianRupee,
   Calculator, ShieldCheck, FileText, Banknote, Lock, Unlock,
-  Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet,
+  Eye, Download, Printer, Mail, RefreshCw, MoreVertical, Search, FileArchive, Send, FileSpreadsheet, ArrowRight,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -54,6 +54,8 @@ interface Props {
    *  write to payroll → refresh. Replaces the old two-button (Recalculate + Sync)
    *  flow. Owned by Payroll (validate + progress + summary + audit + API). */
   onSynchronizeAttendance?: () => void;
+  /** Opens the existing Attendance → Payroll Engine (attendance-sync page). */
+  onPushToPayroll?: () => void;
   /** Last successful synchronization for the selected month — powers the "Last
    *  Synchronized" line and gates Generate Payroll (null = not yet synced). */
   attendanceRecalc?: { at: string; by: string; employees: number; records: number } | null;
@@ -85,7 +87,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
   onGeneratePayroll, onApproveAll, onGenerateSlipsAll, onExportBank, onMarkPaidAll, onLockMonth,
   onView, onOpenWorksheet, onDownloadPdf, onPrint, onEmail, onRegenerate, onDownloadZip, onEmailAll,
   onApprove, onMarkPaid, onGenerateSelected, onGenerateSlips, onLock, onUnlock, onRecalculate, lockBusy = null,
-  onSynchronizeAttendance, attendanceRecalc = null, attendanceRecalcBusy = false, canRecalcAttendance = false,
+  onSynchronizeAttendance, onPushToPayroll, attendanceRecalc = null, attendanceRecalcBusy = false, canRecalcAttendance = false,
 }) => {
   const [companyFilter, setCompanyFilter] = useState(() => sessionStorage.getItem('payroll_company') || '');
   const [branchFilter, setBranchFilter] = useState(() => sessionStorage.getItem('payroll_branch') || '');
@@ -501,9 +503,27 @@ export const PayrollWorkbench: React.FC<Props> = ({
                       </div>
                     </div>
                   ) : attSynced ? (
-                    <div className="mt-auto flex w-full items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700">
-                      <CheckCircle2 size={12} className="shrink-0" /> Attendance Synchronized
-                    </div>
+                    // Attendance is synchronized (status shown above) → the primary
+                    // action becomes "Push to Payroll". It opens the SAME Attendance →
+                    // Payroll Engine (attendance-sync page) — no duplicate logic; that
+                    // engine owns validation, preview, dup-check and push.
+                    (perms.generate && onPushToPayroll) ? (
+                      <button
+                        type="button"
+                        onClick={onPushToPayroll}
+                        title="Open the Payroll Engine to push the synchronized attendance and generate/update payroll."
+                        className="mt-auto flex w-full items-center justify-center gap-1.5 rounded-lg bg-[#B8743C] px-2 py-1.5 text-[11px] font-bold text-white shadow-sm transition-all hover:bg-[#A5652F] hover:shadow-md active:scale-[0.98]"
+                      >
+                        <IndianRupee size={12} className="shrink-0" />
+                        <span className="truncate">Push to Payroll</span>
+                        <ArrowRight size={12} className="shrink-0" />
+                      </button>
+                    ) : (
+                      // No generate permission → keep the passive synchronized badge.
+                      <div className="mt-auto flex w-full items-center justify-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] font-bold text-emerald-700">
+                        <CheckCircle2 size={12} className="shrink-0" /> Attendance Synchronized
+                      </div>
+                    )
                   ) : (canRecalcAttendance && onSynchronizeAttendance) ? (
                     <Button
                       size="sm"
@@ -665,7 +685,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
                 <th className="px-2 py-2.5 text-right">Deductions</th>
                 <th className="px-2 py-2.5 text-right">Net Salary</th>
                 <th className="px-2 py-2.5">Payment Status</th>
-                <th className="px-2 py-2.5 text-center">Actions</th>
+                <th className="px-2 py-2.5 text-center sticky right-0 z-20 bg-white shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -711,7 +731,7 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     <td className="px-2 py-2 text-right text-rose-600">{pending ? '—' : inr(x.deductions)}</td>
                     <td className="px-2 py-2 text-right font-bold text-slate-900">{pending ? '—' : inr(x.net)}</td>
                     <td className="px-2 py-2">{pending ? <Badge variant="gray">Not Generated</Badge> : <Badge variant={pb.variant}>{pb.label}</Badge>}</td>
-                    <td className="px-2 py-2">
+                    <td className={`px-2 py-2 sticky right-0 shadow-[-6px_0_8px_-6px_rgba(15,23,42,0.12)] ${openMenu === x.r.id ? 'z-30' : 'z-10'} ${sel ? 'bg-brand-50' : pending ? 'bg-slate-50' : 'bg-white'}`}>
                       {pending ? (
                         <div className="flex items-center justify-center gap-1">
                           {onOpenWorksheet && <button title="Open Salary Worksheet (Draft)" onClick={() => onOpenWorksheet(x.r)} className="rounded-lg p-1.5 text-slate-500 hover:bg-brand-50 hover:text-brand-600"><FileSpreadsheet size={14} /></button>}

@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ZeniaLogo size={38} radius={220} className="rounded-[22%] shadow-[0_4px_14px_rgba(0,0,0,0.3)]" />
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[16px] font-bold text-white leading-tight font-heading tracking-tight">
+                <p className="text-[16px] font-bold text-[#FFFFFF] leading-tight font-heading tracking-tight">
                   {BRAND_NAME}
                 </p>
                 <p className="text-[10px] text-brand-300 mt-0.5 uppercase tracking-widest font-bold">
@@ -184,7 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Footer */}
       {!collapsed && (
         <div className="px-4 py-4 border-t border-white/10 bg-transparent relative z-10 flex flex-col gap-3">
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">v3.1.0 — HR SaaS</p>
+          <p className="text-[10px] text-slate-500 font-bold tracking-wider">{BRAND_NAME}</p>
         </div>
       )}
     </aside>

@@ -8,8 +8,10 @@ const idParam = require('./idParam');
 
 const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 const canView = (req) => ['Super Admin', 'Company Head', 'HR', 'Manager', 'Finance'].includes(req.user?.role);
-const canEdit = (req) => ['Company Head', 'HR'].includes(req.user?.role);
-const canManage = (req) => ['Company Head', 'HR'].includes(req.user?.role);
+// Template authoring (create / edit / duplicate / set-default / set-active). Super
+// Admin is included so platform admins can build templates inside any workspace.
+const canEdit = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
+const canManage = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
 const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);

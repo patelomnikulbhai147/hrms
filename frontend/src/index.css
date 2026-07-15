@@ -197,6 +197,25 @@
 .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(224,153,106,0.5); }
 
+/* Dashboard-only premium warm background (light theme). Applied to the app's
+   fixed full-viewport background layer (App.tsx) when currentPage === 'dashboard'
+   — so it sits FULL-BLEED behind the transparent <main>, and cards float above
+   it. Dark theme keeps the standard canvas, leaving the premium dark dashboard
+   untouched. Presentation-only; no layout/card/spacing changes. */
+.app-bg-dashboard {
+  background-color: #FAF8F5;
+  background-image:
+    radial-gradient(1200px 820px at 100% -6%, rgba(184,116,60,0.06), transparent 55%),
+    radial-gradient(1000px 760px at -8% 106%, rgba(30,42,68,0.035), transparent 55%),
+    radial-gradient(680px 560px at 12% 16%, rgba(239,231,222,0.55), transparent 60%),
+    radial-gradient(760px 620px at 88% 78%, rgba(245,241,235,0.60), transparent 60%),
+    radial-gradient(560px 480px at 60% 42%, rgba(184,116,60,0.03), transparent 65%);
+}
+:root:not([data-theme="light"]) .app-bg-dashboard {
+  background-color: var(--surface-canvas);
+  background-image: none;
+}
+
 html {
   /* Root size drives every rem-based size (Tailwind text-sm/base/lg, spacing).
      Was 14px, which scaled the whole UI to 87.5% and made it feel "zoomed out"

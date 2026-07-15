@@ -1497,7 +1497,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   return (
     <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies} activeCompanyId={resolvedCompanyId}>
       {/* Global Wavy Background (Second Image Style) */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-canvas">
+      <div className={`fixed inset-0 pointer-events-none z-0 overflow-hidden ${currentPage === 'dashboard' ? 'app-bg-dashboard' : 'bg-canvas'}`}>
         {/* Soft floating circles — brand tint, faint enough to read in either theme. */}
         <div className="absolute top-[20%] left-[35%] w-16 h-16 bg-brand-500/10 rounded-full"></div>
         <div className="absolute bottom-[10%] right-[10%] w-[350px] h-[350px] bg-brand-500/10 rounded-full"></div>

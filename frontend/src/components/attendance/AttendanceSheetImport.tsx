@@ -7,6 +7,7 @@ import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
+import { detectMatrix, expandMatrix } from '@/utils/attendanceMatrix';
 
 interface Props {
   role: string;
@@ -17,20 +18,45 @@ interface Props {
 // ── Column auto-detection ────────────────────────────────────────────────────
 // Normalise a header for fuzzy matching: lowercase, strip spaces/underscores/dots.
 const nk = (s: string) => String(s || '').toLowerCase().replace(/[\s_.\-#]/g, '');
-// Each canonical field maps to a list of normalised header aliases (superset of the
-// common ZKTeco / eSSL / Matrix / BioMax / TeamOffice / E-Time / Suprema exports).
+// Each canonical field maps to a list of normalised header aliases. The headers of
+// the shared Attendance sheet (utils/attendanceSchema) are ALL covered here, plus a
+// superset of common ZKTeco / eSSL / Matrix / BioMax / TeamOffice / E-Time / Suprema
+// device exports — so a file produced by our own Export (or the Import Template)
+// auto-maps with zero manual mapping.
+//
+// `biometric` and `employeeCode` are detected as DISTINCT columns (the shared sheet
+// carries both). Per row we then pick the employee key by PRIORITY
+// employee code → biometric → any generic id column — matching the server's
+// Employee-Code-first matching order (falls back to Biometric Code).
 const ALIASES: Record<string, string[]> = {
-  employeeKey: ['employeeid', 'employeecode', 'empid', 'empcode', 'employeeno', 'empno', 'staffid', 'biometricid', 'bioid', 'userid', 'usercode', 'attendanceid', 'cardno', 'enrollid', 'enrollno', 'acno', 'machineno', 'code', 'id'],
-  altKey: ['employeecode', 'empcode', 'employeeid', 'staffid'],
+  biometric: ['biometricid', 'bioid', 'deviceid', 'acno', 'enrollid', 'enrollno', 'machineno', 'usercode'],
+  employeeCode: ['employeecode', 'empcode', 'employeeid', 'empid', 'employeeno', 'empno', 'staffid'],
+  employeeKey: ['userid', 'attendanceid', 'cardno', 'code', 'id'], // generic single-id device files
   employeeName: ['employeename', 'name', 'empname', 'fullname', 'staffname', 'username'],
   date: ['attendancedate', 'punchdate', 'date', 'day', 'attdate', 'logdate'],
   dateTime: ['datetime', 'punchdatetime', 'logdatetime', 'timestamp', 'punchtimestamp', 'attendancedatetime'],
-  inTime: ['intime', 'checkin', 'firstpunch', 'punchin', 'in', 'timein', 'clockin', 'entry', 'firstin', 'onduty'],
-  outTime: ['outtime', 'checkout', 'lastpunch', 'punchout', 'out', 'timeout', 'clockout', 'exit', 'lastout', 'offduty'],
+  // ── Informational columns the shared sheet carries but the importer does not
+  //    consume (hours/status are recomputed server-side). They are matched FIRST
+  //    only so their columns are claimed and cannot be mis-grabbed by a greedy
+  //    time/hours alias below (e.g. "Overtime Hours" ⊄ punch "time"). Deleted from
+  //    the returned mapping so they never affect parsing or the detected-columns UI.
+  _workHrs: ['workinghours', 'workhours', 'hoursworked', 'totalhours', 'workedhours'],
+  _breakHrs: ['breakhours', 'breaktime'],
+  _otHrs: ['overtimehours', 'othours', 'othrs', 'overtime'],
+  _leaveType: ['leavetype', 'leavecategory'],
+  _remarks: ['remarks', 'remark', 'note', 'notes', 'comment', 'comments'],
+  _company: ['company', 'companyname', 'organisation', 'organization'],
+  _branch: ['branch', 'branchname', 'unit'],
+  _dept: ['department', 'dept'],
+  _desig: ['designation', 'jobtitle'],
+  inTime: ['clockin', 'intime', 'checkin', 'firstpunch', 'punchin', 'in', 'timein', 'entry', 'firstin', 'onduty'],
+  outTime: ['clockout', 'outtime', 'checkout', 'lastpunch', 'punchout', 'out', 'timeout', 'exit', 'lastout', 'offduty'],
   punchTime: ['punchtime', 'time', 'logtime', 'punch', 'swipetime', 'attendancetime'],
-  status: ['status', 'attendancestatus', 'remark', 'remarks', 'presentabsent'],
+  status: ['attendancestatus', 'status', 'presentabsent'],
   shift: ['shift', 'shiftname', 'shiftcode'],
 };
+// Fields claimed only to reserve their column; dropped before the mapping is used.
+const IGNORE_FIELDS = ['_workHrs', '_breakHrs', '_otHrs', '_leaveType', '_remarks', '_company', '_branch', '_dept', '_desig'];
 
 function detectColumns(headers: string[]) {
   const map: Record<string, number> = {};
@@ -38,14 +64,20 @@ function detectColumns(headers: string[]) {
   const norm = headers.map(nk);
   for (const field of Object.keys(ALIASES)) {
     for (const alias of ALIASES[field]) {
-      const idx = norm.findIndex((h, i) => !used.has(i) && (h === alias || h.includes(alias)));
+      // Prefer an EXACT header match; only fall back to a contains-match if no
+      // column matched any alias exactly (prevents "date" swallowing "datetime").
+      let idx = norm.findIndex((h, i) => !used.has(i) && h === alias);
+      if (idx < 0) idx = norm.findIndex((h, i) => !used.has(i) && h.includes(alias));
       if (idx >= 0) { map[field] = idx; used.add(idx); break; }
     }
   }
-  // altKey must be a DIFFERENT column than employeeKey to be useful.
-  if (map.altKey === map.employeeKey) delete map.altKey;
+  for (const f of IGNORE_FIELDS) delete map[f];
   return map;
 }
+
+// Any employee-identifier column present? (biometric, code, or a generic id.)
+const hasIdColumn = (m: Record<string, number>) =>
+  m.biometric != null || m.employeeCode != null || m.employeeKey != null;
 
 // ── Cell → canonical string normalisers (defensive; server re-normalises too) ──
 const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -135,10 +167,31 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
       const ws = wb.Sheets[wb.SheetNames[0]];
       const grid: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', blankrows: false });
       if (!grid.length) { setParseError('The sheet is empty.'); return; }
+
+      // ── Our own MATRIX workbook (report header + full-date columns + P/A/HD codes)?
+      //    Detect it and expand each cell to one attendance row — no manual mapping.
+      const matrix = detectMatrix(grid);
+      if (matrix) {
+        const expanded = expandMatrix(grid, matrix);
+        if (!expanded.length) { setParseError('This attendance report has no attendance values to import.'); return; }
+        const issues = { invalidDate: 0, missingId: 0, future: 0, blank: 0 };
+        const mrows: Canon[] = expanded.map((x) => {
+          if (!x.employeeKey) issues.missingId++;
+          if (!x.date) issues.invalidDate++;
+          else if (x.date > todayISO) issues.future++;
+          return { rowNo: x.rowNo, employeeKey: x.employeeKey, altKey: x.altKey, date: x.date, status: x.status };
+        });
+        const mMapping: Record<string, number> = { ...matrix.info };
+        if (matrix.dateCols.length) mMapping[`dateColumns(${matrix.dateCols.length})`] = matrix.dateCols[0].col;
+        const mHeaders = (grid[matrix.headerRow] || []).map((h: any) => String(h ?? '').trim());
+        setParsed({ fileName: file.name, headers: mHeaders, mapping: mMapping, rows: mrows, issues });
+        return;
+      }
+
       const headers = (grid[0] || []).map((h) => String(h ?? '').trim());
       const mapping = detectColumns(headers);
-      if (mapping.employeeKey == null) { setParseError('Could not find an Employee/Biometric ID column. Expected a header like "Employee ID", "Emp Code", or "Biometric ID".'); return; }
-      if (mapping.date == null && mapping.dateTime == null) { setParseError('Could not find a Date column. Expected "Date", "Attendance Date", or a combined "DateTime".'); return; }
+      if (!hasIdColumn(mapping)) { setParseError('Could not find an Employee/Biometric ID column. Expected a header like "Employee Code", "Biometric ID", or "Employee ID".'); return; }
+      if (mapping.date == null && mapping.dateTime == null) { setParseError('Could not find a Date column. Expected "Date", "Attendance Date", "Attendance_Date" or a combined "DateTime".'); return; }
 
       const issues = { invalidDate: 0, missingId: 0, future: 0, blank: 0 };
       const rows: Canon[] = [];
@@ -147,7 +200,13 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
         const nonEmpty = raw.some((c) => String(c ?? '').trim() !== '');
         if (!nonEmpty) { issues.blank++; continue; }
         const get = (f: string) => (mapping[f] != null ? raw[mapping[f]] : '');
-        const employeeKey = String(get('employeeKey') ?? '').trim();
+        // Employee key by PRIORITY: employee code → biometric → generic id. Always
+        // resolves to a NON-BLANK value when any identifier is present (so a blank
+        // employee-code cell never masks a valid biometric id), and passes the second
+        // id as altKey. The server matches by Employee Code first, then Biometric.
+        const idCandidates = [String(get('employeeCode') ?? '').trim(), String(get('biometric') ?? '').trim(), String(get('employeeKey') ?? '').trim()].filter(Boolean);
+        const employeeKey = idCandidates[0] || '';
+        const altKey = idCandidates.find((x) => x !== employeeKey) || undefined;
         // Date: prefer explicit date column, else derive from a combined datetime.
         let date = cellDate(get('date'));
         const dtRaw = get('dateTime');
@@ -163,8 +222,7 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
         else if (date > todayISO) issues.future++;
 
         rows.push({
-          rowNo: r + 1, employeeKey, date,
-          altKey: mapping.altKey != null ? String(get('altKey') ?? '').trim() : undefined,
+          rowNo: r + 1, employeeKey, date, altKey,
           inTime: inTime || undefined, outTime: outTime || undefined, punchTime: punchTime || undefined,
           status: mapping.status != null ? String(get('status') ?? '').trim() : undefined,
           shift: mapping.shift != null ? String(get('shift') ?? '').trim() : undefined,
@@ -258,6 +316,7 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
   const invalidRows: any[] = (preview?.errors || []).filter((e: any) => !/No employee|offboarded/i.test(e.error || ''));
   const unmatchedCount = s?.unmatchedEmployees ?? unmatchedList.length;
   const matchedEmp = s?.matchedEmployees ?? 0;
+  const diag = preview?.diagnostics;
   const totalEmpAttempted = matchedEmp + unmatchedCount;
   const matchPct = totalEmpAttempted ? Math.round((matchedEmp / totalEmpAttempted) * 100) : 100;
   const canImportAll = !!s && s.records > 0 && (unmatchedCount === 0 || ignoreUnmatched);
@@ -280,7 +339,7 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
         {/* Upload box — unchanged */}
         <Card>
           <h4 className="font-bold text-sm text-slate-800 mb-1">Smart Excel / Biometric Import</h4>
-          <p className="text-xs text-slate-500 mb-4">Upload a biometric export (XLSX, XLS or CSV). Columns are detected automatically — employees are matched by Biometric ID → Employee Code, attendance is validated, and a full preview is shown <b>before</b> anything is saved. Approved leave, holidays and weekly-offs are respected.</p>
+          <p className="text-xs text-slate-500 mb-4">Upload a biometric export (XLSX, XLS or CSV). Columns are detected automatically — employees are matched by Employee Code → Biometric ID, attendance is validated, and a full preview is shown <b>before</b> anything is saved. Approved leave, holidays and weekly-offs are respected.</p>
 
           {!parsed && (
             <div
@@ -330,6 +389,17 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
         {/* ── PREVIEW (dry run) ──────────────────────────────────────────────── */}
         {preview && !result && (
           <>
+            {/* Scope diagnostic — shown ONLY when nothing matched, which is almost
+                always a wrong-company/branch selection (the codes exist, but not in
+                the scoped company). Points straight at the cause instead of "map
+                each employee". */}
+            {matchedEmp === 0 && unmatchedCount > 0 && diag && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900">
+                <p className="text-sm font-bold flex items-center gap-2"><AlertTriangle size={16} className="text-amber-600" /> No employees matched — this looks like a company/branch scope issue.</p>
+                <p className="text-xs mt-1.5">The file was imported into <b>company #{diag.companyId}</b>{diag.branchId ? <> (branch #{diag.branchId})</> : null}, which has <b>{diag.employeesInScope}</b> employee(s) — but none of them have the Employee Codes / Biometric Codes in this file. The codes are read correctly; they just don't belong to the selected company.</p>
+                <p className="text-xs mt-1.5 font-semibold">Fix: switch to the company these employees belong to (e.g. the one whose codes look like <span className="font-mono">{unmatchedList[0]?.employeeKey || 'PM-HQ-0001'}</span>), then re-upload. No manual mapping needed.</p>
+              </div>
+            )}
             {/* Import Summary */}
             <Card>
               <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2 mb-3"><ClipboardCheck size={16} className="text-brand-500" /> Attendance Import Summary</h4>
@@ -608,7 +678,7 @@ export const AttendanceSheetImport: React.FC<Props> = ({ role, companyId, onRefr
           <h4 className="font-bold text-sm text-slate-800 mb-2">How it works</h4>
           <ol className="text-[11px] text-slate-600 space-y-1.5 list-decimal list-inside">
             <li>Columns auto-detected (no manual mapping)</li>
-            <li>Employees matched by Biometric ID → Employee Code</li>
+            <li>Employees matched by Employee Code → Biometric ID</li>
             <li>A full preview is shown before saving</li>
             <li>Approved leave, holidays &amp; weekly-offs respected</li>
             <li>One record per employee/date — never duplicated</li>

@@ -128,6 +128,12 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [monthFilter, setMonthFilter] = useState(
     () => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][new Date().getMonth()]
   );
+  // A payroll cycle is month + YEAR. Scoping by month name alone made the same
+  // month across two years collapse into one view (e.g. July 2025 + July 2026),
+  // which double-counted the employee roster (64 → 113) once multi-year payroll
+  // existed. Every roster/record scope below is anchored to this year so a cycle
+  // is unambiguous. Defaults to the current year (the module already targets it).
+  const [yearFilter] = useState(() => new Date().getFullYear());
   // Drives the Lock/Unlock Month button's loading state.
   const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
 
@@ -293,7 +299,9 @@ export const Payroll: React.FC<PayrollProps> = ({
   const canRecalcAttendance = role !== 'Employee' && (role === 'Super Admin' || role === 'Company Head' || (role === 'HR' && canEdit));
 
   const scopedRecords = useMemo(() => {
-    let records = payroll.filter(p => p.month === monthFilter);
+    // Scope to the exact cycle: month NAME + YEAR. Without the year, a month name
+    // matches that month in every year on record (the 113-vs-64 bug).
+    let records = payroll.filter(p => p.month === monthFilter && Number(p.year) === Number(yearFilter));
 
     if (role === 'Employee' && authProfile?.employeeId) {
       records = records.filter(p => p.employeeId === authProfile.employeeId || p.employeeId === authProfile.id);
@@ -302,7 +310,7 @@ export const Payroll: React.FC<PayrollProps> = ({
     }
 
     return records;
-  }, [payroll, monthFilter, activeCompanyId, role, authProfile, scopedEmpIds, companies]);
+  }, [payroll, monthFilter, yearFilter, activeCompanyId, role, authProfile, scopedEmpIds, companies]);
 
   // ── Payroll ROSTER — Employee Management is the source of truth ──────────────
   // The payroll table is a LIVE ROSTER of every payroll-eligible employee, not
@@ -329,7 +337,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         employeeName: e.name,
         department: (e as any).department || '',
         month: monthFilter,
-        year: 2026,
+        year: yearFilter,
         payrollStatus: 'draft',
         paymentStatus: 'pending',
         basicSalary: 0, allowances: 0, bonus: 0, overtime: 0, deductions: 0, tax: 0, netSalary: 0,
@@ -400,11 +408,12 @@ export const Payroll: React.FC<PayrollProps> = ({
           page,
           limit,
           companyId: activeCompanyId,
-          month: monthFilter
+          month: monthFilter,
+          year: yearFilter
         };
         if (search) params.search = search;
         if (statusFilter) params.status = statusFilter;
-        
+
         const res = await api.payroll.getPaginated(params) as any;
         if (isMounted && res && Array.isArray(res.data)) {
           setPaginatedData(res.data);
@@ -416,10 +425,10 @@ export const Payroll: React.FC<PayrollProps> = ({
         if (isMounted) setIsTableLoading(false);
       }
     };
-    
+
     fetchPaginated();
     return () => { isMounted = false; };
-  }, [page, limit, search, statusFilter, monthFilter, activeCompanyId]);
+  }, [page, limit, search, statusFilter, monthFilter, yearFilter, activeCompanyId]);
 
   const handlePreparePayroll = async (record: PayrollRecord) => {
     try {
@@ -1347,6 +1356,12 @@ export const Payroll: React.FC<PayrollProps> = ({
         onUnlock={handleUnlockPayroll}
         onRecalculate={handleRecalculate}
         onSynchronizeAttendance={handleSynchronizeAttendance}
+        onPushToPayroll={onNavigate ? () => {
+          // Open the existing Attendance → Payroll Engine, and flag a return so it
+          // navigates back here after a successful push (see AttendanceSync).
+          try { sessionStorage.setItem('hrms_push_return', 'payroll'); } catch { /* ignore */ }
+          onNavigate('attendance-sync');
+        } : undefined}
         attendanceRecalc={attRecalc}
         attendanceRecalcBusy={syncBusy}
         canRecalcAttendance={canRecalcAttendance}

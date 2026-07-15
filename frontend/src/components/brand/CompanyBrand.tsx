@@ -56,7 +56,7 @@ export const CompanyBrand: React.FC<CompanyBrandProps> = ({ name, role, logo, co
     {!compact && (
       <div className="min-w-0 flex-1">
         <p
-          className={cn('leading-snug font-heading', tone === 'onDark' ? 'text-[16px] font-semibold text-white' : 'text-[14px] font-bold text-ink')}
+          className={cn('leading-snug font-heading', tone === 'onDark' ? 'text-[16px] font-semibold text-[#FFFFFF]' : 'text-[14px] font-bold text-ink')}
           title={name}
           style={{
             display: '-webkit-box',

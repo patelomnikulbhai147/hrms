@@ -5,6 +5,7 @@
  */
 const prisma = require('../config/prisma');
 const { categoryOf } = require('./leaveService');
+const policyService = require('./deductionPolicyService');
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthIndex = (name) => Math.max(0, MONTHS.findIndex(m => m.toLowerCase() === String(name).toLowerCase()));
@@ -41,7 +42,7 @@ async function compute(employeeId, month, year) {
   const monthEnd = `${year}-${pad(mi + 1)}-${pad(lastDay)}`;
 
   const [emp, attendance, leaves, overtime] = await Promise.all([
-    prisma.employee.findUnique({ where: { id: eid }, select: { companyId: true } }),
+    prisma.employee.findUnique({ where: { id: eid }, select: { companyId: true, branchId: true } }),
     prisma.attendance.findMany({ where: { employeeId: eid, date: { gte: monthStart, lte: monthEnd } } }),
     prisma.leaveRequest.findMany({ where: { employeeId: eid, status: 'Approved' } }),
     prisma.overtime.findMany({ where: { employeeId: eid, status: 'Approved', date: { gte: monthStart, lte: monthEnd } } }),
@@ -93,16 +94,62 @@ async function compute(employeeId, month, year) {
   const lwp = round(leaveDays.LWP), other = round(leaveDays.OTHER);
   const presentDays = c.present;
   const halfDays = c.half;
-  // Weekly-off / holiday / WFH are present-equivalent (paid) per existing payroll sync.
-  const payableDays = round(presentDays + c.wfh + c.holiday + c.weeklyOff + halfDays * 0.5 + cl + pl + sl + other);
-
-  // ── Snapshot fields the Payroll engine + Salary Worksheet read directly ──
-  // workingDays = the days the employee is EXPECTED to work = calendar days minus
-  // weekly-offs and holidays. This is payroll's proration DENOMINATOR:
-  //   dailyRate = monthlyGross / workingDays ;  grossPay = dailyRate × payableDays.
   const weeklyOffDays = c.weeklyOff;
   const holidayDays = c.holiday;
-  const workingDays = round(Math.max(0, lastDay - weeklyOffDays - holidayDays));
+
+  // ── Resolve the Attendance & Salary Deduction Policy (single source of truth) ──
+  // The policy decides how attendance converts to payable/working days: weekly-off
+  // & holiday pay, half-day pay fraction, absent/LWP deduction weight, LOP basis
+  // and the sandwich rule. Defaults reproduce the historical formula exactly, so
+  // an unconfigured company/branch behaves identically to before.
+  const effective = await policyService.resolveEffectivePolicy({ companyId: emp?.companyId, branchId: emp?.branchId }).catch(() => null);
+  const policy = effective ? effective.config : policyService.POLICY_DEFAULTS;
+
+  // Sandwich detection needs a per-day classification for the WHOLE month. Built
+  // separately from the tallies above (which stay exactly as-is) so only the
+  // sandwich rule — when enabled — changes the numbers.
+  const dayType = new Array(lastDay + 1).fill(null);
+  for (const a of attendance) {
+    const d = Number(String(a.date).slice(8, 10));
+    if (d >= 1 && d <= lastDay) { const b = bucketOf(a.status); if (b !== 'leave') dayType[d] = b; }
+  }
+  for (const l of leaves) {
+    const isLwp = categoryOf(l.leaveType) === 'LWP';
+    for (let d = 1; d <= lastDay; d++) {
+      const date = `${year}-${pad(mi + 1)}-${pad(d)}`;
+      if (dayType[d] == null && date >= l.fromDate && date <= l.toDate) dayType[d] = isLwp ? 'lwp' : 'leave';
+    }
+  }
+  for (let d = 1; d <= lastDay; d++) {
+    if (dayType[d] == null) {
+      const date = `${year}-${pad(mi + 1)}-${pad(d)}`;
+      dayType[d] = new Date(date).getDay() === 0 ? 'weeklyOff' : 'absent';
+    }
+  }
+  const isRest = (t) => t === 'weeklyOff' || t === 'holiday';
+  const isUnpaidGap = (t) => t === 'absent' || t === 'lwp';
+  let sandwichWeeklyOff = 0, sandwichHoliday = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    if (!isRest(dayType[d])) continue;
+    let l = d - 1; while (l >= 1 && isRest(dayType[l])) l--;
+    let r = d + 1; while (r <= lastDay && isRest(dayType[r])) r++;
+    if (l >= 1 && isUnpaidGap(dayType[l]) && r <= lastDay && isUnpaidGap(dayType[r])) {
+      if (dayType[d] === 'weeklyOff') sandwichWeeklyOff++; else sandwichHoliday++;
+    }
+  }
+  // Only rest days that would otherwise be PAID cost anything under sandwich.
+  const sandwichPaidDays = (policy.weeklyOffPaid ? sandwichWeeklyOff : 0) + (policy.holidayPaid ? sandwichHoliday : 0);
+
+  // ── payableDays (numerator) & workingDays (proration denominator) ──
+  // Both come from the ONE policy-driven computation. dailyRate = monthlyGross /
+  // workingDays ; grossPay = dailyRate × payableDays.
+  const counts = {
+    present: presentDays, wfh: c.wfh, holiday: holidayDays, weeklyOff: weeklyOffDays,
+    half: halfDays, absent: c.absent, cl, pl, sl, other, lwp, sandwichPaidDays,
+  };
+  const money = policyService.computeMoneyDays(policy, counts, lastDay);
+  const payableDays = money.payableDays;
+  const workingDays = money.workingDays > 0 ? money.workingDays : round(Math.max(0, lastDay - weeklyOffDays - holidayDays));
   // Recorded-vs-expected coverage → Complete / Partial / Missing.
   const recordedDays = attendance.length;
   const attendanceStatus = recordedDays === 0 ? 'Missing' : recordedDays >= workingDays ? 'Complete' : 'Partial';

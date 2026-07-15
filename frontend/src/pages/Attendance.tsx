@@ -6,17 +6,21 @@ import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, typ
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { Card, StatCard } from '@/components/ui/Card';
+import { Paginated } from '@/components/ui/Paginated';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { getUniqueEmployees } from '@/utils/deduplication';
-import { formatDate } from '@/utils/formatDate';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
-import { downloadAttendanceTemplateExcel, downloadImportGuidePDF, downloadAttendanceReport, exportAttendanceDataset, type ExportFormat } from '@/utils/attendanceExportUtils';
+import { downloadImportGuidePDF, downloadAttendanceReport, exportAttendanceDataset, type ExportFormat } from '@/utils/attendanceExportUtils';
+import { attendanceSheetExportColumns } from '@/utils/attendanceSchema';
+import { formatDateHeader, statusToCode, MON } from '@/utils/attendanceMatrix';
+import { downloadAttendanceMatrix, type MatrixData, type MatrixEmployeeRow } from '@/utils/attendanceMatrixExport';
 import {
   type PeriodMode, getPeriodRange, eachDateInRange, resolveStatus, statusCode, bucketOf,
   summarizeEmployeePeriod, summarizeYear,
@@ -37,7 +41,11 @@ interface AttendanceCenterProps {
   onNavigate?: (page: string) => void;
 }
 
-const today = new Date().toISOString().split('T')[0];
+// "Today" in the app/server timezone (Asia/Kolkata), NOT UTC — otherwise, in the
+// early-morning IST window, a UTC date would read as yesterday and wrongly block
+// the real current day. The server enforces the same cap independently as the
+// authority; this is the client-side max selectable attendance date.
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
 const ATTENDANCE_STATUS_OPTIONS = [
   'Present', 'Absent', 'Half Day', 'Weekly Off', 'Holiday',
@@ -308,6 +316,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const period = useMemo(() => getPeriodRange(periodMode, selectedDate, customStart, customEnd), [periodMode, selectedDate, customStart, customEnd]);
   const periodDates = useMemo(() => eachDateInRange(period.start, period.end), [period]);
 
+  // Pagination reset key — every table paginates 15/page and jumps back to page 1
+  // whenever any filter / search / date / period / company / branch changes.
+  const attnFilterKey = `${filterCompany}|${filterBranch}|${filterDept}|${filterDesignation}|${filterEmployee}|${selectedDate}|${periodMode}|${customStart}|${customEnd}|${search}|${statusFilter}`;
+
   // Per-employee summary across the active period (Monthly / Custom / Weekly totals).
   // Always computed LIVE from the raw `attendance` source of truth, so every field
   // (Present/Absent/Leave/Half/WFH/Holiday/WeeklyOff/OT/WorkDays/LOP/Payable) recalcs
@@ -348,16 +360,41 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     [periodMode, selectedDate, periodEmployees, attendance, leaves, overtimeData]
   );
 
-  // Shift the active date by one period (prev/next navigation).
+  // The anchor date one period AFTER the current one (used to cap forward nav).
+  const nextPeriodAnchor = () => {
+    const d = new Date(selectedDate);
+    if (periodMode === 'weekly') d.setDate(d.getDate() + 7);
+    else if (periodMode === 'monthly') d.setMonth(d.getMonth() + 1);
+    else if (periodMode === 'yearly') d.setFullYear(d.getFullYear() + 1);
+    else d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+  // Forward navigation is capped at TODAY: you may view the current day/week/
+  // month/year (even if it contains future days), but can never advance to a
+  // wholly-future period. True unless the next period would START after today.
+  const canGoNext = useMemo(
+    () => getPeriodRange(periodMode, nextPeriodAnchor(), customStart, customEnd).start <= today,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [periodMode, selectedDate, customStart, customEnd]
+  );
+
+  // Shift the active date by one period (prev/next navigation). Advancing into
+  // the future is refused — the max navigable date is always today.
   const shiftPeriod = (dir: 1 | -1) => {
+    if (dir === 1 && !canGoNext) return;
     const d = new Date(selectedDate);
     if (periodMode === 'daily') d.setDate(d.getDate() + dir);
     else if (periodMode === 'weekly') d.setDate(d.getDate() + 7 * dir);
     else if (periodMode === 'monthly') d.setMonth(d.getMonth() + dir);
     else if (periodMode === 'yearly') d.setFullYear(d.getFullYear() + dir);
     else { d.setDate(d.getDate() + dir); }
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const next = d.toISOString().split('T')[0];
+    // Final guard: never land the anchor on a future-only period.
+    if (dir === 1 && getPeriodRange(periodMode, next, customStart, customEnd).start > today) return;
+    setSelectedDate(next);
   };
+  // Clamp any date input to today (typed/pasted/URL values can exceed the picker max).
+  const clampPast = (v: string) => (v && v > today ? today : v);
   
   // Generate daily records
   const dailyRecords = uniqueEmployees.map(emp => {
@@ -679,8 +716,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     return DEFAULT_MODE_COLUMNS[attendanceMode as keyof typeof DEFAULT_MODE_COLUMNS] || DEFAULT_MODE_COLUMNS.advanced;
   };
 
+  // The Import Template is the SAME matrix workbook as the Excel Export (shared
+  // schema: utils/attendanceMatrix), just with sample rows — so an exported file
+  // re-imports without any column changes.
   const downloadTemplate = () => {
-    downloadAttendanceTemplateExcel(getCurrentColumns());
+    downloadAttendanceMatrix(buildTemplateMatrix(), 'Attendance_Import_Template.xlsx')
+      .catch((e: any) => ui.toast.error(getApiErrorMessage(e, 'Could not generate the template.')));
   };
 
   const saveModeConfiguration = () => {
@@ -830,59 +871,155 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   //    Synchronization page, reached ONLY from Payroll → Payroll Workflow →
   //    "Sync Attendance" (it is a step of the payroll process, not a module here).
 
-  // ── Build the export dataset for a given period mode + employee scope ──
+  // ── Build the export dataset — UNIFIED attendance sheet ────────────────────
+  // Every period mode exports the SAME 17-column sheet defined by the shared
+  // schema (utils/attendanceSchema), one row per employee per date in range. This
+  // is byte-for-byte structurally identical to the Import Template, so the file
+  // can be edited in Excel and re-imported with no column changes. (The period
+  // mode only selects the date range; it never changes the columns.)
+  const otHoursFor = (e: Employee, date: string): number =>
+    (overtimeData || [])
+      .filter((o: any) => String(o.employeeId ?? o.empId) === String(e.id) || (o.empCode && e.employeeId && String(o.empCode) === String(e.employeeId)))
+      .filter((o: any) => o.date === date && Number(o.otHours ?? o.overtimeHours ?? 0) > 0)
+      .reduce((sum: number, o: any) => sum + Number(o.otHours ?? o.overtimeHours ?? 0), 0);
+
+  const hoursBetween = (inT?: string, outT?: string): number => {
+    if (!inT || !outT) return 0;
+    const [ih, im] = inT.split(':').map(Number); const [oh, om] = outT.split(':').map(Number);
+    if ([ih, im, oh, om].some((n) => Number.isNaN(n))) return 0;
+    let mins = (oh * 60 + om) - (ih * 60 + im); if (mins < 0) mins += 24 * 60;
+    return Math.round((mins / 60) * 100) / 100;
+  };
+
+  const companyNameOf = (e: Employee): string =>
+    companies.find((c) => String(c.id) === String(e.companyId) || String(c.id) === String((e as any).branchId))?.name || '';
+
+  const buildSheetRow = (e: Employee, date: string) => {
+    const { status, record } = resolveStatus(e.id, date, attendance, leaves);
+    const clockIn = record?.clockIn || '';
+    const clockOut = record?.clockOut || '';
+    const wh = Number(record?.hoursWorked) > 0 ? Number(record?.hoursWorked) : hoursBetween(clockIn, clockOut);
+    const ot = otHoursFor(e, date);
+    return {
+      employeeCode: e.employeeId || '',
+      biometricId: (e as any).biometricId || '',
+      employeeName: e.name || '',
+      company: companyNameOf(e),
+      branch: e.branchLocation || 'Head Office',
+      department: e.department || '',
+      designation: (e as any).designation || '',
+      date,
+      shift: record?.shift || (e as any).shift || '',
+      clockIn,
+      clockOut,
+      workingHours: wh ? wh.toFixed(2) : '',
+      breakHours: '',
+      overtimeHours: ot ? ot.toFixed(2) : '',
+      status,
+      leaveType: record?.leaveType || '',
+      remarks: record?.remarks || '',
+    };
+  };
+
   const buildExportDataset = (mode: PeriodMode, emps: Employee[]) => {
-    if (mode === 'daily') {
-      const cols = [
-        { header: 'Sr No', key: 'srNo' },
-        { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
-        { header: 'Department', key: 'department' }, { header: 'Designation', key: 'designation' },
-        { header: 'Branch', key: 'branch' }, { header: 'Date', key: 'date' },
-        { header: 'In', key: 'clockIn' }, { header: 'Out', key: 'clockOut' }, { header: 'Status', key: 'status' },
-      ];
-      const rows = emps.map((e, i) => {
-        const { status, record } = resolveStatus(e.id, selectedDate, attendance, leaves);
-        return {
-          srNo: i + 1,
-          employeeCode: e.employeeId || '', employeeName: e.name, department: e.department,
-          designation: (e as any).designation || '', branch: e.branchLocation || 'Head Office',
-          date: selectedDate, clockIn: record?.clockIn || '', clockOut: record?.clockOut || '', status,
-        };
-      });
-      return { rows, cols };
-    }
-    if (mode === 'weekly') {
-      const dates = eachDateInRange(getPeriodRange('weekly', selectedDate).start, getPeriodRange('weekly', selectedDate).end);
-      const cols = [
-        { header: 'Sr No', key: 'srNo' },
-        { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
-        { header: 'Department', key: 'department' }, { header: 'Branch', key: 'branch' },
-        ...dates.map((d, i) => ({ header: `${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]} ${d.slice(8)}`, key: `d${i}` })),
-        { header: 'Present', key: 'present' },
-      ];
-      const rows = emps.map((e, idx) => {
-        const row: any = { srNo: idx + 1, employeeCode: e.employeeId || '', employeeName: e.name, department: e.department, branch: e.branchLocation || 'Head Office' };
-        let present = 0;
-        dates.forEach((d, i) => { const { status } = resolveStatus(e.id, d, attendance, leaves); row[`d${i}`] = statusCode(status); if (bucketOf(status) === 'present') present++; });
-        row.present = present;
-        return row;
-      });
-      return { rows, cols };
-    }
-    // monthly / custom / yearly → per-employee summary totals
+    const cols = attendanceSheetExportColumns();
     const range = getPeriodRange(mode, selectedDate, customStart, customEnd);
-    const dates = eachDateInRange(range.start, range.end);
-    const cols = [
-      { header: 'Sr No', key: 'srNo' },
-      { header: 'Employee Code', key: 'employeeCode' }, { header: 'Employee', key: 'employeeName' },
-      { header: 'Department', key: 'department' }, { header: 'Designation', key: 'designation' }, { header: 'Branch', key: 'branch' },
-      { header: 'Present', key: 'present' }, { header: 'Absent', key: 'absent' }, { header: 'Leave', key: 'leave' },
-      { header: 'Half Day', key: 'half' }, { header: 'WFH', key: 'wfh' }, { header: 'Holiday', key: 'holiday' },
-      { header: 'Weekly Off', key: 'weeklyOff' }, { header: 'Late', key: 'lateMarks' }, { header: 'OT Hrs', key: 'otHours' },
-      { header: 'Working Days', key: 'workingDays' }, { header: 'LOP', key: 'lop' }, { header: 'Payable Days', key: 'payableDays' },
-    ];
-    const rows = emps.map((e, i) => ({ srNo: i + 1, ...summarizeEmployeePeriod(e, dates, attendance, leaves, overtimeData) }));
+    const dates = mode === 'daily' ? [selectedDate] : eachDateInRange(range.start, range.end);
+    const rows: any[] = [];
+    emps.forEach((e) => dates.forEach((d) => rows.push(buildSheetRow(e, d))));
     return { rows, cols };
+  };
+
+  // ── Report meta + MATRIX dataset — shared by the Excel Export AND the Import
+  //    Template (utils/attendanceMatrix schema). Same workbook structure for both;
+  //    only the rows differ (real attendance vs. sample), so an exported file
+  //    re-imports without any column changes.
+  const _pad2 = (n: number) => String(n).padStart(2, '0');
+  const MONTH_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const matrixRow = (e: Employee, i: number, cells: string[], sum: any): MatrixEmployeeRow => ({
+    srNo: i + 1,
+    employeeCode: e.employeeId || '',
+    biometricId: (e as any).biometricId || '',
+    employeeName: e.name || '',
+    department: e.department || '',
+    branch: e.branchLocation || 'Head Office',
+    cells,
+    summary: {
+      present: sum?.present ?? 0, absent: sum?.absent ?? 0, half: sum?.half ?? 0, leave: sum?.leave ?? 0,
+      weeklyOff: sum?.weeklyOff ?? 0, holiday: sum?.holiday ?? 0, lateMarks: sum?.lateMarks ?? 0,
+      otHours: sum?.otHours ?? 0, payableDays: sum?.payableDays ?? 0,
+    },
+  });
+
+  const buildMatrixMeta = (mode: PeriodMode, emps: Employee[], range: { start: string; end: string }): MatrixData['meta'] => {
+    const compName = (e: Employee) => companies.find((c) => String(c.id) === String(e.companyId) || String(c.id) === String((e as any).branchId))?.name || '';
+    const comps = [...new Set(emps.map(compName).filter(Boolean))];
+    const brs = [...new Set(emps.map((e) => e.branchLocation || 'Head Office').filter(Boolean))];
+    const startY = Number(range.start.slice(0, 4)); const startM = Number(range.start.slice(5, 7));
+    return {
+      company: exportScope === 'company' ? (companyOptions.find((c) => c.value === filterCompany)?.label || comps[0] || 'Company')
+        : comps.length === 1 ? comps[0] : comps.length ? 'Multiple Companies' : 'All Companies',
+      branch: filterBranch || (brs.length === 1 ? brs[0] : 'All Branches'),
+      department: filterDept || 'All Departments',
+      attendanceType: mode.charAt(0).toUpperCase() + mode.slice(1),
+      period: `${formatDate(range.start)} – ${formatDate(range.end)}`,
+      month: mode === 'yearly' ? String(startY) : `${MONTH_LONG[startM - 1]} ${startY}`,
+      generatedOn: formatDateTime(new Date()),
+      generatedBy: role,
+    };
+  };
+
+  const buildMatrixData = (mode: PeriodMode, emps: Employee[]): MatrixData => {
+    const range = getPeriodRange(mode, selectedDate, customStart, customEnd);
+    const meta = buildMatrixMeta(mode, emps, range);
+    if (mode === 'yearly') {
+      const year = Number(range.start.slice(0, 4));
+      const dateHeaders = MON.slice();
+      const rows = emps.map((e, i) => {
+        const cells = MON.map((_, mi) => {
+          const mDates = eachDateInRange(`${year}-${_pad2(mi + 1)}-01`, `${year}-${_pad2(mi + 1)}-${_pad2(new Date(year, mi + 1, 0).getDate())}`);
+          const present = mDates.reduce((n, d) => bucketOf(resolveStatus(e.id, d, attendance, leaves).status) === 'present' ? n + 1 : n, 0);
+          return present ? String(present) : '';
+        });
+        return matrixRow(e, i, cells, summarizeEmployeePeriod(e, eachDateInRange(range.start, range.end), attendance, leaves, overtimeData));
+      });
+      return { meta, dateHeaders, rows };
+    }
+    const dates = mode === 'daily' ? [selectedDate] : eachDateInRange(range.start, range.end);
+    const dateHeaders = dates.map((d) => formatDateHeader(mode, d));
+    const rows = emps.map((e, i) => {
+      const cells = dates.map((d) => statusToCode(resolveStatus(e.id, d, attendance, leaves).status));
+      return matrixRow(e, i, cells, summarizeEmployeePeriod(e, dates, attendance, leaves, overtimeData));
+    });
+    return { meta, dateHeaders, rows };
+  };
+
+  // Sample workbook for the Import Template — identical structure, demo rows.
+  const buildTemplateMatrix = (): MatrixData => {
+    const range = getPeriodRange('weekly', selectedDate);
+    const dates = eachDateInRange(range.start, range.end);
+    const dateHeaders = dates.map((d) => formatDateHeader('weekly', d));
+    const demo = [
+      { code: 'EMP-001', bio: '1001', name: 'John Doe', dept: 'Operations', br: 'Head Office', pattern: ['P', 'P', 'P', 'HD', 'P', 'WO', 'H'] },
+      { code: 'EMP-002', bio: '1002', name: 'Jane Smith', dept: 'Finance', br: 'Head Office', pattern: ['P', 'L', 'P', 'P', 'A', 'WO', 'H'] },
+    ];
+    const rows = demo.map((d, i) => {
+      const cells = dateHeaders.map((_, idx) => d.pattern[idx % d.pattern.length]);
+      const c = (x: string) => cells.filter((v) => v === x).length;
+      return matrixRow({ employeeId: d.code, name: d.name, department: d.dept, branchLocation: d.br, biometricId: d.bio } as any, i, cells, {
+        present: c('P'), absent: c('A'), half: c('HD'), leave: c('L'), weeklyOff: c('WO'), holiday: c('H'), lateMarks: 0, otHours: 0, payableDays: c('P') + c('HD') * 0.5,
+      });
+    });
+    const startM = Number(range.start.slice(5, 7));
+    return {
+      meta: {
+        company: 'Sample Company', branch: 'Head Office', department: 'All Departments', attendanceType: 'Weekly',
+        period: `${formatDate(range.start)} – ${formatDate(range.end)}`, month: `${MONTH_LONG[startM - 1]} ${range.start.slice(0, 4)}`,
+        generatedOn: formatDateTime(new Date()), generatedBy: role,
+      },
+      dateHeaders, rows,
+    };
   };
 
   // Resolve which employees belong to the chosen export scope.
@@ -899,6 +1036,15 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const runExport = () => {
     const emps = resolveScopeEmployees();
     if (emps.length === 0) { ui.toast.warning('No employees match the selected scope/filters.'); return; }
+    // Excel → the shared MATRIX workbook (report header + full-date columns + P/A/HD
+    // codes + summary + legend), identical to the Import Template and re-importable.
+    if (exportFormat === 'excel') {
+      downloadAttendanceMatrix(buildMatrixData(exportMode, emps), `Attendance_${exportMode.charAt(0).toUpperCase()}${exportMode.slice(1)}_Report.xlsx`)
+        .then(() => setExportOpen(false))
+        .catch((e: any) => ui.toast.error(getApiErrorMessage(e, 'Excel export failed.')));
+      return;
+    }
+    // CSV / PDF / Print keep the flat human-readable dataset.
     const { rows, cols } = buildExportDataset(exportMode, emps);
     const range = getPeriodRange(exportMode, selectedDate, customStart, customEnd);
     const scopeLabel = exportScope === 'all' ? 'All Companies'
@@ -1142,15 +1288,15 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
           {periodMode === 'custom' ? (
             <div className="flex items-center gap-2">
-              <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="w-36 text-xs h-8" />
+              <Input type="date" max={today} value={customStart} onChange={e => setCustomStart(clampPast(e.target.value))} className="w-36 text-xs h-8" />
               <span className="text-slate-400 text-xs">to</span>
-              <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="w-36 text-xs h-8" />
+              <Input type="date" max={today} value={customEnd} onChange={e => setCustomEnd(clampPast(e.target.value))} className="w-36 text-xs h-8" />
             </div>
           ) : (
             <div className="flex items-center gap-1">
               <button onClick={() => shiftPeriod(-1)} title={`Previous ${periodMode === 'weekly' ? 'week' : periodMode === 'monthly' ? 'month' : periodMode === 'yearly' ? 'year' : 'day'}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronLeft size={16} /></button>
-              <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" title="Jump to date" />
-              <button onClick={() => shiftPeriod(1)} title={`Next ${periodMode === 'weekly' ? 'week' : periodMode === 'monthly' ? 'month' : periodMode === 'yearly' ? 'year' : 'day'}`} className="p-1.5 rounded-md hover:bg-slate-100 text-slate-500"><ChevronRight size={16} /></button>
+              <Input type="date" max={today} value={selectedDate} onChange={e => setSelectedDate(clampPast(e.target.value))} className="w-40 text-xs h-8" title="Jump to date" />
+              <button onClick={() => shiftPeriod(1)} disabled={!canGoNext} aria-disabled={!canGoNext} title={canGoNext ? `Next ${periodMode === 'weekly' ? 'week' : periodMode === 'monthly' ? 'month' : periodMode === 'yearly' ? 'year' : 'day'}` : 'Future dates are not available'} className={`p-1.5 rounded-md text-slate-500 ${canGoNext ? 'hover:bg-slate-100' : 'opacity-40 cursor-not-allowed'}`}><ChevronRight size={16} /></button>
               <button onClick={() => setSelectedDate(today)} title="Jump to the current period"
                 className="ml-1 px-2.5 py-1.5 text-[11px] font-bold rounded-md border border-slate-200 text-brand-700 hover:bg-brand-50">
                 {periodMode === 'weekly' ? 'Current Week' : periodMode === 'monthly' ? 'Current Month' : periodMode === 'yearly' ? 'Current Year' : 'Today'}
@@ -1182,14 +1328,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         {/* DAILY view — original entry grid (unchanged behaviour) */}
         {periodMode === 'daily' && (
         <Card padding={false} className="overflow-hidden border-slate-200">
-          {isFutureLocked(selectedDate) && (
-            <div className="px-4 py-2.5 bg-slate-100 border-b border-slate-200 text-[11px] font-semibold text-slate-500 flex items-center gap-2">
-              <Clock size={13} className="text-slate-400" /> Upcoming date — attendance is read-only. Attendance cannot be marked for {formatDate(selectedDate)}.
-            </div>
-          )}
           <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
             <div className="flex gap-2 items-center">
-              <Input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-40 text-xs h-8" />
+              <Input type="date" max={today} value={selectedDate} onChange={e => setSelectedDate(clampPast(e.target.value))} className="w-40 text-xs h-8" />
               <div className="w-48">
                 <Input placeholder="Search Employee..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14}/>} className="text-xs h-8" />
               </div>
@@ -1206,6 +1347,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             )}
           </div>
 
+          <Paginated items={filteredRecords} resetKey={attnFilterKey} label="records">
+          {(rows, { startIndex }) => (
           <Table>
             <Thead className="bg-slate-100">
               <tr>
@@ -1219,13 +1362,13 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </tr>
             </Thead>
             <Tbody>
-              {filteredRecords.map((r, i) => (
+              {rows.map((r, i) => (
                 <Tr key={r.id} className="hover:bg-slate-50">
                   {isAdmin && <Td className="text-center"><input type="checkbox" checked={selectedIds.includes(r.id)} onChange={e => {
                     if (e.target.checked) setSelectedIds([...selectedIds, r.id]);
                     else setSelectedIds(selectedIds.filter(id => id !== r.id));
                   }} className="rounded border-slate-300 text-brand-600" /></Td>}
-                  <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
+                  <Td className="text-center text-[11px] text-slate-400">{startIndex + i + 1}</Td>
                   <Td>
                     <div className="font-bold text-slate-800 text-xs">{r.employeeName}</div>
                     <div className="text-[10px] text-slate-500">{activeUniqueEmployees.find(e => e.id === r.employeeId)?.employeeId ? `${activeUniqueEmployees.find(e => e.id === r.employeeId)?.employeeId} · ` : ''}{r.department}</div>
@@ -1234,9 +1377,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <Td><span className="text-xs font-mono">{r.clockOut || '--:--'}</span></Td>
                   <Td>
                     <div className="flex flex-col gap-1">
-                      {isFutureLocked(selectedDate) ? (
-                        <span className="px-2 py-1 w-max rounded-full text-[10px] font-bold bg-slate-100 text-slate-400">Upcoming</span>
-                      ) : (
                       <span className={`px-2 py-1 w-max rounded-full text-[10px] font-bold
                         ${r.status === 'Present' ? 'bg-emerald-100 text-emerald-700' :
                           r.status === 'Absent' ? 'bg-rose-100 text-rose-700' :
@@ -1246,7 +1386,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                           'bg-slate-100 text-slate-700'}`}>
                         {r.status} {r.leaveType ? `(${r.leaveType})` : ''}
                       </span>
-                      )}
                       {r.flags && r.flags.length > 0 && (
                         <div className="flex gap-1 flex-wrap mt-1">
                           {r.flags.map((f: string) => <span key={f} className="text-[8px] bg-amber-100 text-amber-700 px-1 rounded">{f}</span>)}
@@ -1256,9 +1395,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </Td>
                   {isAdmin && (
                     <Td className="text-right">
-                      {isFutureLocked(selectedDate) ? (
-                        <span className="text-[10px] text-slate-300 italic pr-1" title="Future dates are read-only">—</span>
-                      ) : (
                       <select
                         className="text-[10px] border border-slate-200 rounded px-2 py-1 bg-white focus:outline-none focus:border-brand-500"
                         value={r.status}
@@ -1266,13 +1402,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       >
                         {ATTENDANCE_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
-                      )}
                     </Td>
                   )}
                 </Tr>
               ))}
             </Tbody>
           </Table>
+          )}
+          </Paginated>
         </Card>
         )}
 
@@ -1288,6 +1425,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <CheckCircle2 size={13} /> {weeklyMsg}
               </div>
             )}
+            <Paginated items={periodEmployees} resetKey={attnFilterKey} label="employees">
+            {(rows) => (
             <div className="overflow-x-auto">
               <Table>
                 <Thead className="bg-slate-100">
@@ -1302,7 +1441,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <Tbody>
                   {periodEmployees.length === 0 ? (
                     <Tr><Td colSpan={periodDates.length + 2} className="text-center text-xs text-slate-500 py-8">No employees match the current filters.</Td></Tr>
-                  ) : periodEmployees.map(emp => {
+                  ) : rows.map(emp => {
                     let present = 0;
                     return (
                       <Tr key={emp.id} className="hover:bg-slate-50 group">
@@ -1358,6 +1497,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </Tbody>
               </Table>
             </div>
+            )}
+            </Paginated>
           </Card>
         )}
 
@@ -1408,6 +1549,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <p className="text-[10px] text-slate-500">{period.label} · {periodDates.length} day(s)</p>
               </div>
             </div>
+            <Paginated items={monthlyDisplaySummaries} resetKey={attnFilterKey} label="employees">
+            {(rows, { startIndex }) => (
             <div className="overflow-x-auto">
               <Table>
                 <Thead className="bg-slate-100">
@@ -1425,9 +1568,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <Tbody>
                   {monthlyDisplaySummaries.length === 0 ? (
                     <Tr><Td colSpan={isAdmin ? 16 : 15} className="text-center text-xs text-slate-500 py-8">No employees match the current filters.</Td></Tr>
-                  ) : monthlyDisplaySummaries.map((s: any, i: number) => (
+                  ) : rows.map((s: any, i: number) => (
                     <Tr key={s.employeeId} className="hover:bg-slate-50 group">
-                      <Td className="text-center text-[11px] text-slate-400">{i + 1}</Td>
+                      <Td className="text-center text-[11px] text-slate-400">{startIndex + i + 1}</Td>
                       <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]">
                         <div className="font-bold text-slate-800 text-xs flex items-center gap-1">{s.employeeName}{s.adjusted && <span title="Manually adjusted for payroll" className="text-[8px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1 rounded">ADJ</span>}</div>
                         <div className="text-[10px] text-slate-500">{s.employeeCode}</div>
@@ -1464,6 +1607,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </Tbody>
               </Table>
             </div>
+            )}
+            </Paginated>
           </Card>
         )}
 
@@ -1535,12 +1680,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </div>
               {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenOTModal()}>Add OT Record</Button>}
             </div>
+            <Paginated items={overtimeData} resetKey={activeCompanyId} label="records">
+            {(rows) => (
             <Table>
               <Thead><tr><Th>Employee</Th><Th>Date</Th><Th>In/Out Time</Th><Th>OT Hours</Th><Th>Type</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
               <Tbody>
                 {overtimeData.length === 0 ? (
                   <Tr><Td colSpan={7} className="text-center text-xs text-slate-500 py-8">No Overtime Records Found.</Td></Tr>
-                ) : overtimeData.map(ot => (
+                ) : rows.map(ot => (
                   <Tr key={ot.id}>
                     <Td><span className="font-bold text-xs">{ot.empName}</span></Td>
                     <Td><span className="text-xs">{ot.date}</span></Td>
@@ -1566,6 +1713,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 ))}
               </Tbody>
             </Table>
+            )}
+            </Paginated>
           </Card>
         </div>
       )}
@@ -1633,7 +1782,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </div>
               )}
             </div>
-            <Input type="date" label="Date" value={otForm.date} onChange={e => setOTForm({...otForm, date: e.target.value})} />
+            <Input type="date" label="Date" max={today} value={otForm.date} onChange={e => setOTForm({...otForm, date: clampPast(e.target.value)})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input type="time" label="In Time" value={otForm.in} onChange={e => setOTForm({...otForm, in: e.target.value})} />
@@ -1674,13 +1823,15 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               {shiftError}
             </div>
           )}
+          <Paginated items={shifts} resetKey={activeCompanyId} label="shifts">
+          {(rows) => (
           <Table>
             <Thead><tr><Th>Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
             <Tbody>
               {shifts.length === 0 && !shiftError && (
                 <Tr><Td colSpan={isAdmin ? 10 : 9}><span className="text-slate-400 text-xs py-3 block text-center">No shifts defined yet. Click “Create New Shift” to add one.</span></Td></Tr>
               )}
-              {shifts.map(s => {
+              {rows.map(s => {
                 const assignedCount = (employees || []).filter((e: any) => String(e.shiftId) === String(s.id)).length;
                 return (
                 <Tr key={s.id} className={s.status === 'Archived' ? 'opacity-50' : ''}>
@@ -1708,6 +1859,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               })}
             </Tbody>
           </Table>
+          )}
+          </Paginated>
         </Card>
       )}
 
@@ -1810,7 +1963,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         <div className="space-y-6 animate-in fade-in">
           <div className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm items-end">
             <div className="w-full md:w-48">
-              <Input type="date" label="Report Date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
+              <Input type="date" label="Report Date" max={today} value={selectedDate} onChange={e => setSelectedDate(clampPast(e.target.value))} />
             </div>
             <div className="w-full md:w-48">
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Department</label>
@@ -1857,10 +2010,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     <span className={`text-[10px] px-2 py-0.5 rounded-full bg-${section.color}-200 text-${section.color}-800`}>{section.records.length}</span>
                   </h4>
                 </div>
+                <Paginated items={section.records} resetKey={`${selectedDate}|${reportDept}|${reportBranch}`} label="employees">
+                {(rows: any[]) => (
                 <Table>
                   <Thead><tr><Th>Employee</Th><Th>Department</Th><Th>In/Out Time</Th><Th>Status</Th></tr></Thead>
                   <Tbody>
-                    {section.records.map((r: any) => (
+                    {rows.map((r: any) => (
                       <Tr key={r.id}>
                         <Td><span className="font-bold text-xs">{r.employeeName}</span></Td>
                         <Td><span className="text-[10px] text-slate-500">{r.department}</span></Td>
@@ -1872,6 +2027,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     ))}
                   </Tbody>
                 </Table>
+                )}
+                </Paginated>
               </Card>
             ))}
           </div>
@@ -2022,9 +2179,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             </div>
             {exportMode === 'custom' && (
               <div className="flex items-center gap-2 mt-2">
-                <Input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="text-xs h-8" />
+                <Input type="date" max={today} value={customStart} onChange={e => setCustomStart(clampPast(e.target.value))} className="text-xs h-8" />
                 <span className="text-slate-400 text-xs">to</span>
-                <Input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="text-xs h-8" />
+                <Input type="date" max={today} value={customEnd} onChange={e => setCustomEnd(clampPast(e.target.value))} className="text-xs h-8" />
               </div>
             )}
           </div>
