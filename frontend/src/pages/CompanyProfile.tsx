@@ -110,6 +110,10 @@ const validatePin = (country: string, pin: string): string => {
 };
 
 const BASIC_FIELDS: FieldDef[] = [
+  // Company Name drives the sidebar / workspace selector / header (the `name`
+  // field). Editable here so a Company Head can rename the company and, with the
+  // post-save sync, see it update everywhere instantly (no logout/refresh).
+  { key: 'name', label: 'Company Name' },
   { key: 'legalName', label: 'Company Legal Name' },
   { key: 'tradeName', label: 'Trade Name' },
   { key: 'companyCode', label: 'Company Code' },
