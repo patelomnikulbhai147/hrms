@@ -387,13 +387,16 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   const BROWN = '#C67B49';       // brand accent — wordmark "HR", links
   const NAVY = '#16284A';        // primary action (Sign In)
   const inputBase =
-    'w-full h-14 bg-white border border-[#E9E9EC] rounded-2xl text-sm text-slate-900 ' +
+    // Height compresses with viewport height so short / display-scaled desktops
+    // (e.g. 1366×768 @ 125%) never push the card into an inner scrollbar. Caps at
+    // 56px (h-14) so normal screens look identical to before.
+    'w-full h-[clamp(46px,6.4vh,56px)] bg-white border border-[#E9E9EC] rounded-2xl text-sm text-slate-900 ' +
     'placeholder-slate-400 shadow-[0_1px_2px_rgba(16,24,40,0.04)] focus:outline-none ' +
     'focus:border-[#C67B49] focus:ring-[3px] focus:ring-[#C67B49]/15 transition-all font-medium';
   const primaryBtn =
     // `bg-[#16284A]` also keeps `text-white` white — index.css neutralises text-white
     // unless the element owns a bg-/from- class. Deep navy per the reference.
-    'w-full h-14 rounded-2xl text-[15px] font-bold text-white bg-[#16284A] hover:bg-[#20365C] ' +
+    'w-full h-[clamp(46px,6.4vh,56px)] rounded-2xl text-[15px] font-bold text-white bg-[#16284A] hover:bg-[#20365C] ' +
     'flex items-center justify-center gap-2 relative transition-all duration-200 hover:-translate-y-0.5 ' +
     'active:scale-[0.98] disabled:opacity-60 disabled:hover:translate-y-0 ' +
     'shadow-[0_14px_28px_-10px_rgba(22,40,74,0.5)] hover:shadow-[0_18px_34px_-10px_rgba(22,40,74,0.55)]';
@@ -408,7 +411,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
     // Desktop: exactly one viewport tall, never scrolls. Below `lg` the panels
     // stack and the page is allowed to scroll — clipping a Sign In button off a
     // phone screen would be worse than a scrollbar.
-    <div className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden flex items-center justify-center p-4 lg:p-6 font-sans relative">
+    <div className="min-h-screen overflow-y-auto lg:h-screen lg:supports-[height:100dvh]:h-[100dvh] lg:overflow-hidden flex items-center justify-center p-4 lg:p-[clamp(12px,2vh,24px)] font-sans relative">
 
       {/* ── Blurred office backdrop ──────────────────────────────────────────
           A premium ambient "bright office" is painted in CSS so the page is
@@ -442,7 +445,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
           decoding="async"
           onLoad={() => setBgReady(true)}
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-          className={`absolute inset-0 w-full h-full object-cover scale-[1.02] transition-opacity duration-700 ${bgReady ? 'opacity-100' : 'opacity-0'}`}
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${bgReady ? 'opacity-100' : 'opacity-0'}`}
         />
         {/* Very light translucent veil for readability (≈4%) — do not wash out */}
         <div className="absolute inset-0 bg-white/[0.04]" />
@@ -562,7 +565,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
 
         {/* ── Right Side: Login Panel ────────────────────────────────────────── */}
         <div className="lg:w-1/2 flex items-center justify-center w-full max-h-full relative z-20">
-          <div className="w-full max-w-[452px] max-h-[calc(100vh-2rem)] lg:max-h-[calc(100vh-3rem)] overflow-y-auto bg-white/90 backdrop-blur-2xl rounded-[32px] shadow-[0_30px_80px_-24px_rgba(16,24,40,0.25)] p-6 sm:p-8 border border-white/70 relative">
+          <div className="w-full max-w-[452px] max-h-[calc(100dvh-1.5rem)] lg:max-h-[calc(100dvh-2rem)] overflow-y-auto bg-white/90 backdrop-blur-2xl rounded-[32px] shadow-[0_30px_80px_-24px_rgba(16,24,40,0.25)] p-[clamp(20px,3.2vh,32px)] border border-white/70 relative">
             <div className="relative z-10">
               {!isForgotPassword ? (
                 <>
@@ -584,14 +587,14 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   </div>
 
-                  <div className="mb-5">
+                  <div className="mb-[clamp(12px,2.2vh,20px)]">
                     <h3 className="text-[28px] font-extrabold text-slate-900 mb-1 font-heading tracking-tight flex items-center gap-2">
                       Welcome back! <span className="inline-block" aria-hidden="true">👋</span>
                     </h3>
                     <p className="text-slate-500 text-[14px] font-medium">Sign in to your super admin account</p>
                   </div>
 
-                  <form onSubmit={handleLoginSubmit} className="space-y-3.5">
+                  <form onSubmit={handleLoginSubmit} className="space-y-[clamp(10px,1.6vh,14px)]">
                     {sessionMessage && !error && (
                       <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-semibold">
                         {sessionMessage}
@@ -659,13 +662,13 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                               <div
                                 dangerouslySetInnerHTML={{ __html: captchaSvg }}
                                 aria-label="CAPTCHA image"
-                                className="h-14 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden [&>svg]:block [&>svg]:h-9 [&>svg]:w-auto"
+                                className="h-[clamp(46px,6.4vh,56px)] rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden [&>svg]:block [&>svg]:h-9 [&>svg]:w-auto"
                               />
                               <button
                                 type="button"
                                 onClick={loadInternalCaptcha}
                                 aria-label="Get a new CAPTCHA code"
-                                className="h-14 rounded-2xl bg-white border border-[#E9E9EC] flex items-center justify-center gap-2 text-[14px] font-bold hover:bg-[#F8F1EB] transition-colors"
+                                className="h-[clamp(46px,6.4vh,56px)] rounded-2xl bg-white border border-[#E9E9EC] flex items-center justify-center gap-2 text-[14px] font-bold hover:bg-[#F8F1EB] transition-colors"
                                 style={{ color: BROWN }}
                               >
                                 <RefreshCw size={16} strokeWidth={2.5} />
@@ -717,7 +720,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   </form>
 
-                  <div className="text-center pt-5">
+                  <div className="text-center pt-[clamp(12px,2.2vh,20px)]">
                     <p className="text-[13px] text-slate-500 font-medium">
                       Don't have an account? <a href="#" className="font-bold hover:underline" style={{ color: BROWN }}>Contact Support</a>
                     </p>
