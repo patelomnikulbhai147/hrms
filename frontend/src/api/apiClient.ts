@@ -411,6 +411,9 @@ export const api = {
     // Users the caller may manage permissions for (Super Admin all; Company Admin
     // own company; HR if granted — branch only). Company-isolated on the backend.
     getManageable: async () => { return await apiFetch(`${BASE_URL}/users/manageable`, { headers: getHeaders() }); },
+    // Company-scoped Add User (Settings → User Roles & Permissions). Company is
+    // forced to the caller's company server-side.
+    createCompanyUser: async (data: any) => { return await apiFetch(`${BASE_URL}/users/company`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     updatePermissions: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/users/${id}/permissions`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Server-side search for assignable management users (scoped to caller's
     // permissions). Never loads the whole user table — pass a search term.

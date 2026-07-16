@@ -283,6 +283,139 @@ exports.createUser = async (req, res) => {
   }
 };
 
+// ── Company-scoped Add User (Settings → User Roles & Permissions) ──────────────
+// A Company Head (or Super Admin, or an HR granted user-management) creates a new
+// login user WITHIN THEIR OWN COMPANY. Distinct from the platform createUser above
+// (which is gated on the SaaS `users` permission a Company Head lacks). Company is
+// forced server-side to the caller's company — cross-company creation is refused.
+const COMPANY_CREATABLE_ROLES = ['Company Head', 'HR', 'Manager', 'Payroll', 'Finance', 'Recruiter', 'Employee', 'Custom'];
+const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
+
+exports.createCompanyUser = async (req, res) => {
+  try {
+    const scope = permissionManagerScope(req);
+    if (!scope.canManage) return res.status(403).json({ error: 'You do not have permission to add users.', code: 'FORBIDDEN' });
+
+    const b = req.body || {};
+    const name = String(b.name || '').trim();
+    const email = String(b.email || '').trim().toLowerCase();
+    const mobile = String(b.mobile || '').trim();
+    let username = String(b.username || '').trim();
+    const password = String(b.password || '');
+    const role = COMPANY_CREATABLE_ROLES.includes(b.role) ? b.role : 'Employee';
+
+    // ── Required fields ──
+    const missing = [];
+    if (!name) missing.push('Full name');
+    if (!email) missing.push('Email');
+    if (!mobile) missing.push('Mobile number');
+    if (!password) missing.push('Temporary password');
+    if (missing.length) return res.status(400).json({ error: `${missing.join(', ')} ${missing.length > 1 ? 'are' : 'is'} required.`, code: 'REQUIRED_MISSING' });
+
+    // ── Format / strength ──
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'Please enter a valid email address.', code: 'VALIDATION' });
+    if (onlyDigits(mobile).length < 7) return res.status(400).json({ error: 'Please enter a valid mobile number.', code: 'VALIDATION' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long.', code: 'VALIDATION' });
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) return res.status(400).json({ error: 'Password must include both letters and numbers.', code: 'VALIDATION' });
+
+    // ── Target company (cross-company prevention) ──
+    let companyId;
+    if (scope.all) {
+      companyId = Number(b.companyId) || (await resolveTopCompany(req.user.companyId, req.user.branchId));
+      if (!companyId) return res.status(400).json({ error: 'Select a company for this user.', code: 'REQUIRED_MISSING' });
+    } else {
+      companyId = await resolveTopCompany(req.user.companyId, req.user.branchId);
+      if (!companyId) return res.status(400).json({ error: 'No company in context.', code: 'REQUIRED_MISSING' });
+      if (b.companyId && Number(b.companyId) !== Number(companyId)) {
+        return res.status(403).json({ error: 'You can only add users to your own company.', code: 'CROSS_COMPANY' });
+      }
+    }
+
+    // ── Branch must belong to the company ──
+    let branchId = b.branchId ? Number(b.branchId) : null;
+    if (branchId) {
+      const branch = await prisma.branch.findFirst({ where: { id: branchId }, select: { id: true, companyId: true } });
+      if (!branch || Number(branch.companyId) !== Number(companyId)) {
+        return res.status(400).json({ error: 'The selected branch does not belong to this company.', code: 'VALIDATION' });
+      }
+    }
+
+    // ── Auto-generate a unique username when omitted ──
+    if (!username) {
+      const base = (email.split('@')[0] || 'user').replace(/[^a-z0-9._-]/gi, '').toLowerCase() || 'user';
+      username = base;
+      let n = 1;
+      // eslint-disable-next-line no-await-in-loop
+      while (await prisma.user.findFirst({ where: { username }, select: { id: true } })) { username = `${base}${n++}`; }
+    }
+
+    // ── Uniqueness: email + username (DB unique indexes are the hard guard) ──
+    const dup = await prisma.user.findFirst({ where: { OR: [{ email }, { username }] }, select: { email: true, username: true } });
+    if (dup) {
+      if (dup.email === email) return res.status(409).json({ error: 'A user with this email already exists.', code: 'DUPLICATE' });
+      return res.status(409).json({ error: 'This username is already taken.', code: 'DUPLICATE' });
+    }
+    // ── Mobile uniqueness within the company (stored in permissions.profile.mobile) ──
+    const companyUsers = await prisma.user.findMany({ where: { companyId }, select: { permissions: true } });
+    const mob = onlyDigits(mobile);
+    const mobileTaken = companyUsers.some((u) => onlyDigits(u.permissions?.profile?.mobile) === mob && mob.length > 0);
+    if (mobileTaken) return res.status(409).json({ error: 'A user with this mobile number already exists in this company.', code: 'DUPLICATE' });
+
+    // ── Permissions: explicit blob (template/clone/custom from the UI) or role default ──
+    let permBlob;
+    if (b.permissions && typeof b.permissions === 'object') {
+      permBlob = { permissions: b.permissions, moduleAccess: (b.moduleAccess && typeof b.moduleAccess === 'object') ? b.moduleAccess : {} };
+    } else {
+      permBlob = defaultPermissionsForRole(role);
+    }
+    // Extended descriptive fields live alongside permissions (additive; RBAC ignores it).
+    permBlob.profile = {
+      designation: String(b.designation || '').trim() || null,
+      department: String(b.department || '').trim() || null,
+      mobile: mobile || null,
+      employmentType: String(b.employmentType || '').trim() || null,
+      reportingManagerId: b.reportingManagerId ? Number(b.reportingManagerId) : null,
+      employeeCode: String(b.employeeId || '').trim() || null,
+      forcePasswordChange: !!b.forcePasswordChange,
+      loginEnabled: b.enableLogin !== false,
+    };
+
+    // enableLogin=false → the account exists but cannot sign in (status Inactive).
+    const status = (b.enableLogin === false) ? 'Inactive' : (['Active', 'Inactive'].includes(b.status) ? b.status : 'Active');
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        name, email, username, passwordHash, role, companyId,
+        branchId: branchId || null,
+        status,
+        accessibleCompanyIds: [companyId],
+        permissions: permBlob,
+      },
+    });
+
+    // Best-effort welcome email (never blocks creation; logs in dev when SMTP is off).
+    if (b.sendWelcomeEmail) {
+      try {
+        const emailService = require('../services/emailService');
+        await emailService.sendMail({
+          to: email,
+          subject: 'Your HRMS account has been created',
+          text: `Hello ${name},\n\nAn account has been created for you.\n\nUsername: ${username}\nEmail: ${email}\nTemporary password: ${password}\n\nPlease sign in and change your password.\n`,
+          html: `<div style="font-family:Arial,sans-serif"><p>Hello ${name},</p><p>An account has been created for you.</p><ul><li><b>Username:</b> ${username}</li><li><b>Email:</b> ${email}</li><li><b>Temporary password:</b> ${password}</li></ul><p>Please sign in and change your password.</p></div>`,
+        });
+      } catch (_) { /* non-fatal */ }
+    }
+
+    res.status(201).json({
+      id: newUser.id, name: newUser.name, email: newUser.email, username: newUser.username,
+      role: newUser.role, companyId, branchId: newUser.branchId, status: newUser.status,
+    });
+  } catch (error) {
+    return respondError(res, error, { action: 'create user', resource: 'user' });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
     // Company/branch isolation: a non-Super-Admin may only ever see users that

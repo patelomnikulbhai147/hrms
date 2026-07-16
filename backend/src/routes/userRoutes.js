@@ -19,6 +19,10 @@ router.get('/manageable', protect, userController.getManageableUsers);
 router.put('/:id/permissions', protect, userController.updatePermissions);
 router.get('/audit', protect, requirePermission('users', 'view'), userController.getAuditLogs);
 router.post('/', protect, requirePermission('users', 'create'), userController.createUser);
+// Company-scoped Add User (Settings → User Roles & Permissions). Authorization is
+// done inside the controller via permissionManagerScope so a Company Head — who
+// lacks the SaaS `users` permission — can add users to their OWN company only.
+router.post('/company', protect, userController.createCompanyUser);
 router.delete('/:id', protect, requirePermission('users', 'delete'), userController.deleteUser);
 
 module.exports = router;
