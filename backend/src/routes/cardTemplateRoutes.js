@@ -11,6 +11,9 @@ router.use(require('../middleware/readOnlyMiddleware'));
 
 router.get('/', ctrl.list);
 router.post('/', ctrl.save);
+// Active template — declared before '/:id' so the literal segment wins the match.
+router.get('/active', ctrl.getActive);
+router.post('/active', ctrl.setActive);
 router.get('/:id', ctrl.get);
 router.delete('/:id', ctrl.remove);
 router.post('/:id/default', ctrl.setDefault);

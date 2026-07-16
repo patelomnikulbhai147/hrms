@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard, Users as UsersIcon, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, Building2, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark
+  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark, RefreshCcw, Wand2
 } from 'lucide-react';
 import type { Role } from '@/data/mockData';
 import type { AppModules } from '@/pages/Login';
@@ -22,8 +22,9 @@ import type { AppModules } from '@/pages/Login';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-integration' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
-  | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management';
+  | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
+  | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
+  | 'notifications' | 'custom-report-builder' | 'company-edit';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -93,6 +94,12 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'attendance-integration', label: 'Attendance API Integration', icon: <PlugZap size={15} />, roles: ['Super Admin', 'Company Head', 'HR'], permission: 'attendance', inMatrix: false, beta: true },
   { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'], permission: 'leaves', inMatrix: true },
   { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'payroll', inMatrix: true },
+  // Attendance Synchronization — NOT an independent module: it is one step of the
+  // Payroll process. It is reachable ONLY from Payroll → Payroll Workflow → "Sync
+  // Attendance", so it is hidden from the sidebar (hideInSidebar) while remaining a
+  // valid routable page. Governed by the `payroll` permission (no matrix row —
+  // inMatrix:false) so access stays gated exactly like Payroll everywhere.
+  { id: 'attendance-sync', label: 'Attendance Synchronization', icon: <RefreshCcw size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'payroll', inMatrix: false, hideInSidebar: true },
   { id: 'invoice-management', label: 'Invoice Management', icon: <ReceiptText size={15} />, roles: ['Company Head', 'Finance', 'HR'], permission: 'invoicing', inMatrix: true, beta: true },
   // Finance & Compliance — the single sidebar entry that unifies Employee Loans
   // and Statutory Compliance. Visible when the user can VIEW EITHER underlying
@@ -105,6 +112,10 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
+  // Custom Report Builder — drag & drop report designer. Shares the `reports`
+  // permission (no separate matrix row — inMatrix:false), like Employee Cards
+  // shares `employees`. Company Head / HR / Finance who can see Reports get it.
+  { id: 'custom-report-builder', label: 'Custom Report Builder', icon: <Wand2 size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'reports', inMatrix: false, beta: true },
   { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true, beta: true },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks', inMatrix: true },
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },

@@ -193,7 +193,7 @@ export const Topbar: React.FC<TopbarProps> = ({
 
         {/* Fixed Company Name Badge in Navbar (Mobile only or if multiple disabled) */}
         {companies.length <= 1 && currentCompany && (
-          <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#F3F0FF] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
+          <div className="ml-2 px-4 py-2 bg-white border border-[#DCE8FF] hover:bg-[#FCF4EE] text-[#1F2937] text-[13px] font-bold rounded-2xl flex items-center gap-2.5 shadow-sm transition-all cursor-default">
             <CompanyLogo logo={workspaceBranding.logo} name={workspaceBranding.name} size={18} />
             <span>{(currentCompany as any).branchName || currentCompany.name}</span>
           </div>
@@ -206,10 +206,10 @@ export const Topbar: React.FC<TopbarProps> = ({
             <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
-                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F3F0FF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#FCF4EE] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
                 title="Switch workspace"
               >
-                <Building2 size={16} className="text-[#6C3CF0]" />
+                <Building2 size={16} className="text-[#C77E52]" />
                 <span className="text-[10px] font-bold text-[#6B7280] uppercase tracking-wider">Workspace:</span>
                 <span className="max-w-[140px] truncate">{currentCompany?.name || 'Select'}</span>
                 <ChevronDown size={16} className="text-[#6B7280]" />
@@ -222,7 +222,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0FE] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#F7E3D3] rounded-2xl shadow-xl py-2 z-50 overflow-hidden"
                   >
                     <div className="max-h-80 overflow-y-auto custom-scrollbar">
                       {/* Companies (head offices / parents) */}
@@ -241,10 +241,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                           <React.Fragment key={comp.id}>
                             <button
                               onClick={() => { if (!isCurrent) onCompanyChange(comp.id, 'company'); setWorkspaceOpen(false); }}
-                              className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#F3F0FF]', isCurrent ? 'bg-[#F3F0FF] text-[#6C3CF0] font-bold' : 'text-[#1F2937] font-semibold')}
+                              className={cn('w-full text-left px-4 py-2.5 text-xs flex items-center justify-between transition-colors hover:bg-[#FCF4EE]', isCurrent ? 'bg-[#FCF4EE] text-[#C77E52] font-bold' : 'text-[#1F2937] font-semibold')}
                             >
-                              <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#6C3CF0] flex-shrink-0" />{comp.name}</span>
-                              {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0" />}
+                              <span className="flex items-center gap-2 truncate pr-2"><Building2 size={13} className="text-[#C77E52] flex-shrink-0" />{comp.name}</span>
+                              {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#C77E52] flex-shrink-0" />}
                             </button>
                             {childBranches.length > 0 && (
                               <div className="pl-3">
@@ -256,10 +256,10 @@ export const Topbar: React.FC<TopbarProps> = ({
                                     <button
                                       key={br.id}
                                       onClick={() => { if (!brCurrent) onCompanyChange(br.id, 'branch'); setWorkspaceOpen(false); }}
-                                      className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#F3F0FF] border-l-2 border-[#E6E0FE] ml-3', brCurrent ? 'text-[#6C3CF0] font-bold bg-[#F3F0FF]' : 'text-[#4B5563] font-medium')}
+                                      className={cn('w-full text-left pl-6 pr-4 py-2 text-[11px] flex items-center justify-between transition-colors hover:bg-[#FCF4EE] border-l-2 border-[#F7E3D3] ml-3', brCurrent ? 'text-[#C77E52] font-bold bg-[#FCF4EE]' : 'text-[#4B5563] font-medium')}
                                     >
                                       <span className="truncate pr-2">↳ {(br as any).branchName || br.name}</span>
-                                      {brCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0" />}
+                                      {brCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#C77E52] flex-shrink-0" />}
                                     </button>
                                   );
                                 })}
@@ -280,7 +280,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             <div className="relative" ref={wsRef}>
               <button
                 onClick={() => { setWorkspaceOpen(p => !p); setNotifOpen(false); setProfileOpen(false); }}
-                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#F3F0FF] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-2.5 px-4 py-2 bg-white hover:bg-[#FCF4EE] border border-[#DCE8FF] rounded-2xl text-[13px] font-bold text-[#1F2937] transition-all active:scale-95 shadow-sm"
               >
                 <CompanyLogo logo={workspaceBranding.logo} name={workspaceBranding.name} size={18} />
                 <span className="max-w-[120px] truncate">{(currentCompany as any)?.branchName || currentCompany?.name || 'Switch Workspace'}</span>
@@ -294,9 +294,9 @@ export const Topbar: React.FC<TopbarProps> = ({
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#E6E0FE] rounded-2xl shadow-2xl py-1 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-72 bg-white border border-[#F7E3D3] rounded-2xl shadow-2xl py-1 z-50 overflow-hidden"
                   >
-                    <div className="px-3 py-2 border-b border-[#E6E0FE] flex flex-col gap-2 bg-[#F8FAFC]">
+                    <div className="px-3 py-2 border-b border-[#F7E3D3] flex flex-col gap-2 bg-[#F8FAFC]">
                       <div className="flex items-center gap-2 px-1">
                         <History size={13} className="text-[#6B7280]" />
                         <span className="text-[10px] font-extrabold text-[#6B7280] uppercase tracking-wider">Switch Workspace</span>
@@ -308,7 +308,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                           placeholder="Search workspaces..."
                           value={wsSearchTerm}
                           onChange={e => setWsSearchTerm(e.target.value)}
-                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E5E7EB] rounded-lg text-[11px] font-semibold text-[#334155] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#6C3CF0]/20 focus:border-[#6C3CF0] transition-all shadow-sm"
+                          className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#E5E7EB] rounded-lg text-[11px] font-semibold text-[#334155] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#C77E52]/20 focus:border-[#C77E52] transition-all shadow-sm"
                         />
                       </div>
                     </div>
@@ -372,7 +372,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                                 // its branches so selecting never collapses the group.
                                 <div className={cn(
                                   "w-full flex items-center justify-between border-b border-[#F1F5F9] last:border-0 transition-colors",
-                                  companyIsCurrent ? "bg-[#F3F0FF]" : "hover:bg-[#F8FAFC]"
+                                  companyIsCurrent ? "bg-[#FCF4EE]" : "hover:bg-[#F8FAFC]"
                                 )}>
                                   <button
                                     type="button"
@@ -389,7 +389,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                                   >
                                     <span className="text-[14px]">🏢</span>
                                     <span className="text-[12px] truncate tracking-wide">{groupName} ({group.cards.length})</span>
-                                    {companyIsCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                    {companyIsCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#C77E52] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
                                   </button>
                                   <button
                                     type="button"
@@ -447,14 +447,14 @@ export const Topbar: React.FC<TopbarProps> = ({
                                             }}
                                             className={cn(
                                               "w-full text-left px-4 py-2 text-[12px] flex items-center justify-between transition-all group",
-                                              isCurrent ? "bg-[#F3F0FF] text-[#2563EB] font-bold" : "text-[#475569] font-medium hover:bg-[#F8FAFC] hover:text-[#111827]"
+                                              isCurrent ? "bg-[#FCF4EE] text-[#2563EB] font-bold" : "text-[#475569] font-medium hover:bg-[#F8FAFC] hover:text-[#111827]"
                                             )}
                                           >
                                             <div className="flex items-center gap-2 overflow-hidden">
                                               <span className="text-[13px]">{isPrimary ? '⭐' : '📍'}</span>
                                               <span className="truncate">{(comp as any).branchName || comp.name}</span>
                                             </div>
-                                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#6C3CF0] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
+                                            {isCurrent && <div className="w-1.5 h-1.5 rounded-full bg-[#C77E52] flex-shrink-0 shadow-[0_0_6px_rgba(59,130,246,0.6)]" />}
                                           </button>
                                         );
                                       })}

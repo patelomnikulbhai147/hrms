@@ -26,7 +26,8 @@ function targetCompanyId(req, requested) {
 
 /**
  * POST /validate — run the safety checks over a batch of punches (DRY RUN).
- * Body: { companyId?, deviceId?, punches: [{ biometricCode, punchTime }] }.
+ * Body: { companyId?, branchId?, deviceId?, punches: [{ employeeCode?, biometricCode?, punchTime }] }.
+ * Each punch is matched by Employee Code first, then Biometric Code (see resolvePunch).
  * Writes one import-log row per punch and queues every non-matched punch.
  * Returns a per-status summary. NO attendance is created.
  */
@@ -45,10 +46,16 @@ exports.validate = async (req, res) => {
     const summary = { total: punches.length, MATCHED: 0, NO_BIOMETRIC_CODE: 0, UNMATCHED: 0, DUPLICATE_CODE: 0 };
     const details = [];
 
+    let rowNo = 0;
     for (const p of punches) {
+      rowNo++;
       const biometricCode = p?.biometricCode;
+      // Read BOTH identifier columns from the punch (Employee Code takes priority
+      // inside resolvePunch). branchId, when present, confines matching to a branch.
+      const employeeCode = p?.employeeCode;
+      const branchId = p?.branchId ?? req.body?.branchId ?? null;
       const punchTime = p?.punchTime != null ? String(p.punchTime) : null;
-      const verdict = await resolvePunch(prisma, { companyId, biometricCode });
+      const verdict = await resolvePunch(prisma, { companyId, biometricCode, employeeCode, branchId, debug: true, rowLabel: rowNo });
 
       // Audit every punch (RULE 6).
       await prisma.attendanceImportLog.create({
@@ -56,7 +63,7 @@ exports.validate = async (req, res) => {
           companyId, deviceId,
           biometricCode: biometricCode != null ? String(biometricCode).slice(0, 191) : null,
           employeeId: verdict.employee?.id || null,
-          employeeCode: verdict.employee?.employeeId || null,
+          employeeCode: verdict.employee?.employeeId || (employeeCode != null ? String(employeeCode).slice(0, 191) : null),
           employeeName: verdict.employee?.name || null,
           punchTime, status: verdict.status, message: verdict.message,
         },
@@ -75,7 +82,7 @@ exports.validate = async (req, res) => {
       }
 
       if (summary[verdict.status] !== undefined) summary[verdict.status]++;
-      details.push({ biometricCode, punchTime, status: verdict.status, message: verdict.message, employee: verdict.employee ? { id: verdict.employee.id, employeeId: verdict.employee.employeeId, name: verdict.employee.name } : null });
+      details.push({ biometricCode, employeeCode, punchTime, status: verdict.status, matchedBy: verdict.matchedBy || null, message: verdict.message, employee: verdict.employee ? { id: verdict.employee.id, employeeId: verdict.employee.employeeId, name: verdict.employee.name } : null });
     }
 
     res.json({ companyId, attendanceCreated: 0, note: 'Safety validation only — no attendance was created.', summary, details });
@@ -101,6 +108,18 @@ exports.process = async (req, res) => {
     const company = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true } });
     if (!company) return res.status(400).json({ error: 'Selected company does not exist.' });
 
+    // Employee-match scope = the WHOLE company tree the selected workspace belongs
+    // to (its root company + every branch), NOT just the selected id + its direct
+    // children. This is company-isolated (one tree only) but resilient to a
+    // workspace/branch-id mismatch — e.g. importing from a branch workspace while
+    // the employees live under the parent company, which previously returned an
+    // EMPTY employee set so every row showed "No Match". Attendance is still
+    // written under each employee's OWN companyId.
+    const self = await prisma.company.findUnique({ where: { id: companyId }, select: { id: true, parentCompanyId: true } }).catch(() => null);
+    const rootId = self?.parentCompanyId || companyId;
+    const tree = await prisma.company.findMany({ where: { OR: [{ id: rootId }, { parentCompanyId: rootId }] }, select: { id: true } }).catch(() => []);
+    const companyIds = [...new Set([companyId, rootId, ...tree.map((c) => c.id)].map(Number).filter(Boolean))];
+
     const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
     if (!rows.length) return res.status(400).json({ error: 'No rows to import.' });
     if (rows.length > 100000) return res.status(400).json({ error: 'Too many rows in one import (limit 100,000). Split the file.' });
@@ -110,9 +129,15 @@ exports.process = async (req, res) => {
     // a "preview" silently COMMITTED (there must never be a direct upload).
     const options = { ...(req.body?.options || {}) };
     if (req.body?.dryRun !== undefined) options.dryRun = !!req.body.dryRun;
+    // Verbose per-row match logging for diagnosing "0 matched" imports. Enable with
+    // ATTENDANCE_IMPORT_DEBUG=1 in the backend env (off by default). A concise
+    // one-line scope/result summary is always logged regardless.
+    if (process.env.ATTENDANCE_IMPORT_DEBUG === '1' || req.body?.debug === true) options.debug = true;
+    options.branchId = req.body?.branchId ?? null;
 
     const result = await processAttendanceRows(prisma, {
       companyId,
+      companyIds,
       rows,
       options,
       actor: { id: req.user?.id, name: req.user?.name || req.user?.email },

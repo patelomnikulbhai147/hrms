@@ -14,7 +14,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   LayoutDashboard, HandCoins, Wallet, ShieldCheck, ReceiptText, CheckCircle2,
-  BarChart3, Settings as SettingsIcon, Landmark, Bell, Plus, Info,
+  BarChart3, Settings as SettingsIcon, Landmark, Bell, Plus, Info, Scale,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
@@ -43,6 +43,11 @@ import {
   type ComplianceTabId,
 } from '@/pages/CompliancePage';
 // Documents = full statutory-document repository (replaces the old challan list).
+// Wage Management = the state-wise minimum-wage MANAGEMENT interface (wage master,
+// skill categories, effective dates, revision history, compliance settings). It
+// reuses the existing, unchanged LabourCompliance component — a configuration
+// workspace, NOT a report. Wage *reports* (Wage Register, etc.) stay in Reports.
+import { LabourCompliance } from '@/components/settings/LabourCompliance';
 
 interface Props { role?: string; activeCompanyId?: string; companies?: any[]; }
 
@@ -51,7 +56,7 @@ interface Props { role?: string; activeCompanyId?: string; companies?: any[]; }
 // Documents; loan/advance files are attached to each Loan/Advance record; and
 // compliance challans belong to their filing. There is no central dumping ground.
 type SectionId =
-  | 'dashboard' | 'loans' | 'advances' | 'compliance'
+  | 'dashboard' | 'loans' | 'advances' | 'compliance' | 'wages'
   | 'deductions' | 'approvals' | 'reports' | 'settings';
 
 interface SectionDef { id: SectionId; label: string; icon: React.ComponentType<any>; needs: 'loans' | 'compliance' | 'any'; }
@@ -61,6 +66,7 @@ const SECTIONS: SectionDef[] = [
   { id: 'loans', label: 'Employee Loans', icon: HandCoins, needs: 'loans' },
   { id: 'advances', label: 'Salary Advances', icon: Wallet, needs: 'loans' },
   { id: 'compliance', label: 'Compliance', icon: ShieldCheck, needs: 'compliance' },
+  { id: 'wages', label: 'Wage Management', icon: Scale, needs: 'compliance' },
   { id: 'deductions', label: 'Deductions', icon: ReceiptText, needs: 'compliance' },
   { id: 'approvals', label: 'Approvals', icon: CheckCircle2, needs: 'loans' },
   { id: 'reports', label: 'Reports', icon: BarChart3, needs: 'any' },
@@ -84,7 +90,7 @@ const Segmented: React.FC<{ value: string; onChange: (v: string) => void; option
   <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
     {options.map((o) => (
       <button key={o.value} onClick={() => onChange(o.value)}
-        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${value === o.value ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition ${value === o.value ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
         {o.label}
       </button>
     ))}
@@ -100,6 +106,17 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
   const canApprove = ['Company Head', 'Finance'].includes(role);
   const canManage = ['Company Head', 'Finance'].includes(role);
   const activeCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
+
+  // Wage Management scoping — branches share the parent company's wage master, so
+  // resolve a branch workspace to its parent (identical to Settings → Labour
+  // Compliance) and list the parent's branch names for the branch→state mapping.
+  const wageCompanyId = String((activeCompany as any)?.parentCompanyId || activeCompanyId || '');
+  const wageBranchNames = useMemo(() => Array.from(new Set(
+    companies
+      .filter((c: any) => String(c.parentCompanyId) === wageCompanyId)
+      .map((c: any) => c.branchName || c.name)
+      .filter(Boolean),
+  )), [companies, wageCompanyId]);
 
   // Only surface sections the user is actually permitted to see.
   const sections = useMemo(() => SECTIONS.filter((s) =>
@@ -122,9 +139,9 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm flex items-center justify-between gap-3">
+      <div className="rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm flex items-center justify-between gap-3">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><Landmark size={16} className="text-[#6C3CF0]" /> Finance &amp; Compliance</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><Landmark size={16} className="text-[#C77E52]" /> Finance &amp; Compliance</h2>
           <p className="text-[11px] text-slate-400">Employee loans &amp; advances, statutory filing calendar and payroll-driven deductions — one place — {activeCompany?.name || 'your company'}.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -154,7 +171,7 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
           const Icon = s.icon;
           return (
             <button key={s.id} onClick={() => goTo(s.id)}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${section === s.id ? 'border-[#6C3CF0] text-[#6C3CF0]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors ${section === s.id ? 'border-[#C77E52] text-[#C77E52]' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
               <Icon size={14} /> {s.label}
             </button>
           );
@@ -182,7 +199,7 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
           />
         ) : canCompliance ? (
           <div className="space-y-2">
-            <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[#6C3CF0]" /><SectionHeading>Statutory Compliance</SectionHeading></div>
+            <div className="flex items-center gap-2"><ShieldCheck size={14} className="text-[#C77E52]" /><SectionHeading>Statutory Compliance</SectionHeading></div>
             <ComplianceDashboardTab onGoto={(t: ComplianceTabId) => goTo(t === 'reports' ? 'reports' : 'compliance')} />
           </div>
         ) : null
@@ -223,6 +240,21 @@ export const FinanceCompliance: React.FC<Props> = ({ role = '', activeCompanyId,
               options={[{ value: 'filings', label: 'Filings' }, { value: 'calendar', label: 'Calendar' }]} />
           </div>
           {complianceView === 'calendar' ? <ComplianceCalendarTab /> : <ComplianceFilingsTab canEdit={canEdit} canManage={canManage} />}
+        </div>
+      )}
+
+      {/* ── Wage Management (state-wise minimum wage — MANAGEMENT, not reports) ──
+          Opens the dedicated wage-management workspace: wage master, minimum-wage
+          configuration, skill categories, effective dates, revision history and
+          compliance settings. Statutory wage REPORTS stay in the Reports module. */}
+      {section === 'wages' && (
+        <div className="space-y-3">
+          <Note>
+            Manage state-wise minimum wages, skill-category rates, effective dates and wage
+            compliance settings here. Wage <b>reports</b> (Wage Register, Minimum Wage Compliance,
+            Employee Wage, State-wise) remain in the <b>Reports</b> module.
+          </Note>
+          <LabourCompliance companyId={wageCompanyId} branchNames={wageBranchNames} canEdit={canEdit} performedBy={role} />
         </div>
       )}
 

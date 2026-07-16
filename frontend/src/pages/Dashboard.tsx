@@ -32,6 +32,12 @@ import { ui } from '@/components/ui/feedback';
 import { Card, StatCard } from '@/components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
+import { RecentActivityFeed } from '@/components/activity/RecentActivityFeed';
+// Lazy-loaded so the "Today's Absent Employees" widget never blocks the
+// dashboard's first paint (it hydrates independently once the chunk arrives).
+const TodaysAbsentEmployees = React.lazy(() =>
+  import('@/components/dashboard/TodaysAbsentEmployees').then(m => ({ default: m.TodaysAbsentEmployees }))
+);
 import { Badge } from '@/components/ui/Badge';
 import {
   ResponsiveContainer,
@@ -165,7 +171,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   useEffect(() => {
     if (role === 'Super Admin') return;
-    api.companyProfile.audit(10)
+    api.companyProfile.audit(60)
       .then((data: any) => setRecentAuditLogs(Array.isArray(data) ? data : []))
       .catch(() => setRecentAuditLogs([]));
   }, [activeCompanyId, role]);
@@ -596,7 +602,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <XAxis dataKey="name" stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
                         <YAxis stroke="#9ca3af" fontSize={11} tickLine={false} axisLine={false} />
                         <Tooltip cursor={{ fill: 'rgba(79, 70, 229, 0.04)' }} contentStyle={{ background: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Bar dataKey="MRR (₹)" fill="#5b2de6" radius={[6, 6, 0, 0]} barSize={35} />
+                        <Bar dataKey="MRR (₹)" fill="#B5673A" radius={[6, 6, 0, 0]} barSize={35} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -683,7 +689,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <tr key={company.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="py-3.5 px-6">
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center font-bold text-white text-xs shadow-xs" style={!company.logoImage ? { backgroundColor: company.primaryColor || '#5b2de6' } : {}}>
+                              <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center font-bold text-white text-xs shadow-xs" style={!company.logoImage ? { backgroundColor: company.primaryColor || '#B5673A' } : {}}>
                                 {company.logoImage ? (
                                   <img src={company.logoImage} alt="Logo" className="w-full h-full object-contain p-0.5" />
                                 ) : (
@@ -1001,7 +1007,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div>
             <h2 className="text-[22px] font-bold text-gray-900 tracking-tight">{branchTitle}</h2>
             {isBranchWorkspace && activeParentCompany && (
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#4C1FD4] mt-0.5">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-[#99552F] mt-0.5">
                 <span className="text-slate-500">{activeParentCompany.name}</span>
                 <ChevronRight size={13} className="text-slate-400" />
                 <span>{(currentCompany as any).branchName || currentCompany?.name} Branch</span>
@@ -1096,7 +1102,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden">
             <div className="flex justify-between items-start">
               <div className="flex gap-3 items-center">
-                <div className="w-10 h-10 rounded-full bg-brand-50 text-[#8B5CF6] flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-brand-50 text-[#C77E52] flex items-center justify-center">
                   <Wallet size={18} strokeWidth={2.5} />
                 </div>
                 <div>
@@ -1107,7 +1113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="flex justify-between items-end mt-4">
               <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
-              <svg className="w-20 h-6 text-[#8B5CF6]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <svg className="w-20 h-6 text-[#C77E52]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
@@ -1118,10 +1124,27 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}
         <TaskTenderWidgets activeCompanyId={activeCompanyId} onNavigate={onNavigate} canViewTenders />
 
-        {/* Main Analytics Row */}
+        {/* Main Analytics Row — columns stretch to equal height (grid default
+            align-items: stretch). The right column is a full-height flex stack
+            whose Notifications card grows to fill any remaining height, so its
+            bottom edge aligns with the taller left column instead of leaving a
+            blank gap. */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-          {/* Left Column (Charts) */}
+          {/* Left Column (Insights + Charts) */}
           <div className="lg:col-span-2 space-y-5">
+            {/* Today's Absent Employees — one live, actionable widget (replaces the
+                Employee Status & Company Health cards) sitting immediately below the
+                KPI cards. Lazy-loaded; refreshes its own data every 60s. */}
+            <React.Suspense fallback={<div className="h-40 rounded-2xl bg-white/50 border border-[#E5E7EB] animate-pulse" />}>
+              <TodaysAbsentEmployees
+                employees={rawScopedEmployees}
+                attendance={attendance.filter(a => scopedEmpIds.has(a.employeeId))}
+                leaves={scopedLeavesLive}
+                todayStr={todayStr}
+                onNavigate={onNavigate}
+              />
+            </React.Suspense>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Employee Growth Chart */}
               <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 h-[320px] flex flex-col">
@@ -1136,14 +1159,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <AreaChart data={growthData} margin={{ top: 15, right: 10, left: -25, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#C77E52" stopOpacity={0.22} />
+                          <stop offset="95%" stopColor="#C77E52" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} dy={10} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} domain={['dataMin - 10', 'auto']} />
                       <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Area type="monotone" dataKey="count" stroke="#2563EB" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                      <Area type="monotone" dataKey="count" stroke="#C77E52" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6, fill: '#C77E52', stroke: '#fff', strokeWidth: 2 }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1220,7 +1243,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 <div className="flex justify-between items-center mb-2">
                   <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
                   <div className="flex gap-3 text-[10px] font-semibold">
-                    <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#2563EB]"></span> Present (count)</span>
+                    <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#C77E52]"></span> Present (count)</span>
                   </div>
                 </div>
                 <div className="w-full h-[180px] mt-4">
@@ -1228,14 +1251,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2563EB" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#C77E52" stopOpacity={0.22} />
+                          <stop offset="95%" stopColor="#C77E52" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6B7280' }} dy={10} interval={2} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} allowDecimals={false} />
                       <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Area type="monotone" dataKey="present" stroke="#2563EB" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#2563EB', stroke: '#fff', strokeWidth: 2 }} />
+                      <Area type="monotone" dataKey="present" stroke="#C77E52" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#C77E52', stroke: '#fff', strokeWidth: 2 }} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1243,10 +1266,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Right Column */}
-          <div className="space-y-5">
+          {/* Right Column — a relative shell that contributes ZERO intrinsic height
+              to the row (on lg+ its inner fills via absolute inset-0), so the row
+              height is driven solely by the taller LEFT column and every bottom edge
+              aligns. The inner flex stack lets Notifications grow/scroll to fill.
+              On mobile the inner is static, so the cards stack full-width naturally. */}
+          <div className="lg:relative">
+            <div className="flex flex-col gap-5 lg:absolute lg:inset-0 lg:overflow-hidden">
             {/* Pending Approvals */}
-            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
+            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 shrink-0">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
                 <span onClick={() => onNavigate('leaves')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
@@ -1276,51 +1304,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            {/* Recent Activities */}
-            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-[14px] font-bold text-gray-800">Recent Activities</h3>
-                <span onClick={() => {
+            {/* Recent Activities — business-readable Activity Center (see
+                components/activity/RecentActivityFeed + utils/auditFormat).
+                shrink-0 keeps its natural height inside the flex stack. */}
+            <div className="shrink-0">
+              <RecentActivityFeed
+                entries={recentAuditLogs}
+                onViewAll={() => {
                   localStorage.setItem('hrms_company_profile_tab', 'audit');
                   onNavigate('company-profile');
-                }} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
-              </div>
-              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-[13px] before:-translate-x-px before:h-full before:w-[2px] before:bg-slate-100">
-                {recentAuditLogs.length === 0 ? (
-                  <p className="text-[12px] text-gray-400 font-medium py-4">No recent activity for this workspace</p>
-                ) : recentAuditLogs.map((act, i) => {
-                  let bg = 'bg-gray-50';
-                  let text = 'text-gray-500';
-                  let Icon = Activity;
-                  if (act.module === 'Employee' || act.module === 'CompanyContact') { bg = 'bg-brand-50'; text = 'text-[#2563EB]'; Icon = Users; }
-                  else if (act.module === 'Payroll') { bg = 'bg-brand-50'; text = 'text-[#8B5CF6]'; Icon = Wallet; }
-                  else if (act.module === 'Leave') { bg = 'bg-amber-50'; text = 'text-[#F59E0B]'; Icon = Calendar; }
-                  else if (act.module === 'Document' || act.module === 'Company' || act.module === 'Branch') { bg = 'bg-emerald-50'; text = 'text-[#10B981]'; Icon = FileText; }
-
-                  return (
-                    <div key={i} className="relative flex items-start gap-4">
-                      <div className={`w-7 h-7 rounded-full ${bg} border-[3px] border-white flex items-center justify-center z-10 ${text} shadow-sm`}><Icon size={12} strokeWidth={3} /></div>
-                      <div className="flex-1 pb-1">
-                        <p className="text-[12px] font-semibold text-gray-800">{act.action}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">{act.details} <span className="float-right text-gray-400">{formatDateTime(act.createdAt)}</span></p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                }}
+              />
             </div>
 
-            {/* Notifications */}
-            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
-              <div className="flex justify-between items-center mb-4">
+            {/* Notifications — flex-1 so the card stretches to the bottom of the
+                column; the header stays fixed while only the list scrolls. */}
+            <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 flex-1 flex flex-col min-h-0">
+              <div className="flex justify-between items-center mb-4 shrink-0">
                 <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
-                <span onClick={() => onNavigate('reports')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <span onClick={() => onNavigate('notifications')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
               </div>
-              <div className="space-y-3.5">
+              <div className="space-y-3.5 flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
                 {(() => {
                   const scopedNotifs = (notifications || []).filter(n =>
                     !n.companyId || isCompanyIdMatch(n.companyId, activeCompanyId, companies as any[])
-                  ).slice(0, 5);
+                  ).slice(0, 20);
                   if (scopedNotifs.length === 0) {
                     return <p className="text-[12px] text-gray-400 font-medium">No notifications</p>;
                   }
@@ -1332,6 +1340,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   ));
                 })()}
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1352,16 +1361,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="p-2 bg-amber-50 text-[#F59E0B] rounded-xl group-hover:scale-110 transition-transform"><Clock size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Approve Leave</span>
             </button>
-            <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#8B5CF6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-              <div className="p-2 bg-brand-50 text-[#8B5CF6] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5} /></div>
+            <button onClick={() => onNavigate('payroll')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#C77E52]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-brand-50 text-[#C77E52] rounded-xl group-hover:scale-110 transition-transform"><Wallet size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Run Payroll</span>
             </button>
             <button onClick={() => onNavigate('documents')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#0D9488]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
               <div className="p-2 bg-teal-50 text-[#0D9488] rounded-xl group-hover:scale-110 transition-transform"><FileUp size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">Upload Document</span>
             </button>
-            <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#5B2DE6]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
-              <div className="p-2 bg-brand-50 text-[#5B2DE6] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5} /></div>
+            <button onClick={() => onNavigate('reports')} className="bg-white border border-[#E5E7EB] shadow-sm hover:shadow-md hover:border-[#B5673A]/30 rounded-[16px] p-3.5 flex items-center justify-center sm:justify-start gap-3 transition-all group">
+              <div className="p-2 bg-brand-50 text-[#B5673A] rounded-xl group-hover:scale-110 transition-transform"><BarChart2 size={18} strokeWidth={2.5} /></div>
               <span className="text-[12px] font-bold text-gray-700 hidden sm:block">View Reports</span>
             </button>
           </div>

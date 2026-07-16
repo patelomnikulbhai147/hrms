@@ -73,6 +73,30 @@ export async function removeCustomTemplate(dbId: number): Promise<void> {
 export async function setDefaultTemplate(dbId: number): Promise<void> {
   await api.cardTemplates.setDefault(dbId);
 }
+
+// ── Active template (drives Generate & Preview) ───────────────────────────────
+// The company's active card design. Persisted in the backend (card_active_templates)
+// and mirrored to localStorage so the choice survives even if the API is briefly
+// unavailable — the same graceful-degradation contract the rest of this store uses.
+const activeKey = (companyKey: string | number | undefined) => `hrms_active_card_tpl_${companyKey ?? 'default'}`;
+
+export async function getActiveTemplateId(companyKey?: string | number): Promise<string | null> {
+  try {
+    const res = await api.cardTemplates.getActive();
+    if (res && res.templateId) {
+      try { localStorage.setItem(activeKey(companyKey), res.templateId); } catch { /* ignore */ }
+      return res.templateId as string;
+    }
+  } catch { /* API unavailable — fall through to the local mirror */ }
+  try { return localStorage.getItem(activeKey(companyKey)); } catch { return null; }
+}
+
+export async function setActiveTemplateId(companyKey: string | number | undefined, templateId: string): Promise<void> {
+  // Persist to the database first so backend RBAC is authoritative; only mirror to
+  // localStorage once the server has accepted it (throws → caller surfaces the error).
+  await api.cardTemplates.setActive(templateId);
+  try { localStorage.setItem(activeKey(companyKey), templateId); } catch { /* ignore */ }
+}
 export async function setTemplateShared(dbId: number, shared: boolean): Promise<void> {
   await api.cardTemplates.setShared(dbId, shared);
 }

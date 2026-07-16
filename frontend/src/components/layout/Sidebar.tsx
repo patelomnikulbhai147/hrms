@@ -1,8 +1,6 @@
 import React from 'react';
 import { cn } from '@/utils/cn';
-import {
-  ChevronRight, ArrowLeft,
-} from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import type { Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { usePermissions } from '@/context/PermissionContext';
@@ -89,20 +87,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className={cn(
-      'flex flex-col bg-surface text-ink-secondary h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 border-r border-hairline relative',
-      collapsed ? 'w-16' : 'w-60'
+      'flex flex-col h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 relative',
+      'bg-gradient-to-b from-[#1E293B] to-[#161F2E] text-slate-300',
+      'shadow-[1px_0_0_rgba(15,23,42,0.06)]',
+      collapsed ? 'w-[68px]' : 'w-64'
     )}>
       {/* Logo */}
-      <div className={cn('flex items-center gap-3 px-4 py-5 border-b border-[#E5E7EB] relative z-10', collapsed && 'justify-center px-0')}>
+      <div className={cn('flex items-center gap-3 px-4 h-[72px] border-b border-white/10 relative z-10', collapsed && 'justify-center px-0')}>
         {role === 'Super Admin' && !isMasquerading ? (
           <>
-            <ZeniaLogo size={36} radius={220} className="rounded-[22%] shadow-[0_4px_12px_rgba(108,60,240,0.25)]" />
+            <ZeniaLogo size={38} radius={220} className="rounded-[22%] shadow-[0_4px_14px_rgba(0,0,0,0.3)]" />
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[16px] font-bold text-ink leading-tight font-heading tracking-tight">
+                <p className="text-[16px] font-bold text-[#FFFFFF] leading-tight font-heading tracking-tight">
                   {BRAND_NAME}
                 </p>
-                <p className="text-[10px] text-brand-600 mt-0.5 uppercase tracking-widest font-bold">
+                <p className="text-[10px] text-brand-300 mt-0.5 uppercase tracking-widest font-bold">
                   SUPER ADMIN
                 </p>
               </div>
@@ -114,13 +114,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
             logo={branding.logo}
             role={isMasquerading ? 'Masquerading' : role}
             compact={collapsed}
+            tone="onDark"
           />
         )}
       </div>
 
       {/* Prominent Back to Super Admin Button when masquerading */}
       {isMasquerading && (
-        <div className="px-4 py-3 border-b border-[#E5E7EB] bg-[#FDF6B2] relative z-10">
+        <div className="px-3 py-3 border-b border-white/10 bg-amber-500/10 relative z-10">
           <button
             onClick={onExitMasquerade}
             className={cn(
@@ -136,25 +137,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-5 px-3 space-y-1.5 relative z-10">
-        {visibleItems.map(item => (
+      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 relative z-10 sidebar-scroll">
+        {visibleItems.map(item => {
+          const active = currentPage === item.id;
+          return (
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
             title={collapsed ? item.label : undefined}
             className={cn(
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[13px] font-semibold tracking-wide transition-all duration-200 group active:scale-[0.98]',
-              currentPage === item.id
-                ? 'bg-brand-500/10 text-brand-600'
-                : 'text-ink-secondary hover:bg-[var(--surface-hover)] hover:text-ink',
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[15px] tracking-tight transition-all duration-200 group active:scale-[0.98] relative',
+              active
+                ? 'bg-[#C77E52] text-white font-semibold shadow-[0_6px_16px_-4px_rgba(199,126,82,0.55)]'
+                : 'text-[#E2E8F0] font-medium hover:bg-[rgba(199,126,82,0.15)] hover:text-white',
               collapsed && 'justify-center px-0'
             )}
           >
             <span className={cn(
-              'flex-shrink-0 transition-transform duration-200',
-              currentPage === item.id
-                ? 'text-brand-600'
-                : 'text-ink-muted group-hover:text-brand-600'
+              'flex-shrink-0 transition-all duration-200 group-hover:scale-105',
+              active ? 'text-white' : 'text-[#CBD5E1] group-hover:text-[#E0996A]'
             )}>{item.icon}</span>
             {!collapsed && (
               <span className="flex-1 text-left min-w-0">
@@ -170,20 +171,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span
                 aria-label="Under active development"
                 title="Under active development"
-                className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full border border-amber-300/60 bg-amber-100 px-1.5 py-[1px] text-[9px] font-bold leading-none text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-300"
+                className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[9px] font-bold leading-none bg-[#FDE68A] text-[#92400E]"
               >
                 <span aria-hidden>🚧</span>Beta
               </span>
             )}
-            {!collapsed && currentPage === item.id && <ChevronRight size={14} className="flex-shrink-0 text-[#6C3CF0]/80" />}
           </button>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Footer */}
       {!collapsed && (
-        <div className="px-4 py-4 border-t border-[#E5E7EB] bg-transparent relative z-10 flex flex-col gap-3">
-          <p className="text-[10px] text-[#9CA3AF] font-bold uppercase tracking-wider">v3.1.0 — HR SaaS</p>
+        <div className="px-4 py-4 border-t border-white/10 bg-transparent relative z-10 flex flex-col gap-3">
+          <p className="text-[10px] text-slate-500 font-bold tracking-wider">{BRAND_NAME}</p>
         </div>
       )}
     </aside>

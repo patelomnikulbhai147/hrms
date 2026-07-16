@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight,
-  History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, Settings2, ChevronDown,
-  LayoutDashboard, Clock, CheckCircle2, AlertCircle, ArrowRight
+  History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, ChevronDown,
+  LayoutDashboard, Clock, CheckCircle2, ArrowRight, MoreVertical, Pencil
 } from 'lucide-react';
 import {
   type Employee, type LeaveRequest, type Role, type Company,
@@ -24,6 +25,8 @@ import { getUniqueEmployees } from '@/utils/deduplication';
 import { isActiveEmployee } from '@/utils/employeeStatus';
 import { Leaves } from '@/pages/Leaves';
 import { useDismissable } from '@/hooks/useDismissable';
+import { useLeavePolicy } from '@/hooks/useLeavePolicy';
+import { buildLeaveWallet, walletTotalRemaining, walletTotalUsed, hasConfiguredPolicy, walletPalette } from '@/utils/leaveWallet';
 
 type TabId = 'dashboard' | 'requests' | 'administration' | 'balances' | 'history' | 'reports' | 'policies';
 
@@ -53,6 +56,90 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={14} /> },
   { id: 'policies', label: 'Policies & Audit', icon: <ShieldCheck size={14} /> },
 ];
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * RowActionsMenu — enterprise overflow-menu for the Leave Administration table.
+ * Collapses the old 5-button row into a primary "Edit" (desktop) + a three-dot
+ * "More" menu holding every action (SAP / Workday / Zoho-style). Purely a
+ * presentation change: it just calls onAction(kind, row) — the SAME handler the
+ * old inline buttons used, so no calculation / balance / API / permission logic
+ * changes. Rendered via a portal so the table's overflow-x wrapper can't clip it.
+ * ──────────────────────────────────────────────────────────────────────────── */
+type RowActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit';
+const ROW_MENU_ITEMS: Array<{ kind: RowActionKind; label: string; icon: React.ReactNode; tone: string; onlyMobile?: boolean }> = [
+  // Edit is duplicated here for tablet/mobile (where the standalone Edit button is
+  // hidden); `onlyMobile` hides it from the menu on desktop to avoid redundancy.
+  { kind: 'edit',     label: 'Edit Leave',          icon: <Pencil size={14} />,        tone: 'hover:bg-brand-50 hover:text-brand-700',     onlyMobile: true },
+  { kind: 'grant',    label: 'Credit Leave',        icon: <CalendarPlus size={14} />,  tone: 'hover:bg-emerald-50 hover:text-emerald-700' },
+  { kind: 'deduct',   label: 'Debit Leave',         icon: <CalendarMinus size={14} />, tone: 'hover:bg-rose-50 hover:text-rose-700' },
+  { kind: 'transfer', label: 'Adjust Balance',      icon: <ArrowLeftRight size={14} />, tone: 'hover:bg-brand-50 hover:text-brand-700' },
+  { kind: 'reset',    label: 'Reset Leave Balance', icon: <RotateCcw size={14} />,     tone: 'hover:bg-amber-50 hover:text-amber-700' },
+];
+
+const RowActionsMenu: React.FC<{
+  row: any;
+  canEdit: boolean;
+  onAction: (kind: RowActionKind, row: any) => void;
+}> = ({ row, canEdit, onAction }) => {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useDismissable(open, useCallback(() => setOpen(false), []), [wrapRef, menuRef]);
+
+  const MENU_W = 208; // matches w-52
+  const place = () => {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    setPos({ top: b.bottom + 4, left: Math.max(8, b.right - MENU_W) });
+  };
+  const toggle = () => { if (!open) place(); setOpen(o => !o); };
+
+  // Any scroll/resize while open would leave the fixed panel stranded → close it.
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = () => setOpen(false);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [open]);
+
+  // Move focus into the panel for keyboard users once it renders.
+  useEffect(() => { if (open && pos) menuRef.current?.focus(); }, [open, pos]);
+
+  if (!canEdit) return <span className="text-slate-300">—</span>;
+
+  const run = (kind: RowActionKind) => { setOpen(false); onAction(kind, row); };
+
+  return (
+    <div ref={wrapRef} className="flex items-center justify-end gap-1.5">
+      {/* Primary action — desktop only (tablet/mobile get it inside the menu). */}
+      <button onClick={() => onAction('edit', row)} title="Edit Leave"
+        className="hidden lg:inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm text-[11px] font-semibold transition-colors hover:text-brand-600 hover:border-brand-200">
+        <Pencil size={13} /> Edit
+      </button>
+      {/* More actions (⋮) */}
+      <button ref={btnRef} onClick={toggle} title="More actions" aria-haspopup="menu" aria-expanded={open}
+        className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors hover:text-brand-600 hover:border-brand-200">
+        <MoreVertical size={15} />
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} role="menu" tabIndex={-1} style={{ top: pos.top, left: pos.left }}
+          className="fixed z-50 w-52 rounded-xl border border-slate-200 bg-white shadow-xl py-1 outline-none">
+          {ROW_MENU_ITEMS.map(it => (
+            <button key={it.kind} role="menuitem" onClick={() => run(it.kind)}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors ${it.tone} ${it.onlyMobile ? 'lg:hidden' : ''}`}>
+              {it.icon} {it.label}
+            </button>
+          ))}
+        </div>, document.body)}
+    </div>
+  );
+};
 
 export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   role, activeCompanyId, leaves, onUpdateLeaves, employees, companies = [], authProfile,
@@ -97,14 +184,45 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
   useEffect(() => { loadBalances(); loadConfig(); }, [loadBalances, loadConfig, activeCompanyId]);
   useEffect(() => { if (tab === 'policies') { api.leaveAdmin.audit().then(setAuditLog).catch(() => {}); loadConfig(); } }, [tab, loadConfig]);
 
-  // Merge balance rows onto scoped employees so every employee appears.
+  // Leave policy = single source of truth. Resolve a branch to its parent so both
+  // share one policy, then read it live (auto-refreshes when Settings saves).
+  const policyCompanyId = useMemo(() => {
+    const c = companies.find((x: any) => String(x.id) === String(activeCompanyId));
+    return String((c as any)?.parentCompanyId || activeCompanyId);
+  }, [companies, activeCompanyId]);
+  const { policy: leavePolicy } = useLeavePolicy(policyCompanyId);
+  const hasLeavePolicy = useMemo(() => hasConfiguredPolicy(leavePolicy), [leavePolicy]);
+
+  // Merge balance rows onto scoped employees so every employee appears. Each row
+  // also carries a DYNAMIC wallet built from the policy (total) + that employee's
+  // approved leave (used) — the CL/PL/SL columns below are the legacy backend
+  // balance model (unchanged); the wallet cards render the full policy.
   const adminRows = useMemo(() => {
     const balByEmp = new Map<string, any>();
     balances.forEach(b => balByEmp.set(String(b.employeeId), b));
+    const todayStr = new Date().toISOString().slice(0, 10);
     return scopedEmployees.map(e => {
       const b = balByEmp.get(String(e.id)) || {};
       const cl = num(b.clBalance), pl = num(b.plBalance), sl = num(b.slBalance);
       const taken = num(b.clUsed) + num(b.plUsed) + num(b.slUsed);
+      const mine = (l: any) =>
+        String(l.employeeId) === String(e.id) || (l.employeeName || '').toLowerCase() === (e.name || '').toLowerCase();
+      const approved = leaves.filter(l => mine(l) && l.status === 'Approved');
+      const wallet = buildLeaveWallet(leavePolicy, approved);
+      // Dynamic summary — scales to whatever leave types the policy contains.
+      // Allocation & Used exclude LOP (loss of pay is not an entitlement).
+      const totalAllocation = wallet.filter(w => w.key !== 'lop').reduce((s, w) => s + (Number(w.total) || 0), 0);
+      const walletRemaining = walletTotalRemaining(wallet);
+      const walletUsed = walletTotalUsed(wallet);
+      const pendingCount = leaves.filter(l => mine(l) && l.status === 'Pending').length;
+      // Current status from already-loaded approved leave covering today. Weekly
+      // Off / Holiday need a calendar source not loaded here, so we surface the
+      // states we can derive truthfully: On Leave / Half Day / Present.
+      const onLeave = approved.find(l => {
+        const f = String(l.fromDate || '').slice(0, 10), t = String(l.toDate || '').slice(0, 10);
+        return f && t && f <= todayStr && todayStr <= t;
+      });
+      const currentStatus = onLeave ? (Number(onLeave.days) > 0 && Number(onLeave.days) < 1 ? 'Half Day' : 'On Leave') : 'Present';
       return {
         employeeId: e.id,
         employeeCode: e.employeeId || '—',
@@ -114,13 +232,22 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         cl, pl, sl,
         remaining: num(cl + pl + sl),
         taken: num(taken),
+        wallet,
+        totalAllocation: num(totalAllocation),
+        walletUsed: num(walletUsed),
+        walletRemaining,
+        pendingCount,
+        currentStatus,
       };
     });
-  }, [scopedEmployees, balances]);
+  }, [scopedEmployees, balances, leaves, leavePolicy]);
 
   /* ─── action modal state ─────────────────────────────────────────────── */
   type ActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit';
   const [action, setAction] = useState<{ kind: ActionKind; row: any } | null>(null);
+  // Read-only per-employee Leave Wallet breakdown (opened from the table — keeps
+  // the individual leave types OUT of the main table).
+  const [walletDetail, setWalletDetail] = useState<any | null>(null);
   const [form, setForm] = useState<any>({});
   const [manageOpen, setManageOpen] = useState(false);
   const manageRef = useRef<HTMLDivElement>(null);
@@ -250,8 +377,11 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     { header: 'Employee', key: 'employeeName', width: 24 },
     { header: 'Branch', key: 'branch', width: 16 },
     { header: 'Department', key: 'department', width: 18 },
-    { header: 'CL', key: 'cl', width: 8 }, { header: 'PL', key: 'pl', width: 8 }, { header: 'SL', key: 'sl', width: 8 },
-    { header: 'Taken', key: 'taken', width: 10 }, { header: 'Remaining', key: 'remaining', width: 12 },
+    { header: 'Total Allocation', key: 'totalAllocation', width: 16 },
+    { header: 'Leave Used', key: 'walletUsed', width: 12 },
+    { header: 'Leave Remaining', key: 'walletRemaining', width: 16 },
+    { header: 'Pending Requests', key: 'pendingCount', width: 16 },
+    { header: 'Current Status', key: 'currentStatus', width: 14 },
   ];
   const HISTORY_COLS: ExportColumn[] = [
     { header: 'Employee', key: 'employeeName', width: 24 },
@@ -263,13 +393,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     { header: 'Status', key: 'status', width: 12 },
   ];
 
-  /* ─── render helpers ─────────────────────────────────────────────────── */
-  const ActionBtn = ({ onClick, title, children, danger }: any) => (
-    <button onClick={onClick} title={title}
-      className={`p-1.5 rounded-md border border-slate-200 bg-white shadow-sm transition-colors ${danger ? 'text-rose-400 hover:text-rose-600' : 'text-slate-400 hover:text-brand-600'}`}>
-      {children}
-    </button>
-  );
 
   return (
     <div className="space-y-4">
@@ -356,21 +479,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               </Card>
             </div>
 
-            {/* Leave Balances Overview */}
-            <Card>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Wallet size={15} className="text-brand-500" /> Leave Balances Overview</h3>
-                <button onClick={() => setTab('administration')} className="text-[11px] font-bold text-brand-600 hover:underline flex items-center gap-1">Open Administration <ArrowRight size={12} /></button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-center">
-                <div className="rounded-xl bg-brand-50 border border-brand-100 p-3"><p className="text-lg font-bold text-brand-700">{dash.totalCL}</p><p className="text-[10px] font-semibold text-brand-600/80">CL Available</p></div>
-                <div className="rounded-xl bg-brand-50 border border-brand-100 p-3"><p className="text-lg font-bold text-brand-700">{dash.totalPL}</p><p className="text-[10px] font-semibold text-brand-600/80">PL Available</p></div>
-                <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-lg font-bold text-amber-700">{dash.totalSL}</p><p className="text-[10px] font-semibold text-amber-600/80">SL Available</p></div>
-                <div className="rounded-xl bg-rose-50 border border-rose-100 p-3"><p className="text-lg font-bold text-rose-700">{dash.totalTaken}</p><p className="text-[10px] font-semibold text-rose-600/80">Days Taken</p></div>
-                <div className="rounded-xl bg-amber-50 border border-amber-100 p-3"><p className="text-lg font-bold text-amber-700 flex items-center justify-center gap-1">{dash.lowBalance > 0 && <AlertCircle size={14} className="text-amber-600" />}{dash.lowBalance}</p><p className="text-[10px] font-semibold text-amber-600/80">Low Balance (≤2)</p></div>
-              </div>
-            </Card>
-
             {/* Quick Actions */}
             <Card>
               <h3 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h3>
@@ -428,32 +536,52 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               <Thead>
                 <Tr>
                   <Th>Emp Code</Th><Th>Employee</Th><Th>Branch</Th><Th>Department</Th>
-                  <Th>CL</Th><Th>PL</Th><Th>SL</Th><Th>Taken</Th><Th>Remaining</Th><Th>Actions</Th>
+                  <Th>Total Allocation</Th><Th>Leave Used</Th><Th>Leave Remaining</Th>
+                  <Th>Pending</Th><Th>Status</Th><Th className="w-28 text-right">Actions</Th>
                 </Tr>
               </Thead>
               <Tbody>
                 {adminRows.length === 0 && <Tr><Td colSpan={10}><span className="text-slate-400 text-xs">No employees in this workspace.</span></Td></Tr>}
-                {adminRows.map(r => (
-                  <Tr key={r.employeeId}>
-                    <Td><span className="font-mono text-[11px] text-brand-700">{r.employeeCode}</span></Td>
-                    <Td><span className="font-semibold text-slate-800">{r.employeeName}</span></Td>
-                    <Td>{r.branch}</Td><Td>{r.department}</Td>
-                    <Td><Badge variant="blue">{r.cl}</Badge></Td>
-                    <Td><Badge variant="purple">{r.pl}</Badge></Td>
-                    <Td><Badge variant="amber">{r.sl}</Badge></Td>
-                    <Td><span className="font-semibold text-rose-600">{r.taken}</span></Td>
-                    <Td><span className="font-bold text-emerald-600">{r.remaining}</span></Td>
-                    <Td>
-                      <div className="flex items-center gap-1.5">
-                        {canEdit && <ActionBtn onClick={() => openAction('grant', r)} title="Grant Leave"><CalendarPlus size={13} /></ActionBtn>}
-                        {canEdit && <ActionBtn onClick={() => openAction('deduct', r)} title="Deduct Leave"><CalendarMinus size={13} /></ActionBtn>}
-                        {canEdit && <ActionBtn onClick={() => openAction('transfer', r)} title="Transfer Leave"><ArrowLeftRight size={13} /></ActionBtn>}
-                        {canEdit && <ActionBtn onClick={() => openAction('edit', r)} title="Edit Balances"><Settings2 size={13} /></ActionBtn>}
-                        {canEdit && <ActionBtn onClick={() => openAction('reset', r)} title="Reset Yearly"><RotateCcw size={13} /></ActionBtn>}
-                      </div>
-                    </Td>
-                  </Tr>
-                ))}
+                {adminRows.map(r => {
+                  // Remaining entitlement health: green >50%, yellow 20–50%, red <20%.
+                  const pct = r.totalAllocation > 0 ? (r.walletRemaining / r.totalAllocation) * 100 : 0;
+                  const remTone = pct >= 50 ? 'text-emerald-600' : pct >= 20 ? 'text-amber-600' : 'text-rose-600';
+                  const statusTone: Record<string, string> = {
+                    Present: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                    'On Leave': 'bg-amber-50 text-amber-700 border-amber-200',
+                    'Half Day': 'bg-sky-50 text-sky-700 border-sky-200',
+                    'Weekly Off': 'bg-slate-100 text-slate-500 border-slate-200',
+                    Holiday: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+                  };
+                  return (
+                    <Tr key={r.employeeId}>
+                      <Td><span className="font-mono text-[11px] text-brand-700">{r.employeeCode}</span></Td>
+                      <Td>
+                        {/* Clicking the name opens the full per-type Leave Wallet
+                            breakdown (kept out of the main table). */}
+                        <button onClick={() => setWalletDetail(r)}
+                          className="font-semibold text-slate-800 hover:text-brand-600 hover:underline text-left">
+                          {r.employeeName}
+                        </button>
+                      </Td>
+                      <Td>{r.branch}</Td><Td>{r.department}</Td>
+                      <Td><span className="font-semibold text-slate-700">{r.totalAllocation} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
+                      <Td><span className="font-semibold text-rose-600">{r.walletUsed} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
+                      <Td><span className={`font-bold ${remTone}`}>{r.walletRemaining} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
+                      <Td>
+                        {r.pendingCount > 0
+                          ? <Badge variant="amber">{r.pendingCount}</Badge>
+                          : <span className="text-slate-300">—</span>}
+                      </Td>
+                      <Td>
+                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusTone[r.currentStatus] || statusTone.Present}`}>{r.currentStatus}</span>
+                      </Td>
+                      <Td className="text-right">
+                        <RowActionsMenu row={r} canEdit={canEdit} onAction={openAction} />
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </Tbody>
             </Table>
           </div>
@@ -467,24 +595,42 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
             <h3 className="text-sm font-bold text-slate-800">Employee Leave Wallets</h3>
             <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={loadBalances}>Refresh</Button>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {adminRows.map(r => (
-              <div key={r.employeeId} className="rounded-xl border border-slate-200 p-3.5 bg-gradient-to-br from-white to-slate-50">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="font-bold text-slate-800 text-sm">{r.employeeName}</p>
-                    <p className="text-[10px] font-mono text-slate-400">{r.employeeCode} · {r.branch}</p>
+          {/* Employee Leave Wallets — rendered 100% dynamically from the company
+              Leave Policy: ONE card per configured leave type, in Settings order,
+              showing Remaining / Total. Add / rename / remove a type in Settings
+              and every wallet reflects it live. No hardcoded CL / PL / SL. */}
+          {!hasLeavePolicy ? (
+            <p className="text-sm font-semibold text-slate-500 py-6 text-center">No leave policy configured.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {adminRows.map(r => (
+                <div key={r.employeeId} className="rounded-xl border border-slate-200 p-3.5 bg-gradient-to-br from-white to-slate-50">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{r.employeeName}</p>
+                      <p className="text-[10px] font-mono text-slate-400">{r.employeeCode} · {r.branch} · {r.department}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600 whitespace-nowrap">{r.walletRemaining} left</span>
                   </div>
-                  <span className="text-[10px] font-bold text-emerald-600">{r.remaining} left</span>
+                  {/* Compact, equal-size badge grid: 2 / 3 / 4 boxes per row on
+                      mobile / tablet / desktop. Uniform padding, radius & font so
+                      every box is identical regardless of how many leave types
+                      the policy contains. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                    {r.wallet.map((w, i) => {
+                      const c = walletPalette(w.key, i);
+                      return (
+                        <div key={w.key} className={`rounded-md border px-1.5 py-1 text-center ${c.bg}`}>
+                          <p className={`text-[9px] font-semibold leading-tight truncate ${c.label}`} title={w.label}>{w.label}</p>
+                          <p className={`text-[11px] font-bold leading-tight mt-0.5 ${c.value}`}>{w.key === 'lop' ? `${w.used}` : `${w.remaining} / ${w.total}`}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-brand-50 py-1.5"><p className="text-[9px] font-bold text-brand-400 uppercase">CL</p><p className="font-extrabold text-brand-700">{r.cl}</p></div>
-                  <div className="rounded-lg bg-brand-50 py-1.5"><p className="text-[9px] font-bold text-brand-400 uppercase">PL</p><p className="font-extrabold text-brand-700">{r.pl}</p></div>
-                  <div className="rounded-lg bg-amber-50 py-1.5"><p className="text-[9px] font-bold text-amber-400 uppercase">SL</p><p className="font-extrabold text-amber-700">{r.sl}</p></div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -599,6 +745,33 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
           </Card>
         </div>
       )}
+
+      {/* ─── Leave Wallet detail (per-type breakdown, read-only) ─── */}
+      <Modal open={!!walletDetail} onClose={() => setWalletDetail(null)}
+        title={walletDetail ? `Leave Wallet — ${walletDetail.employeeName}` : 'Leave Wallet'}
+        footer={<Button variant="outline" onClick={() => setWalletDetail(null)}>Close</Button>}>
+        {walletDetail && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-150 pb-2 text-xs">
+              <span className="font-semibold text-slate-500">{walletDetail.employeeCode} · {walletDetail.branch} · {walletDetail.department}</span>
+              <span className="font-bold text-emerald-600">{walletDetail.walletRemaining} of {walletDetail.totalAllocation} days left</span>
+            </div>
+            {/* One colored badge per configured leave type — fully dynamic. */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {walletDetail.wallet.map((w: any, i: number) => {
+                const c = walletPalette(w.key, i);
+                return (
+                  <div key={w.key} className={`rounded-lg border px-2.5 py-2 text-center ${c.bg}`}>
+                    <p className={`text-[10px] font-semibold truncate ${c.label}`} title={w.label}>{w.label}</p>
+                    <p className={`text-sm font-bold mt-0.5 ${c.value}`}>{w.key === 'lop' ? `${w.used}` : `${w.remaining} / ${w.total}`}</p>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400">Balances come live from the company Leave Policy. Allocation &amp; Remaining exclude LOP.</p>
+          </div>
+        )}
+      </Modal>
 
       {/* ─── Action Modal ─── */}
       <Modal open={!!action} onClose={closeAction}

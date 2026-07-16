@@ -884,6 +884,16 @@ model Payroll {
   halfDays         Float     @default(0)
   otHours          Float     @default(0)
   payableDays      Float     @default(0)
+  // Full attendance snapshot mirrored from the AttendanceSummary at sync time, so
+  // the payslip / salary register / reports can show the exact synced figures
+  // (working/weekly-off/holiday) WITHOUT re-deriving attendance in payroll.
+  workingDays      Float     @default(0)
+  weeklyOffDays    Float     @default(0)
+  holidayDays      Float     @default(0)
+  // Set when attendance was written to payroll via Attendance Synchronization.
+  // Null → this month has NOT been synchronized (salary actions stay blocked).
+  attendanceSyncedAt DateTime?
+  attendanceSource String?
   isOutdated       Boolean   @default(false)
   summarySyncedAt  DateTime?
   processedOn      String?
@@ -902,6 +912,11 @@ model Payroll {
   // separately so the payslip can show a Loan EMI line without polluting the
   // "Other deductions" bucket). Written by the loan→payroll settle hook.
   loanDeduction    Float?    @default(0)
+  // Version of the Attendance & Salary Deduction Policy this row was computed
+  // under (DeductionPolicy.version). Null = pre-policy / legacy record. Existing
+  // records keep their version until the user explicitly recalculates, so a
+  // payslip always reflects the rules it was generated with.
+  policyVersion    Int?
   notes            String?
   companyPayrollId String?
   branchPayrollId  String?
@@ -1109,6 +1124,16 @@ model AttendanceSummary {
   otHours     Float    @default(0)
   shift       String?
   payableDays Float    @default(0)
+  // Attendance snapshot fields — the single source of truth the Payroll engine
+  // reads. workingDays = daysInMonth − weeklyOff − holiday (payroll's proration
+  // denominator). weeklyOff/holiday are kept explicit so the Salary Worksheet and
+  // Salary Slip can show them and match the Attendance Synchronization page exactly.
+  workingDays      Float   @default(0)
+  weeklyOffDays    Float   @default(0)
+  holidayDays      Float   @default(0)
+  attendanceStatus String? // Complete | Partial | Missing (recorded days vs working days)
+  attendanceSource String? // e.g. Biometric / Manual / System Computed
+  syncedAt         DateTime? // set on "Confirm & Write to Payroll"
   locked      Boolean  @default(false)
   updatedBy   String?
   createdAt   DateTime @default(now())
@@ -2344,6 +2369,22 @@ model CardTemplate {
   @@map("card_templates")
 }
 
+// Which Employee ID-card template a company has made ACTIVE. Additive & isolated
+// (relation-less, one row per company) so it can point at EITHER a built-in
+// template (frontend id, e.g. "glassmorphism") OR a saved custom template
+// ("db:<n>") — the card_templates.isDefault flag can only mark custom rows, so
+// this table is the single source of truth for the company's active card design.
+model CardActiveTemplate {
+  id         Int      @id @default(autoincrement())
+  companyId  Int      @unique
+  templateId String   // built-in id (e.g. "glassmorphism") or "db:<n>" for a custom template
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("card_active_templates")
+}
+
 // Visual drag-and-drop Invoice Designer — per-company named canvas layouts.
 // Additive & isolated: the classic flow templates (invoice_settings.designJson)
 // are untouched; an invoice only renders a canvas layout when one is set active.
@@ -2462,6 +2503,32 @@ model ComplianceFilingAudit {
   @@index([companyId])
   @@index([filingId])
   @@map("compliance_filing_audits")
+}
+
+// Attendance & Salary Deduction Policy — the MASTER calculation config that
+// drives every attendance→salary computation (LOP basis, weekly-off/holiday
+// pay, absent / half-day / LWP deduction, sandwich policy, OT multiplier).
+// Isolated table (plain companyId/branchId Int, no relation) following the
+// compliance_* pattern. Every save INSERTS a new row = a new immutable version;
+// the highest `version` for a (companyId, branchId) scope is the effective
+// policy. branchId = null → company-wide policy; a non-null branchId row is a
+// branch-level override that wins for that branch when present. Payroll rows
+// stamp the version they were computed under (Payroll.policyVersion), so old
+// payslips keep their rules until an explicit recalculation.
+model DeductionPolicy {
+  id        Int      @id @default(autoincrement())
+  companyId Int // parent company id (branch ids are resolved to the parent)
+  branchId  Int? // null = company-wide; set = branch-level override
+  version   Int      @default(1)
+  enabled   Boolean  @default(true)
+  config    Json // the full policy object (see POLICY_DEFAULTS in deductionPolicyService)
+  reason    String?  @db.Text
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+  @@index([companyId, branchId])
+  @@map("deduction_policy")
 }
 
 // Finance & Compliance → Documents. An isolated statutory-document repository

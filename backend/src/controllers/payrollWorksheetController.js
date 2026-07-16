@@ -13,6 +13,9 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { LEGACY_DEDUCTION_COLUMNS, listDeductionComponents, labelFor } = require('../services/deductionCatalog');
+const attendanceSvc = require('../services/attendanceSummaryService');
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
 
@@ -110,8 +113,32 @@ async function loadContext(req) {
   const employee = await prisma.employee.findUnique({ where: { id: payroll.employeeId } });
   if (employee && !inScope(req, employee)) return { error: { code: 403, msg: 'You do not have access to this employee.' } };
   const company = await prisma.company.findUnique({ where: { id: payroll.companyId } }).catch(() => null);
-  const summary = await prisma.attendanceSummary.findFirst({ where: { employeeId: payroll.employeeId, month: payroll.month, year: payroll.year } }).catch(() => null);
-  return { payrollId, payroll, employee, company, summary };
+
+  // ── Verified attendance for THIS company · employee · month (isolation) ──
+  // The stored monthly AttendanceSummary is the Attendance module's aggregate.
+  // We NEVER fall back to the cached payroll.* snapshot: attendance shown here
+  // must reflect the Attendance module. Company scope keeps tenants isolated.
+  const summary = await prisma.attendanceSummary.findFirst({
+    where: { employeeId: payroll.employeeId, companyId: payroll.companyId, month: payroll.month, year: payroll.year },
+  }).catch(() => null);
+
+  // Whether raw daily attendance exists in the Attendance module for this month.
+  // If a summary was never built but daily rows exist, derive it live so the
+  // worksheet still reflects the module (self-heals a missing summary row).
+  const mi = MONTH_NAMES.indexOf(payroll.month);
+  let attendanceCount = 0, computed = null;
+  if (mi >= 0) {
+    const pad = (x) => String(x).padStart(2, '0');
+    const last = new Date(payroll.year, mi + 1, 0).getDate();
+    const gte = `${payroll.year}-${pad(mi + 1)}-01`;
+    const lte = `${payroll.year}-${pad(mi + 1)}-${pad(last)}`;
+    attendanceCount = await prisma.attendance.count({ where: { employeeId: payroll.employeeId, date: { gte, lte } } }).catch(() => 0);
+    if (!summary && attendanceCount > 0) {
+      computed = await attendanceSvc.compute(payroll.employeeId, payroll.month, payroll.year).catch(() => null);
+    }
+  }
+  const hasAttendance = !!summary || attendanceCount > 0;
+  return { payrollId, payroll, employee, company, summary, computed, hasAttendance };
 }
 
 /**
@@ -185,21 +212,39 @@ function deriveDefault(payroll, company) {
 exports._deriveDefault = deriveDefault;
 exports._computeTotals = computeTotals;
 
-function attendanceBlock(payroll, summary) {
+function attendanceBlock(payroll, summary, computed, hasAttendance) {
   // Days-in-month for the payroll period.
-  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const mi = MONTHS.indexOf(payroll.month);
+  const mi = MONTH_NAMES.indexOf(payroll.month);
   const monthDays = mi >= 0 ? new Date(payroll.year, mi + 1, 0).getDate() : 30;
-  const present = num(summary?.presentDays ?? payroll.presentDays);
-  const cl = num(summary?.cl ?? payroll.clDays);
-  const sl = num(summary?.sl ?? payroll.slDays);
-  const pl = num(summary?.pl ?? payroll.plDays);
-  const half = num(summary?.halfDays ?? payroll.halfDays);
-  const lop = num(summary?.lwp ?? payroll.lwpDays);
-  const ot = num(summary?.otHours ?? payroll.otHours);
-  const payable = num(summary?.payableDays ?? payroll.payableDays);
-  const absent = num(summary?.absentDays ?? Math.max(0, monthDays - present - cl - sl - pl - half - lop));
-  return { monthDays, weeklyOff: null, holidays: null, workingDays: payable || monthDays, present, absent, cl, sl, pl, halfDays: half, lop, otHours: ot, payableDays: payable, locked: !!summary?.locked };
+  // Source = verified Attendance module ONLY: the stored summary if present,
+  // otherwise the live-derived figures. Never the cached payroll.* snapshot.
+  const src = summary || computed || {};
+  const present = num(src.presentDays);
+  const cl = num(src.cl);
+  const sl = num(src.sl);
+  const pl = num(src.pl);
+  const half = num(src.halfDays);
+  const lop = num(src.lwp);
+  const ot = num(src.otHours);
+  const payable = num(src.payableDays);
+  const weeklyOff = num(src.weeklyOffDays);
+  const holidays = num(src.holidayDays);
+  // Working days = the payroll proration basis. Prefer the stored snapshot; else
+  // derive days − weekly-off − holiday so the card matches Attendance Sync exactly.
+  const workingDays = num(src.workingDays) || Math.max(0, monthDays - weeklyOff - holidays);
+  const absent = num(src.absentDays != null ? src.absentDays : Math.max(0, monthDays - present - cl - sl - pl - half - lop));
+  const synced = !!(summary && summary.syncedAt);
+  return {
+    hasAttendance: !!hasAttendance,
+    monthDays, weeklyOff, holidays, workingDays,
+    present, absent, cl, sl, pl, halfDays: half, lop, otHours: ot, payableDays: payable,
+    // Daily rate the payroll engine used: monthlyGross / workingDays.
+    attendanceStatus: synced ? 'Synchronized' : (src.attendanceStatus || (hasAttendance ? 'Verified' : 'Not Loaded')),
+    attendanceSource: src.attendanceSource || (hasAttendance ? 'Attendance module' : null),
+    synced,
+    syncedAt: summary?.syncedAt || null,
+    locked: !!(summary && summary.locked),
+  };
 }
 
 function employeeBlock(payroll, employee) {
@@ -220,7 +265,7 @@ exports.get = async (req, res) => {
   try {
     const ctx = await loadContext(req);
     if (ctx.error) return res.status(ctx.error.code).json({ error: ctx.error.msg });
-    const { payroll, employee, company, summary } = ctx;
+    const { payroll, employee, company, summary, computed, hasAttendance } = ctx;
 
     // Active deduction components for this company: built-ins + Component Builder.
     const components = await listDeductionComponents(prisma, payroll.companyId);
@@ -261,7 +306,7 @@ exports.get = async (req, res) => {
     res.json({
       payrollId: payroll.id,
       employee: employeeBlock(payroll, employee),
-      attendance: attendanceBlock(payroll, summary),
+      attendance: attendanceBlock(payroll, summary, computed, hasAttendance),
       worksheet,
       deductions,
       deductionComponents: components,
@@ -271,6 +316,14 @@ exports.get = async (req, res) => {
         isOutdated: !!payroll.isOutdated,
         locked,
         editable: !locked || isSuperAdmin(req),
+        // Verified attendance exists for this company·employee·month. When false
+        // the client blocks salary generation/approval/save/print/PDF.
+        hasAttendance,
+        // Whether this payroll month was written via Attendance Synchronization
+        // (syncedAt stamped). The client uses this to block Approve / Generate
+        // Slip / Print / Download until the month has been synchronized.
+        synced: !!(summary && summary.syncedAt),
+        syncedAt: summary?.syncedAt || null,
       },
     });
   } catch (e) { console.error('worksheet.get', e); res.status(500).json({ error: e.message || 'Server error' }); }

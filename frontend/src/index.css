@@ -16,17 +16,17 @@
    per-utility override table this file used to carry.
    ══════════════════════════════════════════════════════════════════════════ */
 @theme {
-  /* Brand — ZeniaHR purple */
-  --color-brand-50:  #F3F0FF;
-  --color-brand-100: #E6E0FE;
-  --color-brand-200: #CFC2FD;
-  --color-brand-300: #B29BFA;
-  --color-brand-400: #8F6BF5;
-  --color-brand-500: #6C3CF0;
-  --color-brand-600: #5B2DE6;
-  --color-brand-700: #4C1FD4;
-  --color-brand-800: #3D19AA;
-  --color-brand-900: #2F1480;
+  /* Brand — ZeniaHR copper (Primary #C77E52 · Light #E0996A · Dark #B5673A) */
+  --color-brand-50:  #FCF4EE;
+  --color-brand-100: #F7E3D3;
+  --color-brand-200: #F0CBAE;
+  --color-brand-300: #E8B088;
+  --color-brand-400: #E0996A;
+  --color-brand-500: #C77E52;
+  --color-brand-600: #B5673A;
+  --color-brand-700: #99552F;
+  --color-brand-800: #7C4527;
+  --color-brand-900: #5E351E;
 
   /* Semantic status */
   --color-success: #16A34A;
@@ -52,7 +52,7 @@
   /* Soft, enterprise-grade elevation. */
   --shadow-card:       0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 16px rgba(17, 24, 39, 0.06);
   --shadow-card-hover: 0 2px 4px rgba(17, 24, 39, 0.05), 0 12px 28px rgba(17, 24, 39, 0.10);
-  --shadow-brand:      0 6px 20px rgba(108, 60, 240, 0.28);
+  --shadow-brand:      0 6px 20px rgba(199, 126, 82, 0.28);
 }
 
 /* ── Document print isolation (every template: Offer/Joining/Salary Slip/…) ────
@@ -136,42 +136,84 @@
 
 /* ── Light theme (default) ──────────────────────────────────────────────── */
 :root {
-  --surface-canvas: #F8FAFC;
+  --surface-canvas: #F8FAFC;   /* slate-50 */
   --surface-raised: #FFFFFF;
-  --surface-muted:  #F3F0FF;
-  --surface-border: #E5E7EB;
-  --surface-hover:  rgba(108, 60, 240, 0.06);
+  --surface-muted:  #F1F5F9;   /* slate-100 */
+  --surface-border: #E2E8F0;   /* slate-200 hairline */
+  --surface-hover:  rgba(199, 126, 82, 0.07);  /* soft copper */
 
-  --ink-primary:   #111827;
-  --ink-secondary: #6B7280;
-  --ink-muted:     #9CA3AF;
+  --ink-primary:   #0F172A;   /* slate-900 headings */
+  --ink-secondary: #475569;   /* slate-600 body */
+  --ink-muted:     #64748B;   /* slate-500 muted */
 
-  --primary-glow: rgba(108, 60, 240, 0.15);
+  --primary-glow: rgba(199, 126, 82, 0.15);
   --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(229, 231, 235, 0.9);
+  --glass-border: rgba(226, 232, 240, 0.9);
 }
 
 /* ── Dark theme ─────────────────────────────────────────────────────────────
-   Deliberately never pure black (#000). The canvas is a desaturated slate and
-   raised surfaces sit a step lighter, which keeps elevation legible. */
+   Premium enterprise dark theme (Microsoft 365 / GitHub / Linear / Notion feel).
+   Never pure black. A monotonic elevation ramp — canvas (darkest) → secondary →
+   card → modal (lightest) — keeps surfaces legible without heavy borders, and the
+   ink ramp hits WCAG AA on every surface. Everything downstream (utilities, tiles,
+   buttons, tabs, badges) resolves through these vars, so redefining them here — and
+   only here — reskins the whole app while the light theme stays pixel-perfect. */
 :root:not([data-theme="light"]) {
-  --surface-canvas: #0F1115;
-  --surface-raised: #16181D;
-  --surface-muted:  #1F2129;
-  --surface-border: #2A2D36;
-  --surface-hover:  rgba(143, 107, 245, 0.12);
+  --surface-canvas: #0F1117;   /* app background */
+  --surface-raised: #1D2230;   /* cards, inputs, sidebar, navbar */
+  --surface-muted:  #171A23;   /* secondary / recessed surfaces, table headers */
+  --surface-modal:  #202637;   /* modal & popover panels (one step above cards) */
+  --surface-border: #2B3245;   /* default hairline */
+  --surface-hover:  rgba(224, 153, 106, 0.14);
+  --surface-active: rgba(224, 153, 106, 0.20);
 
-  --ink-primary:   #E9EAEE;
-  --ink-secondary: #A1A5B0;
-  --ink-muted:     #7A7F8C;
+  --ink-primary:     #F8FAFC;
+  --ink-secondary:   #CBD5E1;
+  --ink-muted:       #94A3B8;
+  --ink-placeholder: #64748B;
 
-  --primary-glow: rgba(143, 107, 245, 0.18);
-  --glass-bg: rgba(22, 24, 29, 0.72);
-  --glass-border: rgba(42, 45, 54, 0.9);
+  /* Dark-brightened brand accents. The @theme brand-* tokens are shared with the
+     light theme and must NOT change; these are dark-only interactive accents. */
+  --accent:        #E0996A;   /* hover / focus ring (light copper) */
+  --accent-strong: #C77E52;   /* primary (copper) */
+  --accent-soft:   #EDBB92;   /* light copper text on dark */
+
+  --primary-glow: rgba(224, 153, 106, 0.28);
+  --glass-bg: rgba(23, 26, 35, 0.72);
+  --glass-border: rgba(43, 50, 69, 0.9);
+
+  /* Subtle, non-crushing elevation for the shared card-shadow tokens. */
+  --shadow-card:       0 1px 2px rgba(0, 0, 0, 0.30), 0 4px 16px rgba(0, 0, 0, 0.40);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.35), 0 12px 28px rgba(0, 0, 0, 0.50);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Dark-sidebar nav scrollbar — thin, unobtrusive, copper-tinted thumb. */
+.sidebar-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.14) transparent; }
+.sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.14); border-radius: 999px; }
+.sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(224,153,106,0.5); }
+
+/* Dashboard-only premium warm background (light theme). Applied to the app's
+   fixed full-viewport background layer (App.tsx) when currentPage === 'dashboard'
+   — so it sits FULL-BLEED behind the transparent <main>, and cards float above
+   it. Dark theme keeps the standard canvas, leaving the premium dark dashboard
+   untouched. Presentation-only; no layout/card/spacing changes. */
+.app-bg-dashboard {
+  background-color: #FAF8F5;
+  background-image:
+    radial-gradient(1200px 820px at 100% -6%, rgba(184,116,60,0.06), transparent 55%),
+    radial-gradient(1000px 760px at -8% 106%, rgba(30,42,68,0.035), transparent 55%),
+    radial-gradient(680px 560px at 12% 16%, rgba(239,231,222,0.55), transparent 60%),
+    radial-gradient(760px 620px at 88% 78%, rgba(245,241,235,0.60), transparent 60%),
+    radial-gradient(560px 480px at 60% 42%, rgba(184,116,60,0.03), transparent 65%);
+}
+:root:not([data-theme="light"]) .app-bg-dashboard {
+  background-color: var(--surface-canvas);
+  background-image: none;
 }
 
 html {
@@ -257,11 +299,11 @@ h6 {
 
 /* Premium Gradient Utilities */
 .bg-saas-gradient {
-  background: linear-gradient(135deg, #4C1FD4 0%, #6C3CF0 55%, #8F6BF5 100%);
+  background: linear-gradient(135deg, #99552F 0%, #C77E52 55%, #E0996A 100%);
 }
 
 .text-saas-gradient {
-  background: linear-gradient(135deg, #4C1FD4 0%, #6C3CF0 55%, #8F6BF5 100%);
+  background: linear-gradient(135deg, #99552F 0%, #C77E52 55%, #E0996A 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -457,11 +499,11 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 
 :root:not([data-theme="light"]) .border-\[\#E5E7EB\],
 :root:not([data-theme="light"]) .border-\[\#D1D5DB\],
-:root:not([data-theme="light"]) .border-\[\#E6E0FE\] { border-color: var(--surface-border) !important; }
+:root:not([data-theme="light"]) .border-\[\#F7E3D3\] { border-color: var(--surface-border) !important; }
 
 /* Brand tints stay purple, but darken so foreground text keeps its contrast. */
-:root:not([data-theme="light"]) .bg-\[\#F3F0FF\] { background-color: rgba(108, 60, 240, 0.16) !important; }
-:root:not([data-theme="light"]) .text-\[\#6C3CF0\] { color: var(--color-brand-300) !important; }
+:root:not([data-theme="light"]) .bg-\[\#FCF4EE\] { background-color: rgba(199, 126, 82, 0.16) !important; }
+:root:not([data-theme="light"]) .text-\[\#C77E52\] { color: var(--color-brand-300) !important; }
 
 /* ── Info tiles ─────────────────────────────────────────────────────────────
    Soft, branded summary widgets (see components/ui/InfoCard.tsx). Each tone is
@@ -477,7 +519,7 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 .info-tile:hover {
   background: var(--tile-bg-hover);
   transform: translateY(-2px);
-  box-shadow: 0 10px 25px rgba(108, 60, 240, 0.10);
+  box-shadow: 0 10px 25px rgba(199, 126, 82, 0.10);
 }
 
 .info-tile .tile-title { color: var(--tile-title); font-weight: 600; }
@@ -485,7 +527,7 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 .info-tile .tile-value { color: var(--tile-value); font-weight: 700; }
 .info-tile .tile-empty { color: var(--ink-muted); font-weight: 500; }
 
-.tile-purple { --tile-bg: #F5F1FF; --tile-bg-hover: #EFE7FF; --tile-border: #E4D8FF; --tile-icon: #6C3CF0; --tile-title: #6C3CF0; }
+.tile-purple { --tile-bg: #FCF4EE; --tile-bg-hover: #F7E3D3; --tile-border: #F0CBAE; --tile-icon: #C77E52; --tile-title: #C77E52; }
 .tile-blue   { --tile-bg: #EFF6FF; --tile-bg-hover: #E0EDFF; --tile-border: #BFDBFE; --tile-icon: #2563EB; --tile-title: #1D4ED8; }
 .tile-green  { --tile-bg: #ECFDF5; --tile-bg-hover: #DCFCE7; --tile-border: #BBF7D0; --tile-icon: #16A34A; --tile-title: #15803D; }
 .tile-amber  { --tile-bg: #FFFBEB; --tile-bg-hover: #FEF3C7; --tile-border: #FDE68A; --tile-icon: #D97706; --tile-title: #B45309; }
@@ -495,7 +537,7 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 
 /* Dark: keep the hue, drop the luminance, lift the text. */
 :root:not([data-theme="light"]) .info-tile { --tile-value: var(--ink-primary); }
-:root:not([data-theme="light"]) .tile-purple { --tile-bg: rgba(108, 60, 240, 0.12); --tile-bg-hover: rgba(108, 60, 240, 0.20); --tile-border: rgba(143, 107, 245, 0.32); --tile-icon: #B29BFA; --tile-title: #B29BFA; }
+:root:not([data-theme="light"]) .tile-purple { --tile-bg: rgba(199, 126, 82, 0.12); --tile-bg-hover: rgba(199, 126, 82, 0.20); --tile-border: rgba(143, 107, 245, 0.32); --tile-icon: #E8B088; --tile-title: #E8B088; }
 :root:not([data-theme="light"]) .tile-blue   { --tile-bg: rgba(37, 99, 235, 0.12);  --tile-bg-hover: rgba(37, 99, 235, 0.20);  --tile-border: rgba(96, 165, 250, 0.32); --tile-icon: #93C5FD; --tile-title: #93C5FD; }
 :root:not([data-theme="light"]) .tile-green  { --tile-bg: rgba(22, 163, 74, 0.12);  --tile-bg-hover: rgba(22, 163, 74, 0.20);  --tile-border: rgba(74, 222, 128, 0.32); --tile-icon: #86EFAC; --tile-title: #86EFAC; }
 :root:not([data-theme="light"]) .tile-amber  { --tile-bg: rgba(217, 119, 6, 0.12);  --tile-bg-hover: rgba(217, 119, 6, 0.20);  --tile-border: rgba(251, 191, 36, 0.32); --tile-icon: #FCD34D; --tile-title: #FCD34D; }
@@ -531,21 +573,21 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 /* Primary — the only filled button. A lighter 135° gradient rather than a flat
    dark fill, so a page full of actions doesn't read as heavy. */
 .btn-primary {
-  --btn-bg: linear-gradient(135deg, #7C5CFF 0%, #6C3CF0 100%);
-  --btn-bg-hover: linear-gradient(135deg, #6C3CF0 0%, #5B2DE6 100%);
+  --btn-bg: linear-gradient(135deg, #D68F63 0%, #C77E52 100%);
+  --btn-bg-hover: linear-gradient(135deg, #C77E52 0%, #B5673A 100%);
   --btn-fg: #FFFFFF;
   --btn-border: transparent;
-  --btn-shadow: 0 4px 12px rgba(108, 60, 240, 0.18);
-  --btn-shadow-hover: 0 8px 20px rgba(108, 60, 240, 0.25);
+  --btn-shadow: 0 4px 12px rgba(199, 126, 82, 0.18);
+  --btn-shadow-hover: 0 8px 20px rgba(199, 126, 82, 0.25);
 }
 
 /* Secondary — export / download / email. Branded, but not filled. */
 .btn-secondary {
   --btn-bg: #FFFFFF;
-  --btn-bg-hover: #F5F1FF;
-  --btn-fg: #6C3CF0;
-  --btn-border: #D9CCFF;
-  --btn-border-hover: #6C3CF0;
+  --btn-bg-hover: #FCF4EE;
+  --btn-fg: #C77E52;
+  --btn-border: #F0CBAE;
+  --btn-border-hover: #C77E52;
 }
 
 .btn-success { --btn-bg: #ECFDF5; --btn-bg-hover: #DCFCE7; --btn-fg: #15803D; --btn-border: #BBF7D0; --btn-border-hover: #86EFAC; }
@@ -575,8 +617,8 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
    One active/inactive language for every tab in the app.
 
    Active is a LAVENDER surface with primary-purple text, not white-on-purple.
-   Both meet WCAG AA, but #4C1FD4 on #F3F0FF measures ~9:1 against ~5.9:1 for
-   white on #5B2DE6 — and it cannot be silently repainted by the legacy
+   Both meet WCAG AA, but #99552F on #FCF4EE measures ~9:1 against ~5.9:1 for
+   white on #B5673A — and it cannot be silently repainted by the legacy
    `text-white` bridge above, which is what produced the near-black tab labels.
 
    Three shapes, one palette:
@@ -609,7 +651,7 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
   border-color: var(--color-brand-500);
   color: var(--color-brand-700);
   font-weight: 700;
-  box-shadow: 0 1px 2px rgba(108, 60, 240, 0.10);
+  box-shadow: 0 1px 2px rgba(199, 126, 82, 0.10);
 }
 .seg-tab-flat.seg-tab-active,
 .seg-tab-flat.seg-tab-active:hover {
@@ -635,23 +677,23 @@ html[data-theme="light"] .text-white:not([class*="bg-"]):not([class*="from-"]):n
 :root:not([data-theme="light"]) .seg-tab,
 :root:not([data-theme="light"]) .nav-tab { color: var(--ink-muted); }
 :root:not([data-theme="light"]) .seg-tab:hover,
-:root:not([data-theme="light"]) .nav-tab:hover { background: rgba(108, 60, 240, 0.14); color: var(--color-brand-200); }
+:root:not([data-theme="light"]) .nav-tab:hover { background: rgba(199, 126, 82, 0.14); color: var(--color-brand-200); }
 :root:not([data-theme="light"]) .seg-tab-active,
 :root:not([data-theme="light"]) .seg-tab-active:hover {
-  background: rgba(108, 60, 240, 0.22);
+  background: rgba(199, 126, 82, 0.22);
   border-color: var(--color-brand-400);
-  color: #CFC2FD;
+  color: #F0CBAE;
 }
 :root:not([data-theme="light"]) .nav-tab-active,
 :root:not([data-theme="light"]) .nav-tab-active:hover {
   background: transparent;
   border-bottom-color: var(--color-brand-400);
-  color: #CFC2FD;
+  color: #F0CBAE;
 }
 
 /* Dark: hold the hue, drop the luminance, lift the text — as with .info-tile.
    Primary keeps its gradient; the tinted tones become translucent washes. */
-:root:not([data-theme="light"]) .btn-secondary { --btn-bg: transparent; --btn-bg-hover: rgba(108, 60, 240, 0.18); --btn-fg: #B29BFA; --btn-border: rgba(143, 107, 245, 0.42); --btn-border-hover: #8F6BF5; }
+:root:not([data-theme="light"]) .btn-secondary { --btn-bg: transparent; --btn-bg-hover: rgba(199, 126, 82, 0.18); --btn-fg: #E8B088; --btn-border: rgba(143, 107, 245, 0.42); --btn-border-hover: #E0996A; }
 :root:not([data-theme="light"]) .btn-success   { --btn-bg: rgba(22, 163, 74, 0.14);  --btn-bg-hover: rgba(22, 163, 74, 0.24);  --btn-fg: #86EFAC; --btn-border: rgba(74, 222, 128, 0.34); --btn-border-hover: rgba(74, 222, 128, 0.55); }
 :root:not([data-theme="light"]) .btn-warning   { --btn-bg: rgba(217, 119, 6, 0.14);  --btn-bg-hover: rgba(217, 119, 6, 0.24);  --btn-fg: #FCD34D; --btn-border: rgba(251, 191, 36, 0.34); --btn-border-hover: rgba(251, 191, 36, 0.55); }
 :root:not([data-theme="light"]) .btn-danger    { --btn-bg: rgba(220, 38, 38, 0.14);  --btn-bg-hover: rgba(220, 38, 38, 0.24);  --btn-fg: #FCA5A5; --btn-border: rgba(248, 113, 113, 0.34); --btn-border-hover: rgba(248, 113, 113, 0.55); }
@@ -729,7 +771,7 @@ aside .border-t.border-slate-900\/60 {
 
 :root:not([data-theme="light"]) .rounded-full.bg-slate-100,
 :root:not([data-theme="light"]) .rounded-full.bg-slate-200 {
-  background: rgba(108, 60, 240, 0.18) !important;
+  background: rgba(199, 126, 82, 0.18) !important;
   border: 1px solid rgba(143, 107, 245, 0.35) !important;
   color: var(--color-brand-300) !important;
 }
@@ -825,6 +867,129 @@ aside .border-t.border-slate-900\/60 {
 
 :root:not([data-theme="light"]) #a4-sheet-preview {
   border: 1px solid var(--surface-border) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   DARK THEME REFINEMENTS (dark-only — every selector is scoped to
+   `:root:not([data-theme="light"])`, so the light theme is never touched).
+
+   Fixes the areas called out for a premium enterprise dark look: sidebar active
+   state, modal/popover surfaces, status badges & tinted chips, soft shadows,
+   table zebra, dropdowns, and form placeholders. Everything else already flows
+   from the dark token block above.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Form placeholders — muted, not invisible ───────────────────────────── */
+:root:not([data-theme="light"]) input::placeholder,
+:root:not([data-theme="light"]) textarea::placeholder,
+:root:not([data-theme="light"]) .placeholder-slate-500::placeholder,
+:root:not([data-theme="light"]) .placeholder-slate-400::placeholder {
+  color: var(--ink-placeholder) !important;
+  opacity: 1;
+}
+
+/* ── Sidebar — elegant active state, visible icons, no black-on-purple ──────
+   The active item was `bg-brand-500/10 text-brand-600`; brand-600 (#B5673A) is a
+   DARK purple → poor contrast on the dark rail. Retint the active pill and lift
+   its text/icon to a light purple that meets AA, and warm the hover. */
+:root:not([data-theme="light"]) aside .bg-brand-500\/10 {
+  background-color: var(--surface-active) !important;
+  box-shadow: inset 0 0 0 1px rgba(224, 153, 106, 0.30);
+}
+:root:not([data-theme="light"]) aside .text-brand-600,
+:root:not([data-theme="light"]) aside .group:hover .group-hover\:text-brand-600,
+:root:not([data-theme="light"]) aside .text-\[\#C77E52\]\/80 {
+  color: #BCA6FF !important;
+}
+:root:not([data-theme="light"]) aside button:hover .text-ink-muted { color: var(--accent-soft) !important; }
+
+/* ── Modals & popovers — distinct surface, soft (not crushing) shadow ───────
+   The dialog panel is `bg-white rounded-2xl shadow-2xl`; give it the modal
+   surface and a softer elevated shadow. Also theme the header/footer bands. */
+:root:not([data-theme="light"]) .rounded-2xl.shadow-2xl {
+  background-color: var(--surface-modal) !important;
+  border-color: var(--surface-border) !important;
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.60), 0 0 0 1px rgba(43, 50, 69, 0.55) !important;
+}
+:root:not([data-theme="light"]) .bg-slate-50\/50,
+:root:not([data-theme="light"]) .bg-slate-50\/30,
+:root:not([data-theme="light"]) .bg-white\/95,
+:root:not([data-theme="light"]) .bg-white\/90 {
+  background-color: var(--surface-muted) !important;
+}
+
+/* ── Status badges & tinted chips — translucent tint + light readable text ──
+   Badges (and every soft `bg-*-50 / text-*-700 / border-*-200` chip) rendered as
+   bright light pills on the dark page. Retint each family to a dark-native wash
+   with a light foreground so they read as AA and match the palette. */
+:root:not([data-theme="light"]) .bg-emerald-50,
+:root:not([data-theme="light"]) .bg-green-50 { background-color: rgba(34, 197, 94, 0.14) !important; }
+:root:not([data-theme="light"]) .bg-red-50,
+:root:not([data-theme="light"]) .bg-rose-50 { background-color: rgba(239, 68, 68, 0.14) !important; }
+:root:not([data-theme="light"]) .bg-amber-50,
+:root:not([data-theme="light"]) .bg-yellow-50 { background-color: rgba(245, 158, 11, 0.14) !important; }
+:root:not([data-theme="light"]) .bg-blue-50,
+:root:not([data-theme="light"]) .bg-sky-50 { background-color: rgba(59, 130, 246, 0.14) !important; }
+:root:not([data-theme="light"]) .bg-orange-50 { background-color: rgba(249, 115, 22, 0.14) !important; }
+
+:root:not([data-theme="light"]) .text-emerald-700, :root:not([data-theme="light"]) .text-emerald-800,
+:root:not([data-theme="light"]) .text-green-700,   :root:not([data-theme="light"]) .text-green-800 { color: #6EE7A0 !important; }
+:root:not([data-theme="light"]) .text-red-700, :root:not([data-theme="light"]) .text-red-800,
+:root:not([data-theme="light"]) .text-rose-700, :root:not([data-theme="light"]) .text-rose-800 { color: #FCA5A5 !important; }
+:root:not([data-theme="light"]) .text-amber-700, :root:not([data-theme="light"]) .text-amber-800,
+:root:not([data-theme="light"]) .text-yellow-700, :root:not([data-theme="light"]) .text-yellow-800 { color: #FCD34D !important; }
+:root:not([data-theme="light"]) .text-blue-700, :root:not([data-theme="light"]) .text-blue-800,
+:root:not([data-theme="light"]) .text-sky-700 { color: #93C5FD !important; }
+:root:not([data-theme="light"]) .text-orange-700, :root:not([data-theme="light"]) .text-orange-800 { color: #FDBA74 !important; }
+
+/* -600 tier too — the most common coloured status text/links. Pure `color`
+   utilities, so lifting them to their light shade only affects readability. */
+:root:not([data-theme="light"]) .text-emerald-600, :root:not([data-theme="light"]) .text-green-600 { color: #5FDD97 !important; }
+:root:not([data-theme="light"]) .text-red-600, :root:not([data-theme="light"]) .text-rose-600 { color: #F98A8A !important; }
+:root:not([data-theme="light"]) .text-amber-600, :root:not([data-theme="light"]) .text-yellow-600 { color: #F5C147 !important; }
+:root:not([data-theme="light"]) .text-blue-600, :root:not([data-theme="light"]) .text-sky-600 { color: #7FB6FB !important; }
+:root:not([data-theme="light"]) .text-orange-600 { color: #FBAE68 !important; }
+:root:not([data-theme="light"]) .text-brand-600 { color: var(--accent-soft) !important; }
+
+:root:not([data-theme="light"]) .border-emerald-200, :root:not([data-theme="light"]) .border-green-200 { border-color: rgba(34, 197, 94, 0.30) !important; }
+:root:not([data-theme="light"]) .border-red-200, :root:not([data-theme="light"]) .border-rose-200 { border-color: rgba(239, 68, 68, 0.30) !important; }
+:root:not([data-theme="light"]) .border-amber-200, :root:not([data-theme="light"]) .border-yellow-200 { border-color: rgba(245, 158, 11, 0.30) !important; }
+:root:not([data-theme="light"]) .border-blue-200, :root:not([data-theme="light"]) .border-sky-200 { border-color: rgba(59, 130, 246, 0.30) !important; }
+:root:not([data-theme="light"]) .border-orange-200 { border-color: rgba(249, 115, 22, 0.30) !important; }
+
+/* Purple / brand chips (Approved, Generated, payslip) — light-purple on wash. */
+:root:not([data-theme="light"]) .bg-brand-50 { background-color: rgba(224, 153, 106, 0.16) !important; }
+:root:not([data-theme="light"]) .text-brand-700, :root:not([data-theme="light"]) .text-brand-800 { color: var(--accent-soft) !important; }
+:root:not([data-theme="light"]) .border-brand-200 { border-color: rgba(224, 153, 106, 0.34) !important; }
+
+/* The always-white document/report sheet (#a4-sheet-preview) must stay light-paper
+   faithful in BOTH themes — restore standard ink/tints inside it so the dark
+   status-colour remaps above never bleed onto printed templates. ID selector wins
+   on specificity. */
+:root:not([data-theme="light"]) #a4-sheet-preview .text-emerald-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-emerald-600, :root:not([data-theme="light"]) #a4-sheet-preview .text-green-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-green-600 { color: #047857 !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview .text-red-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-red-600, :root:not([data-theme="light"]) #a4-sheet-preview .text-rose-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-rose-600 { color: #B91C1C !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview .text-amber-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-amber-600, :root:not([data-theme="light"]) #a4-sheet-preview .text-yellow-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-yellow-600 { color: #B45309 !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview .text-blue-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-blue-600, :root:not([data-theme="light"]) #a4-sheet-preview .text-sky-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-sky-600 { color: #1D4ED8 !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview .text-orange-700, :root:not([data-theme="light"]) #a4-sheet-preview .text-orange-600 { color: #C2410C !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview [class*="bg-emerald-50"], :root:not([data-theme="light"]) #a4-sheet-preview [class*="bg-green-50"] { background-color: #ECFDF5 !important; }
+:root:not([data-theme="light"]) #a4-sheet-preview [class*="bg-red-50"], :root:not([data-theme="light"]) #a4-sheet-preview [class*="bg-amber-50"], :root:not([data-theme="light"]) #a4-sheet-preview [class*="bg-blue-50"] { background-color: #F8FAFC !important; }
+
+/* ── Soft shadows — visible but never crushing black ───────────────────────── */
+:root:not([data-theme="light"]) .shadow,
+:root:not([data-theme="light"]) .shadow-md { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35) !important; }
+:root:not([data-theme="light"]) .shadow-lg { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important; }
+:root:not([data-theme="light"]) .shadow-xl { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.50) !important; }
+
+/* ── Tables — very subtle zebra + clear hover; headers already themed above ── */
+:root:not([data-theme="light"]) tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.022);
+}
+
+/* ── Interactive hover border → brand accent (cards, inputs, tiles) ───────── */
+:root:not([data-theme="light"]) .hover\:border-brand-300:hover,
+:root:not([data-theme="light"]) .hover\:border-brand-400:hover,
+:root:not([data-theme="light"]) .hover\:border-slate-300:hover {
+  border-color: var(--accent) !important;
 }
 
 /* Respect users who ask for less motion. */

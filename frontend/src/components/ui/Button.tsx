@@ -33,10 +33,10 @@ const variantClasses: Record<ButtonVariant, string> = {
 // rows, toolbars and the payroll workflow strip, where a 40px control would
 // force every row taller.
 const sizeClasses: Record<ButtonSize, string> = {
-  xs: 'h-7  px-2.5 text-[11px] rounded-xl',
-  sm: 'h-8  px-3   text-xs     rounded-xl',
-  md: 'h-10 px-4   text-[13px] rounded-xl',
-  lg: 'h-11 px-5   text-sm     rounded-xl',
+  xs: 'h-7      px-2.5 text-[11px] rounded-xl',
+  sm: 'h-9      px-3.5 text-xs     rounded-xl',
+  md: 'h-[42px] px-[18px] text-[13px] rounded-xl',
+  lg: 'h-12     px-6   text-sm     rounded-xl',
 };
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

@@ -9,6 +9,14 @@ const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
 // is (re)computed, settle its installment ledger, and advance the loan status.
 // Idempotent — safe on repeated recalc (see services/loanPayroll.js).
 const { applyLoanToPayrollRow } = require('../services/loanPayroll');
+// Rebuilds a monthly AttendanceSummary from raw Attendance-module rows. Used so a
+// payroll recalc always reflects current verified attendance (self-heals a
+// missing/stale summary). recompute() preserves locked months.
+const attendanceSummaryService = require('../services/attendanceSummaryService');
+// Attendance & Salary Deduction Policy — the master calc config. recalcOne
+// resolves the effective policy (per company/branch) for the OT multiplier and
+// stamps the version used onto the payroll row.
+const policyService = require('../services/deductionPolicyService');
 
 // ── Payroll money guard (pre-deployment audit fix) ───────────────────────────
 // The create/update endpoints persist a client-supplied `payload` directly. This
@@ -140,52 +148,109 @@ const daysInMonthOf = (month, year) => {
 };
 
 /**
- * Recompute one payroll record from its AttendanceSummary. Payable days drive
- * pay; LWP days are deducted at the per-day rate; OT is paid as an allowance.
- * Persists the attendance figures on the payroll and clears `isOutdated`.
+ * THE SINGLE PAYROLL ENGINE. Recompute one payroll record STRICTLY from its
+ * synchronized AttendanceSummary — attendance is NEVER recalculated here, only
+ * read. This is the only place salary is computed, so the Salary Worksheet,
+ * Salary Slip, register and reports can never disagree.
+ *
+ * Formula (exactly the Attendance-Synchronization contract):
+ *   dailyRate = monthlyGross / workingDays        (workingDays = days − weekly-off − holiday)
+ *   grossPay  = dailyRate × payableDays           (⇒ grossPay = monthlyGross × payable/working)
+ *   Basic/HRA/Special are SPLIT out of grossPay (they sum to it — never added on top).
+ *   Deductions (PF/ESI/PT/…) are applied AFTER grossPay.
+ *   Net = grossPay + OT + Bonus − Deductions.
+ * Rules honoured: payable = working → full salary; payable = 0 → grossPay = 0 →
+ * Basic/HRA/PF/ESI = 0 → Net = 0 (never the full monthly salary).
  */
 async function recalcOne(payroll, summary, emp, company) {
-  const basicSalary = emp?.salary || payroll.basicSalary || 0;
+  // `emp.salary` is the MONTHLY GROSS (the CTC component being prorated).
+  const monthlyGross = emp?.salary || payroll.basicSalary || 0;
   const dim = daysInMonthOf(payroll.month, payroll.year);
-  const perDay = dim > 0 ? basicSalary / dim : 0;
+
+  // Resolve the Attendance & Salary Deduction Policy for this employee's scope.
+  // The attendance→days math already lives in the synced AttendanceSummary (which
+  // honoured the policy); here we only need the OT multiplier and the version to
+  // stamp. Defaults (version 0) reproduce the historical 1.5× OT behaviour.
+  const effectivePolicy = await policyService
+    .resolveEffectivePolicy({ companyId: emp?.companyId ?? payroll.companyId, branchId: emp?.branchId })
+    .catch(() => null);
+  const policyCfg = effectivePolicy ? effectivePolicy.config : policyService.POLICY_DEFAULTS;
+  const policyVersion = effectivePolicy ? effectivePolicy.version : null;
 
   const present = summary?.presentDays || 0;
   const cl = summary?.cl || 0, pl = summary?.pl || 0, sl = summary?.sl || 0;
   const lwp = summary?.lwp || 0, half = summary?.halfDays || 0, ot = summary?.otHours || 0;
-  const payableDays = summary ? summary.payableDays : dim;
+  const weeklyOff = summary?.weeklyOffDays || 0;
+  const holiday = summary?.holidayDays || 0;
 
-  const hra = Math.round(basicSalary * 0.4);
-  const special = Math.round(basicSalary * 0.1);
-  const overtimeRate = company?.overtimeRate || 1.5;
-  const hourlyRate = dim > 0 ? basicSalary / (dim * 8) : 0;
+  // ── Working days = the proration denominator (read from the synced snapshot) ──
+  // Fallback chain only for legacy summaries written before the snapshot columns
+  // existed: derive from weekly-off/holiday, else days-in-month.
+  const workingDays = (summary && summary.workingDays > 0)
+    ? summary.workingDays
+    : Math.max(0, dim - weeklyOff - holiday) || dim;
+  // No summary at all → treat as fully payable (ratio 1) so a manually created
+  // row without attendance is not silently zeroed; the sync gate blocks actions.
+  const payableDays = summary ? (summary.payableDays || 0) : workingDays;
+
+  const dailyRate = workingDays > 0 ? monthlyGross / workingDays : 0;
+  const ratio = workingDays > 0 ? Math.min(1, Math.max(0, payableDays / workingDays)) : 0;
+  const grossPay = Math.round(monthlyGross * ratio); // = dailyRate × payableDays (capped at full)
+
+  // ── Split grossPay into earning components (they SUM to grossPay) ──
+  const basicPercent = company?.basicPercent || 50;
+  const basic = Math.round(grossPay * (basicPercent / 100));
+  const hra = Math.round(basic * 0.4);
+  const special = Math.max(0, grossPay - basic - hra); // remainder ⇒ basic + hra + special === grossPay
+
+  // OT is EXTRA hours actually worked — paid on top, never prorated down. The
+  // multiplier comes from the deduction policy WHEN a policy has been saved
+  // (single source of truth); otherwise we keep the company field so a company
+  // that set a custom OT rate pre-policy is never silently reset to the default.
+  const overtimeRate =
+    (effectivePolicy && effectivePolicy.exists ? Number(policyCfg.overtimeMultiplier) : 0) ||
+    company?.overtimeRate || 1.5;
+  const hourlyRate = workingDays > 0 ? monthlyGross / (workingDays * 8) : 0;
   const otAmount = Math.round(ot * hourlyRate * overtimeRate);
   const allowances = hra + special + otAmount;
 
+  // ── Deductions applied AFTER gross pay ──
   const pfRate = company?.pfRate || 12;
   const esicRate = company?.esicRate || 0.75;
   const profTax = company?.profTaxRate || 200;
-  const statutory = Math.round(basicSalary * (pfRate / 100)) + Math.round(basicSalary * (esicRate / 100)) + profTax;
-  const lwpDeduction = Math.round(perDay * lwp);
-  const deductions = statutory + lwpDeduction;
+  // PF on earned Basic, ESI on gross pay; PT is a flat statutory floor but is
+  // waived when there is nothing to pay (grossPay = 0 ⇒ no PT either).
+  const pf = Math.round(basic * (pfRate / 100));
+  const esi = Math.round(grossPay * (esicRate / 100));
+  const pt = grossPay > 0 ? profTax : 0;
+  const deductions = pf + esi + pt;
 
-  // Bonus = recurring (employee config) + one-time (festival/performance applied
-  // to this month). Folded into net per the new formula:
-  //   Net = Basic + Allowances (incl. OT) + Bonus − Deductions
+  // Bonus = recurring (employee config) + one-time (festival/performance). It is
+  // an explicit entitlement, added to net alongside earnings.
   const { total: bonus } = await bonusForPayroll(prisma, emp || { id: payroll.employeeId }, payroll.month, payroll.year);
-  const netSalary = Math.max(0, (basicSalary + allowances + bonus) - deductions);
+  // grossPay = Basic + HRA + Special. OT is extra and lives in `allowances`.
+  // Net = Basic + Allowances(incl OT) + Bonus − Deductions.
+  const net = Math.max(0, (basic + allowances + bonus) - deductions);
 
   const updated = await prisma.payroll.update({
     where: { id: payroll.id },
     data: {
-      basicSalary, allowances, deductions, netSalary, bonus,
+      basicSalary: basic, allowances, deductions, netSalary: net, bonus,
       overtime: otAmount,
       // Reset the loan portion here; applyLoanToPayrollRow re-adds the current
       // month's EMI on top (keeps the recompute idempotent).
       loanDeduction: 0,
+      // Mirror the full synced attendance snapshot onto the payroll row so the
+      // slip / register / reports show the exact synchronized figures.
       presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
       halfDays: half, otHours: ot, payableDays,
+      workingDays, weeklyOffDays: weeklyOff, holidayDays: holiday,
+      attendanceSyncedAt: summary?.syncedAt || null,
+      attendanceSource: summary?.attendanceSource || null,
+      // Stamp the policy version this row was computed under (null pre-policy).
+      policyVersion,
       isOutdated: false, summarySyncedAt: new Date(),
-      notes: `Recalc: ${payableDays} payable day(s), ${lwp} LWP, ${ot} OT hr(s)${bonus ? `, bonus ₹${bonus}` : ''}.`,
+      notes: `Recalc: ₹${Math.round(dailyRate)}/day × ${payableDays}/${workingDays} payable day(s) (${Math.round(ratio * 100)}%) = gross ₹${grossPay}, ${lwp} LWP, ${ot} OT hr(s)${bonus ? `, bonus ₹${bonus}` : ''}.`,
     },
   });
   // Fold in any active loan EMI + settle the installment ledger (idempotent).
@@ -246,14 +311,54 @@ exports.recalculate = async (req, res) => {
     }
 
     const records = await prisma.payroll.findMany({ where, include: { employee: true, company: true } });
+    const pad = (x) => String(x).padStart(2, '0');
     let recalculated = 0, skippedLocked = 0;
     for (const p of records) {
       if (p.payrollStatus === 'locked' && !canOverrideLock) { skippedLocked++; continue; }
-      const summary = await prisma.attendanceSummary.findUnique({
-        where: { employeeId_month_year: { employeeId: p.employeeId, month: p.month, year: p.year } },
-      });
-      await recalcOne(p, summary, p.employee, p.company);
+      // Rebuild the monthly AttendanceSummary from the raw Attendance module rows
+      // so a recalc reflects current verified attendance even if the summary was
+      // never generated or is stale — BUT only when raw daily rows actually exist
+      // for the month. Recomputing a month with no imported attendance would zero
+      // out an existing (possibly seeded/manual) summary, so we skip that case.
+      const mi = attendanceSummaryService.monthIndex(p.month);
+      const last = new Date(p.year, mi + 1, 0).getDate();
+      const rawCount = await prisma.attendance.count({
+        where: { employeeId: p.employeeId, date: { gte: `${p.year}-${pad(mi + 1)}-01`, lte: `${p.year}-${pad(mi + 1)}-${pad(last)}` } },
+      }).catch(() => 0);
+      let summary = null;
+      if (rawCount > 0) {
+        // recompute() preserves a locked month (returns it unchanged).
+        summary = await attendanceSummaryService.recompute(p.employeeId, p.month, p.year).catch(() => null);
+      }
+      if (!summary) {
+        summary = await prisma.attendanceSummary.findUnique({
+          where: { employeeId_month_year: { employeeId: p.employeeId, month: p.month, year: p.year } },
+        });
+      }
+      // Snapshot the pre-recalc figures for the audit trail.
+      const before = { netSalary: p.netSalary, payableDays: p.payableDays, presentDays: p.presentDays };
+      const updated = await recalcOne(p, summary, p.employee, p.company);
       recalculated++;
+
+      // ── Audit every recalculation: who/when + old→new salary + attendance diff,
+      // scoped to the employee's company/branch. Best-effort — never fails recalc.
+      if (req.user?.id) {
+        await prisma.auditLog.create({
+          data: {
+            userId: req.user.id, action: 'RECALCULATE_PAYROLL', module: 'Payroll', targetId: String(p.id),
+            details: JSON.stringify({
+              employee: p.employeeName, month: p.month, year: p.year,
+              companyId: p.companyId, branchId: p.employee?.branchId ?? null,
+              oldSalary: before.netSalary, newSalary: updated?.netSalary ?? before.netSalary,
+              attendance: {
+                payableDays: { from: before.payableDays, to: updated?.payableDays ?? before.payableDays },
+                presentDays: { from: before.presentDays, to: updated?.presentDays ?? before.presentDays },
+              },
+              by: req.user?.name || req.user?.email || `user#${req.user.id}`,
+            }).slice(0, 1500),
+          },
+        }).catch(() => {});
+      }
     }
     res.json({ recalculated, skippedLocked });
   } catch (error) {
@@ -314,6 +419,13 @@ exports.getAll = async (req, res) => {
 
     // Pagination & Filters
     const { page, limit, search, department, status, branch } = req.query;
+
+    // Cycle scope: a payroll cycle is month + year. Filter the SELECT by both when
+    // supplied so a caller asking for "July" never receives July of every year on
+    // record (which double-counted the roster: 64 employees appeared as 113). The
+    // global (month-less) load is unchanged — it still returns the full history.
+    if (month) whereClause.month = month;
+    if (req.query.year) whereClause.year = Number(req.query.year);
 
     if (search) {
       whereClause.AND = whereClause.AND || [];
@@ -544,6 +656,20 @@ exports.generate = async (req, res) => {
       });
       // Auto-deduct any active loan EMI + settle the ledger (idempotent).
       await applyLoanToPayrollRow(prisma, row, req.user?.name || 'Payroll Engine');
+    }
+
+    // ── SINGLE ENGINE: prorate every generated row from its attendance snapshot ──
+    // The inline seed above only establishes the rows; the ONE payroll engine
+    // (recalcOne, via recalcForEmployeeMonth) immediately recomputes salary from
+    // the synchronized AttendanceSummary — gross = dailyRate × payableDays — so a
+    // generated payslip can NEVER show the full monthly salary when attendance is
+    // short. Attendance is recomputed (not marked synced — only the Attendance
+    // Synchronization page stamps syncedAt) so figures reflect the latest data.
+    const attSvcGen = require('../services/attendanceSummaryService');
+    const uniqEmpIds = [...new Set(payrollRecordsToCreate.map(r => r.employeeId))];
+    for (const eid of uniqEmpIds) {
+      await attSvcGen.recompute(eid, month, year).catch(e => console.error('[generate] recompute', eid, e.message));
+      await recalcForEmployeeMonth(eid, month, year).catch(e => console.error('[generate] recalc', eid, e.message));
     }
 
     // Recompute the period's totals from ALL its child rows so appends keep the

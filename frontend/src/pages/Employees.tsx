@@ -6,7 +6,7 @@ import {
   Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
   Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle, Trash2,
-  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2
+  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2, Printer
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -15,6 +15,7 @@ import {
   resolveActiveWorkspace
 } from '@/types';
 import { Badge, statusBadge } from '@/components/ui/Badge';
+import { printEmployeeProfile, downloadEmployeeProfilePdf } from '@/utils/employeeProfileExport';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { Card, StatCard } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -134,12 +135,56 @@ const capitalize = (str: string) => {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 };
 
+// ── Aadhaar name comparison ──
+// Normalize a name for comparison ONLY (never for storage): trim, collapse
+// internal whitespace, uppercase — so "rutv  sunilkumar   soni" == "RUTV SUNILKUMAR SONI".
+const normalizeName = (s?: string) => (s || '').trim().replace(/\s+/g, ' ').toUpperCase();
+// First + Middle (optional) + Surname → a single-spaced full name. Middle name is
+// optional: empty parts are dropped, so First+Last works too.
+const buildFullName = (first?: string, middle?: string, last?: string) =>
+  [first, middle, last].map(p => (p || '').trim()).filter(Boolean).join(' ');
+
 // Employee lifecycle: Active operations vs Archived (offboarded — retained for
 // history, excluded from payroll/attendance/leave credits). 'Inactive' is
 // retired in favour of 'Archived'.
 const statusOptions: EmployeeStatus[] = ['Active', 'Archived', 'On Leave'];
 const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
 const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
+
+// ── Structured exit reasons for the Final HR Approval step. Stored on the
+// employee (exitReason column + offboardingState JSON) so Offboarding / Attrition
+// / HR-analytics reports can group by a consistent, reportable value. ──
+const EXIT_REASONS = [
+  'Better Salary / Better Package',
+  'Better Career Opportunity',
+  'Higher Education',
+  'Relocation / Transfer to Another City',
+  'Personal Reasons',
+  'Family Responsibilities',
+  'Health / Medical Reasons',
+  'Marriage',
+  'Retirement',
+  'End of Contract',
+  'Performance Issues',
+  'Attendance / Discipline Issues',
+  'Policy Violation / Misconduct',
+  'Company Restructuring',
+  'Layoff / Workforce Reduction',
+  'Business Closure',
+  'Mutual Separation',
+  'Absconding',
+  'Other',
+];
+const EXIT_CHECKLIST: Array<{ key: string; label: string }> = [
+  { key: 'exitInterview', label: 'Exit Interview Completed' },
+  { key: 'exitFeedback', label: 'Exit Feedback Collected' },
+  { key: 'assetsReturned', label: 'Assets Returned' },
+  { key: 'knowledgeTransfer', label: 'Knowledge Transfer Completed' },
+  { key: 'managerApproval', label: 'Manager Approval Completed' },
+  { key: 'itAccessRevoked', label: 'IT Access Revoked' },
+  { key: 'payrollSettlement', label: 'Payroll Settlement Completed' },
+  { key: 'finalDocuments', label: 'Final Documents Issued' },
+];
 
 export const Employees: React.FC<EmployeesProps> = ({
   role,
@@ -164,6 +209,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [paginatedData, setPaginatedData] = useState<Employee[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [isTableLoading, setIsTableLoading] = useState(false);
+  // Authoritative real-employee counts — read from the SAME server query that
+  // drives the table (single source of truth), so the count cards can never
+  // disagree with the employee list. Temporary/Pending come from a separate table.
+  const [serverCounts, setServerCounts] = useState<{ all: number; active: number; previous: number } | null>(null);
 
   // Kind-aware: a plain find returns the parent company when a branch shares
   // its id, which would wrongly flip isBranchWorkspace to false and mis-scope
@@ -209,6 +258,10 @@ export const Employees: React.FC<EmployeesProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEmployeeId, employees]);
   const [editEmp, setEditEmp] = useState<Employee | null>(null);
+  // Full-page Edit support: baseline snapshot (for Reset) + post-save banner state
+  // (so the user can stay on the page and continue editing after Save).
+  const [editOriginal, setEditOriginal] = useState<Employee | null>(null);
+  const [editSaved, setEditSaved] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [wizardNominees, setWizardNominees] = useState<any[]>([]); // staged nominees during registration
   const [deleteEmp, setDeleteEmp] = useState<Employee | null>(null);
@@ -649,6 +702,11 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
+  // Final HR Approval — structured exit reason + clearance checklist + remarks.
+  const [offReason, setOffReason] = useState('');
+  const [offReasonOther, setOffReasonOther] = useState('');
+  const [offChecklist, setOffChecklist] = useState<Record<string, boolean>>({});
+  const [offRemarks, setOffRemarks] = useState('');
   const [isOffboardingExecuting, setIsOffboardingExecuting] = useState(false);
   const [isConfirmingBulk, setIsConfirmingBulk] = useState(false);
 
@@ -818,7 +876,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleStartEdit = (emp: Employee) => {
     // Pre-fill Confirm Account Number with the stored value so editing an
     // existing record doesn't trip the "numbers must match" check.
-    setEditEmp({ ...emp, confirmAccountNumber: emp.accountNumber || '' } as any);
+    const seeded = { ...emp, confirmAccountNumber: emp.accountNumber || '' } as any;
+    setEditEmp(seeded);
+    setEditOriginal(seeded);   // baseline for Reset
+    setEditSaved(false);
     const parts = (emp.phone || '').split(' ');
     if (parts.length > 1) {
       setEditMobileNumber(parts.slice(1).join(''));
@@ -829,6 +890,15 @@ export const Employees: React.FC<EmployeesProps> = ({
     setErrors({});
   };
 
+  // Revert every field back to the values loaded when editing began.
+  const handleResetEdit = () => {
+    if (!editOriginal) return;
+    setEditEmp({ ...editOriginal });
+    setEditMobileNumber((editOriginal.phone || '').split(' ').slice(1).join('') || editOriginal.phone || '');
+    setErrors({});
+    setEditSaved(false);
+  };
+
   // central company scope filtering
   const companyEmployees = useMemo(() => {
     const filtered = employees.filter(e => isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId));
@@ -836,6 +906,16 @@ export const Employees: React.FC<EmployeesProps> = ({
     console.log('DEBUG EMPLOYEES: activeCompanyId:', activeCompanyId, 'filtered length:', filtered.length, 'unique length:', unique.length);
     return unique;
   }, [employees, activeCompanyId, companies]);
+
+  // A compact fingerprint of the client roster (id + status). It changes on any
+  // add / delete / archive / offboard / status-edit / import / temp-conversion —
+  // every mutation flows through onUpdateEmployees — so using it as a fetch
+  // dependency re-pulls the authoritative table AND counts together, keeping them
+  // synchronized in real time without a page refresh.
+  const rosterSignature = useMemo(
+    () => companyEmployees.map(e => `${e.id}:${e.status}`).join('|'),
+    [companyEmployees]
+  );
 
   const filterDepartments = useMemo(() => {
     const set = new Set<string>();
@@ -939,12 +1019,14 @@ export const Employees: React.FC<EmployeesProps> = ({
     setPage(1);
   }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
 
-  // Fetch server-side paginated data for the current table view
+  // Fetch server-side paginated data + authoritative counts for the current view.
+  // The Temporary/Approvals tabs render their own dataset, but we still refresh the
+  // real-employee counts (using tab='all') so the Active/Previous/All cards stay
+  // correct while those tabs are open. rosterSignature in the deps re-runs this on
+  // every mutation, so the table and the cards always refresh together.
   useEffect(() => {
-    // We only paginate the real employee table tabs, not temporary/approvals
-    if (activeMainTab === 'temporary' || activeMainTab === 'approvals') return;
-    
     let isMounted = true;
+    const isTempView = activeMainTab === 'temporary' || activeMainTab === 'approvals';
     const fetchPaginated = async () => {
       setIsTableLoading(true);
       try {
@@ -952,15 +1034,25 @@ export const Employees: React.FC<EmployeesProps> = ({
           page,
           limit,
           companyId: activeCompanyId,
-          tab: activeMainTab
+          tab: isTempView ? 'all' : activeMainTab
         };
         if (search) params.search = search;
         if (deptFilter) params.department = deptFilter;
         if (statusFilter) params.status = statusFilter;
         if (branchFilter) params.branch = branchFilter;
-        
+
         const res = await api.employees.getPaginated(params) as any;
-        if (isMounted && res && Array.isArray(res.data)) {
+        if (!isMounted || !res) return;
+        // Counts come from the same query as the table → the single source of truth.
+        if (res.counts) {
+          setServerCounts({
+            all: res.counts.all || 0,
+            active: res.counts.active || 0,
+            previous: res.counts.previous || 0,
+          });
+        }
+        // Only drive the real-employee table on the real tabs.
+        if (!isTempView && Array.isArray(res.data)) {
           setPaginatedData(res.data);
           setTotalRows(res.total || 0);
         }
@@ -970,10 +1062,10 @@ export const Employees: React.FC<EmployeesProps> = ({
         if (isMounted) setIsTableLoading(false);
       }
     };
-    
+
     fetchPaginated();
     return () => { isMounted = false; };
-  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab]);
+  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab, rosterSignature]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
@@ -998,29 +1090,38 @@ export const Employees: React.FC<EmployeesProps> = ({
   // (a status that is BOTH active & offboarded, or NEITHER) instead of silently
   // losing or double-counting a record.
   const countAudit = useMemo(() => {
-    const total = companyEmployees.length;
-    const activeN = companyEmployees.filter(isActiveEmployee).length;
-    const both = companyEmployees.filter(e => isActiveEmployee(e) && isOffboarded(e.status)).length;
-    const neither = companyEmployees.filter(e => !isActiveEmployee(e) && !isOffboarded(e.status)).length;
-    const active = activeN;
-    const previous = total - activeN;            // every non-active record (no record lost)
+    // Active / Previous / All Staff are the REAL employee roster and come straight
+    // from the server counts that also produced the table rows — so each tab's card
+    // exactly equals the rows that tab shows. (Before the first fetch, fall back to
+    // the client roster so the cards aren't blank on the very first paint.)
+    const active = serverCounts ? serverCounts.active
+      : companyEmployees.filter(isActiveEmployee).length;
+    const previous = serverCounts ? serverCounts.previous
+      : (companyEmployees.length - companyEmployees.filter(isActiveEmployee).length);
+    // "All Staff" = the real roster shown by the All-Staff tab table (active +
+    // previous). Temporary / Pending Approval are a SEPARATE dataset with their own
+    // tabs and counts, so they are not folded into All Staff (that folding was the
+    // reason the All-Staff card never matched the list).
+    const allStaff = serverCounts ? serverCounts.all : (active + previous);
     const temporary = inProgressTemps.length;
     const pendingApproval = pendingApprovals.length;
-    const allStaff = active + previous + temporary + pendingApproval;
-    // Reconciliation: the displayed All Staff must equal the sum of categories,
-    // and Active/Offboarded must be a clean partition of the real roster.
-    const reconciles = allStaff === (total + temporary + pendingApproval);
+    // Integrity guard on the loaded prop: a status that is BOTH active & offboarded
+    // (or NEITHER) would indicate bad data. The headline counts no longer depend on
+    // this, but we still surface it.
+    const both = companyEmployees.filter(e => isActiveEmployee(e) && isOffboarded(e.status)).length;
+    const neither = companyEmployees.filter(e => !isActiveEmployee(e) && !isOffboarded(e.status)).length;
+    const reconciles = allStaff === active + previous;
     const partitionOk = both === 0 && neither === 0;
     const ok = reconciles && partitionOk;
     if (!ok) {
       // eslint-disable-next-line no-console
       console.error('[Employee Count Mismatch Detected]', {
-        scope: activeCompanyId, total, active, previous, temporary, pendingApproval, allStaff,
+        scope: activeCompanyId, active, previous, allStaff, temporary, pendingApproval,
         anomalies: { bothActiveAndOffboarded: both, neither }, reconciles, partitionOk,
       });
     }
     return { ok, allStaff, active, previous, temporary, pendingApproval, both, neither };
-  }, [companyEmployees, inProgressTemps, pendingApprovals, activeCompanyId]);
+  }, [companyEmployees, inProgressTemps, pendingApprovals, activeCompanyId, serverCounts]);
 
   // Add Validation & Execution
   const handleAddSubmit = async () => {
@@ -1239,7 +1340,11 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const handleConfirmInitialOffboarding = () => { setIsWizardOpen(true); };
+  const handleConfirmInitialOffboarding = () => {
+    setWizardStep(1);
+    setOffReason(''); setOffReasonOther(''); setOffChecklist({}); setOffRemarks('');
+    setIsWizardOpen(true);
+  };
   const handleDelete = () => {
     if (!deleteEmp) return;
     api.employees.archive(deleteEmp.id).then(() => {
@@ -1259,9 +1364,11 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
   const setIsConfirmingOffboard = (_val: boolean) => { };
 
-  // Edit Submission
-  const handleEditSubmit = async () => {
+  // Edit Submission. `mode` only changes the post-save UX (draft = quiet toast,
+  // save = success banner + continue). Both persist through the SAME update API.
+  const handleEditSubmit = async (mode: 'draft' | 'save' = 'save') => {
     if (!editEmp) return;
+    setEditSaved(false);
 
     const nameErr = validateName(editEmp.name).error;
     const emailErr = editEmp.email ? validateEmail(editEmp.email).error : '';
@@ -1273,8 +1380,12 @@ export const Employees: React.FC<EmployeesProps> = ({
       phone: phoneErr || '',
     };
 
-    if (!editEmp.aadhaarName || editEmp.aadhaarName.trim().length < 3) {
-      activeErrors.aadhaarName = 'Name as per Aadhaar is required';
+    // The "Aadhaar Full Name" field IS editEmp.name (aadhaarName is only a stored
+    // mirror). Validate the field the user actually edits — otherwise a filled
+    // name still errors when the legacy aadhaarName mirror is empty. A name/parts
+    // MISMATCH is a soft warning (shown inline), never a blocking error.
+    if (normalizeName(editEmp.name).length < 3) {
+      activeErrors.aadhaarName = 'Please enter Aadhaar Full Name.';
     }
     if (!editEmp.dob) activeErrors.dob = 'Date of Birth is required';
     if (!editEmp.gender) activeErrors.gender = 'Gender is required';
@@ -1359,6 +1470,10 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     const updatedEmp = {
       ...editEmp,
+      // Keep the stored Aadhaar-name mirror in sync with the entered Aadhaar Full
+      // Name (saved EXACTLY as entered — no case/space changes), so it never goes
+      // stale and re-trigger this validation. Mirrors the Add flow.
+      aadhaarName: (editEmp.name || '').trim() || editEmp.aadhaarName,
       companyId: resolvedCompanyId,
       branchId: resolvedBranchId
     };
@@ -1366,8 +1481,13 @@ export const Employees: React.FC<EmployeesProps> = ({
     try {
       api.employees.update(updatedEmp.id, updatedEmp).then(savedEmp => {
         onUpdateEmployees(employees.map(e => e.id === updatedEmp.id ? savedEmp : e));
-        setEditEmp(null);
-        ui.toast.success('Employee successfully updated.');
+        // Stay on the full-page editor. Refresh the working copy + baseline with
+        // the saved record so the user can keep editing from a clean state.
+        const seeded = { ...savedEmp, confirmAccountNumber: (savedEmp as any).accountNumber || '' } as any;
+        setEditEmp(seeded);
+        setEditOriginal(seeded);
+        if (mode === 'save') { setEditSaved(true); ui.toast.success('Employee updated successfully.'); }
+        else ui.toast.success('Draft saved.');
       }).catch(err => {
         console.error(err);
         ui.toast.error(`Failed to save to the database: ${err.message}`);
@@ -1380,6 +1500,12 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleOffboardSubmit = () => {
     if (!offboardEmp) return;
 
+    // Structured exit reason chosen in the Final HR Approval step. Falls back to
+    // the previous generic label if HR skipped selection, so behaviour is safe.
+    const reasonLabel = offReason === 'Other'
+      ? (offReasonOther.trim() || 'Other')
+      : (offReason || 'Formal Offboarding Completed');
+
     const historyItem = {
       companyId: offboardEmp.companyId,
       companyName: currentComp?.name || 'Company',
@@ -1387,18 +1513,26 @@ export const Employees: React.FC<EmployeesProps> = ({
       designation: offboardEmp.designation,
       startDate: offboardEmp.joinDate,
       endDate: today,
-      reason: 'Formal Offboarding Completed'
+      reason: reasonLabel
     };
 
     const updated: Employee = {
       ...offboardEmp,
       status: 'Archived',
       exitDate: today,
-      exitReason: 'Formal Offboarding Completed',
+      // Store the SELECTED reason in the reportable column so Offboarding /
+      // Attrition / HR-analytics reports can group by it.
+      exitReason: reasonLabel,
       offboardingState: {
         ...offboardEmp.offboardingState,
         workflowStatus: 'ARCHIVED',
-        completedOn: new Date().toISOString()
+        completedOn: new Date().toISOString(),
+        // Full structured detail for richer HR analytics.
+        exitReasonCode: offReason || '',
+        exitReasonLabel: reasonLabel,
+        exitReasonOther: offReason === 'Other' ? offReasonOther.trim() : '',
+        exitChecklist: offChecklist,
+        hrRemarks: offRemarks.trim(),
       },
       employmentHistory: [...(offboardEmp.employmentHistory || []), historyItem]
     };
@@ -1408,7 +1542,12 @@ export const Employees: React.FC<EmployeesProps> = ({
     // show an "archived" employee that wasn't archived in the database — the
     // change vanished on refresh/relogin. Now a failure surfaces the real
     // reason and leaves the list untouched, so frontend === database.
-    api.employees.archive(offboardEmp.id).then(() => {
+    //
+    // Uses the standard update API (not archive) because the archive endpoint
+    // hardcodes exitReason='Admin Archived'. The update sets status→Archived
+    // itself, so the employee is archived identically while the selected exit
+    // reason + checklist are persisted to the database.
+    api.employees.update(offboardEmp.id, updated).then(() => {
       onUpdateEmployees(employees.map(e => e.id === offboardEmp.id ? updated : e));
       setOffboardEmp(null);
       setIsWizardOpen(false);
@@ -1721,7 +1860,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
           <div className="text-[11px] leading-snug">
             <p className="font-bold">Employee Count Mismatch Detected</p>
-            <p>All Staff ({countAudit.allStaff}) ≠ Active ({countAudit.active}) + Previous ({countAudit.previous}) + Temporary ({countAudit.temporary}) + Pending Approval ({countAudit.pendingApproval}).
+            <p>All Staff ({countAudit.allStaff}) ≠ Active ({countAudit.active}) + Previous ({countAudit.previous}).
             {countAudit.both > 0 && ` ${countAudit.both} record(s) are both Active & Offboarded.`}
             {countAudit.neither > 0 && ` ${countAudit.neither} record(s) have an unrecognised status.`} Details logged to the console.</p>
           </div>
@@ -2233,7 +2372,30 @@ export const Employees: React.FC<EmployeesProps> = ({
       </Modal>
 
       {/* View Master Drawer/Modal */}
-      <Modal open={!!viewEmp} onClose={() => setViewEmp(null)} title="Enterprise Master Employee Profile" size="md">
+      {/* ── Full-page Employee Profile (replaces the old popup) ── */}
+      <Modal
+        open={!!viewEmp}
+        onClose={() => setViewEmp(null)}
+        variant="page"
+        title="Employee Profile"
+        subtitle={viewEmp ? `${viewEmp.name} · ${viewEmp.employeeId || '—'}` : undefined}
+        breadcrumbs={[
+          { label: 'Employee Management', onClick: () => setViewEmp(null) },
+          { label: 'Profile' },
+          { label: viewEmp?.name || 'Employee' },
+        ]}
+        context={currentComp?.name || undefined}
+        footer={viewEmp && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setViewEmp(null)}>Back</Button>
+            {canEdit && !isOffboarded(viewEmp.status) && (
+              <Button size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Employee</Button>
+            )}
+            <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={() => printEmployeeProfile(viewEmp, currentComp?.name || 'Company')}>Print Profile</Button>
+            <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={() => downloadEmployeeProfilePdf(viewEmp, currentComp?.name || 'Company')}>Download PDF</Button>
+          </div>
+        )}
+      >
         {viewEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
             {isOffboarded(viewEmp.status) && (
@@ -2242,17 +2404,28 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <p className="text-[11px] font-medium mt-0.5">This employee is no longer active. Data is available in read-only mode.</p>
               </div>
             )}
-            {/* Upper Badge */}
-            <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-              <div className="h-10 w-10 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-sm ring-2 ring-brand-200">
-                {viewEmp.avatar}
-              </div>
-              <div>
-                <p className="text-sm font-bold text-slate-900">{viewEmp.name}</p>
-                <p className="text-[10px] text-gray-500 font-medium">{viewEmp.designation} · {viewEmp.department} · {viewEmp.employeeId}</p>
-              </div>
-              <div className="ml-auto">
-                <Badge variant={statusBadge(viewEmp.status)} dot>{viewEmp.status}</Badge>
+            {/* Profile header — photo, identity, status + key employment facts */}
+            <div className="flex flex-wrap items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+              {viewEmp.photoUpload ? (
+                <img src={viewEmp.photoUpload} alt={viewEmp.name} className="h-16 w-16 rounded-full object-cover ring-2 ring-brand-200" />
+              ) : (
+                <div className="h-16 w-16 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-lg ring-2 ring-brand-200">
+                  {viewEmp.avatar || (viewEmp.name || '?').slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-base font-bold text-slate-900">{viewEmp.name}</p>
+                  <Badge variant={statusBadge(viewEmp.status)} dot>{viewEmp.status}</Badge>
+                </div>
+                <p className="text-[11px] text-gray-500 font-medium mt-0.5">{viewEmp.designation || '—'} · {viewEmp.department || '—'} · {viewEmp.employeeId || '—'}</p>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-1.5">
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Branch</p><p className="text-[11px] font-semibold text-slate-700 truncate">{viewEmp.branchLocation || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Company</p><p className="text-[11px] font-semibold text-slate-700 truncate">{currentComp?.name || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Joining Date</p><p className="text-[11px] font-semibold text-slate-700">{viewEmp.joinDate ? formatDate(viewEmp.joinDate) : '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Employee Type</p><p className="text-[11px] font-semibold text-slate-700 truncate">{viewEmp.employmentType || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Employment Class</p><p className="text-[11px] font-semibold text-slate-700 truncate">{viewEmp.category || '—'}</p></div>
+                </div>
               </div>
             </div>
 
@@ -2696,7 +2869,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     No leaves logged for this employee context.
                   </div>
                 ) : (
-                  <div className="border border-slate-150 rounded-xl overflow-hidden shadow-2xs max-h-56 overflow-y-auto">
+                  <div className="border border-slate-150 rounded-xl overflow-hidden shadow-2xs">
                     <Table>
                       <Thead>
                         <tr className="bg-slate-50 text-[9px] border-b border-slate-150">
@@ -3094,22 +3267,69 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Modal>
 
-      {/* Edit Employee Modal */}
+      {/* ── Full-page Employee Editor (replaces the old popup) ── */}
       <Modal
         open={!!editEmp}
         onClose={() => setEditEmp(null)}
-        title="Modify Employee Master File"
-        size="md"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setEditEmp(null)}>Cancel</Button>
-            {canEdit && <Button onClick={handleEditSubmit}>Save Master File</Button>}
-          </>
-        }
+        variant="page"
+        title="Edit Employee"
+        subtitle={editEmp ? `${editEmp.name} · ${editEmp.employeeId || '—'}` : undefined}
+        breadcrumbs={[
+          { label: 'Employee Management', onClick: () => setEditEmp(null) },
+          { label: 'Edit' },
+          { label: editEmp?.name || 'Employee' },
+        ]}
+        context={currentComp?.name || undefined}
+        footer={editEmp && (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditEmp(null)}>Cancel</Button>
+            <Button variant="outline" size="sm" icon={<RotateCcw size={13} />} onClick={handleResetEdit}>Reset</Button>
+            {canEdit && <Button variant="outline" size="sm" onClick={() => handleEditSubmit('draft')}>Save Draft</Button>}
+            {canEdit && <Button size="sm" onClick={() => handleEditSubmit('save')}>Save Changes</Button>}
+          </div>
+        )}
       >
         {editEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
-            <div className="flex border-b border-gray-200 gap-3 text-xs">
+            {/* Editor header — photo + identity + key employment facts */}
+            <div className="flex flex-wrap items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
+              {editEmp.photoUpload ? (
+                <img src={editEmp.photoUpload} alt={editEmp.name} className="h-14 w-14 rounded-full object-cover ring-2 ring-brand-200" />
+              ) : (
+                <div className="h-14 w-14 rounded-full bg-brand-100 text-brand-800 font-bold flex items-center justify-center text-base ring-2 ring-brand-200">
+                  {editEmp.avatar || (editEmp.name || '?').slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-base font-bold text-slate-900">{editEmp.name}</p>
+                  <Badge variant={statusBadge(editEmp.status)} dot>{editEmp.status}</Badge>
+                </div>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-1.5">
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Employee Code</p><p className="text-[11px] font-semibold text-slate-700 truncate">{editEmp.employeeId || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Department</p><p className="text-[11px] font-semibold text-slate-700 truncate">{editEmp.department || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Designation</p><p className="text-[11px] font-semibold text-slate-700 truncate">{editEmp.designation || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Branch</p><p className="text-[11px] font-semibold text-slate-700 truncate">{editEmp.branchLocation || '—'}</p></div>
+                  <div><p className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">Joining Date</p><p className="text-[11px] font-semibold text-slate-700">{editEmp.joinDate ? formatDate(editEmp.joinDate) : '—'}</p></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Post-save banner — stay on page & continue, or jump elsewhere. */}
+            {editSaved && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
+                <p className="text-xs font-bold text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Employee updated successfully.</p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => setEditEmp(null)}>Back to Employee List</Button>
+                  <Button size="sm" variant="outline" onClick={() => { const emp = editEmp; setEditEmp(null); setViewEmp(emp); setActiveTab('personal'); }}>View Employee</Button>
+                </div>
+              </div>
+            )}
+            {!canEdit && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">You have read-only access — changes cannot be saved.</div>
+            )}
+
+            <div className="flex border-b border-gray-200 gap-3 text-xs overflow-x-auto pb-1">
               <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
               <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
               <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
@@ -3133,6 +3353,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-middleName" label="Middle Name" value={editEmp.middleName || ''} onChange={e => setEditEmp({ ...editEmp, middleName: e.target.value })} />
                   <Input id="field-lastName" label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
                 </div>
+                {/* Real-time Aadhaar-name check: First + Middle (optional) + Surname
+                    vs the Aadhaar Full Name, normalized (trim / collapse spaces /
+                    case-insensitive). Presentation only — never mutates the values. */}
+                {(() => {
+                  const aadhaarFullName = (editEmp.name || '').trim();
+                  const generated = buildFullName(editEmp.firstName, editEmp.middleName, editEmp.lastName);
+                  if (!aadhaarFullName) {
+                    return <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600"><AlertTriangle size={12} /> Please enter Aadhaar Full Name.</p>;
+                  }
+                  if (!generated) return null; // no name parts to compare yet
+                  return normalizeName(generated) === normalizeName(aadhaarFullName)
+                    ? <p className="flex items-center gap-1.5 text-[11px] font-semibold text-emerald-600"><CheckCircle2 size={12} /> Aadhaar name matches.</p>
+                    : <p className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-600"><AlertTriangle size={12} /> Name differs from Aadhaar ({generated}).</p>;
+                })()}
                 <div className="grid grid-cols-3 gap-3">
                   <Select id="field-gender" label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
                   <Input id="field-dob" label="Date of Birth *" type="date" value={(editEmp.dob || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} error={errors.dob} />
@@ -3339,11 +3573,51 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="space-y-4">
                   <h3 className="text-lg font-semibold text-slate-800">Final HR Approval</h3>
                   <p className="text-sm text-slate-500">Acknowledge completion of all offboarding checklists.</p>
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
-                    <label className="text-sm font-medium text-slate-700">HR Remarks</label>
-                    <textarea className="w-full mt-2 border border-slate-200 rounded-md p-2 text-sm" rows={3} placeholder="Optional remarks..."></textarea>
+
+                  {/* ── Reason for Offboarding — single primary reason (reportable) ── */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <label className="text-sm font-semibold text-slate-800">Reason for Offboarding <span className="text-rose-500">*</span></label>
+                    <p className="text-[11px] text-slate-400 mb-2.5">Select one primary reason — used for attrition &amp; exit-trend analytics.</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                      {EXIT_REASONS.map(r => (
+                        <label key={r} className={`flex items-center gap-2 rounded-md px-2 py-1.5 cursor-pointer text-sm transition-colors ${offReason === r ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-slate-600 hover:bg-slate-50'}`}>
+                          <input type="radio" name="exitReason" value={r} checked={offReason === r} onChange={() => setOffReason(r)} className="accent-brand-600" />
+                          <span>{r}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {offReason === 'Other' && (
+                      <div className="mt-3">
+                        <label className="text-[11px] font-semibold text-slate-600">Specify Other Reason <span className="text-rose-500">*</span></label>
+                        <input value={offReasonOther} onChange={e => setOffReasonOther(e.target.value)} placeholder="Describe the exit reason…"
+                          className="w-full mt-1 border border-slate-200 rounded-md p-2 text-sm outline-none focus:border-brand-400" />
+                      </div>
+                    )}
                   </div>
-                  <Button onClick={() => handleWizardStepComplete(4)} className="w-full mt-4 bg-brand-600 hover:bg-brand-700 text-white border-0" icon={<CheckCircle2 size={16} />}>Approve Final Sign-off</Button>
+
+                  {/* ── Exit clearance checklist ── */}
+                  <div className="bg-white border border-slate-200 rounded-lg p-4">
+                    <label className="text-sm font-semibold text-slate-800">Exit Clearance Checklist</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 mt-2.5">
+                      {EXIT_CHECKLIST.map(c => (
+                        <label key={c.key} className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer hover:text-slate-800">
+                          <input type="checkbox" checked={!!offChecklist[c.key]} onChange={e => setOffChecklist(prev => ({ ...prev, [c.key]: e.target.checked }))} className="accent-brand-600 h-3.5 w-3.5" />
+                          <span>{c.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                    <label className="text-sm font-medium text-slate-700">HR Remarks <span className="text-[11px] font-normal text-slate-400">(optional)</span></label>
+                    <textarea value={offRemarks} onChange={e => setOffRemarks(e.target.value)} className="w-full mt-2 border border-slate-200 rounded-md p-2 text-sm outline-none focus:border-brand-400" rows={3} placeholder="Optional remarks..."></textarea>
+                  </div>
+                  <Button
+                    onClick={() => handleWizardStepComplete(4)}
+                    disabled={!offReason || (offReason === 'Other' && !offReasonOther.trim())}
+                    className="w-full mt-4 bg-brand-600 hover:bg-brand-700 text-white border-0"
+                    icon={<CheckCircle2 size={16} />}
+                  >Approve Final Sign-off</Button>
                 </div>
               )}
               {wizardStep === 5 && (

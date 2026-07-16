@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ShieldCheck, Search, RotateCcw, Save } from 'lucide-react';
+import { ShieldCheck, Search, RotateCcw, Save, UserPlus } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -9,6 +9,7 @@ import { type AppModules } from '@/pages/Login';
 import { foldPermissions } from '@/utils/permissionFold';
 import { roleDefaultRow } from '@/context/PermissionContext';
 import { getCompanyMatrixModules } from '@/config/moduleRegistry';
+import { AddUserModal } from '@/components/settings/AddUserModal';
 
 // Modules shown in the matrix are derived from the single module registry
 // (config/moduleRegistry) — the SAME source that drives the sidebar. Every
@@ -50,6 +51,7 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const flash = (kind: 'ok' | 'err', msg: string) => { setToast({ kind, msg }); setTimeout(() => setToast(null), 4000); };
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -77,6 +79,38 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
     const p: Record<string, any> = {};
     MODULES.forEach(m => { p[m.key] = effectiveRow(u, m.key); });
     setPerms(p);
+  };
+
+  // The company the new user lands in (read-only in the form). Derived from the
+  // loaded manageable users — for a Company Head they are all in one company.
+  const companyName = useMemo(() => users.find(u => u.companyName)?.companyName || 'Your Company', [users]);
+
+  // Build the permissions blob the Add User form sends for a Template / Clone
+  // choice (Role default / Custom send nothing → the backend seeds role defaults).
+  const resolveNewUserPerms = useCallback((mode: 'template' | 'clone', value: string) => {
+    if (mode === 'template' && TEMPLATES[value]) {
+      const p: Record<string, any> = {};
+      MODULES.forEach(m => { p[m.key] = TEMPLATES[value](m.key); });
+      return p;
+    }
+    if (mode === 'clone') {
+      const src = users.find(u => String(u.id) === String(value));
+      if (src) { const p: Record<string, any> = {}; MODULES.forEach(m => { p[m.key] = effectiveRow(src, m.key); }); return p; }
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [users]);
+
+  // After a successful create: refresh the list (no page reload) and select the
+  // new user so their permission matrix is ready to fine-tune.
+  const handleUserCreated = async (created: any) => {
+    flash('ok', `${created?.name || 'User'} created successfully.`);
+    try {
+      const fresh = (await api.users.getManageable()) || [];
+      setUsers(fresh);
+      const u = fresh.find((x: any) => String(x.id) === String(created?.id));
+      if (u) selectUser(u);
+    } catch { load(); }
   };
 
   // Toggle one action, enforcing the dependency rules: enabling Edit/Export
@@ -137,9 +171,14 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        <ShieldCheck size={14} className="text-brand-600" />
-        Manage permissions for users {role === 'Super Admin' ? 'across all companies' : 'within your company'}. Changes are audited.
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <ShieldCheck size={14} className="text-brand-600" />
+          Manage permissions for users {role === 'Super Admin' ? 'across all companies' : 'within your company'}. Changes are audited.
+        </div>
+        {!denied && (
+          <Button size="sm" icon={<UserPlus size={14} />} onClick={() => setShowAdd(true)}>Add User</Button>
+        )}
       </div>
       {toast && <div className={`px-3 py-2 rounded-lg text-xs font-semibold ${toast.kind === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{toast.msg}</div>}
 
@@ -224,6 +263,16 @@ export const PermissionManager: React.FC<Props> = ({ role }) => {
           )}
         </Card>
       </div>
+
+      <AddUserModal
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        companyName={companyName}
+        users={users}
+        templates={Object.keys(TEMPLATES)}
+        resolvePermissions={resolveNewUserPerms}
+        onCreated={handleUserCreated}
+      />
     </div>
   );
 };

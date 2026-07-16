@@ -7,6 +7,7 @@ const { computeLoan, buildSchedule, addMonths, MONTHS, monthIndex, r0 } = requir
 const { notifyLoanEvent } = require('../services/loanNotify');
 const {
   canView, canEdit, canApprove, canManage, isEmployee, actorOf, targetCompanyId, scopedWhere,
+  canAccessCompany,
 } = require('../utils/loanScope');
 
 const ACTIVE = ['Approved', 'Disbursed', 'Running'];
@@ -198,13 +199,24 @@ exports.myLoans = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised to create loans.' });
-    const companyId = targetCompanyId(req, req.body.companyId);
-    if (!companyId) return res.status(400).json({ error: 'Company context required.' });
 
     const employeeId = idParam(req.body.employeeId);
     if (!employeeId) return res.status(400).json({ error: 'Employee is required.' });
     const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+    // A loan belongs to the EMPLOYEE's company, so it is filed in — and stays
+    // visible from — the same workspace the employee lives in. Prefer the
+    // employee's own company (when the caller may access it) over the requested
+    // workspace / home company. This is what prevents a loan raised for an
+    // employee in another accessible company from being saved under the caller's
+    // home company and then disappearing from the (workspace-scoped) list.
+    let companyId = targetCompanyId(req, req.body.companyId);
+    if (emp.companyId && canAccessCompany(req, emp.companyId)) companyId = emp.companyId;
+    if (!companyId) return res.status(400).json({ error: 'Company context required.' });
+    if (emp.companyId && Number(emp.companyId) !== Number(companyId)) {
+      return res.status(403).json({ error: "You are not authorised to create a loan for this employee's company." });
+    }
 
     const principalAmount = Number(req.body.principalAmount) || 0;
     if (principalAmount <= 0) return res.status(400).json({ error: 'Loan amount must be greater than zero.' });
@@ -415,12 +427,21 @@ exports.remove = async (req, res) => {
     const id = idParam(req.params.id);
     const loan = await prisma.loan.findUnique({ where: { id } });
     if (!loan) return res.status(404).json({ error: 'Loan not found.' });
-    if (!['Draft', 'Rejected'].includes(loan.status)) {
-      return res.status(409).json({ error: `A ${loan.status} loan can't be deleted (it has a financial ledger). Close it instead.` });
+    // ONLY a Draft may be deleted. Every other status (Pending Approval, Approved,
+    // Rejected, Disbursed, Running, Completed, Closed) is a permanent company
+    // record retained for audit & compliance. Enforced here so a direct API call
+    // cannot bypass the UI restriction.
+    if (loan.status !== 'Draft') {
+      return res.status(403).json({ error: "This loan record cannot be deleted because it is part of the company's permanent records." });
     }
+    // A Draft has no ledger yet (installments generate on approval); the cleanup
+    // below is a harmless no-op kept for safety.
     await prisma.loanInstallment.deleteMany({ where: { loanId: id } });
     await prisma.loan.delete({ where: { id } });
-    await logAction(loan.companyId, null, 'DELETED', { performedBy: actorOf(req), details: loan.loanNumber });
+    await logAction(loan.companyId, null, 'DRAFT_DELETED', {
+      performedBy: actorOf(req),
+      details: `Draft ${loan.loanNumber} deleted${loan.branchId ? ` · branch #${loan.branchId}` : ''}`,
+    });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

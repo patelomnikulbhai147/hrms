@@ -18,8 +18,13 @@ const rememberLocations = (data) => {
 exports.getEmployees = async (req, res) => {
   try {
     const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-    let whereClause = {};
+    const { page, limit, search, department, status, branch, sortField, sortOrder, tab } = req.query;
 
+    // ── Base scope (company/branch authorisation) ──────────────────────────────
+    // SINGLE SOURCE OF TRUTH: this scope + the structural filters below are shared
+    // by BOTH the table rows AND the summary counts, so the employee list and the
+    // count cards can never diverge (the bug this fixes: table 11 vs card 4).
+    const baseWhere = {};
     if (req.user && req.user.role !== 'Super Admin') {
       // A user is scoped to their companies AND the branches under those companies.
       // accessibleBranchIds is derived in the protect middleware. Including branch
@@ -28,7 +33,7 @@ exports.getEmployees = async (req, res) => {
       const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
       const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
       const allowedIds = [...companyScope, ...branchScope];
-      whereClause.OR = [
+      baseWhere.OR = [
         { companyId: { in: companyScope } },
         { branchId: { in: branchScope.length ? branchScope : companyScope } }
       ];
@@ -37,67 +42,47 @@ exports.getEmployees = async (req, res) => {
           return res.status(403).json({ error: 'Unauthorized to view this workspace\'s employees' });
         }
         // The selected workspace id may be a company OR a branch — match either column.
-        whereClause.OR = [
-          { companyId: companyId },
-          { branchId: companyId }
-        ];
+        baseWhere.OR = [{ companyId: companyId }, { branchId: companyId }];
       }
     } else if (companyId) {
-      whereClause.OR = [
-        { companyId: companyId },
-        { branchId: companyId }
-      ];
+      baseWhere.OR = [{ companyId: companyId }, { branchId: companyId }];
     }
 
-    // Offboarded employees are excluded from the ACTIVE employee dataset by
-    // default — active modules (attendance, payroll, leave, shift, dropdowns,
-    // dashboards) must never receive them. The Offboarding module, Archive
-    // section, Historical Reports and Employee History opt back in with
-    // ?include=all (or ?includeOffboarded=true) to retrieve the full roster.
+    // ── Structural filters (search / department / branch / explicit status) ──────
+    // Applied to the counts too, so changing a filter refreshes list AND cards.
+    const AND = [];
+    if (search) {
+      AND.push({ OR: [ { name: { contains: search } }, { employeeId: { contains: search } }, { designation: { contains: search } } ] });
+    }
+    if (department) {
+      AND.push({ OR: [ { department: department }, { designation: department } ] });
+    }
+    if (status) AND.push({ status });
+    if (branch) baseWhere.branchLocation = branch;
+    if (AND.length) baseWhere.AND = AND;
+
+    // Clone baseWhere and AND one extra status condition (never mutate baseWhere),
+    // so the three count buckets are derived from the exact same scope+filters.
+    const withStatus = (extra) => (extra ? { ...baseWhere, AND: [ ...(baseWhere.AND || []), extra ] } : { ...baseWhere });
+    const NOT_OFF = { status: { notIn: OFFBOARDED_STATUSES } };
+    const IS_OFF = { status: { in: OFFBOARDED_STATUSES } };
+
+    // ── Status axis (which subset the TABLE shows) ───────────────────────────────
+    // An explicit tab from the Employee page wins. Otherwise keep the legacy
+    // "active-only unless ?include=all" default so generic getAll() callers
+    // (dropdowns, attendance/payroll/leave) are unaffected. Frontend isOffboarded
+    // = Archived/Resigned/Terminated/Inactive/Offboarded.
+    //   tab='all'  → EVERY employee in scope (active + previous). Was previously
+    //                excluding offboarded, which is exactly why the All-Staff tab
+    //                table (row count) never matched the All-Staff card (count).
     const includeAll = ['all', 'true', '1', 'yes']
       .includes(String(req.query.include || req.query.includeOffboarded || '').toLowerCase());
-    if (!includeAll) {
-      whereClause.status = { notIn: OFFBOARDED_STATUSES };
-    }
-
-    // Pagination & Filters (Server-Side)
-    const { page, limit, search, department, status, branch, sortField, sortOrder, tab } = req.query;
-    
-    // Frontend isOffboarded includes 'Archived', 'Resigned', 'Terminated', 'Inactive', 'Offboarded'
-    if (tab === 'active') {
-      whereClause.status = { notIn: OFFBOARDED_STATUSES };
-    } else if (tab === 'previous') {
-      whereClause.status = { in: OFFBOARDED_STATUSES };
-    }
-    
-    if (search) {
-      whereClause.AND = whereClause.AND || [];
-      whereClause.AND.push({
-        OR: [
-          { name: { contains: search } },
-          { employeeId: { contains: search } },
-          { designation: { contains: search } }
-        ]
-      });
-    }
-    
-    if (department) {
-      whereClause.AND = whereClause.AND || [];
-      whereClause.AND.push({
-        OR: [
-          { department: department },
-          { designation: department }
-        ]
-      });
-    }
-
-    if (status) {
-      whereClause.status = status;
-    }
-
-    if (branch) {
-      whereClause.branchLocation = branch;
-    }
+    let tableWhere;
+    if (tab === 'active') tableWhere = withStatus(NOT_OFF);
+    else if (tab === 'previous') tableWhere = withStatus(IS_OFF);
+    else if (tab === 'all') tableWhere = withStatus(null);
+    else if (status) tableWhere = withStatus(null); // explicit status filter defines the set
+    else tableWhere = includeAll ? withStatus(null) : withStatus(NOT_OFF);
 
     let orderBy = {};
     if (sortField) {
@@ -111,9 +96,16 @@ exports.getEmployees = async (req, res) => {
       const limitNum = parseInt(limit, 10);
       const skip = (pageNum - 1) * limitNum;
 
-      const [employees, total] = await Promise.all([
-        prisma.employee.findMany({ where: whereClause, skip, take: limitNum, orderBy }),
-        prisma.employee.count({ where: whereClause })
+      // Table rows AND the reconciled counts are read from ONE set of queries over
+      // the SAME scope+filters. By construction: counts.all === total when tab='all',
+      // counts.active === total when tab='active', counts.previous === total when
+      // tab='previous'; and counts.all === counts.active + counts.previous always.
+      const [employees, total, allCount, activeCount, previousCount] = await Promise.all([
+        prisma.employee.findMany({ where: tableWhere, skip, take: limitNum, orderBy }),
+        prisma.employee.count({ where: tableWhere }),
+        prisma.employee.count({ where: withStatus(null) }),
+        prisma.employee.count({ where: withStatus(NOT_OFF) }),
+        prisma.employee.count({ where: withStatus(IS_OFF) })
       ]);
 
       return res.json({
@@ -121,11 +113,12 @@ exports.getEmployees = async (req, res) => {
         page: pageNum,
         limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limitNum)
+        totalPages: Math.ceil(total / limitNum),
+        counts: { all: allCount, active: activeCount, previous: previousCount }
       });
     }
 
-    const employees = await prisma.employee.findMany({ where: whereClause, orderBy });
+    const employees = await prisma.employee.findMany({ where: tableWhere, orderBy });
     res.json(employees);
   } catch (error) {
     return respondError(res, error);

@@ -40,7 +40,7 @@ const Stat: React.FC<{ label: string; value: React.ReactNode; tone?: string }> =
 const Section: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
   <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
     <h3 className="mb-3 flex items-center gap-2 text-sm font-extrabold text-slate-700">
-      <span className="text-[#6C3CF0]">{icon}</span>{title}
+      <span className="text-[#C77E52]">{icon}</span>{title}
     </h3>
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">{children}</div>
   </div>
@@ -104,9 +104,9 @@ export const PlatformReports: React.FC<Props> = () => {
   return (
     <div className="space-y-4 animate-fade-in">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm">
         <div>
-          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><BarChart3 size={16} className="text-[#6C3CF0]" /> Platform Analytics</h2>
+          <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><BarChart3 size={16} className="text-[#C77E52]" /> Platform Analytics</h2>
           <p className="text-[11px] text-slate-400">SaaS platform reports · {data ? `Generated ${formatDateTime(data.generatedAt)}` : 'Loading…'}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -135,7 +135,7 @@ export const PlatformReports: React.FC<Props> = () => {
             <Stat label="Suspended" value={data.companies.suspended} tone="text-orange-600" />
             <Stat label="Archived" value={data.companies.archived} tone="text-slate-500" />
             <Stat label="Trial" value={data.companies.trial} tone="text-brand-600" />
-            <Stat label="New This Month" value={data.companies.newThisMonth} tone="text-[#6C3CF0]" />
+            <Stat label="New This Month" value={data.companies.newThisMonth} tone="text-[#C77E52]" />
           </Section>
 
           <Section title="Branch Analytics" icon={<GitBranch size={15} />}>
@@ -143,13 +143,13 @@ export const PlatformReports: React.FC<Props> = () => {
             <Stat label="Active" value={data.branches.active} tone="text-emerald-600" />
             <Stat label="Suspended" value={data.branches.suspended} tone="text-orange-600" />
             <Stat label="Archived" value={data.branches.archived} tone="text-slate-500" />
-            <Stat label="New This Month" value={data.branches.newThisMonth} tone="text-[#6C3CF0]" />
+            <Stat label="New This Month" value={data.branches.newThisMonth} tone="text-[#C77E52]" />
           </Section>
 
           <Section title="User Statistics" icon={<Users size={15} />}>
             <Stat label="Total Users" value={data.users.total} />
             <Stat label="Active" value={data.users.active} tone="text-emerald-600" />
-            <Stat label="Active (30 days)" value={data.users.activeLast30Days} tone="text-[#6C3CF0]" />
+            <Stat label="Active (30 days)" value={data.users.activeLast30Days} tone="text-[#C77E52]" />
             <Stat label="Super Admins" value={data.users.superAdmins} />
             <Stat label="Company Heads" value={data.users.companyHeads} />
             <Stat label="HR Managers" value={data.users.hrManagers} />

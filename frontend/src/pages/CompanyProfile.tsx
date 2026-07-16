@@ -110,6 +110,10 @@ const validatePin = (country: string, pin: string): string => {
 };
 
 const BASIC_FIELDS: FieldDef[] = [
+  // Company Name drives the sidebar / workspace selector / header (the `name`
+  // field). Editable here so a Company Head can rename the company and, with the
+  // post-save sync, see it update everywhere instantly (no logout/refresh).
+  { key: 'name', label: 'Company Name' },
   { key: 'legalName', label: 'Company Legal Name' },
   { key: 'tradeName', label: 'Trade Name' },
   { key: 'companyCode', label: 'Company Code' },
@@ -234,10 +238,14 @@ interface CompanyProfileProps {
   companies: Company[];
   authProfile: UserAccount | null;
   onUpdateCompanies?: (companies: any) => void;
+  // Called after a successful profile save with the freshly-loaded company so the
+  // global companies state can sync instantly (sidebar / selector / header name).
+  // Governed by the company-profile permission (not the SaaS `companies` one).
+  onCompanySynced?: (company: any) => void;
   onNavigate?: (page: any) => void;
 }
 
-export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId, authProfile, onUpdateCompanies, onNavigate }) => {
+export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId, authProfile, onUpdateCompanies, onCompanySynced, onNavigate }) => {
   const { canEdit, canCreate } = usePermissions();
   const editable = canEdit('company-profile');
   // Branch Management lives under the Companies module — used only to optionally
@@ -271,12 +279,25 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
       const f: Record<string, any> = {};
       for (const k of ALL_EDIT_FIELDS) f[k] = (data?.company?.[k] ?? '');
       setForm(f);
+      return data;
     } catch (e) {
       ui.toast.error(getApiErrorMessage(e) || 'Could not load the company profile.');
+      return null;
     } finally {
       setLoading(false);
     }
   };
+
+  // Open from the very top. The app's content lives in a single shared
+  // <main class="overflow-y-auto"> scroll container that keeps the previous
+  // page's scroll position on navigation — so opening this page from the (long)
+  // Companies list left a large blank area above the company header. Reset the
+  // scroll once the profile has loaded so it always starts at the top.
+  useEffect(() => {
+    if (loading) return;
+    const scroller = document.querySelector('main');
+    if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0);
+  }, [loading]);
 
   // Re-fetch whenever the ACTIVE workspace/company changes. Without the
   // activeCompanyId dependency the profile (and its branches) stayed pinned to
@@ -316,9 +337,16 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
     try {
       await api.companies.updateBranding(String(profile.company.id), payload);
       ui.toast.success('Company profile saved.');
-      await load();
-      if (onUpdateCompanies) {
-        try { const cos = await api.companies.getAll(); onUpdateCompanies(cos); } catch { /* non-fatal */ }
+      const fresh = await load();
+      // Instant global sync: push the freshly-saved company into the app's
+      // companies state so the sidebar, workspace selector, header and page
+      // title show the new name immediately — no logout / refresh required.
+      // Uses the company-profile-scoped callback (the old onUpdateCompanies path
+      // was gated on the SaaS `companies` permission, which a Company Head lacks,
+      // so the rename silently never propagated).
+      if (fresh?.company) {
+        if (onCompanySynced) onCompanySynced(fresh.company);
+        else if (onUpdateCompanies) { try { const cos = await api.companies.getAll(); onUpdateCompanies(cos); } catch { /* non-fatal */ } }
       }
     } catch (e) {
       ui.toast.error(getApiErrorMessage(e) || 'Could not save changes.');
@@ -342,8 +370,8 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-[#F3F0FF] flex items-center justify-center overflow-hidden border border-[#E6E0FE]">
-            {company.logoImage ? <img src={company.logoImage} alt="" className="w-full h-full object-cover" /> : <Building2 size={20} className="text-[#6C3CF0]" />}
+          <div className="w-11 h-11 rounded-xl bg-[#FCF4EE] flex items-center justify-center overflow-hidden border border-[#F7E3D3]">
+            {company.logoImage ? <img src={company.logoImage} alt="" className="w-full h-full object-cover" /> : <Building2 size={20} className="text-[#C77E52]" />}
           </div>
           <div>
             <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">{companyName}</h1>
@@ -437,7 +465,7 @@ const DocumentHealthBanner: React.FC<{ health: any; onOpen: () => void }> = ({ h
         {soon > 0 && <span className="text-amber-700">🟡 {soon} expiring soon</span>}
         {missing > 0 && <span className="text-slate-600">📄 {missing} required missing</span>}
       </div>
-      <button onClick={onOpen} className="ml-auto text-xs font-bold text-[#6C3CF0] hover:underline">Review documents →</button>
+      <button onClick={onOpen} className="ml-auto text-xs font-bold text-[#C77E52] hover:underline">Review documents →</button>
     </div>
   );
 };
@@ -477,7 +505,7 @@ const Combo: React.FC<{
           {filtered.map(o => (
             <li key={o}>
               <button type="button" onMouseDown={e => { e.preventDefault(); commit(o); }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 ${o === value ? 'font-bold text-[#6C3CF0]' : 'text-slate-700'}`}>{o}</button>
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-100 ${o === value ? 'font-bold text-[#C77E52]' : 'text-slate-700'}`}>{o}</button>
             </li>
           ))}
           {showAdd && (
@@ -676,7 +704,7 @@ const OwnersSection: React.FC<{ profile: any; editable: boolean; reload: () => P
           </div>
 
           <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none">
-            <input type="checkbox" checked={!!draft.isPrimary} onChange={e => setDraft({ ...draft, isPrimary: e.target.checked })} className="h-4 w-4 accent-[#6C3CF0]" />
+            <input type="checkbox" checked={!!draft.isPrimary} onChange={e => setDraft({ ...draft, isPrimary: e.target.checked })} className="h-4 w-4 accent-[#C77E52]" />
             Make this the Primary Owner <span className="font-normal text-slate-400">(used for document placeholders)</span>
           </label>
         </div>
@@ -725,7 +753,7 @@ const WebsiteField: React.FC<{ label: string; value: string; disabled?: boolean;
           onBlur={() => { const n = normalizeUrl(value); if (n && n !== value) onChange(n); }} />
         {href && (
           <a href={href} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#6C3CF0] hover:underline truncate">
+            className="inline-flex items-center gap-1 text-[11px] font-bold text-[#C77E52] hover:underline truncate">
             <ExternalLink size={11} className="shrink-0" /> {href}
           </a>
         )}
@@ -749,7 +777,7 @@ const SocialLinksField: React.FC<{ label: string; value: string; disabled?: bool
           <div className="flex flex-wrap gap-2">
             {links.map((url, i) => (
               <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 max-w-full truncate rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-[#6C3CF0] hover:bg-slate-50">
+                className="inline-flex items-center gap-1 max-w-full truncate rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-bold text-[#C77E52] hover:bg-slate-50">
                 <ExternalLink size={11} className="shrink-0" /> <span className="truncate">{url}</span>
               </a>
             ))}
@@ -776,7 +804,7 @@ const ImageField: React.FC<{ label: string; value?: string; editable: boolean; o
           : <span className="text-[10px] text-slate-400 font-semibold">No image</span>}
         {editable && (
           <div className="absolute bottom-1 right-1 flex gap-1">
-            <button onClick={() => ref.current?.click()} className="p-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-[#6C3CF0] shadow-sm" title="Upload"><Upload size={12} /></button>
+            <button onClick={() => ref.current?.click()} className="p-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-[#C77E52] shadow-sm" title="Upload"><Upload size={12} /></button>
             {value && <button onClick={() => onChange('')} className="p-1 rounded-md bg-white border border-slate-200 text-rose-500 shadow-sm" title="Remove"><X size={12} /></button>}
           </div>
         )}
@@ -844,7 +872,7 @@ const CompanyDocuments: React.FC<{ profile: any; editable: boolean; reload: () =
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search documents…" className="pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 w-64 focus:outline-none focus:border-[#6C3CF0]" />
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search documents…" className="pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-700 w-64 focus:outline-none focus:border-[#C77E52]" />
         </div>
         <div className="flex items-center gap-2">
           <ExportMenu
@@ -880,7 +908,7 @@ const CompanyDocuments: React.FC<{ profile: any; editable: boolean; reload: () =
                 <Td>{d.status || '—'}</Td>
                 <Td>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => download(d)} className="text-slate-400 hover:text-[#6C3CF0]" title="Download/Preview"><Download size={14} /></button>
+                    <button onClick={() => download(d)} className="text-slate-400 hover:text-[#C77E52]" title="Download/Preview"><Download size={14} /></button>
                     {editable && <button onClick={() => openEdit(d)} className="text-slate-400 hover:text-brand-400" title="Edit"><Edit size={14} /></button>}
                     {editable && <button onClick={() => remove(d)} className="text-slate-400 hover:text-rose-400" title="Delete"><Trash2 size={14} /></button>}
                   </div>
@@ -934,7 +962,7 @@ const CompanyBranches: React.FC<{ profile: any; onNavigate?: (p: string) => void
   if (branches.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-        <div className="w-12 h-12 rounded-full bg-[#F3F0FF] flex items-center justify-center mb-3"><GitBranch size={20} className="text-[#6C3CF0]" /></div>
+        <div className="w-12 h-12 rounded-full bg-[#FCF4EE] flex items-center justify-center mb-3"><GitBranch size={20} className="text-[#C77E52]" /></div>
         <p className="text-sm font-semibold text-slate-500">No branches have been created for this company yet.</p>
         {canCreateBranch && onNavigate && (
           <Button size="sm" className="mt-4" icon={<Plus size={14} />} onClick={() => onNavigate('companies')}>Create First Branch</Button>

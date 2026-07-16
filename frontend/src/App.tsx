@@ -5,11 +5,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
 const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const NotificationsPage = React.lazy(() => import('@/pages/Notifications').then(m => ({ default: m.Notifications })));
 const SelectWorkspace = React.lazy(() => import('@/pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
 const Employees = React.lazy(() => import('@/pages/Employees').then(m => ({ default: m.Employees })));
 const LeaveManagement = React.lazy(() => import('@/pages/LeaveManagement').then(m => ({ default: m.LeaveManagement })));
 const Attendance = React.lazy(() => import('@/pages/Attendance').then(m => ({ default: m.Attendance })));
 const AttendanceApiIntegration = React.lazy(() => import('@/pages/AttendanceApiIntegration').then(m => ({ default: m.AttendanceApiIntegration })));
+const AttendanceSync = React.lazy(() => import('@/pages/AttendanceSync').then(m => ({ default: m.AttendanceSync })));
 const Payroll = React.lazy(() => import('@/pages/Payroll').then(m => ({ default: m.Payroll })));
 const InvoiceManagement = React.lazy(() => import('@/pages/InvoiceManagement').then(m => ({ default: m.InvoiceManagement })));
 const LoanManagement = React.lazy(() => import('@/pages/LoanManagement').then(m => ({ default: m.LoanManagement })));
@@ -20,6 +22,7 @@ const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ defa
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
 const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
+const CustomReportBuilder = React.lazy(() => import('@/pages/CustomReportBuilder').then(m => ({ default: m.CustomReportBuilder })));
 const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
@@ -29,6 +32,7 @@ const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ 
 const Tenders = React.lazy(() => import('@/pages/Tenders').then(m => ({ default: m.Tenders })));
 const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ default: m.Contracts })));
 const CompanyProfile = React.lazy(() => import('@/pages/CompanyProfile').then(m => ({ default: m.CompanyProfile })));
+const CompanyEdit = React.lazy(() => import('@/pages/CompanyEdit').then(m => ({ default: m.CompanyEdit })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { authStorage } from '@/utils/authStorage';
@@ -73,8 +77,10 @@ const pageTitles: Record<PageId, string> = {
   bonus: 'Bonus Management',
   attendance: 'Attendance',
   'attendance-integration': 'Attendance API Integration',
+  'attendance-sync': 'Attendance Synchronization',
   documents: 'Documents',
   reports: 'Reports',
+  'custom-report-builder': 'Custom Report Builder',
   settings: 'Settings',
   billing: 'Billing & Subscriptions',
   users: 'User Management',
@@ -82,7 +88,9 @@ const pageTitles: Record<PageId, string> = {
   tenders: 'Tender Management',
   contracts: 'Contract Management',
   'company-profile': 'Company Profile',
+  'company-edit': 'Edit Company',
   communication: 'Communication Center',
+  notifications: 'Notifications',
   'select-workspace': 'Select Workspace'
 };
 
@@ -90,8 +98,8 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
-  'attendance-integration', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'company-profile', 'communication', 'select-workspace',
+  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'company-profile', 'company-edit', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -322,6 +330,21 @@ export default function App() {
     // Companies/branches are small master data still read back by isCompanyIdMatch's
     // fallback (workspace scoping). Persist it guarded so it can never crash the UI.
     safeSetJSON('hrms_companies', billingResult.updatedCompanies);
+  };
+
+  // Sync the global companies state after a Company Profile save. This is governed
+  // by the company-profile permission (already enforced on the backend
+  // updateBranding call the page makes) — NOT the SaaS `companies` permission that
+  // handleUpdateCompanies requires. Merging the saved company here makes the new
+  // name appear instantly in the sidebar, workspace selector, header and page
+  // title without a logout / refresh (both consume the reactive `companies` state).
+  const handleCompanyProfileSync = (updatedCompany: any) => {
+    if (!updatedCompany?.id) return;
+    setCompanies(prev => {
+      const next = prev.map(c => (String(c.id) === String(updatedCompany.id) ? { ...c, ...updatedCompany } : c));
+      safeSetJSON('hrms_companies', next);
+      return next;
+    });
   };
 
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
@@ -646,6 +669,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   // Transient cross-page request: "open this employee's profile on the Employees
   // page". Set by Employee Cards → View Profile, cleared once Employees consumes it.
   const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
+  // Which company the dedicated Edit-Company page is editing. Carried in the URL
+  // (/company-edit/:id) AND localStorage so a hard refresh or deep link re-opens
+  // the right company. Seeded from the URL's second path segment first.
+  const [editCompanyId, setEditCompanyId] = useState<string | null>(() => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    if (seg[0] === 'company-edit' && seg[1]) return decodeURIComponent(seg[1]);
+    return localStorage.getItem('hrms_edit_company_id');
+  });
   const [role, setRole] = useState<Role>(() => {
     const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
@@ -879,11 +910,37 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
+  // Open the dedicated Edit-Company page for a specific company. The id rides in
+  // the URL (/company-edit/:id) so refresh / deep link / Back all resolve it, and
+  // is also persisted so a same-path reload rehydrates it. Editing is NEVER inline
+  // on the Companies list — this is a separate route + component.
+  const handleEditCompany = (companyId: string) => {
+    setEditCompanyId(companyId);
+    localStorage.setItem('hrms_edit_company_id', companyId);
+    setCurrentPage('company-edit');
+    localStorage.setItem('hrms_current_page', 'company-edit');
+    const path = '/company-edit/' + encodeURIComponent(companyId);
+    if (window.location.pathname !== path) {
+      window.history.pushState({ page: 'company-edit', companyId }, '', path);
+    }
+  };
+
   // Browser Back/Forward → switch the in-app page (never exit the app).
   useEffect(() => {
     const onPop = () => {
+      const seg = window.location.pathname.replace(/^\/+/, '').split('/');
       const p = pathToPage(window.location.pathname);
-      if (p) { setCurrentPage(p); localStorage.setItem('hrms_current_page', p); }
+      if (p) {
+        // Re-resolve the Edit-Company target from the URL segment so navigating
+        // Back INTO /company-edit/:id re-opens the correct company.
+        if (p === 'company-edit' && seg[1]) {
+          const id = decodeURIComponent(seg[1]);
+          setEditCompanyId(id);
+          localStorage.setItem('hrms_edit_company_id', id);
+        }
+        setCurrentPage(p);
+        localStorage.setItem('hrms_current_page', p);
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -893,9 +950,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   // entry, RBAC fallback). replaceState so these don't clutter the back history.
   useEffect(() => {
     if (!isAuthenticated) return;
-    const path = '/' + currentPage;
-    if (window.location.pathname !== path) {
-      window.history.replaceState({ page: currentPage }, '', path);
+    // Compare on the FIRST path segment so a sub-route like /company-edit/:id is
+    // left intact (the naive `/${currentPage}` compare would strip the :id).
+    const currentSeg = window.location.pathname.replace(/^\/+/, '').split('/')[0];
+    if (currentSeg !== currentPage) {
+      window.history.replaceState({ page: currentPage }, '', '/' + currentPage);
     }
   }, [currentPage, isAuthenticated]);
 
@@ -1058,8 +1117,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     if (permissionRole !== 'Super Admin') {
       const permCurrent = (currentPage === 'employee-cards' ? 'employees'
         : currentPage === 'attendance-integration' ? 'attendance'
+        : currentPage === 'attendance-sync' ? 'payroll'
         : currentPage === 'bonus' ? 'payroll'
         : currentPage === 'invoice-management' ? 'invoicing'
+        // Custom Report Builder rides on the Reports permission (no matrix row).
+        : currentPage === 'custom-report-builder' ? 'reports'
+        // Notifications is a cross-cutting page reached from the Dashboard / bell;
+        // it rides on the Dashboard permission (anyone who can see the dashboard).
+        : currentPage === 'notifications' ? 'dashboard'
         // Finance & Compliance aggregates loans + compliance: allow if the user
         // can view EITHER (resolve to whichever key they actually hold).
         : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1106,8 +1171,13 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     // dedicated permission-matrix row).
     const permPage = (currentPage === 'employee-cards' ? 'employees'
       : currentPage === 'attendance-integration' ? 'attendance'
+      : currentPage === 'attendance-sync' ? 'payroll'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage === 'invoice-management' ? 'invoicing'
+      // Custom Report Builder rides on the Reports permission (no matrix row).
+      : currentPage === 'custom-report-builder' ? 'reports'
+      // Notifications rides on the Dashboard permission (cross-cutting page).
+      : currentPage === 'notifications' ? 'dashboard'
       // Finance & Compliance aggregates loans + compliance: allow if the user
       // can view EITHER (resolve to whichever key they actually hold).
       : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1177,6 +1247,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             superAdminStats={superAdminStats}
           />
         );
+      case 'notifications':
+        return (
+          <NotificationsPage
+            notifications={notifications}
+            onUpdateNotifications={handleUpdateNotifications}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            role={resolvedRole}
+            onNavigate={handleNavigate}
+          />
+        );
       case 'companies':
         // Hard frontend gate — even if routing is bypassed, non-Super Admin
         // users see the Access Denied screen and no company data is rendered.
@@ -1210,6 +1291,31 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             employees={employees}
             onUpdateEmployees={handleUpdateEmployees}
             superAdminStats={superAdminStats}
+            onRefresh={hydrateAll}
+            onEditCompany={handleEditCompany}
+          />
+        );
+      case 'company-edit':
+        // Dedicated Edit-Company page (Super Admin only, same gate as the list).
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6" style={{ background: 'linear-gradient(135deg, #fee2e2, #fecaca)' }}>
+                <ShieldAlert className="w-12 h-12" style={{ color: '#dc2626' }} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2" style={{ color: '#111827' }}>Access Denied</h2>
+              <p className="max-w-md" style={{ color: '#6b7280' }}>
+                Editing a company is exclusively available to <span className="font-bold" style={{ color: '#2563eb' }}>Super Admin</span> accounts.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <CompanyEdit
+            companyId={editCompanyId}
+            companies={companies}
+            onUpdateCompanies={handleUpdateCompanies}
+            onDone={() => handleNavigate('companies')}
             onRefresh={hydrateAll}
           />
         );
@@ -1303,6 +1409,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             authProfile={authProfile}
             onUpdateCompanies={handleUpdateCompanies}
+            onCompanySynced={handleCompanyProfileSync}
             onNavigate={handleNavigate}
           />
         );
@@ -1317,6 +1424,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             leaves={leaves}
             onRefresh={hydrateAll}
+            onNavigate={(p) => setCurrentPage(p as PageId)}
           />
         );
       case 'attendance-integration':
@@ -1326,6 +1434,21 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             activeCompanyId={resolvedCompanyId}
             companies={companies}
             authProfile={authProfile}
+          />
+        );
+      case 'attendance-sync':
+        return (
+          <AttendanceSync
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            employees={activeEmployees}
+            attendance={attendance}
+            leaves={leaves}
+            payroll={payroll}
+            authProfile={authProfile}
+            onRefresh={hydrateAll}
+            onNavigate={(p) => setCurrentPage(p as PageId)}
           />
         );
       case 'bonus':
@@ -1407,6 +1530,15 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             authProfile={authProfile}
           />
         );
+      case 'custom-report-builder':
+        return (
+          <CustomReportBuilder
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
       case 'communication':
         return <CommunicationCenter role={resolvedRole} />;
       case 'settings':
@@ -1459,7 +1591,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   return (
     <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies} activeCompanyId={resolvedCompanyId}>
       {/* Global Wavy Background (Second Image Style) */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-canvas">
+      <div className={`fixed inset-0 pointer-events-none z-0 overflow-hidden ${currentPage === 'dashboard' ? 'app-bg-dashboard' : 'bg-canvas'}`}>
         {/* Soft floating circles — brand tint, faint enough to read in either theme. */}
         <div className="absolute top-[20%] left-[35%] w-16 h-16 bg-brand-500/10 rounded-full"></div>
         <div className="absolute bottom-[10%] right-[10%] w-[350px] h-[350px] bg-brand-500/10 rounded-full"></div>

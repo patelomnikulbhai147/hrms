@@ -36,9 +36,18 @@ const isAdvanceType = (name?: string) => /advance/i.test(String(name || ''));
 const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
   <div className={`rounded-2xl border border-slate-200 bg-white p-4 ${className}`}>{children}</div>
 );
-const IconBtn: React.FC<{ title: string; onClick: () => void; children: React.ReactNode }> = ({ title, onClick, children }) => (
-  <button title={title} onClick={onClick} className="p-1.5 rounded-lg hover:bg-slate-100 transition">{children}</button>
+const IconBtn: React.FC<{ title: string; onClick?: () => void; children: React.ReactNode; disabled?: boolean }> = ({ title, onClick, children, disabled }) => (
+  <button title={title} onClick={disabled ? undefined : onClick} disabled={disabled} aria-disabled={disabled}
+    className={`p-1.5 rounded-lg transition ${disabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-slate-100'}`}>{children}</button>
 );
+
+// Only a Draft advance may be deleted; every other status is a permanent record.
+// status → tooltip shown on the disabled delete icon (backend enforces the same).
+const DELETE_BLOCKED_TIP: Record<string, string> = {
+  'Pending Approval': 'Pending approval records cannot be deleted.',
+  Approved: 'Approved advance records are permanent company records.',
+  Rejected: 'Rejected advance records are retained for audit purposes.',
+};
 
 // A file the user picked in the create modal but hasn't uploaded yet.
 interface PendingFile { fileData: string; fileName: string; mimeType: string; size: string; category: string; }
@@ -88,8 +97,8 @@ export const SalaryAdvancesSection: React.FC<{
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
   const del = async (id: number) => {
-    if (!(await ui.confirm({ message: 'Delete this salary advance? Only Draft/Rejected advances can be deleted.', variant: 'danger', confirmText: 'Delete' }))) return;
-    try { await api.loans.remove(id); ui.toast.success('Salary advance deleted.'); load(); }
+    if (!(await ui.confirm({ title: 'Delete this draft advance?', message: 'This action cannot be undone.', variant: 'danger', confirmText: 'Delete Draft' }))) return;
+    try { await api.loans.remove(id); ui.toast.success('Draft advance deleted.'); load(); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
 
@@ -102,7 +111,7 @@ export const SalaryAdvancesSection: React.FC<{
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee or advance #…"
-            className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none" />
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-lg border border-slate-200 focus:border-[#C77E52] outline-none" />
         </div>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="text-xs rounded-lg border border-slate-200 px-2 py-2">
           <option value="">All statuses</option>
@@ -117,7 +126,7 @@ export const SalaryAdvancesSection: React.FC<{
         // ── Professional empty state ─────────────────────────────────────────
         <Card className="!p-0">
           <div className="flex flex-col items-center justify-center text-center px-6 py-14">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F3F0FF] text-[#6C3CF0]"><Wallet size={26} /></div>
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FCF4EE] text-[#C77E52]"><Wallet size={26} /></div>
             <h3 className="text-sm font-extrabold text-slate-800">No salary advances yet</h3>
             <p className="mt-1 max-w-md text-xs text-slate-500">
               Grant an employee a short-term salary advance and recover it automatically from payroll —
@@ -159,7 +168,8 @@ export const SalaryAdvancesSection: React.FC<{
                         {canApprove && l.status === 'Pending Approval' && <IconBtn title="Reject" onClick={() => act(l.id, 'reject')}><XCircle size={14} className="text-rose-600" /></IconBtn>}
                         {(canApprove || canEdit) && l.status === 'Approved' && <IconBtn title="Mark disbursed" onClick={() => act(l.id, 'disburse')}><Banknote size={14} className="text-emerald-600" /></IconBtn>}
                         {canManage && ['Approved', 'Disbursed', 'Running'].includes(l.status) && <IconBtn title="Close" onClick={() => act(l.id, 'close')}><Ban size={14} className="text-slate-500" /></IconBtn>}
-                        {canManage && ['Draft', 'Rejected'].includes(l.status) && <IconBtn title="Delete" onClick={() => del(l.id)}><Trash2 size={14} className="text-rose-600" /></IconBtn>}
+                        {canManage && l.status === 'Draft' && <IconBtn title="Delete draft" onClick={() => del(l.id)}><Trash2 size={14} className="text-rose-600" /></IconBtn>}
+                        {canManage && DELETE_BLOCKED_TIP[l.status] && <IconBtn title={DELETE_BLOCKED_TIP[l.status]} disabled><Trash2 size={14} className="text-slate-300" /></IconBtn>}
                       </div>
                     </td>
                   </tr>
@@ -306,7 +316,7 @@ const NewSalaryAdvanceModal: React.FC<{ companyId?: string; onClose: () => void;
           <label className="block text-xs font-semibold text-slate-600 mb-1">Remarks</label>
           <textarea value={form.remarks} onChange={(e) => setForm({ ...form, remarks: e.target.value })} rows={2}
             placeholder="Internal HR / Finance note (optional)"
-            className="w-full text-xs rounded-lg border border-slate-200 focus:border-[#6C3CF0] outline-none px-3 py-2 resize-none" />
+            className="w-full text-xs rounded-lg border border-slate-200 focus:border-[#C77E52] outline-none px-3 py-2 resize-none" />
         </div>
 
         {/* Recovery preview */}

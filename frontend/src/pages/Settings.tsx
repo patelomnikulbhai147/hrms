@@ -408,7 +408,9 @@ export const Settings: React.FC<SettingsProps> = ({
       {activeSubTab !== 'roles' && activeSubTab !== 'labour' && (
       <div className="space-y-4">
 
-          {/* TAB 2: Payroll Settings Engine */}
+          {/* TAB 1: Statutory Payroll Rules — the full compliance engine. Its own
+              left-side navigation now includes "Payroll Cycle & Leave Policy" as a
+              menu item (no bottom accordion, no duplicate section). */}
           {activeSubTab === 'payroll' && (
             <PayrollComplianceEngine
               currentCompany={currentCompany}

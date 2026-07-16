@@ -27,7 +27,7 @@ const uid = () => `b_${Math.random().toString(36).slice(2, 9)}`;
 
 // ── Draggable / resizable frame (design-space px; parent is CSS-scaled). ───────
 type Handle = 'move' | 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w';
-const HANDLE: React.CSSProperties = { position: 'absolute', width: 9, height: 9, background: '#fff', border: '1.5px solid #6C3CF0', borderRadius: 2, zIndex: 5 };
+const HANDLE: React.CSSProperties = { position: 'absolute', width: 9, height: 9, background: '#fff', border: '1.5px solid #C77E52', borderRadius: 2, zIndex: 5 };
 const BlockFrame: React.FC<{ block: CanvasBlock; scale: number; selected: boolean; onSelect: () => void; onChange: (p: Partial<CanvasBlock>) => void; children: React.ReactNode }> = ({ block, scale, selected, onSelect, onChange, children }) => {
   const start = useRef<any>(null);
   const begin = useCallback((handle: Handle, e: React.PointerEvent) => {
@@ -51,7 +51,7 @@ const BlockFrame: React.FC<{ block: CanvasBlock; scale: number; selected: boolea
   const corner = (h: Handle, css: React.CSSProperties): React.CSSProperties => ({ ...HANDLE, ...css, cursor: `${h}-resize` });
   return (
     <div onPointerDown={(e) => begin('move', e)}
-      style={{ position: 'absolute', left: block.x, top: block.y, width: block.w, height: block.h, cursor: block.locked ? 'default' : 'move', outline: selected ? '1.5px solid #6C3CF0' : '1px dashed rgba(79,124,255,0.35)', outlineOffset: 1, boxSizing: 'border-box' }}>
+      style={{ position: 'absolute', left: block.x, top: block.y, width: block.w, height: block.h, cursor: block.locked ? 'default' : 'move', outline: selected ? '1.5px solid #C77E52' : '1px dashed rgba(79,124,255,0.35)', outlineOffset: 1, boxSizing: 'border-box' }}>
       {children}
       {selected && !block.locked && (['nw', { left: -5, top: -5 }, 'ne', { right: -5, top: -5 }, 'sw', { left: -5, bottom: -5 }, 'se', { right: -5, bottom: -5 }, 'n', { left: '50%', marginLeft: -5, top: -5 }, 's', { left: '50%', marginLeft: -5, bottom: -5 }, 'e', { right: -5, top: '50%', marginTop: -5 }, 'w', { left: -5, top: '50%', marginTop: -5 }] as any[])
         .reduce((acc: any[], cur, i, arr) => (i % 2 === 0 ? [...acc, [cur, arr[i + 1]]] : acc), [])
@@ -63,7 +63,7 @@ const BlockFrame: React.FC<{ block: CanvasBlock; scale: number; selected: boolea
 // ── Properties panel field helpers ────────────────────────────────────────────
 const Num: React.FC<{ label: string; value: any; onChange: (v: number) => void; step?: number }> = ({ label, value, onChange, step = 1 }) => (
   <label className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">{label}</span>
-    <input type="number" step={step} value={value ?? ''} onChange={(e) => onChange(Number(e.target.value))} className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-[#6C3CF0] focus:outline-none" /></label>
+    <input type="number" step={step} value={value ?? ''} onChange={(e) => onChange(Number(e.target.value))} className="w-full rounded-lg border border-slate-200 px-2 py-1 text-xs focus:border-[#C77E52] focus:outline-none" /></label>
 );
 const Col: React.FC<{ label: string; value?: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
   <label className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">{label}</span>
@@ -168,19 +168,19 @@ export const InvoiceCanvasDesigner: React.FC<Props> = ({ company }) => {
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><LayoutTemplate size={14} className="text-[#6C3CF0]" /> Canvas Layouts</div>
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600"><LayoutTemplate size={14} className="text-[#C77E52]" /> Canvas Layouts</div>
         <select value={currentId ?? ''} onChange={(e) => e.target.value ? loadLayout(Number(e.target.value)) : (setLayout(DEFAULT_LAYOUT()), setCurrentId(null))}
-          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-[#6C3CF0] focus:outline-none">
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-[#C77E52] focus:outline-none">
           <option value="">— New layout —</option>
           {layouts.map((l) => <option key={l.id} value={l.id}>{l.name}{l.isDefault ? '  ★ active' : ''}</option>)}
         </select>
         <select onChange={(e) => { if (e.target.value) { newFromPreset(e.target.value); e.target.value = ''; } }} defaultValue=""
-          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-[#6C3CF0] focus:outline-none">
+          className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs focus:border-[#C77E52] focus:outline-none">
           <option value="">Start from preset…</option>
           {LAYOUT_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <span className="text-xs font-bold text-slate-700">{layout.name}</span>
-        <button onClick={rename} className="text-[11px] font-semibold text-[#6C3CF0] hover:underline">rename</button>
+        <button onClick={rename} className="text-[11px] font-semibold text-[#C77E52] hover:underline">rename</button>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Button size="sm" variant="outline" icon={<Eye size={13} />} onClick={openPrint}>Preview PDF</Button>
           <Button size="sm" variant="outline" icon={<Save size={13} />} loading={saving} onClick={save}>Save</Button>
@@ -200,7 +200,7 @@ export const InvoiceCanvasDesigner: React.FC<Props> = ({ company }) => {
           <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-1">
             {BLOCK_LIBRARY.map((d) => (
               <button key={d.type} onClick={() => addBlock(d.type)}
-                className="rounded-lg border border-slate-200 px-2 py-1.5 text-left text-[11px] font-semibold text-slate-600 hover:border-[#6C3CF0] hover:text-[#6C3CF0]">
+                className="rounded-lg border border-slate-200 px-2 py-1.5 text-left text-[11px] font-semibold text-slate-600 hover:border-[#C77E52] hover:text-[#C77E52]">
                 {d.label}
               </button>
             ))}
@@ -255,7 +255,7 @@ export const InvoiceCanvasDesigner: React.FC<Props> = ({ company }) => {
 
               {(sel.type === 'text' || sel.type === 'custom' || sel.type === 'notes' || sel.type === 'terms' || sel.type === 'image') && (
                 <label className="flex flex-col gap-1"><span className="text-[10px] font-bold text-slate-500">{sel.type === 'image' ? 'Image URL / data URI' : 'Content'}</span>
-                  <textarea value={sel.content || ''} onChange={(e) => patchBlock(sel.id, { content: e.target.value })} rows={sel.type === 'image' ? 2 : 3} className="w-full rounded-lg border border-slate-200 p-1.5 text-xs focus:border-[#6C3CF0] focus:outline-none" placeholder={sel.type === 'text' || sel.type === 'custom' ? 'Supports {{invoice_number}}, {{company_name}}, {{grand_total}}…' : ''} /></label>
+                  <textarea value={sel.content || ''} onChange={(e) => patchBlock(sel.id, { content: e.target.value })} rows={sel.type === 'image' ? 2 : 3} className="w-full rounded-lg border border-slate-200 p-1.5 text-xs focus:border-[#C77E52] focus:outline-none" placeholder={sel.type === 'text' || sel.type === 'custom' ? 'Supports {{invoice_number}}, {{company_name}}, {{grand_total}}…' : ''} /></label>
               )}
 
               <div className="grid grid-cols-2 gap-2">
@@ -271,14 +271,14 @@ export const InvoiceCanvasDesigner: React.FC<Props> = ({ company }) => {
 
               <div className="flex items-center gap-1">
                 {(['left', 'center', 'right'] as const).map((a) => (
-                  <button key={a} onClick={() => patchStyle(sel.id, { align: a })} className={`flex-1 rounded-lg border px-2 py-1 text-[10px] font-bold capitalize ${sel.style?.align === a ? 'border-[#6C3CF0] bg-[#F3F0FF] text-[#6C3CF0]' : 'border-slate-200 text-slate-500'}`}>{a}</button>
+                  <button key={a} onClick={() => patchStyle(sel.id, { align: a })} className={`flex-1 rounded-lg border px-2 py-1 text-[10px] font-bold capitalize ${sel.style?.align === a ? 'border-[#C77E52] bg-[#FCF4EE] text-[#C77E52]' : 'border-slate-200 text-slate-500'}`}>{a}</button>
                 ))}
               </div>
 
               <div className="flex items-center gap-1">
                 <button onClick={() => bumpZ(sel.id, 1)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-700"><ChevronUp size={12} /> Forward</button>
                 <button onClick={() => bumpZ(sel.id, -1)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-700"><ChevronDown size={12} /> Back</button>
-                <button onClick={() => patchBlock(sel.id, { visible: sel.visible === false })} className={`flex flex-1 items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold ${sel.visible === false ? 'border-slate-200 text-slate-400' : 'border-[#6C3CF0] text-[#6C3CF0]'}`}>{sel.visible === false ? 'Hidden' : 'Visible'}</button>
+                <button onClick={() => patchBlock(sel.id, { visible: sel.visible === false })} className={`flex flex-1 items-center justify-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-bold ${sel.visible === false ? 'border-slate-200 text-slate-400' : 'border-[#C77E52] text-[#C77E52]'}`}>{sel.visible === false ? 'Hidden' : 'Visible'}</button>
               </div>
             </div>
           )}

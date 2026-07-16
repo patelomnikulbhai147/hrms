@@ -182,7 +182,7 @@ const designOf = (item: any, b: Branding) => {
   const theme: Theme = (item?.theme && item.theme.background) ? item.theme : (layout.theme || {});
   const bg = theme.background || (theme.bg1 ? `linear-gradient(135deg,${theme.bg1},${theme.bg2 || theme.bg1})` : 'linear-gradient(135deg,#eef2ff,#e5e7eb)');
   return {
-    bg, accent: theme.accent || '#5b2de6', text: theme.text || '#1e293b',
+    bg, accent: theme.accent || '#B5673A', text: theme.text || '#1e293b',
     font: theme.font || "'Trebuchet MS',sans-serif",
     emoji: theme.emoji || layout.emoji || item?.emoji || '🎉',
     art: theme.art || layout.art || item?.art || 'celebration',
@@ -246,7 +246,7 @@ const CardArt: React.FC<{ art: string; accent: string }> = ({ art, accent }) => 
         <span key={`s${i}`} className="absolute rounded-full bg-white" style={{ top: `${(i * 9 + 4) % 92}%`, left: `${(i * 17 + 6) % 92}%`, width: '1.8cqw', height: '1.8cqw', opacity: 0.8 }} />
       ))}
       {spec.flair === 'colors' && SCATTER.slice(0, 6).map((p, i) => (
-        <span key={`k${i}`} className="absolute rounded-full" style={{ top: `${p[0]}%`, left: `${p[1]}%`, width: '6cqw', height: '6cqw', background: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#6c3cf0', '#ef4444'][i % 6], filter: 'blur(1px)', opacity: 0.5 }} />
+        <span key={`k${i}`} className="absolute rounded-full" style={{ top: `${p[0]}%`, left: `${p[1]}%`, width: '6cqw', height: '6cqw', background: ['#a855f7', '#ec4899', '#f59e0b', '#10b981', '#C77E52', '#ef4444'][i % 6], filter: 'blur(1px)', opacity: 0.5 }} />
       ))}
       {spec.items.map((em, i) => {
         const p = SCATTER[i % SCATTER.length];
@@ -403,8 +403,8 @@ export const CommunicationCenter: React.FC<Props> = () => {
     <BrandingCtx.Provider value={branding}>
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="rounded-2xl border border-[#E6E0FE] bg-white px-4 py-3 shadow-sm">
-        <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><MessageSquare size={16} className="text-[#6C3CF0]" /> Communication Center</h2>
+      <div className="rounded-2xl border border-[#F7E3D3] bg-white px-4 py-3 shadow-sm">
+        <h2 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><MessageSquare size={16} className="text-[#C77E52]" /> Communication Center</h2>
         <p className="text-[11px] text-slate-400">Central hub for employee notifications, greetings & announcements · WhatsApp delivery, automation & live diagnostics</p>
       </div>
 
@@ -494,7 +494,7 @@ export const CommunicationCenter: React.FC<Props> = () => {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 const Card: React.FC<{ label: string; value: React.ReactNode; icon: React.ReactNode; tone?: string }> = ({ label, value, icon, tone }) => (
   <div className="rounded-xl border border-slate-200 bg-white p-4">
-    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#F3F0FF] text-[#6C3CF0]'}`}>{icon}</div>
+    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-lg ${tone || 'bg-[#FCF4EE] text-[#C77E52]'}`}>{icon}</div>
     <p className="text-2xl font-extrabold text-slate-800">{value}</p>
     <p className="text-[11px] font-semibold text-slate-400">{label}</p>
   </div>
@@ -571,7 +571,7 @@ const LAYOUT_OPTIONS = [
 ];
 const ART_OPTIONS = ['celebration', 'birthday', 'anniversary', 'welcome', 'farewell', 'promotion', 'award', 'finance', 'document', 'notice', 'diwali', 'holi', 'eid', 'christmas', 'newyear', 'tricolor', 'navratri', 'rakhi', 'janmashtami', 'ganesh', 'kite', 'shivratri', 'womensday', 'labour', 'flowers', 'formal'];
 const starterDesign = () => ({
-  theme: { bg1: '#5b2de6', bg2: '#9333ea', background: 'linear-gradient(135deg,#5b2de6 0%,#9333ea 100%)', accent: '#fde047', text: '#ffffff', font: "'Trebuchet MS',sans-serif", emoji: '🎉', art: 'celebration', layoutKind: 'classic' },
+  theme: { bg1: '#B5673A', bg2: '#9333ea', background: 'linear-gradient(135deg,#B5673A 0%,#9333ea 100%)', accent: '#fde047', text: '#ffffff', font: "'Trebuchet MS',sans-serif", emoji: '🎉', art: 'celebration', layoutKind: 'classic' },
   greetingTitle: '', subtitle: '', signoff: 'Best wishes, {{company_name}}',
 });
 const blankTemplate = () => ({ title: '', category: 'Birthday Wishes', subject: '', body: '', status: 'Draft', backgroundImage: '', companyLogo: '', employeePhotoPlaceholder: true, festivalName: '', festivalDate: '', layout: starterDesign(), whatsappCompatible: false, whatsappRichText: false, whatsappCaption: '' });
@@ -609,7 +609,7 @@ const TemplatesTab: React.FC = () => {
   const setTheme = (patch: any) => setDraft((d: any) => {
     const layout = { ...(typeof d.layout === 'object' && d.layout ? d.layout : starterDesign()) };
     layout.theme = { ...(layout.theme || {}), ...patch };
-    if (patch.bg1 !== undefined || patch.bg2 !== undefined) layout.theme.background = `linear-gradient(135deg,${layout.theme.bg1 || '#5b2de6'} 0%,${layout.theme.bg2 || '#9333ea'} 100%)`;
+    if (patch.bg1 !== undefined || patch.bg2 !== undefined) layout.theme.background = `linear-gradient(135deg,${layout.theme.bg1 || '#B5673A'} 0%,${layout.theme.bg2 || '#9333ea'} 100%)`;
     return { ...d, layout };
   });
   const setLayoutField = (patch: any) => setDraft((d: any) => ({ ...d, layout: { ...(typeof d.layout === 'object' && d.layout ? d.layout : starterDesign()), ...patch } }));
@@ -653,14 +653,14 @@ const TemplatesTab: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
-            <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'mine' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>My Templates ({items.length})</button>
-            <button onClick={() => setView('samples')} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'samples' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}><Star size={12} /> Sample Library ({samples.length})</button>
+            <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'mine' ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500'}`}>My Templates ({items.length})</button>
+            <button onClick={() => setView('samples')} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === 'samples' ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500'}`}><Star size={12} /> Sample Library ({samples.length})</button>
           </div>
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search templates…" className="w-52 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search templates…" className="w-52 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-700 focus:border-[#C77E52] focus:outline-none" />
           </div>
-          <select value={cat} onChange={e => setCat(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none">
+          <select value={cat} onChange={e => setCat(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-[#C77E52] focus:outline-none">
             <option value="All">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -689,7 +689,7 @@ const TemplatesTab: React.FC = () => {
                       </div>
                       <p className="mt-0.5 text-[11px] text-slate-400">{t.category}</p>
                       <div className="mt-2 flex items-center gap-1.5">
-                        <button onClick={() => setPreview(t)} className="text-slate-400 hover:text-[#6C3CF0]" title="Preview"><Eye size={15} /></button>
+                        <button onClick={() => setPreview(t)} className="text-slate-400 hover:text-[#C77E52]" title="Preview"><Eye size={15} /></button>
                         <button onClick={() => openEdit(t)} className="text-slate-400 hover:text-brand-500" title="Edit"><Edit size={15} /></button>
                         <button onClick={() => remove(t)} className="text-slate-400 hover:text-rose-500" title="Delete"><Trash2 size={15} /></button>
                       </div>
@@ -754,7 +754,7 @@ const TemplatesTab: React.FC = () => {
               <div>
                 <label className="mb-1 block text-[11px] font-bold text-slate-500">Message Body</label>
                 <textarea value={draft.body} onChange={e => setDraft({ ...draft, body: e.target.value })} rows={3}
-                  className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-[#6C3CF0] focus:outline-none"
+                  className="w-full rounded-xl border border-slate-200 p-2 text-xs text-slate-700 focus:border-[#C77E52] focus:outline-none"
                   placeholder="Write your message. Insert placeholders from the library below." />
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {PLACEHOLDERS.map(p => (
@@ -781,7 +781,7 @@ const TemplatesTab: React.FC = () => {
                   <div>
                     <label className="mb-1 block text-[11px] font-bold text-slate-500">Background Colors</label>
                     <div className="flex items-center gap-2">
-                      <input type="color" value={dTheme.bg1 || '#5b2de6'} onChange={e => setTheme({ bg1: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 1" />
+                      <input type="color" value={dTheme.bg1 || '#B5673A'} onChange={e => setTheme({ bg1: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 1" />
                       <input type="color" value={dTheme.bg2 || '#9333ea'} onChange={e => setTheme({ bg2: e.target.value })} className="h-8 w-10 cursor-pointer rounded border border-slate-200" title="Color 2" />
                     </div>
                   </div>
@@ -891,7 +891,7 @@ const DesignerTab: React.FC = () => {
         <p className="mb-3 text-[10px] text-slate-400">Click to place onto the canvas. Layout presets cover placement; saved layouts are reusable templates.</p>
         <div className="flex flex-wrap gap-1.5">
           {DESIGNER_ELEMENTS.map(el => (
-            <button key={el} onClick={() => add(el)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#6C3CF0] hover:text-[#6C3CF0]">+ {el}</button>
+            <button key={el} onClick={() => add(el)} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:border-[#C77E52] hover:text-[#C77E52]">+ {el}</button>
           ))}
         </div>
       </div>
@@ -1032,7 +1032,7 @@ const HolidayTab: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5">
           {([['calendar', 'Calendar', CalendarDays], ['month', 'Monthly', LayoutGrid], ['list', 'List', ListIcon]] as const).map(([id, label, Icon]) => (
-            <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === id ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}><Icon size={12} /> {label}</button>
+            <button key={id} onClick={() => setView(id)} className={`flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold ${view === id ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500'}`}><Icon size={12} /> {label}</button>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1084,7 +1084,7 @@ const HolidayTab: React.FC = () => {
                   const day = i + 1; const list = holidaysOn(day); const isToday = ymd(cursor.y, cursor.m, day) === todayStr;
                   return (
                     <div key={day} className={`min-h-[78px] border-b border-r border-slate-100 p-1.5 ${isToday ? 'bg-brand-50/60' : ''}`}>
-                      <div className={`mb-1 text-[11px] font-bold ${isToday ? 'text-[#6C3CF0]' : 'text-slate-500'}`}>{day}</div>
+                      <div className={`mb-1 text-[11px] font-bold ${isToday ? 'text-[#C77E52]' : 'text-slate-500'}`}>{day}</div>
                       <div className="space-y-0.5">
                         {list.slice(0, 3).map(h => (
                           <button key={h.id} onClick={() => openEdit(h)} title={h.name}
@@ -1169,7 +1169,7 @@ const HolidayTab: React.FC = () => {
           </div>
           <div className="mt-3">
             <label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label>
-            <textarea rows={2} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
+            <textarea rows={2} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" />
           </div>
           <div className="mt-3 flex flex-wrap gap-4">
             <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-600"><input type="checkbox" checked={!!draft.isPublicHoliday} onChange={e => setDraft({ ...draft, isPublicHoliday: e.target.checked })} /> Public Holiday</label>
@@ -1233,7 +1233,7 @@ const AnnouncementsTab: React.FC = () => {
             <Input label="Title *" value={draft.title} onChange={e => setDraft({ ...draft, title: e.target.value })} />
             <div>
               <label className="mb-1 block text-[11px] font-bold text-slate-500">Message</label>
-              <textarea rows={4} value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#6C3CF0] focus:outline-none" />
+              <textarea rows={4} value={draft.message} onChange={e => setDraft({ ...draft, message: e.target.value })} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Select label="Priority" value={draft.priority} onChange={e => setDraft({ ...draft, priority: e.target.value })} options={['Low', 'Normal', 'High', 'Urgent'].map(p => ({ value: p, label: p }))} />

@@ -1019,7 +1019,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
 
                           <button
                             onClick={() => handleOpenPermissions(user)}
-                            className="px-2.5 py-1.5 shrink-0 bg-[#2563EB] hover:bg-[#4C1FD4] text-white rounded-lg text-[11px] font-bold transition-all shadow-sm flex items-center gap-1"
+                            className="px-2.5 py-1.5 shrink-0 bg-[#2563EB] hover:bg-[#99552F] text-white rounded-lg text-[11px] font-bold transition-all shadow-sm flex items-center gap-1"
                           >
                             <Key size={13} />
                             Permissions

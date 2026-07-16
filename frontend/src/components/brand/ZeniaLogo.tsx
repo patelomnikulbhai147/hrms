@@ -30,27 +30,21 @@ export const ZeniaLogo: React.FC<LogoProps> = ({ size = 32, className, radius = 
     aria-label={`${BRAND_NAME} logo`}
     className={cn('flex-shrink-0', className)}
   >
-    <defs>
-      <linearGradient id="zenia-field" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#7C4DF5" />
-        <stop offset="1" stopColor="#4C1FD4" />
-      </linearGradient>
-    </defs>
+    {/* White tile — reads on both light and dark chrome, with a slate hairline. */}
+    <rect width="1024" height="1024" rx={radius} fill="#FFFFFF" stroke="#E2E8F0" strokeWidth="8" />
 
-    <rect width="1024" height="1024" rx={radius} fill="url(#zenia-field)" />
-
-    {/* Diagonal stroke of the Z — sits beneath the bars. */}
+    {/* Diagonal stroke of the Z — copper, sits beneath the bars. */}
     <line
       x1="682" y1="422" x2="332" y2="678"
-      stroke="#C4B5FD" strokeWidth="68" strokeLinecap="round"
+      stroke="#C77E52" strokeWidth="82" strokeLinecap="round"
     />
 
-    {/* Upper and lower bars of the Z. */}
-    <rect x="298" y="388" width="418" height="68" rx="34" fill="#FFFFFF" />
-    <rect x="298" y="644" width="418" height="68" rx="34" fill="#FFFFFF" />
+    {/* Upper and lower bars of the Z — slate ink. */}
+    <rect x="298" y="388" width="418" height="72" rx="36" fill="#1E293B" />
+    <rect x="298" y="644" width="418" height="72" rx="36" fill="#1E293B" />
 
-    {/* The tittle. */}
-    <circle cx="511" cy="240" r="74" fill="#FFFFFF" />
+    {/* The tittle — slate ink. */}
+    <circle cx="511" cy="240" r="76" fill="#1E293B" />
   </svg>
 );
 
@@ -65,7 +59,7 @@ interface LockupProps {
 /** Logo + wordmark, for sidebar headers, login and splash screens. */
 export const ZeniaLockup: React.FC<LockupProps> = ({ size = 36, className, markOnly, subtitle }) => (
   <div className={cn('flex items-center gap-2.5', className)}>
-    <ZeniaLogo size={size} radius={220} className="shadow-[0_4px_12px_rgba(108,60,240,0.25)] rounded-[22%]" />
+    <ZeniaLogo size={size} radius={220} className="shadow-[0_4px_12px_rgba(199,126,82,0.25)] rounded-[22%]" />
     {!markOnly && (
       <div className="min-w-0 leading-tight">
         <div className="font-heading font-bold tracking-tight text-ink truncate" style={{ fontSize: size * 0.44 }}>

@@ -3,7 +3,7 @@ import { cn } from '@/utils/cn';
 
 /** One control geometry for every field type, so forms line up on a grid. */
 const fieldBase =
-  'w-full h-10 rounded-[10px] border border-hairline bg-surface px-3.5 text-[13px] text-ink ' +
+  'w-full h-12 rounded-xl border border-hairline bg-surface px-4 text-sm text-ink ' +
   'placeholder:text-ink-muted transition-[border-color,box-shadow] duration-150 ' +
   'focus:outline-none focus:border-brand-500 focus:ring-[3px] focus:ring-brand-500/15 ' +
   'disabled:opacity-50 disabled:cursor-not-allowed';

@@ -22,7 +22,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { formatDateTime } from '@/utils/formatDate';
 
 const statusVariant = (st: string): any => ({ Sent: 'blue', Delivered: 'purple', Read: 'green', Failed: 'red', Pending: 'amber', Processing: 'blue', Simulated: 'gray', Queued: 'gray' } as any)[st] || 'gray';
-const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#6C3CF0] focus:outline-none';
+const selCls = 'rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] focus:border-[#C77E52] focus:outline-none';
 const fmt = (d: any) => (d ? formatDateTime(d) : '—');
 
 const HealthPill: React.FC<{ label: string; ok: boolean; value?: string }> = ({ label, ok, value }) => (
@@ -245,7 +245,7 @@ export const WhatsAppExplorerTab: React.FC = () => {
 
       {/* Search */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Search size={14} className="text-[#6C3CF0]" /> Message Search</p>
+        <p className="mb-3 flex items-center gap-2 text-xs font-extrabold text-slate-700"><Search size={14} className="text-[#C77E52]" /> Message Search</p>
         <div className="flex flex-wrap items-end gap-2">
           {([['employee', 'Employee'], ['mobile', 'Mobile'], ['wamid', 'Meta Message ID'], ['template', 'Template']] as const).map(([k, label]) => (
             <div key={k} className="flex flex-col gap-1"><span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</span>

@@ -354,6 +354,23 @@ export const api = {
     }
   },
 
+  // Custom Report Builder — drag & drop report designer (additive module).
+  customReports: {
+    meta: async () => await apiFetch(`${BASE_URL}/custom-reports/meta`, { headers: getHeaders() }),
+    template: async (key: string) => await apiFetch(`${BASE_URL}/custom-reports/templates/${key}`, { headers: getHeaders() }),
+    list: async (companyId?: any) => await apiFetch(`${BASE_URL}/custom-reports${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }),
+    get: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { headers: getHeaders() }),
+    run: async (body: any) => await apiFetch(`${BASE_URL}/custom-reports/run`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+    create: async (body: any) => await apiFetch(`${BASE_URL}/custom-reports`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+    update: async (id: string, body: any) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(body) }),
+    duplicate: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/duplicate`, { method: 'POST', headers: getHeaders() }),
+    remove: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    versions: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/versions`, { headers: getHeaders() }),
+    restoreVersion: async (id: string, versionId: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/versions/${versionId}/restore`, { method: 'POST', headers: getHeaders() }),
+    setSchedule: async (id: string, schedule: any) => await apiFetch(`${BASE_URL}/custom-reports/${id}/schedule`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ schedule }) }),
+    sendNow: async (id: string, body: any = {}) => await apiFetch(`${BASE_URL}/custom-reports/${id}/send`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+  },
+
   audit: {
     getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
   },
@@ -394,6 +411,9 @@ export const api = {
     // Users the caller may manage permissions for (Super Admin all; Company Admin
     // own company; HR if granted — branch only). Company-isolated on the backend.
     getManageable: async () => { return await apiFetch(`${BASE_URL}/users/manageable`, { headers: getHeaders() }); },
+    // Company-scoped Add User (Settings → User Roles & Permissions). Company is
+    // forced to the caller's company server-side.
+    createCompanyUser: async (data: any) => { return await apiFetch(`${BASE_URL}/users/company`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     updatePermissions: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/users/${id}/permissions`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     // Server-side search for assignable management users (scoped to caller's
     // permissions). Never loads the whole user table — pass a search term.
@@ -537,6 +557,8 @@ export const api = {
     save: async (data: any) => apiFetch(`${BASE_URL}/card-templates`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     remove: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
     setDefault: async (id: any) => apiFetch(`${BASE_URL}/card-templates/${id}/default`, { method: 'POST', headers: getHeaders(), body: '{}' }),
+    getActive: async () => apiFetch(`${BASE_URL}/card-templates/active`, { headers: getHeaders() }),
+    setActive: async (templateId: string) => apiFetch(`${BASE_URL}/card-templates/active`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ templateId }) }),
     setShared: async (id: any, shared: boolean) => apiFetch(`${BASE_URL}/card-templates/${id}/share`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ shared }) }),
   },
 
@@ -952,6 +974,11 @@ export const api = {
       return await apiFetch(`${BASE_URL}/payroll?${query.toString()}`, { headers: getHeaders() });
     },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Generate payroll via the SINGLE backend engine (recalcOne) — salary is
+    // prorated from the synchronized AttendanceSummary (gross = dailyRate ×
+    // payableDays). Replaces the old client-side automation engine so there is
+    // exactly one payroll calculation everywhere.
+    generate: async (data: { companyId?: any; branchId?: any; month: string; year: number; role?: string; employeeIds?: any[] }) => { return await apiFetch(`${BASE_URL}/payroll/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/payroll/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     // Payslip lifecycle + bulk actions
@@ -970,14 +997,23 @@ export const api = {
       get: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { headers: getHeaders() }); },
       save: async (payrollId: string | number, data: any) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
       audit: async (payrollId: string | number) => { return await apiFetch(`${BASE_URL}/payroll/${payrollId}/worksheet/audit`, { headers: getHeaders() }); },
+      // Active deduction components for a company (built-ins + Component Builder).
+      // Lets a Draft worksheet render every applicable deduction row at ₹0 so the
+      // section is never empty. Reads the existing endpoint — no API change.
+      deductionComponents: async (companyId?: any) => { const p = new URLSearchParams(); if (companyId != null && companyId !== '') p.append('companyId', String(companyId)); return await apiFetch(`${BASE_URL}/payroll/deduction-components?${p.toString()}`, { headers: getHeaders() }); },
     }
   },
 
   attendanceSummary: {
-    getAll: async (month?: string, year?: number) => {
+    getAll: async (month?: string, year?: number, includeComputed?: boolean) => {
       const p = new URLSearchParams();
       if (month) p.append('month', month);
       if (year) p.append('year', String(year));
+      // includeComputed → also return LIVE attendance for employees with raw
+      // rows but no materialized summary (so Payroll reads the Attendance
+      // module's real numbers, never a missing/empty cache). Off by default so
+      // the Attendance page keeps getting only persisted, editable rows.
+      if (includeComputed) p.append('includeComputed', 'true');
       return await apiFetch(`${BASE_URL}/attendance-summary?${p.toString()}`, { headers: getHeaders() });
     },
     recompute: async (data: { employeeIds?: any[]; month: string; year: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/attendance-summary/recompute`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
@@ -995,8 +1031,13 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean }) => {
+    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean; snapshotOnly?: boolean; markSynced?: boolean }) => {
       return await apiFetch(`${BASE_URL}/attendance/sync-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
+    },
+    // Push to Payroll Engine — transfer the finalized attendance calculation into
+    // the Payroll module (creates payroll records verbatim; NO recalculation).
+    pushToPayroll: async (data: { companyId?: string; month: string | number; year: number; rows: any[]; replace?: boolean }) => {
+      return await apiFetch(`${BASE_URL}/attendance/push-to-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
     }
   },
 
@@ -1014,5 +1055,14 @@ export const api = {
     archive: async (id: string) => { return await apiFetch(`${BASE_URL}/shifts/${id}/archive`, { method: 'PATCH', headers: getHeaders() }); },
     assign: async (id: string, employeeIds: number[]) => { return await apiFetch(`${BASE_URL}/shifts/${id}/assign`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ employeeIds }) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/shifts/${id}`, { method: 'DELETE', headers: getHeaders() }); }
+  },
+
+  // Attendance & Salary Deduction Policy — the master attendance→salary calc
+  // config (backend deduction_policy table). Read by the payroll engine.
+  deductionPolicy: {
+    get: async () => { return await apiFetch(`${BASE_URL}/deduction-policy`, { headers: getHeaders() }); },
+    versions: async (branchLevel = false) => { return await apiFetch(`${BASE_URL}/deduction-policy/versions${branchLevel ? '?branchLevel=true' : ''}`, { headers: getHeaders() }); },
+    save: async (data: { config: any; enabled?: boolean; reason?: string; branchLevel?: boolean }) => { return await apiFetch(`${BASE_URL}/deduction-policy`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    recalculate: async (data: { month?: string; year?: number } = {}) => { return await apiFetch(`${BASE_URL}/deduction-policy/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
   }
 };

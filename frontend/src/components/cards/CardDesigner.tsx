@@ -73,7 +73,7 @@ export const CardDesigner: React.FC<Props> = ({ template, onChange, employee, br
           <div className="grid grid-cols-2 gap-1 max-h-52 overflow-y-auto pr-1">
             {FIELD_CATALOG.map((f) => (
               <button key={f.type} disabled={!canEdit} onClick={() => addEl(f.type)} title={f.label}
-                className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold rounded-lg border border-slate-200 text-slate-600 hover:border-[#6C3CF0] hover:text-[#6C3CF0] disabled:opacity-40 truncate">
+                className="flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold rounded-lg border border-slate-200 text-slate-600 hover:border-[#C77E52] hover:text-[#C77E52] disabled:opacity-40 truncate">
                 {f.type === 'text' ? <Type size={11} /> : f.type === 'box' ? <Square size={11} /> : f.type === 'divider' ? <Minus size={11} /> : <Plus size={11} />}
                 <span className="truncate">{f.label}</span>
               </button>
@@ -86,7 +86,7 @@ export const CardDesigner: React.FC<Props> = ({ template, onChange, employee, br
             {els.length === 0 && <p className="text-[11px] text-slate-400">No elements on this side.</p>}
             {els.map((el) => (
               <div key={el.id} onClick={() => setSelId(el.id)}
-                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] ${selId === el.id ? 'bg-[#F3F0FF] text-[#6C3CF0]' : 'hover:bg-slate-50 text-slate-600'}`}>
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg cursor-pointer text-[11px] ${selId === el.id ? 'bg-[#FCF4EE] text-[#C77E52]' : 'hover:bg-slate-50 text-slate-600'}`}>
                 <button onClick={(e) => { e.stopPropagation(); updateEl(el.id, { visible: el.visible === false }); }} className="shrink-0">
                   {el.visible === false ? <EyeOff size={13} className="text-slate-400" /> : <Eye size={13} />}
                 </button>
@@ -108,7 +108,7 @@ export const CardDesigner: React.FC<Props> = ({ template, onChange, employee, br
             options={[{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }]} />
           <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
             {(['front', 'back'] as const).map((s) => (
-              <button key={s} onClick={() => setSide(s)} className={`px-3 py-1.5 text-[11px] font-bold ${side === s ? 'bg-[#6C3CF0] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>
+              <button key={s} onClick={() => setSide(s)} className={`px-3 py-1.5 text-[11px] font-bold ${side === s ? 'bg-[#C77E52] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>
             ))}
           </div>
           <div className="flex-1" />
@@ -220,7 +220,7 @@ const NumF: React.FC<{ label: string; v: number; on: (n: number) => void }> = ({
   </label>
 );
 const IconMini: React.FC<{ onClick: () => void; children: React.ReactNode; active?: boolean; title?: string }> = ({ onClick, children, active, title }) => (
-  <button title={title} onClick={onClick} className={`p-1.5 rounded-lg border ${active ? 'border-[#6C3CF0] text-[#6C3CF0] bg-[#F3F0FF]' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}>{children}</button>
+  <button title={title} onClick={onClick} className={`p-1.5 rounded-lg border ${active ? 'border-[#C77E52] text-[#C77E52] bg-[#FCF4EE]' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}>{children}</button>
 );
 
 export default CardDesigner;

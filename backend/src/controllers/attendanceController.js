@@ -5,6 +5,22 @@ const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus')
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
+// ── Future-date guard (enterprise rule) ─────────────────────────────────────
+// Attendance may NEVER be marked for a date after today, UNLESS the request
+// explicitly opts into future scheduling via `allowFutureDays` (mirrored from the
+// company's Attendance Date Policy) — and even then only within a hard cap. With
+// no allowance (the default), any future date is rejected. Enforced here on the
+// server so a direct API call can never bypass the UI restriction. `today` is the
+// server clock — no hardcoded dates.
+const FUTURE_DAYS_HARD_CAP = 31;
+function isFutureAttendanceDate(dateStr, allowFutureDays = 0) {
+  if (!dateStr) return false;
+  const capDays = Math.max(0, Math.min(FUTURE_DAYS_HARD_CAP, Number(allowFutureDays) || 0));
+  const limit = new Date(); limit.setHours(0, 0, 0, 0); limit.setDate(limit.getDate() + capDays);
+  const d = new Date(`${dateStr}T00:00:00`);
+  return !isNaN(d.getTime()) && d.getTime() > limit.getTime();
+}
+
 // System-wide sync: when an attendance record changes, the payroll already
 // computed for that employee/month is now stale — flag it isOutdated so the UI
 // shows it needs a recalculation. This keeps payroll, summaries and reports from
@@ -248,7 +264,15 @@ exports.syncPayroll = async (req, res) => {
   // failing query.
   const toIntId = (v) => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
   const body = req.body || {};
-  const { month, year, dryRun = true } = body;
+  // `snapshotOnly` (Phase 1 "Push to Payroll Engine"): write ONLY the attendance
+  // snapshot (AttendanceSummary) — NO payroll row is created, NO proration, and
+  // NO PF / ESIC / PT / deduction / net-salary calculation runs. Payroll generation
+  // (Phase 2) reads this snapshot later. The default (false) keeps the full sync.
+  // `markSynced` stamps `syncedAt` on the snapshot (the official "pushed / ready
+  // for payroll generation" marker). "Push to Payroll Engine" sends true (default);
+  // "Refresh Calculation" sends false — it recomputes & persists the calculation
+  // from the latest attendance WITHOUT declaring the month officially pushed.
+  const { month, year, dryRun = true, snapshotOnly = false, markSynced = true } = body;
   const companyId = toIntId(body.companyId);
   const scopeIds = Array.isArray(body.scopeIds) ? body.scopeIds.map(toIntId).filter(v => v !== undefined) : [];
   let allowedIds = null;
@@ -368,53 +392,76 @@ exports.syncPayroll = async (req, res) => {
       return res.json({ month, year, dryRun: true, count: rows.length, totals, rows });
     }
 
-    // Commit: upsert payroll rows for the month/year.
+    // ── Commit: write the SINGLE canonical snapshot + payroll, via the ONE engine ──
+    // Instead of a second inline salary formula, we persist the verified attendance
+    // snapshot (AttendanceSummary, via recompute — identical to what the Salary
+    // Worksheet reads) and recalc payroll from it (recalcOne — the same engine the
+    // "Recalculate Attendance" button uses, with attendance proration). This removes
+    // the dual calculation: Sync popup, worksheet, dashboard & slip all read one source.
+    const attSvc = require('../services/attendanceSummaryService');
+    const payrollCtrl = require('./payrollController'); // lazy require — no top-level cycle
     const monthName = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][mIndex];
-    let updated = 0, created = 0;
-    for (const r of rows) {
-      if (!r.salary || r.salary <= 0) continue;
-      const company = companyMap[r.companyId];
-      const basicSalary = r.salary;
-      const hra = Math.round(basicSalary * 0.4);
-      const special = Math.round(basicSalary * 0.1);
-      const baseAllowances = hra + special;
-      const allowances = baseAllowances + r.otAmount;
+    // Per-employee resilience: one employee failing (bad row, recompute error) must
+    // NOT abort the whole run. Each employee is wrapped in its own try/catch, and
+    // failures are collected so the UI can report "N succeeded, M failed · details".
+    let updated = 0, created = 0, synced = 0;
+    const failures = [];
+    const eligible = rows.filter((r) => r.salary && r.salary > 0);
+    for (const r of eligible) {
+      try {
+        if (snapshotOnly) {
+          // ── PHASE 1 — Attendance snapshot ONLY ──────────────────────────────
+          // Persist the finalized attendance figures (present / absent / weekly-off
+          // / holiday / leave / half / OT / PAYABLE DAYS) into the AttendanceSummary
+          // snapshot — the single source of truth Payroll reads. NO payroll row is
+          // created, and NO salary / PF / ESIC / PT / net is computed here; that is
+          // Phase 2 (payroll generation), deliberately left untouched.
+          await attSvc.recompute(r.employeeId, monthName, y, { markSynced });
+          synced++;
+          continue;
+        }
 
-      const pfRate = company?.pfRate || 12;
-      const esicRate = company?.esicRate || 0.75;
-      const profTax = company?.profTaxRate || 200;
-      const statutory = Math.round(basicSalary * (pfRate / 100)) + Math.round(basicSalary * (esicRate / 100)) + profTax;
-      const deductions = statutory + r.lopDeduction;
-      const netSalary = Math.max(0, (basicSalary + allowances) - deductions);
-
-      // Payroll has a @@unique([employeeId, month, year, companyId]); month stored as name.
-      const existing = await prisma.payroll.findFirst({
-        where: { employeeId: r.employeeId, year: y, companyId: r.companyId, month: { in: [monthName, String(month), monthPrefix] } },
-      });
-
-      const data = {
-        allowances, deductions, netSalary,
-        notes: `Attendance sync: ${r.payableDays} payable / ${r.lopDays} LOP day(s), ${r.otHours} OT hr(s).`,
-      };
-
-      if (existing) {
-        await prisma.payroll.update({ where: { id: existing.id }, data });
-        updated++;
-      } else {
-        await prisma.payroll.create({
-          data: {
-            companyId: r.companyId, employeeId: r.employeeId, employeeName: r.employeeName,
-            department: r.department || 'General', month: monthName, year: y,
-            basicSalary, allowances, deductions, netSalary,
-            payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false,
-            ...data,
-          },
+        // ── Full sync (existing behaviour) ──────────────────────────────────────
+        // Ensure a payroll row exists for this employee/month so recalc can fill it.
+        const existing = await prisma.payroll.findFirst({
+          where: { employeeId: r.employeeId, year: y, companyId: r.companyId, month: { in: [monthName, String(month), monthPrefix] } },
         });
-        created++;
+        if (existing) {
+          updated++;
+        } else {
+          await prisma.payroll.create({
+            data: {
+              companyId: r.companyId, employeeId: r.employeeId, employeeName: r.employeeName,
+              department: r.department || 'General', month: monthName, year: y,
+              basicSalary: r.salary, allowances: 0, deductions: 0, netSalary: 0,
+              payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false,
+            },
+          });
+          created++;
+        }
+
+        // 1) Persist the verified attendance snapshot (the worksheet's source of truth).
+        //    markSynced stamps syncedAt → this month is officially synchronized.
+        await attSvc.recompute(r.employeeId, monthName, y, { markSynced });
+        // 2) Recalc payroll from that snapshot with attendance proration (one engine).
+        await payrollCtrl.recalcForEmployeeMonth(r.employeeId, monthName, y);
+        synced++;
+      } catch (e) {
+        console.error('[syncPayroll] employee failed', r.employeeId, e && e.message);
+        failures.push({
+          employeeId: r.employeeId,
+          employeeName: r.employeeName || `#${r.employeeId}`,
+          department: r.department || null,
+          reason: (e && e.message) || 'Unknown error',
+        });
       }
     }
 
-    return res.json({ month, year, dryRun: false, count: rows.length, updated, created, totals, rows });
+    return res.json({
+      month, year, dryRun: false, snapshotOnly, count: rows.length,
+      processed: eligible.length, synced, failed: failures.length, failures,
+      updated, created, totals, rows,
+    });
   } catch (error) {
     // Print the FULL Prisma exception + the exact inputs that built the query, so
     // the real cause is visible in the server log (not just a generic popup).
@@ -435,15 +482,155 @@ exports.syncPayroll = async (req, res) => {
   }
 };
 
+// ── PUSH TO PAYROLL ENGINE — transfer the finalized attendance calculation ──────
+// Takes the EXACT per-employee values the user reviewed on the Attendance
+// Synchronization page and writes them into the Payroll module (the `payroll`
+// table the Payroll UI reads) as one draft batch (company + month + year).
+//
+// CRITICAL: Payroll does NOT recalculate here — the reviewed values (payable days,
+// estimated/gross/net salary) are stored VERBATIM so the Payroll screen shows the
+// exact same numbers. Gross = Net = Estimated (no PF/ESIC/PT/deductions in this
+// phase). Idempotent per employee/month/year/company (unique key → no duplicates),
+// runs inside ONE transaction (any failure rolls back the whole batch), and is
+// blocked (409) if payroll already exists for the period unless `replace` is set.
+exports.pushToPayroll = async (req, res) => {
+  const toIntId = (v) => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const body = req.body || {};
+  const year = Number(body.year);
+  const replace = !!body.replace;
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  const companyId = toIntId(body.companyId);
+
+  try {
+    // ── STEP: validate the request ──────────────────────────────────────────
+    if (!body.month || !year) return res.status(400).json({ error: 'Payroll month and year are required.' });
+    if (!rows.length) return res.status(400).json({ error: 'No employees to push. Recalculate attendance first.' });
+    let month = String(body.month);
+    if (/^\d+$/.test(month)) month = MONTH_NAMES[Number(month) - 1];
+    if (!MONTH_NAMES.includes(month)) return res.status(400).json({ error: 'Invalid payroll month.' });
+
+    // ── STEP: resolve the pushed employees + verify they are IN SCOPE ───────
+    // (Company Head / Branch Head / HR may only push their own company/branch.)
+    const isSuper = req.user?.role === 'Super Admin';
+    const empIds = [...new Set(rows.map(r => toIntId(r.employeeId)).filter(v => v !== undefined))];
+    const employees = await prisma.employee.findMany({ where: { id: { in: empIds.length ? empIds : [-1] } } });
+    const empById = new Map(employees.map(e => [e.id, e]));
+
+    let allowedCompanyIds = null, allowedBranchIds = null;
+    if (!isSuper) {
+      allowedCompanyIds = new Set([req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined));
+      allowedBranchIds = new Set([...(req.user.accessibleBranchIds || [])].map(toIntId).filter(v => v !== undefined));
+    }
+    const inScope = (e) => {
+      if (isSuper) return true;
+      if (companyId !== undefined) return e.companyId === companyId || e.branchId === companyId;
+      return allowedCompanyIds.has(e.companyId) || allowedBranchIds.has(e.branchId);
+    };
+    for (const r of rows) {
+      const e = empById.get(toIntId(r.employeeId));
+      if (!e) return res.status(400).json({ error: `Employee ${r.employeeId} was not found.` });
+      if (!inScope(e)) return res.status(403).json({ error: 'One or more employees are outside your workspace scope.' });
+    }
+
+    const batchCompanyId = companyId !== undefined ? companyId : (employees[0]?.companyId || 1);
+
+    // ── STEP: prevent duplicate payroll for company + month + year ──────────
+    const existing = await prisma.payroll.findMany({
+      where: { month, year, companyId: batchCompanyId },
+      select: { id: true },
+    });
+    if (existing.length > 0 && !replace) {
+      return res.status(409).json({
+        error: 'PAYROLL_EXISTS',
+        message: `Payroll already generated for ${month} ${year}.`,
+        existing: existing.length,
+      });
+    }
+
+    // ── STEP: build the payroll writes with the EXACT reviewed values ───────
+    const now = new Date();
+    const generatedBy = req.user?.name || req.user?.email || `User#${req.user?.id || '?'}`;
+    let totalAmount = 0;
+    const ops = rows.map((r) => {
+      const e = empById.get(toIntId(r.employeeId));
+      // EXACT transfer — the estimated/payable salary the user reviewed becomes
+      // gross AND net (no recalculation, no deductions in this phase).
+      const payable = round2(r.payableSalary);
+      totalAmount = round2(totalAmount + payable);
+      const data = {
+        companyId: e.companyId,
+        employeeName: r.employeeName || e.name || 'Unknown',
+        department: r.department || e.department || 'General',
+        basicSalary: payable, allowances: 0, deductions: 0, netSalary: payable,
+        overtime: 0, bonus: 0, loanDeduction: 0, tax: 0,
+        presentDays: round2(r.present),
+        plDays: round2(r.paidLeave), clDays: 0, slDays: 0,
+        lwpDays: round2(r.unpaidLeave),
+        halfDays: round2(r.halfDay),
+        otHours: round2(r.otHours),
+        payableDays: round2(r.payableDays),
+        workingDays: round2(r.workingDays),
+        weeklyOffDays: round2(r.weeklyOff),
+        holidayDays: round2(r.holiday),
+        attendanceSyncedAt: now, attendanceSource: 'Attendance Synchronization',
+        isOutdated: false, summarySyncedAt: now,
+        payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false,
+        notes: `Transferred from Attendance Synchronization — ${round2(r.payableDays)}/${round2(r.workingDays)} payable day(s); gross = net = ₹${payable} (no recalculation).`,
+      };
+      return prisma.payroll.upsert({
+        where: { employeeId_month_year_companyId: { employeeId: e.id, month, year, companyId: e.companyId } },
+        update: data,
+        create: { employeeId: e.id, month, year, ...data },
+      });
+    });
+
+    // ── STEP: ONE transaction — all-or-nothing (no partial payroll) ─────────
+    await prisma.$transaction(ops);
+
+    const batchId = `PB-${batchCompanyId}-${year}-${String(MONTH_NAMES.indexOf(month) + 1).padStart(2, '0')}`;
+
+    // ── STEP: audit the batch ───────────────────────────────────────────────
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.id || null,
+          action: 'PUSH_TO_PAYROLL', module: 'Payroll', targetId: batchId,
+          details: JSON.stringify({
+            batchId, companyId: batchCompanyId, month, year,
+            employeeCount: rows.length, totalPayrollAmount: totalAmount,
+            generatedBy, generatedAt: now.toISOString(), replaced: existing.length > 0,
+          }).slice(0, 1000),
+        },
+      });
+    } catch (_) { /* audit is best-effort */ }
+
+    return res.json({
+      batchId, month, year, companyId: batchCompanyId,
+      employees: rows.length, totalAmount, replaced: existing.length > 0,
+      generatedBy, generatedAt: now.toISOString(),
+    });
+  } catch (error) {
+    console.error('[pushToPayroll] FAILED', error);
+    return res.status(500).json({ error: error.message || 'Failed to push to payroll.', code: error.code });
+  }
+};
+
 exports.create = async (req, res) => {
   try {
     const body = { ...req.body };
     delete body.reason; // metadata, not a column
     const source = (body.source || '').toString(); delete body.source; // audit metadata, not a column
+    const allowFutureDays = body.allowFutureDays; delete body.allowFutureDays; // policy hint, not a column
     // Coerce id columns to Int (companyId/employeeId are Int) so a string id from
     // the client can never break the attendance write.
     if (body.companyId !== undefined) { const n = Number(body.companyId); if (Number.isFinite(n)) body.companyId = n; }
     if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
+
+    // Future-date policy: reject any date after today (bounded allowance aside).
+    if (isFutureAttendanceDate(body.date, allowFutureDays)) {
+      return res.status(403).json({ code: 'FUTURE_DATE', error: 'Attendance cannot be marked for future dates.' });
+    }
 
     // Offboarding policy: no attendance may be marked for an offboarded employee
     // (Archived/Resigned/Terminated/Inactive/Offboarded).
@@ -502,11 +689,16 @@ exports.update = async (req, res) => {
     const reason = (body.reason || '').toString();
     delete body.reason; // metadata, not a column
     const source = (body.source || '').toString(); delete body.source; // audit metadata, not a column
+    const allowFutureDays = body.allowFutureDays; delete body.allowFutureDays; // policy hint, not a column
     // Coerce id columns to Int so a string companyId/employeeId can never break the save.
     if (body.companyId !== undefined) { const n = Number(body.companyId); if (Number.isFinite(n)) body.companyId = n; }
     if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
 
     const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    // Future-date policy: reject moving/marking a record onto a future date.
+    if (isFutureAttendanceDate(body.date || existing?.date, allowFutureDays)) {
+      return res.status(403).json({ code: 'FUTURE_DATE', error: 'Attendance cannot be marked for future dates.' });
+    }
     console.log('[attendance.update] BEFORE', { id, employeeId: existing?.employeeId, date: existing?.date, status: existing?.status, source: source || 'Attendance' });
     const data = await prisma.attendance.update({ where: { id: idParam(id) }, data: body });
     console.log('[attendance.update] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status });

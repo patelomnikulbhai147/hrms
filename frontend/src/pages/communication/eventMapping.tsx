@@ -69,7 +69,7 @@ export const CommunicationHealthCard: React.FC<{ onConfigure?: () => void }> = (
   return (
     <div className={`rounded-2xl border bg-white p-4 ${healthy === false ? 'border-rose-200' : 'border-slate-200'}`}>
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#6C3CF0]" /> Communication Health</h3>
+        <h3 className="flex items-center gap-2 text-sm font-extrabold text-slate-800"><ShieldCheck size={16} className="text-[#C77E52]" /> Communication Health</h3>
         {!loading && (healthy ? <Badge variant="green">All configured</Badge> : <Badge variant="red">Action needed</Badge>)}
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -267,7 +267,7 @@ export const MasterLibraryTab: React.FC = () => {
           <div className="mt-auto pt-1.5">
             {already
               ? <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-600"><CheckCircle2 size={13} /> In your library</span>
-              : <button disabled={!editable || busy === m.id} onClick={() => copy(m)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#6C3CF0] px-2 py-1 text-[11px] font-bold text-[#6C3CF0] hover:bg-brand-50 disabled:opacity-50"><Copy size={12} /> {busy === m.id ? 'Copying…' : 'Copy to my library'}</button>}
+              : <button disabled={!editable || busy === m.id} onClick={() => copy(m)} className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#C77E52] px-2 py-1 text-[11px] font-bold text-[#C77E52] hover:bg-brand-50 disabled:opacity-50"><Copy size={12} /> {busy === m.id ? 'Copying…' : 'Copy to my library'}</button>}
           </div>
         </div>
       </div>
@@ -278,8 +278,8 @@ export const MasterLibraryTab: React.FC = () => {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-0.5 text-xs font-bold">
-          <button onClick={() => setView('master')} className={`rounded-lg px-3 py-1.5 ${view === 'master' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>Master Library ({masters.length})</button>
-          <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 ${view === 'mine' ? 'bg-white text-[#6C3CF0] shadow-sm' : 'text-slate-500'}`}>My Templates ({mine.length})</button>
+          <button onClick={() => setView('master')} className={`rounded-lg px-3 py-1.5 ${view === 'master' ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500'}`}>Master Library ({masters.length})</button>
+          <button onClick={() => setView('mine')} className={`rounded-lg px-3 py-1.5 ${view === 'mine' ? 'bg-white text-[#C77E52] shadow-sm' : 'text-slate-500'}`}>My Templates ({mine.length})</button>
         </div>
         {view === 'master' && (
           <div className="flex flex-wrap items-center gap-2">

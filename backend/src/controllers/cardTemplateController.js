@@ -104,6 +104,47 @@ exports.setDefault = async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 };
 
+// ── Active template (the one shown in Generate & Preview) ────────────────────
+// Stored per company in card_active_templates. Unlike setDefault (which flips a
+// flag on a custom card_templates row and therefore can't point at a built-in),
+// this holds a plain template id — a built-in id ("glassmorphism") OR "db:<n>".
+
+// The card_active_templates table is addressed via raw SQL so this works with the
+// currently-generated Prisma client (no `prisma generate` / restart required). The
+// matching model in schema.prisma keeps future migrations drift-free.
+
+// GET /api/card-templates/active — the company's active template id (or null).
+exports.getActive = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'Not authorised.' });
+    const companyId = readCompanyId(req);
+    if (!companyId) return res.json({ templateId: null });
+    const rows = await prisma.$queryRawUnsafe(
+      'SELECT templateId FROM `card_active_templates` WHERE companyId = ? LIMIT 1', Number(companyId),
+    );
+    res.json({ templateId: rows && rows[0] ? rows[0].templateId : null });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
+// POST /api/card-templates/active — { templateId } sets the company's active template.
+// One row per company (companyId is UNIQUE) → upsert via INSERT … ON DUPLICATE KEY.
+exports.setActive = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'Not authorised to change the active template.' });
+    const companyId = readCompanyId(req, req.body && req.body.companyId);
+    if (!companyId) return res.status(400).json({ error: 'Company context required.' });
+    const templateId = String((req.body && req.body.templateId) || '').trim();
+    if (!templateId) return res.status(400).json({ error: 'templateId is required.' });
+    await prisma.$executeRawUnsafe(
+      'INSERT INTO `card_active_templates` (companyId, templateId, updatedBy, createdAt, updatedAt) '
+      + 'VALUES (?, ?, ?, NOW(3), NOW(3)) '
+      + 'ON DUPLICATE KEY UPDATE templateId = VALUES(templateId), updatedBy = VALUES(updatedBy), updatedAt = NOW(3)',
+      Number(companyId), templateId, actorOf(req),
+    );
+    res.json({ templateId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+};
+
 // Super Admin only — make a template available to every company (or revoke).
 exports.setShared = async (req, res) => {
   try {

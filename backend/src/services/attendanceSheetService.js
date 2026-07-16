@@ -3,7 +3,7 @@
  *
  * Given a company scope and a batch of already-parsed punch rows (from an Excel /
  * CSV biometric export, canonicalised on the client), this engine:
- *   1. Matches each row to an employee by PRIORITY  biometric id → employee code
+ *   1. Matches each row to an employee by PRIORITY  employee code → biometric id
  *      → legacy id, strictly within the company (RULE 5 isolation).
  *   2. Groups rows to exactly ONE record per (employee, date) — earliest punch is
  *      the IN, latest punch is the OUT (handles multi-punch and multi-row files).
@@ -103,10 +103,14 @@ function breakMinutesOf(shift) {
  * @param actor             { id?, name? } for audit (optional)
  * @returns { companyId, summary, errors, unmatched, sample }
  */
-async function processAttendanceRows(prisma, { companyId, rows, options = {}, actor = {} }) {
+async function processAttendanceRows(prisma, { companyId, companyIds, rows, options = {}, actor = {} }) {
   companyId = Number(companyId);
   if (!companyId) throw new Error('companyId is required for attendance import (company isolation).');
   rows = Array.isArray(rows) ? rows : [];
+  // Employee-match scope: the selected company plus its branch tree (child company
+  // ids), so a workspace/branch id mismatch never yields an empty employee set.
+  // Falls back to the single company when the caller supplies no explicit list.
+  const matchScope = [...new Set(([companyId, ...(Array.isArray(companyIds) ? companyIds : [])]).map(Number).filter(Boolean))];
 
   const weeklyOffDays = Array.isArray(options.weeklyOffDays) && options.weeklyOffDays.length
     ? options.weeklyOffDays.map(Number).filter((n) => n >= 0 && n <= 6)
@@ -115,34 +119,81 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
   const dryRun = options.dryRun === true;
   const todayISO = toISODate(new Date());
 
+  // ── Diagnostics (RULE 7) ────────────────────────────────────────────────────
+  // Verbose per-row logging is opt-in (options.debug / ATTENDANCE_IMPORT_DEBUG=1);
+  // a one-line scope+result summary is ALWAYS logged so a "0 matched" report can
+  // be diagnosed from the server console without a redeploy.
+  const DEBUG = options.debug === true;
+  const branchId = options.branchId != null && String(options.branchId).trim() !== '' ? Number(options.branchId) : null;
+  const dbg = (...a) => { if (DEBUG) console.log('[attImport]', ...a); };
+
   const summary = { total: rows.length, matchedRows: 0, records: 0, imported: 0, updated: 0, skipped: 0, errors: 0, overtimeQueued: 0 };
   const errors = [];       // { row, employeeId, employeeName, error, fix }
   const unmatchedMap = new Map(); // employeeKey → { employeeKey, rows: [] }
 
-  // ── 1. Preload the company's employees and build priority match maps ────────
-  const emps = await prisma.employee.findMany({
-    where: { companyId },
-    select: { id: true, employeeId: true, legacyEmployeeId: true, biometricId: true, name: true,
-      department: true, branchId: true, branchLocation: true, shiftId: true, status: true },
-  });
+  // ── 1. Preload employees and build priority match maps ──────────────────────
+  // Scope by the whole company TREE (root + branches — see the controller). This
+  // fixes the case where an employee lives under a branch id while the file was
+  // imported into the parent workspace (or vice versa) — a single-companyId query
+  // returned NO employees, so every row showed "No Match". When a specific branch
+  // is selected (branchId), matching is confined to it (RULE 6 branch isolation).
+  // Attendance is still written under each employee's OWN companyId.
+  const EMP_SELECT = { id: true, employeeId: true, legacyEmployeeId: true, biometricId: true, name: true,
+    department: true, branchId: true, branchLocation: true, shiftId: true, status: true, companyId: true };
+  const empWhere = { companyId: { in: matchScope } };
+  if (branchId != null) empWhere.branchId = branchId;
+  let emps = await prisma.employee.findMany({ where: empWhere, select: EMP_SELECT });
+  // Branch isolation must never silently zero a valid import (e.g. employees stored
+  // with a null branchId): if a branch filter finds nobody but the company does,
+  // fall back to the company scope rather than reporting every row unmatched.
+  if (branchId != null && emps.length === 0) {
+    dbg(`branch ${branchId} had 0 employees — falling back to company scope [${matchScope.join(',')}].`);
+    emps = await prisma.employee.findMany({ where: { companyId: { in: matchScope } }, select: EMP_SELECT });
+  }
+  dbg(`SCOPE companyId=${companyId} branchId=${branchId == null ? '—' : branchId} matchScope=[${matchScope.join(',')}] loadedEmployees=${emps.length}`,
+    emps.length ? `sampleCodes=[${emps.slice(0, 8).map((e) => e.employeeId).join(', ')}]` : '(NO employees in scope — every row will be UNMATCHED)');
+  // "loose" key — uppercased with all spaces / hyphens / underscores / dots removed,
+  // so EMP-001, EMP_001, "emp 001" and EMP001 all collapse to the same key.
+  const loose = (v) => up(v).replace(/[\s\-_.]/g, '');
+  // "numeric" key — for all-digit ids, strip leading zeros so a file value that lost
+  // them (0113 read by Excel as 113) still matches the stored "0113". Ambiguous keys
+  // (two ids collapsing to the same number) are disabled to avoid a wrong match.
+  const numOf = (v) => { const d = up(v).replace(/\D/g, ''); return d ? String(Number(d)) : ''; };
   const byBiometric = new Map();
   const byCode = new Map();
   const byLegacy = new Map();
+  const byBiometricLoose = new Map();
+  const byCodeLoose = new Map();
+  const byLegacyLoose = new Map();
+  const byBiometricNum = new Map();
+  const byCodeNum = new Map();
+  const setNum = (map, v, e) => { const n = numOf(v); if (!n) return; if (map.has(n) && map.get(n) && map.get(n).id !== e.id) map.set(n, null); else if (!map.has(n)) map.set(n, e); };
   for (const e of emps) {
-    if (e.biometricId) byBiometric.set(up(e.biometricId), e);
-    if (e.employeeId) byCode.set(up(e.employeeId), e);
-    if (e.legacyEmployeeId) byLegacy.set(up(e.legacyEmployeeId), e);
+    if (e.biometricId) { byBiometric.set(up(e.biometricId), e); byBiometricLoose.set(loose(e.biometricId), e); setNum(byBiometricNum, e.biometricId, e); }
+    if (e.employeeId) { byCode.set(up(e.employeeId), e); byCodeLoose.set(loose(e.employeeId), e); setNum(byCodeNum, e.employeeId, e); }
+    if (e.legacyEmployeeId) { byLegacy.set(up(e.legacyEmployeeId), e); byLegacyLoose.set(loose(e.legacyEmployeeId), e); }
   }
-  // Priority: biometric id → employee code → legacy id. Tries altKey too (a second
-  // ID column, e.g. file has both a biometric column and an employee-code column).
+  // Priority: employee code → biometric id → legacy id. Tries altKey too (a second
+  // ID column, e.g. file has both an employee-code column and a biometric column).
+  // Exact match wins; then a punctuation-insensitive loose match; then a leading-
+  // zero-insensitive numeric match — so hyphen/space/underscore/leading-zero
+  // differences never break a valid import. Employee Code is tried FIRST so a file
+  // exported with codes like "PM-HQ-0001" resolves even when a biometric column is
+  // absent (or vice-versa).
   const matchOne = (key, alt) => {
-    for (const k of [key, alt]) {
-      const u = up(k);
-      if (!u) continue;
-      if (byBiometric.has(u)) return byBiometric.get(u);
-      if (byCode.has(u)) return byCode.get(u);
-      if (byLegacy.has(u)) return byLegacy.get(u);
-    }
+    const keys = [key, alt];
+    // Pass 1 — exact (uppercased). Employee Code is tried across BOTH id columns
+    // before biometric, so an employee-code value never loses to a biometric slot.
+    for (const k of keys) { const u = up(k); if (u && byCode.has(u)) return byCode.get(u); }
+    for (const k of keys) { const u = up(k); if (u && byBiometric.has(u)) return byBiometric.get(u); }
+    for (const k of keys) { const u = up(k); if (u && byLegacy.has(u)) return byLegacy.get(u); }
+    // Pass 2 — punctuation-insensitive (hyphen/space/underscore differences).
+    for (const k of keys) { const l = loose(k); if (l && byCodeLoose.has(l)) return byCodeLoose.get(l); }
+    for (const k of keys) { const l = loose(k); if (l && byBiometricLoose.has(l)) return byBiometricLoose.get(l); }
+    for (const k of keys) { const l = loose(k); if (l && byLegacyLoose.has(l)) return byLegacyLoose.get(l); }
+    // Pass 3 — leading-zero-insensitive numeric ("0113" ↔ "113").
+    for (const k of keys) { const n = numOf(k); if (n && byCodeNum.get(n)) return byCodeNum.get(n); }
+    for (const k of keys) { const n = numOf(k); if (n && byBiometricNum.get(n)) return byBiometricNum.get(n); }
     return null;
   };
 
@@ -163,9 +214,11 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
       const g = unmatchedMap.get(up(employeeKey)) || { employeeKey, count: 0, sampleDate: date };
       g.count++; unmatchedMap.set(up(employeeKey), g);
       summary.skipped++;
-      errors.push({ row: rowNo, employeeId: employeeKey, employeeName: '', error: 'No employee in this company matches this ID.', fix: 'Map the biometric/employee code in Biometric Mapping, then re-import only this row.' });
+      dbg(`Row ${rowNo}: key="${employeeKey}" alt="${raw.altKey || ''}" companyScope=[${matchScope.join(',')}] -> UNMATCHED (Employee Code / Biometric Code not found in current company/branch).`);
+      errors.push({ row: rowNo, employeeId: employeeKey, employeeName: '', error: 'No employee matched by Employee Code or Biometric Code in the current company.', fix: 'Map the biometric/employee code in Biometric Mapping, then re-import only this row.' });
       continue;
     }
+    dbg(`Row ${rowNo}: key="${employeeKey}" alt="${raw.altKey || ''}" -> MATCHED ${emp.employeeId} (${emp.name}) [companyId=${emp.companyId}]`);
     if (OFF.includes(emp.status)) { summary.skipped++; errors.push({ row: rowNo, employeeId: emp.employeeId, employeeName: emp.name, error: `${emp.name} is offboarded (${emp.status}).`, fix: 'Offboarded employees are skipped by policy.' }); continue; }
 
     summary.matchedRows++;
@@ -183,14 +236,18 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
     if (!b.shiftRaw && norm(raw.shift)) b.shiftRaw = norm(raw.shift);
   }
 
+  // Always-on one-line diagnostic (RULE 7) — makes a "0 matched" report traceable
+  // from the server console even without verbose logging enabled.
+  console.log(`[attImport] companyId=${companyId} branchId=${branchId == null ? '—' : branchId} scope=[${matchScope.join(',')}] employeesInScope=${emps.length} rows=${rows.length} matchedRows=${summary.matchedRows} unmatchedKeys=${unmatchedMap.size}${unmatchedMap.size ? ` sampleUnmatched=[${[...unmatchedMap.values()].slice(0, 5).map((u) => u.employeeKey).join(', ')}]` : ''}${emps.length === 0 ? ' ⚠ NO EMPLOYEES IN SCOPE — check the selected company/branch' : ''}`);
+
   // ── 3. Preload holidays, approved leaves, shifts, existing attendance ───────
   const empIds = [...new Set([...buckets.values()].map((b) => b.emp.id))];
   const dates = [...new Set([...buckets.values()].map((b) => b.date))];
 
   const [holidays, leaves, shifts, existingAtt] = await Promise.all([
-    prisma.communicationHoliday.findMany({ where: { companyId, status: 'Active', date: { in: dates.length ? dates : [' '] } } }),
-    prisma.leaveRequest.findMany({ where: { companyId, employeeId: { in: empIds.length ? empIds : [-1] }, status: 'Approved' } }),
-    prisma.shift.findMany({ where: { companyId } }),
+    prisma.communicationHoliday.findMany({ where: { companyId: { in: matchScope }, status: 'Active', date: { in: dates.length ? dates : [' '] } } }),
+    prisma.leaveRequest.findMany({ where: { employeeId: { in: empIds.length ? empIds : [-1] }, status: 'Approved' } }),
+    prisma.shift.findMany({ where: { companyId: { in: matchScope } } }),
     prisma.attendance.findMany({ where: { employeeId: { in: empIds.length ? empIds : [-1] }, date: { in: dates.length ? dates : [' '] } }, select: { employeeId: true, date: true, status: true } }),
   ]);
 
@@ -290,7 +347,7 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
     }
 
     const record = {
-      companyId,
+      companyId: emp.companyId || companyId,
       employeeId: emp.id,
       employeeName: emp.name || 'Unknown',
       department: emp.department || 'General',
@@ -334,7 +391,7 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
 
     if (createOvertime && otHours > 0) {
       otToQueue.push({
-        companyId, employeeId: emp.id, employeeName: emp.name, employeeCode: emp.employeeId,
+        companyId: emp.companyId || companyId, employeeId: emp.id, employeeName: emp.name, employeeCode: emp.employeeId,
         department: emp.department || null, branch: emp.branchLocation || null,
         shift: shift.name || null, date, inTime: record.clockIn, outTime: record.clockOut,
         otHours, type: 'Auto', reason: 'Attendance import', remarks: 'attendance-import', status: 'Pending',
@@ -346,6 +403,9 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
   summary.unmatchedEmployees = unmatchedMap.size;   // distinct IDs with no employee
 
   const unmatched = [...unmatchedMap.values()].sort((a, b) => b.count - a.count);
+  // Scope diagnostics (RULE 7) — lets HR see WHY nothing matched (e.g. the import
+  // resolved to a company/branch with 0 employees) without server-console access.
+  const diagnostics = { companyId, branchId, matchScope, employeesInScope: emps.length };
   // Enriched preview rows for the HR table (first 100). Ordered by date then name
   // so the preview reads chronologically.
   const sample = previewRows
@@ -384,7 +444,7 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
 
   if (dryRun) {
     summary.overtimeQueued = otToQueue.length;
-    return { companyId, dryRun: true, summary, errors: errors.slice(0, 500), unmatched, sample, willUpdate: willUpdate.slice(0, 500), timeline };
+    return { companyId, dryRun: true, summary, errors: errors.slice(0, 500), unmatched, sample, willUpdate: willUpdate.slice(0, 500), timeline, diagnostics };
   }
 
   // ── 5. Persist idempotently (delete+recreate per employee+date = no dupes) ──
@@ -417,7 +477,7 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
     try { await prisma.payroll.updateMany({ where: { employeeId: k.employeeId, month: k.month, year: k.year }, data: { isOutdated: true } }); } catch (_) { /* never block import */ }
   }
 
-  return { companyId, dryRun: false, summary, errors: errors.slice(0, 500), unmatched, sample, willUpdate: willUpdate.slice(0, 500), timeline };
+  return { companyId, dryRun: false, summary, errors: errors.slice(0, 500), unmatched, sample, willUpdate: willUpdate.slice(0, 500), timeline, diagnostics };
 }
 
 // Map a free-text status cell to a canonical attendance status (used only when a
@@ -425,6 +485,10 @@ async function processAttendanceRows(prisma, { companyId, rows, options = {}, ac
 function normalizeStatus(v) {
   const s = norm(v).toLowerCase();
   if (!s) return '';
+  // Standardised single-letter export codes first (exact), so a matrix cell like
+  // "HD", "L" or "H" round-trips to the right status. P/A/HD/L/WO/H/OT.
+  const CODES = { p: 'Present', a: 'Absent', hd: 'Half Day', l: 'Leave', wo: 'Weekly Off', h: 'Holiday', ot: 'Present', wfh: 'Work From Home' };
+  if (CODES[s]) return CODES[s];
   if (/^(p|present|wfo|on duty|full)/.test(s)) return 'Present';
   if (/half/.test(s)) return 'Half Day';
   if (/(wfh|work from home|remote)/.test(s)) return 'Work From Home';
