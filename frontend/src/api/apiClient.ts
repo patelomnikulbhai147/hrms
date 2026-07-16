@@ -354,6 +354,23 @@ export const api = {
     }
   },
 
+  // Custom Report Builder — drag & drop report designer (additive module).
+  customReports: {
+    meta: async () => await apiFetch(`${BASE_URL}/custom-reports/meta`, { headers: getHeaders() }),
+    template: async (key: string) => await apiFetch(`${BASE_URL}/custom-reports/templates/${key}`, { headers: getHeaders() }),
+    list: async (companyId?: any) => await apiFetch(`${BASE_URL}/custom-reports${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }),
+    get: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { headers: getHeaders() }),
+    run: async (body: any) => await apiFetch(`${BASE_URL}/custom-reports/run`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+    create: async (body: any) => await apiFetch(`${BASE_URL}/custom-reports`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+    update: async (id: string, body: any) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(body) }),
+    duplicate: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/duplicate`, { method: 'POST', headers: getHeaders() }),
+    remove: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    versions: async (id: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/versions`, { headers: getHeaders() }),
+    restoreVersion: async (id: string, versionId: string) => await apiFetch(`${BASE_URL}/custom-reports/${id}/versions/${versionId}/restore`, { method: 'POST', headers: getHeaders() }),
+    setSchedule: async (id: string, schedule: any) => await apiFetch(`${BASE_URL}/custom-reports/${id}/schedule`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ schedule }) }),
+    sendNow: async (id: string, body: any = {}) => await apiFetch(`${BASE_URL}/custom-reports/${id}/send`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(body) }),
+  },
+
   audit: {
     getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
   },

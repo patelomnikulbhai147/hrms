@@ -22,6 +22,7 @@ const Companies = React.lazy(() => import('@/pages/Companies').then(m => ({ defa
 const EmployeeCards = React.lazy(() => import('@/pages/EmployeeCards').then(m => ({ default: m.EmployeeCards })));
 const Documents = React.lazy(() => import('@/pages/Documents').then(m => ({ default: m.Documents })));
 const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').then(m => ({ default: m.ComplianceReports })));
+const CustomReportBuilder = React.lazy(() => import('@/pages/CustomReportBuilder').then(m => ({ default: m.CustomReportBuilder })));
 const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
@@ -78,6 +79,7 @@ const pageTitles: Record<PageId, string> = {
   'attendance-sync': 'Attendance Synchronization',
   documents: 'Documents',
   reports: 'Reports',
+  'custom-report-builder': 'Custom Report Builder',
   settings: 'Settings',
   billing: 'Billing & Subscriptions',
   users: 'User Management',
@@ -94,7 +96,7 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
-  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
@@ -1065,6 +1067,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         : currentPage === 'attendance-sync' ? 'payroll'
         : currentPage === 'bonus' ? 'payroll'
         : currentPage === 'invoice-management' ? 'invoicing'
+        // Custom Report Builder rides on the Reports permission (no matrix row).
+        : currentPage === 'custom-report-builder' ? 'reports'
         // Notifications is a cross-cutting page reached from the Dashboard / bell;
         // it rides on the Dashboard permission (anyone who can see the dashboard).
         : currentPage === 'notifications' ? 'dashboard'
@@ -1117,6 +1121,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'attendance-sync' ? 'payroll'
       : currentPage === 'bonus' ? 'payroll'
       : currentPage === 'invoice-management' ? 'invoicing'
+      // Custom Report Builder rides on the Reports permission (no matrix row).
+      : currentPage === 'custom-report-builder' ? 'reports'
       // Notifications rides on the Dashboard permission (cross-cutting page).
       : currentPage === 'notifications' ? 'dashboard'
       // Finance & Compliance aggregates loans + compliance: allow if the user
@@ -1439,6 +1445,15 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         // always renders the company's operational reports for authorised roles.
         return (
           <ComplianceReports
+            role={resolvedRole}
+            activeCompanyId={resolvedCompanyId}
+            companies={companies}
+            authProfile={authProfile}
+          />
+        );
+      case 'custom-report-builder':
+        return (
+          <CustomReportBuilder
             role={resolvedRole}
             activeCompanyId={resolvedCompanyId}
             companies={companies}

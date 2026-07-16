@@ -2,7 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard, Users as UsersIcon, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, Building2, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark, RefreshCcw
+  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark, RefreshCcw, Wand2
 } from 'lucide-react';
 import type { Role } from '@/data/mockData';
 import type { AppModules } from '@/pages/Login';
@@ -24,7 +24,7 @@ export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
-  | 'notifications';
+  | 'notifications' | 'custom-report-builder';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -112,6 +112,10 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
   { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
+  // Custom Report Builder — drag & drop report designer. Shares the `reports`
+  // permission (no separate matrix row — inMatrix:false), like Employee Cards
+  // shares `employees`. Company Head / HR / Finance who can see Reports get it.
+  { id: 'custom-report-builder', label: 'Custom Report Builder', icon: <Wand2 size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'reports', inMatrix: false, beta: true },
   { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true, beta: true },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks', inMatrix: true },
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },

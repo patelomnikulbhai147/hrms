@@ -153,6 +153,7 @@ app.use('/api/bonus', pii('Bonus'), require('./src/routes/bonusRoutes'));
 app.use('/api/employee-bonuses', pii('Bonus'), require('./src/routes/employeeBonusRoutes'));
 app.use('/api/location-masters', require('./src/routes/locationMasterRoutes'));
 app.use('/api/compliance-reports', pii('Reports'), require('./src/routes/complianceReportRoutes'));
+app.use('/api/custom-reports', pii('Reports'), require('./src/routes/customReportRoutes'));
 app.use('/api/nominees', pii('Nominees'), require('./src/routes/nomineeRoutes'));
 app.use('/api/ifsc', require('./src/routes/ifscRoutes'));
 app.use('/api/users', userRoutes);
@@ -248,6 +249,11 @@ const server = app.listen(PORT, () => {
   // alerts → in-app + email). Disable with REMINDER_SCHEDULER=off.
   try { require('./src/services/reminderScheduler').start(); }
   catch (e) { console.error('[reminders][scheduler] failed to start:', e.message); }
+  // Start the Custom Report email scheduler (daily/weekly/monthly report delivery).
+  // Additive; runs saved reports through the injection-safe engine. Disable with
+  // REPORT_SCHEDULER=off.
+  try { require('./src/services/customReportScheduler').start(); }
+  catch (e) { console.error('[report-scheduler] failed to start:', e.message); }
 });
 
 // ── Phase 6 diagnostics: capture NON-HTTP traffic on the HTTP port ───────────
