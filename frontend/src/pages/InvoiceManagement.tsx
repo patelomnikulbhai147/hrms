@@ -39,7 +39,7 @@ import {
   LayoutDashboard, FilePlus2, ReceiptText, Users, Package, Wallet, Settings as SettingsIcon,
   Plus, Trash2, Search, Eye, Edit, Copy, Printer, IndianRupee, X, Save, RefreshCw, Ban,
   CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette, Maximize2,
-  ZoomIn, ZoomOut, Download, Star,
+  ZoomIn, ZoomOut, Download,
 } from 'lucide-react';
 
 interface Props { role: Role; activeCompanyId?: string; companies?: any[]; }
@@ -321,10 +321,10 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
   const [savedLayouts, setSavedLayouts] = useState<any[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
-  // Per-invoice template choice. '' = follow the company default from Templates &
-  // Branding; picking another preset only re-styles THIS invoice's live preview
-  // and never mutates the saved company default.
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  // Template choice is no longer user-selectable (the per-invoice picker was
+  // removed). This stays '' so the preview + PDF always follow the company
+  // default template from Templates & Branding.
+  const [selectedTemplateId] = useState<string>('');
   const [fullOpen, setFullOpen] = useState(false); // full-screen preview modal (desktop control + mobile button)
   const [zoom, setZoom] = useState(1);             // preview zoom multiplier (right-panel controls)
   // The split is decided by the CONTAINER width (not the viewport), so the sidebar
@@ -621,94 +621,13 @@ const InvoiceEditor: React.FC<{ editId: number | null; canEdit: boolean; company
       </div>
   );
 
-  // Gallery ordering: the DEFAULT saved template is pinned first, then the flow
-  // presets, then the remaining saved templates. `savedLayouts` already arrives
-  // default-first / updatedAt-desc from the API (company-scoped), so we only
-  // split off the default here — the rest keep their order.
-  const galleryLayouts = savedLayouts.filter((l) => (l.layout?.status || 'Active') !== 'Draft');
-  const defaultLayout = galleryLayouts.find((l) => l.isDefault) || null;
-  const otherLayouts = galleryLayouts.filter((l) => !l.isDefault);
-
-  /** One saved-template card. `pinned` marks the company default (⭐ Default). */
-  const renderLayoutCard = (l: any, pinned: boolean) => {
-    const active = selectedLayoutId === l.id;
-    return (
-      <button key={`layout-${l.id}`} type="button" onClick={() => setSelectedLayoutId(l.id)} title={`${l.name}${pinned ? ' (default template)' : ' (custom)'}`}
-        className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#C77E52] ring-2 ring-[#C77E52]/20 bg-brand-50/40' : pinned ? 'border-amber-300 hover:border-amber-400' : 'border-slate-200 hover:border-slate-300'}`}>
-        <div className="rounded-md overflow-hidden border border-slate-100 bg-gradient-to-br from-brand-100 to-white">
-          <div className="h-4 bg-brand-600" />
-          <div className="p-1 space-y-0.5">
-            <div className="h-1 w-3/4 rounded-sm bg-slate-200" />
-            <div className="h-1 w-1/2 rounded-sm bg-slate-100" />
-            <div className="mt-1 h-1.5 w-full rounded-sm bg-brand-200" />
-            <div className="mt-1 h-1.5 w-1/2 rounded-sm ml-auto bg-brand-500" />
-          </div>
-        </div>
-        <div className="mt-1 flex items-center justify-between gap-1">
-          <span className={`text-[10px] font-bold truncate ${active ? 'text-[#C77E52]' : 'text-slate-600'}`}>{l.name}</span>
-          {active && <CheckCircle2 size={11} className="text-[#C77E52] shrink-0" />}
-        </div>
-        {pinned
-          ? <span className="absolute top-1 left-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>
-          : <span className="absolute top-1 left-1 rounded-full bg-brand-600/90 px-1 py-px text-[7px] font-bold text-white uppercase">Custom</span>}
-      </button>
-    );
-  };
-
-  // ── RIGHT panel — Template selector + preview controls (zoom / full screen /
-  // print / download) + the sticky live A4 preview. Built once; placed by the
-  // layout below (right column when split, below the form when stacked, or inside
-  // the full-screen modal on compact). Never duplicated.
+  // ── RIGHT panel — live A4 preview + preview controls (zoom / full screen /
+  // print / download). The per-invoice template picker was removed; the preview
+  // always follows the company DEFAULT template (auto-selected on load). Built
+  // once; placed by the layout below (right column when split, below the form
+  // when stacked, or inside the full-screen modal on compact). Never duplicated.
   const rightPanel = (
     <div className="space-y-3">
-      {/* Invoice Template selector */}
-      <Card>
-        <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5"><Palette size={13} className="text-[#C77E52]" /> Invoice Template</h3>
-          <span className="text-[10px] text-slate-400">This invoice only</span>
-        </div>
-        <div className="flex gap-2.5 overflow-x-auto pb-1.5 -mx-1 px-1">
-          {/* The company DEFAULT template is always pinned first (Step: Default
-              Template Always First). Selecting a new default reorders instantly
-              because savedLayouts re-sorts on the live-sync refresh. */}
-          {defaultLayout && renderLayoutCard(defaultLayout, true)}
-
-          {TEMPLATE_PRESETS.map((p) => {
-            // A preset is only "active" when no saved canvas template is picked.
-            const active = selectedLayoutId == null && effectiveTemplateId === p.id;
-            // The preset "default" badge only shows when there is NO canvas default.
-            const isDefault = selectedLayoutId == null && !defaultLayout && defaultTemplateId === p.id;
-            return (
-              <button key={p.id} type="button" onClick={() => { setSelectedTemplateId(p.id); setSelectedLayoutId(null); }} title={isDefault ? `${p.name} (company default)` : p.name}
-                className={`group relative shrink-0 w-[76px] rounded-lg border p-1.5 text-left transition-all ${active ? 'border-[#C77E52] ring-2 ring-[#C77E52]/20 bg-brand-50/40' : 'border-slate-200 hover:border-slate-300'}`}>
-                <div className="rounded-md overflow-hidden border border-slate-100 bg-white">
-                  <div className="h-4" style={{ background: p.swatch }} />
-                  <div className="p-1 space-y-0.5">
-                    <div className="h-1 w-3/4 rounded-sm bg-slate-200" />
-                    <div className="h-1 w-1/2 rounded-sm bg-slate-100" />
-                    <div className="mt-1 h-1.5 w-full rounded-sm" style={{ background: `${p.swatch}22` }} />
-                    <div className="mt-1 h-1.5 w-1/2 rounded-sm ml-auto" style={{ background: p.swatch }} />
-                  </div>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-1">
-                  <span className={`text-[10px] font-bold truncate ${active ? 'text-[#C77E52]' : 'text-slate-600'}`}>{p.name}</span>
-                  {active && <CheckCircle2 size={11} className="text-[#C77E52] shrink-0" />}
-                </div>
-                {isDefault && <span className="absolute top-1 right-1 flex items-center gap-0.5 rounded-full bg-amber-400 px-1 py-px text-[7px] font-bold text-amber-950 uppercase"><Star size={7} className="fill-amber-950" /> Default</span>}
-              </button>
-            );
-          })}
-
-          {/* Remaining saved canvas templates (non-default), in updatedAt order. */}
-          {otherLayouts.map((l) => renderLayoutCard(l, false))}
-        </div>
-        {selectedLayoutRow ? (
-          <button type="button" onClick={() => { const def = savedLayouts.find((l) => l.isDefault); setSelectedLayoutId(def ? def.id : null); }} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#C77E52]">↺ Reset to default ({savedLayouts.find((l) => l.isDefault)?.name || presetName(defaultTemplateId)})</button>
-        ) : selectedTemplateId && selectedTemplateId !== defaultTemplateId ? (
-          <button type="button" onClick={() => setSelectedTemplateId('')} className="mt-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#C77E52]">↺ Reset to company default ({presetName(defaultTemplateId)})</button>
-        ) : null}
-      </Card>
-
       {/* Preview + controls */}
       <div>
         <div className="mb-2 flex items-center justify-between gap-2 flex-wrap">
