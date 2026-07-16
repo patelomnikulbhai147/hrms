@@ -234,10 +234,14 @@ interface CompanyProfileProps {
   companies: Company[];
   authProfile: UserAccount | null;
   onUpdateCompanies?: (companies: any) => void;
+  // Called after a successful profile save with the freshly-loaded company so the
+  // global companies state can sync instantly (sidebar / selector / header name).
+  // Governed by the company-profile permission (not the SaaS `companies` one).
+  onCompanySynced?: (company: any) => void;
   onNavigate?: (page: any) => void;
 }
 
-export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId, authProfile, onUpdateCompanies, onNavigate }) => {
+export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId, authProfile, onUpdateCompanies, onCompanySynced, onNavigate }) => {
   const { canEdit, canCreate } = usePermissions();
   const editable = canEdit('company-profile');
   // Branch Management lives under the Companies module — used only to optionally
@@ -271,12 +275,25 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
       const f: Record<string, any> = {};
       for (const k of ALL_EDIT_FIELDS) f[k] = (data?.company?.[k] ?? '');
       setForm(f);
+      return data;
     } catch (e) {
       ui.toast.error(getApiErrorMessage(e) || 'Could not load the company profile.');
+      return null;
     } finally {
       setLoading(false);
     }
   };
+
+  // Open from the very top. The app's content lives in a single shared
+  // <main class="overflow-y-auto"> scroll container that keeps the previous
+  // page's scroll position on navigation — so opening this page from the (long)
+  // Companies list left a large blank area above the company header. Reset the
+  // scroll once the profile has loaded so it always starts at the top.
+  useEffect(() => {
+    if (loading) return;
+    const scroller = document.querySelector('main');
+    if (scroller) scroller.scrollTop = 0; else window.scrollTo(0, 0);
+  }, [loading]);
 
   // Re-fetch whenever the ACTIVE workspace/company changes. Without the
   // activeCompanyId dependency the profile (and its branches) stayed pinned to
@@ -316,9 +333,16 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
     try {
       await api.companies.updateBranding(String(profile.company.id), payload);
       ui.toast.success('Company profile saved.');
-      await load();
-      if (onUpdateCompanies) {
-        try { const cos = await api.companies.getAll(); onUpdateCompanies(cos); } catch { /* non-fatal */ }
+      const fresh = await load();
+      // Instant global sync: push the freshly-saved company into the app's
+      // companies state so the sidebar, workspace selector, header and page
+      // title show the new name immediately — no logout / refresh required.
+      // Uses the company-profile-scoped callback (the old onUpdateCompanies path
+      // was gated on the SaaS `companies` permission, which a Company Head lacks,
+      // so the rename silently never propagated).
+      if (fresh?.company) {
+        if (onCompanySynced) onCompanySynced(fresh.company);
+        else if (onUpdateCompanies) { try { const cos = await api.companies.getAll(); onUpdateCompanies(cos); } catch { /* non-fatal */ } }
       }
     } catch (e) {
       ui.toast.error(getApiErrorMessage(e) || 'Could not save changes.');

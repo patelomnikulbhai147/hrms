@@ -330,6 +330,21 @@ export default function App() {
     safeSetJSON('hrms_companies', billingResult.updatedCompanies);
   };
 
+  // Sync the global companies state after a Company Profile save. This is governed
+  // by the company-profile permission (already enforced on the backend
+  // updateBranding call the page makes) — NOT the SaaS `companies` permission that
+  // handleUpdateCompanies requires. Merging the saved company here makes the new
+  // name appear instantly in the sidebar, workspace selector, header and page
+  // title without a logout / refresh (both consume the reactive `companies` state).
+  const handleCompanyProfileSync = (updatedCompany: any) => {
+    if (!updatedCompany?.id) return;
+    setCompanies(prev => {
+      const next = prev.map(c => (String(c.id) === String(updatedCompany.id) ? { ...c, ...updatedCompany } : c));
+      safeSetJSON('hrms_companies', next);
+      return next;
+    });
+  };
+
   const handleUpdateEmployees = (updater: Employee[] | ((prev: Employee[]) => Employee[])) => {
     if (permissionRole !== 'Super Admin' && !checkCanEdit('employees', authProfile, permissionRole)) {
       showToast("Unauthorized: API blocked. You do not have edit permissions for Employees.");
@@ -1331,6 +1346,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companies={companies}
             authProfile={authProfile}
             onUpdateCompanies={handleUpdateCompanies}
+            onCompanySynced={handleCompanyProfileSync}
             onNavigate={handleNavigate}
           />
         );
