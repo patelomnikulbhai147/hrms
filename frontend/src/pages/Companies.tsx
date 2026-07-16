@@ -69,6 +69,9 @@ interface CompaniesProps {
   onUpdateEmployees?: (employees: Employee[]) => void;
   onRefresh?: () => void;
   superAdminStats?: SuperAdminStats | null;
+  // Navigate to the dedicated Edit-Company page. Editing is NEVER inline here —
+  // the Companies screen is a listing page only.
+  onEditCompany?: (companyId: string) => void;
 }
 
 export const Companies: React.FC<CompaniesProps> = ({
@@ -82,7 +85,8 @@ export const Companies: React.FC<CompaniesProps> = ({
   employees,
   onUpdateEmployees,
   onRefresh,
-  superAdminStats
+  superAdminStats,
+  onEditCompany
 }) => {
   if (false as boolean) {
     console.log(_role);
@@ -247,65 +251,8 @@ export const Companies: React.FC<CompaniesProps> = ({
   const [editingBranch, setEditingBranch] = useState<Company | null>(null);
   const [parentCompanyIdForBranch, setParentCompanyIdForBranch] = useState<string>('');
 
-  // Edit Company state
-  const [editCompanyModalOpen, setEditCompanyModalOpen] = useState(false);
-  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
-  const [editCompanyForm, setEditCompanyForm] = useState({
-    name: '',
-    branchCode: '',
-    industry: 'Technology',
-    adminEmail: '',
-    phone: '',
-    billingAddress: '',
-    domain: '',
-    status: 'Active' as 'Active' | 'Inactive' | 'Archived',
-    branchSlots: 1   // total branch slots = 1 base + purchasedAdditionalBranches
-  });
-
-  const handleOpenEditCompany = (company: Company) => {
-    setEditingCompanyId(company.id);
-    setEditCompanyForm({
-      name: company.name || '',
-      branchCode: company.branchCode || company.gstNumber || '',
-      industry: company.industry || 'Technology',
-      adminEmail: company.adminEmail || company.email || '',
-      phone: company.phone || '',
-      billingAddress: company.billingAddress || company.address || '',
-      domain: company.domain || '',
-      status: (company.status as any) || 'Active',
-      branchSlots: 1 + (Number((company as any).purchasedAdditionalBranches) || 0)
-    });
-    setEditCompanyModalOpen(true);
-  };
-
-  const handleSaveCompany = async () => {
-    if (!editingCompanyId) return;
-    try {
-      const payload = {
-        name: editCompanyForm.name,
-        branchCode: editCompanyForm.branchCode,
-        industry: editCompanyForm.industry,
-        adminEmail: editCompanyForm.adminEmail,
-        phone: editCompanyForm.phone,
-        billingAddress: editCompanyForm.billingAddress,
-        domain: editCompanyForm.domain,
-        status: editCompanyForm.status,
-        // Branch slots: store the purchased ADDITIONAL slots (total minus the
-        // base of 1). Drives the Company-Head branch-creation limit (Change #27).
-        purchasedAdditionalBranches: Math.max(0, (Number(editCompanyForm.branchSlots) || 1) - 1),
-        isHeadOffice: true
-      };
-      const saved = await api.companies.update(editingCompanyId, payload);
-      const updatedCompany = { ...companies.find(c => c.id === editingCompanyId), ...saved, isHeadOffice: true };
-      onUpdateCompanies(companies.map(c => c.id === editingCompanyId ? updatedCompany : c));
-      onRefresh?.();
-      setEditCompanyModalOpen(false);
-      ui.toast.success('Company details updated successfully.');
-    } catch (err) {
-      console.error(err);
-      ui.toast.error(getApiErrorMessage(err, 'Could not update the company.'));
-    }
-  };
+  // Edit Company is a dedicated page now (pages/CompanyEdit.tsx) — no inline edit
+  // state/handlers live here anymore. The Edit icon calls onEditCompany(id).
 
   const [branchForm, setBranchForm] = useState({
     name: '',
@@ -1495,7 +1442,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                               </button>
 
                               <button
-                                onClick={() => handleOpenEditCompany(c)}
+                                onClick={() => onEditCompany?.(c.id)}
                                 className="p-1.5 bg-white text-slate-400 hover:text-slate-600 border border-slate-200 rounded-md transition-colors shadow-sm"
                                 title="Edit Company"
                               >
@@ -2350,50 +2297,10 @@ export const Companies: React.FC<CompaniesProps> = ({
         )}
       </Modal>
 
-
-      {/* Edit Company Modal */}
-      <Modal open={editCompanyModalOpen} onClose={() => setEditCompanyModalOpen(false)} title="Edit Parent Company" variant="page" breadcrumbs={[{ label: 'Companies', onClick: () => setEditCompanyModalOpen(false) }, { label: 'Edit Company' }]} subtitle="Update company profile and configuration." size="lg" footer={<>
-        <Button variant="outline" onClick={() => setEditCompanyModalOpen(false)}>Cancel</Button>
-        <Button onClick={handleSaveCompany} style={{ backgroundColor: '#B5673A' }}>Save Changes</Button>
-      </>}>
-        <div className="grid grid-cols-2 gap-4 text-left font-sans">
-          <Input label="Company Name *" value={editCompanyForm.name} onChange={e => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })} />
-          <Input label="Company Code" value={editCompanyForm.branchCode} onChange={e => setEditCompanyForm({ ...editCompanyForm, branchCode: e.target.value })} />
-          <Input label="Sector / Industry" value={editCompanyForm.industry} onChange={e => setEditCompanyForm({ ...editCompanyForm, industry: e.target.value })} />
-          <Input label="Admin Email" type="email" value={editCompanyForm.adminEmail} onChange={e => setEditCompanyForm({ ...editCompanyForm, adminEmail: e.target.value })} />
-          <Input label="Phone Number" value={editCompanyForm.phone} onChange={e => setEditCompanyForm({ ...editCompanyForm, phone: e.target.value })} />
-          <Input label="Website Domain" value={editCompanyForm.domain} onChange={e => setEditCompanyForm({ ...editCompanyForm, domain: e.target.value })} />
-          <Input
-            label="Branch Slots (subscription)"
-            type="number"
-            min={1}
-            value={editCompanyForm.branchSlots}
-            onChange={e => setEditCompanyForm({ ...editCompanyForm, branchSlots: Math.max(1, parseInt(e.target.value) || 1) })}
-          />
-          <div className="flex items-end text-[11px] text-slate-500 pb-2">
-            Total branches a Company Head may create. Default 1; increase to sell more branch slots.
-          </div>
-          <Select
-            label="Status"
-            value={editCompanyForm.status}
-            onChange={e => setEditCompanyForm({ ...editCompanyForm, status: e.target.value as any })}
-            options={[
-              { value: 'Active', label: 'Active' },
-              { value: 'Inactive', label: 'Inactive' },
-              { value: 'Archived', label: 'Archived' }
-            ]}
-          />
-          <div className="col-span-2">
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Billing Address</label>
-            <textarea
-              className="w-full text-sm p-2 border border-gray-300 rounded focus:ring-2 focus:ring-brand-500 outline-none transition-all"
-              rows={2}
-              value={editCompanyForm.billingAddress}
-              onChange={e => setEditCompanyForm({ ...editCompanyForm, billingAddress: e.target.value })}
-            />
-          </div>
-        </div>
-      </Modal>
+      {/* Edit Company is now a dedicated page (see pages/CompanyEdit.tsx), reached
+          via onEditCompany → /company-edit/:id. The former inline "page" Modal was
+          removed so the Companies screen is a pure listing (no blank space, no
+          inline edit form). */}
 
       {/* Branch Creation / Edition Modal */}
       <Modal

@@ -24,7 +24,7 @@ export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
-  | 'notifications' | 'custom-report-builder';
+  | 'notifications' | 'custom-report-builder' | 'company-edit';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */

@@ -32,6 +32,7 @@ const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ 
 const Tenders = React.lazy(() => import('@/pages/Tenders').then(m => ({ default: m.Tenders })));
 const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ default: m.Contracts })));
 const CompanyProfile = React.lazy(() => import('@/pages/CompanyProfile').then(m => ({ default: m.CompanyProfile })));
+const CompanyEdit = React.lazy(() => import('@/pages/CompanyEdit').then(m => ({ default: m.CompanyEdit })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { authStorage } from '@/utils/authStorage';
@@ -87,6 +88,7 @@ const pageTitles: Record<PageId, string> = {
   tenders: 'Tender Management',
   contracts: 'Contract Management',
   'company-profile': 'Company Profile',
+  'company-edit': 'Edit Company',
   communication: 'Communication Center',
   notifications: 'Notifications',
   'select-workspace': 'Select Workspace'
@@ -97,7 +99,7 @@ const pageTitles: Record<PageId, string> = {
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
   'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'company-profile', 'communication', 'notifications', 'select-workspace',
+  'company-profile', 'company-edit', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -667,6 +669,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   // Transient cross-page request: "open this employee's profile on the Employees
   // page". Set by Employee Cards → View Profile, cleared once Employees consumes it.
   const [focusEmployeeId, setFocusEmployeeId] = useState<string | null>(null);
+  // Which company the dedicated Edit-Company page is editing. Carried in the URL
+  // (/company-edit/:id) AND localStorage so a hard refresh or deep link re-opens
+  // the right company. Seeded from the URL's second path segment first.
+  const [editCompanyId, setEditCompanyId] = useState<string | null>(() => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    if (seg[0] === 'company-edit' && seg[1]) return decodeURIComponent(seg[1]);
+    return localStorage.getItem('hrms_edit_company_id');
+  });
   const [role, setRole] = useState<Role>(() => {
     const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
@@ -900,11 +910,37 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
+  // Open the dedicated Edit-Company page for a specific company. The id rides in
+  // the URL (/company-edit/:id) so refresh / deep link / Back all resolve it, and
+  // is also persisted so a same-path reload rehydrates it. Editing is NEVER inline
+  // on the Companies list — this is a separate route + component.
+  const handleEditCompany = (companyId: string) => {
+    setEditCompanyId(companyId);
+    localStorage.setItem('hrms_edit_company_id', companyId);
+    setCurrentPage('company-edit');
+    localStorage.setItem('hrms_current_page', 'company-edit');
+    const path = '/company-edit/' + encodeURIComponent(companyId);
+    if (window.location.pathname !== path) {
+      window.history.pushState({ page: 'company-edit', companyId }, '', path);
+    }
+  };
+
   // Browser Back/Forward → switch the in-app page (never exit the app).
   useEffect(() => {
     const onPop = () => {
+      const seg = window.location.pathname.replace(/^\/+/, '').split('/');
       const p = pathToPage(window.location.pathname);
-      if (p) { setCurrentPage(p); localStorage.setItem('hrms_current_page', p); }
+      if (p) {
+        // Re-resolve the Edit-Company target from the URL segment so navigating
+        // Back INTO /company-edit/:id re-opens the correct company.
+        if (p === 'company-edit' && seg[1]) {
+          const id = decodeURIComponent(seg[1]);
+          setEditCompanyId(id);
+          localStorage.setItem('hrms_edit_company_id', id);
+        }
+        setCurrentPage(p);
+        localStorage.setItem('hrms_current_page', p);
+      }
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -914,9 +950,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   // entry, RBAC fallback). replaceState so these don't clutter the back history.
   useEffect(() => {
     if (!isAuthenticated) return;
-    const path = '/' + currentPage;
-    if (window.location.pathname !== path) {
-      window.history.replaceState({ page: currentPage }, '', path);
+    // Compare on the FIRST path segment so a sub-route like /company-edit/:id is
+    // left intact (the naive `/${currentPage}` compare would strip the :id).
+    const currentSeg = window.location.pathname.replace(/^\/+/, '').split('/')[0];
+    if (currentSeg !== currentPage) {
+      window.history.replaceState({ page: currentPage }, '', '/' + currentPage);
     }
   }, [currentPage, isAuthenticated]);
 
@@ -1253,6 +1291,31 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             employees={employees}
             onUpdateEmployees={handleUpdateEmployees}
             superAdminStats={superAdminStats}
+            onRefresh={hydrateAll}
+            onEditCompany={handleEditCompany}
+          />
+        );
+      case 'company-edit':
+        // Dedicated Edit-Company page (Super Admin only, same gate as the list).
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <div className="w-24 h-24 rounded-full flex items-center justify-center mb-6" style={{ background: 'linear-gradient(135deg, #fee2e2, #fecaca)' }}>
+                <ShieldAlert className="w-12 h-12" style={{ color: '#dc2626' }} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2" style={{ color: '#111827' }}>Access Denied</h2>
+              <p className="max-w-md" style={{ color: '#6b7280' }}>
+                Editing a company is exclusively available to <span className="font-bold" style={{ color: '#2563eb' }}>Super Admin</span> accounts.
+              </p>
+            </div>
+          );
+        }
+        return (
+          <CompanyEdit
+            companyId={editCompanyId}
+            companies={companies}
+            onUpdateCompanies={handleUpdateCompanies}
+            onDone={() => handleNavigate('companies')}
             onRefresh={hydrateAll}
           />
         );
