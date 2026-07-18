@@ -1,0 +1,13 @@
+# =============================================================================
+#  admin.zeniahr.com  —  ZeniaHR HRMS application (PRIVATE)
+#  This host serves the login / dashboard / employee & super-admin portals and
+#  must NEVER be indexed. Indexing is blocked three ways: this file, a
+#  <meta name="robots" content="noindex,nofollow"> tag in index.html, and an
+#  X-Robots-Tag response header at nginx.
+#
+#  The PUBLIC marketing website (https://zeniahr.com) is a SEPARATE project
+#  (CloudFront) and ships its own robots.txt + sitemap.xml — see the
+#  `seo-deliverables/` folder in this repo for those files.
+# =============================================================================
+User-agent: *
+Disallow: /

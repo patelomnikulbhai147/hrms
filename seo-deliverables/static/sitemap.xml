@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  zeniahr.com static sitemap fallback (for non-Next.js / CloudFront static hosting).
+  If the marketing site is Next.js, use app/sitemap.ts (dynamic) instead.
+  Keep <lastmod> current on each deploy.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://zeniahr.com/</loc><lastmod>2026-07-17</lastmod><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://zeniahr.com/features</loc><lastmod>2026-07-17</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://zeniahr.com/pricing</loc><lastmod>2026-07-17</lastmod><changefreq>weekly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://zeniahr.com/payroll</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/attendance</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/leave-management</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/recruitment</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/performance</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/asset-management</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/employee-self-service</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://zeniahr.com/about</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://zeniahr.com/contact</loc><lastmod>2026-07-17</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://zeniahr.com/blog</loc><lastmod>2026-07-17</lastmod><changefreq>daily</changefreq><priority>0.7</priority></url>
+  <url><loc>https://zeniahr.com/privacy-policy</loc><lastmod>2026-07-17</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+  <url><loc>https://zeniahr.com/terms</loc><lastmod>2026-07-17</lastmod><changefreq>yearly</changefreq><priority>0.3</priority></url>
+</urlset>

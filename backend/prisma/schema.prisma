@@ -259,6 +259,21 @@ model Branch {
   pfRate            Float              @default(12)
   phone             String?
   profTaxRate       Float              @default(200)
+
+  // ── Branch offboarding (soft) ──
+  // Offboarding NEVER deletes a branch or its employees — it flips `status` to
+  // 'Offboarded' + isArchived and records who/why/when here so the decision is
+  // queryable and reportable. Attendance, payroll, leave, documents and audit
+  // history are all retained by design.
+  offboardReason         String?   @db.Text
+  offboardEffectiveDate  DateTime?
+  offboardedAt           DateTime?
+  offboardedBy           String?
+  // How employees were handled: 'transfer' | 'archive' | 'inactive'.
+  offboardEmployeeAction String?
+  // Branch employees were transferred to, when offboardEmployeeAction='transfer'.
+  offboardTransferBranchId Int?
+
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   branchPayrolls    BranchPayroll[]
   employees         Employee[]

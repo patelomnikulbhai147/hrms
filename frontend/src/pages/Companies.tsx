@@ -31,6 +31,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { safeSetJSON } from '@/utils/safeStorage';
 import { downloadCompanyExcel, downloadCompanyPDF } from '@/utils/companyExportUtils';
 import { ui } from '@/components/ui/feedback';
+import { BranchFormModal } from '@/components/branches/BranchFormModal';
 
 // Mirrors COMPANY_TYPES in CompanyProfile so a type chosen at registration is a
 // valid option when the Company Head later edits it.
@@ -254,67 +255,17 @@ export const Companies: React.FC<CompaniesProps> = ({
   // Edit Company is a dedicated page now (pages/CompanyEdit.tsx) — no inline edit
   // state/handlers live here anymore. The Edit icon calls onEditCompany(id).
 
-  const [branchForm, setBranchForm] = useState({
-    name: '',
-    branchCode: '',
-    location: '',
-    email: '',
-    phone: '',
-    adminName: '',
-    employeeCapacity: 200,
-    status: 'Active' as 'Active' | 'Inactive',
-    pfRate: 12,
-    esicRate: 3.25,
-    basicPercent: 50,
-    profTaxRate: 200,
-    overtimeRate: 1.5,
-    enableBroadcasts: true,
-    enableSystemAlerts: true
-  });
-
+  // The branch form itself (state + save path) lives in <BranchFormModal>, which
+  // the Company Dashboard reuses. This page only decides create-vs-edit.
   const handleOpenCreateBranch = (parentId: string) => {
     setEditingBranch(null);
     setParentCompanyIdForBranch(parentId);
-    setBranchForm({
-      name: '',
-      branchCode: '',
-      location: '',
-      email: '',
-      phone: '',
-      adminName: '',
-      employeeCapacity: 200,
-      status: 'Active',
-      pfRate: 12,
-      esicRate: 3.25,
-      basicPercent: 50,
-      profTaxRate: 200,
-      overtimeRate: 1.5,
-      enableBroadcasts: true,
-      enableSystemAlerts: true
-    });
     setBranchModalOpen(true);
   };
 
   const handleOpenEditBranch = (branch: Company) => {
     setEditingBranch(branch);
     setParentCompanyIdForBranch(branch.parentCompanyId || 'c-gcri');
-    setBranchForm({
-      name: branch.name || branch.branchName || '',
-      branchCode: branch.branchCode || '',
-      location: branch.address || '',
-      email: branch.email || branch.adminEmail || '',
-      phone: branch.phone || '',
-      adminName: branch.adminName || '',
-      employeeCapacity: branch.employeeCapacity || 200,
-      status: branch.status === 'Active' ? 'Active' : 'Inactive',
-      pfRate: branch.pfRate || 12,
-      esicRate: branch.esicRate || 3.25,
-      basicPercent: branch.basicPercent || 50,
-      profTaxRate: branch.profTaxRate || 200,
-      overtimeRate: branch.overtimeRate || 1.5,
-      enableBroadcasts: true,
-      enableSystemAlerts: true
-    });
     setBranchModalOpen(true);
   };
 
@@ -756,146 +707,6 @@ export const Companies: React.FC<CompaniesProps> = ({
       console.error(err);
       ui.toast.error(getApiErrorMessage(err, 'Could not save the plan.'));
     });
-  };
-
-  const handleSaveBranch = async () => {
-    if (!branchForm.name || !branchForm.branchCode || !branchForm.email || !branchForm.adminName) {
-      await ui.alert({ message: 'Please fill in all strictly required fields (Branch Name, Branch Code, Branch Email, and Branch Admin).', variant: 'warning' });
-      return;
-    }
-
-    if (editingBranch) {
-      // Edit mode
-      const updatedCompanies = companies.map(c => {
-        if (c.id === editingBranch.id) {
-          return {
-            ...c,
-            name: branchForm.name,
-            branchName: branchForm.name.replace(/^GCRI\s+/, ''),
-            branchCode: branchForm.branchCode,
-            location: branchForm.location,
-            address: branchForm.location,
-            email: branchForm.email,
-            adminEmail: branchForm.email,
-            phone: branchForm.phone,
-            adminName: branchForm.adminName,
-            employeeCapacity: Number(branchForm.employeeCapacity) || 200,
-            status: branchForm.status,
-            pfRate: Number(branchForm.pfRate) || 12,
-            esicRate: Number(branchForm.esicRate) || 3.25,
-            basicPercent: Number(branchForm.basicPercent) || 50,
-            profTaxRate: Number(branchForm.profTaxRate) || 200,
-            overtimeRate: Number(branchForm.overtimeRate) || 1.5,
-          };
-        }
-        return c;
-      });
-      api.branches.update(editingBranch.id, {
-        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
-        branchCode: branchForm.branchCode,
-        location: branchForm.location,
-        email: branchForm.email,
-        adminEmail: branchForm.email,
-        phone: branchForm.phone,
-        adminName: branchForm.adminName,
-        employeeCapacity: Number(branchForm.employeeCapacity) || 200,
-        status: branchForm.status,
-        pfRate: Number(branchForm.pfRate) || 12,
-        esicRate: Number(branchForm.esicRate) || 3.25,
-        basicPercent: Number(branchForm.basicPercent) || 50,
-        profTaxRate: Number(branchForm.profTaxRate) || 200,
-        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
-      }).then(() => {
-        onUpdateCompanies(updatedCompanies);
-        onRefresh?.();
-        setBranchModalOpen(false);
-        ui.toast.success('Branch updated successfully.');
-      }).catch(err => {
-        console.error(err);
-        ui.toast.error(getApiErrorMessage(err, 'Could not update the branch.'));
-      });
-    } else {
-      // Create mode
-      const newId = `c-br-${Date.now()}`;
-      const newBranchObj: Company = {
-        id: newId,
-        parentCompanyId: parentCompanyIdForBranch || 'c-gcri',
-        name: branchForm.name,
-        branchName: branchForm.name.replace(/^GCRI\s+/, ''),
-        branchCode: branchForm.branchCode,
-        domain: `${branchForm.name.toLowerCase().replace(/\s+/g, '')}.gcri.in`,
-        adminName: branchForm.adminName,
-        adminEmail: branchForm.email,
-        phone: branchForm.phone,
-        industry: 'Healthcare & Research',
-        status: branchForm.status,
-        employeeCount: 0,
-        joinDate: new Date().toISOString().split('T')[0],
-        plan: 'Enterprise',
-        logo: 'GC',
-        pfRate: Number(branchForm.pfRate) || 12,
-        esicRate: Number(branchForm.esicRate) || 3.25,
-        basicPercent: Number(branchForm.basicPercent) || 50,
-        profTaxRate: Number(branchForm.profTaxRate) || 200,
-        overtimeRate: Number(branchForm.overtimeRate) || 1.5,
-        address: branchForm.location,
-        email: branchForm.email,
-        primaryColor: '#6366f1',
-        headerText: `${branchForm.name.toUpperCase()} REGIONAL CENTER`,
-        footerText: `${branchForm.name} · Subsidiary of Gujarat Cancer Research Institute`,
-        signatureText: `${branchForm.adminName}, Branch Director`,
-        themeStyle: 'Modern',
-        paymentStatus: 'Trial Active',
-        renewalDate: '2027-12-31',
-        subscriptionPrice: 0,
-        billingCycle: 'Monthly',
-        accountStatus: 'Active'
-      };
-
-      // Auto provision Branch Admin user account!
-      const newAdminUser: UserAccount = {
-        id: `u-ba-${Date.now()}`,
-        name: branchForm.adminName,
-        email: branchForm.email,
-        username: branchForm.email.split('@')[0],
-        passwordStr: 'welcome123',
-        role: 'Company Head',
-        companyId: newId,
-        status: 'Active',
-        avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
-      };
-
-      // Create the branch FIRST (authoritative). If the branch slot limit blocks
-      // it (403 BRANCH_LIMIT_REACHED), we must NOT create the admin user — that
-      // would orphan a user with no branch. Only on branch success do we
-      // provision the admin account and close the modal.
-      (async () => {
-        let createdBranch: any;
-        try {
-          createdBranch = await api.branches.create(newBranchObj);
-        } catch (err: any) {
-          console.error('Branch create error:', err);
-          ui.toast.error(getApiErrorMessage(err, 'Could not create the branch.'));
-          return;   // keep modal open so the user can adjust / upgrade
-        }
-        let adminMsg = '';
-        try {
-          await api.users.create({ ...newAdminUser, companyId: createdBranch?.id ?? newAdminUser.companyId, password: newAdminUser.passwordStr });
-          onUpdateAccounts([...userAccounts, newAdminUser]);
-          adminMsg = `\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`;
-        } catch (uErr) {
-          console.warn('Branch created, but admin account was not created:', uErr);
-          adminMsg = '\n\nNote: the branch admin account could not be auto-created (it may already exist).';
-        }
-        onUpdateCompanies([...companies, newBranchObj]);
-        onRefresh?.();
-        setBranchModalOpen(false);
-        await ui.alert({ title: 'Branch Created', variant: 'success', message: `Branch created successfully.${adminMsg}` });
-      })();
-      return;
-    }
-
-    setBranchModalOpen(false);
   };
 
   // Manage Accounts triggers
@@ -2302,185 +2113,20 @@ export const Companies: React.FC<CompaniesProps> = ({
           removed so the Companies screen is a pure listing (no blank space, no
           inline edit form). */}
 
-      {/* Branch Creation / Edition Modal */}
-      <Modal
+      {/* Branch Creation / Edition Modal — shared with the Company Dashboard */}
+      <BranchFormModal
         open={branchModalOpen}
         onClose={() => setBranchModalOpen(false)}
-        title={editingBranch ? `Edit Regional Branch: ${editingBranch.branchName || editingBranch.name}` : "Create Subsidiary Regional Branch"}
-        variant="page"
-        breadcrumbs={[{ label: 'Companies', onClick: () => setBranchModalOpen(false) }, { label: editingBranch ? 'Edit Branch' : 'New Branch' }]}
-        subtitle="Configure branch details, administrator, payroll parameters and notifications."
-        size="lg"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setBranchModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSaveBranch}>
-              {editingBranch ? "Save Branch Settings" : "Deploy Branch Portal"}
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
-          <p className="text-xs text-gray-500">
-            {editingBranch
-              ? "Modify this subsidiary's regional limits, operational capacity, statutory parameters, and local leadership accounts."
-              : "Registering a new sub-center branches under Gujarat Cancer Research Institute. Generates specialized Branch Admin logins on completion."}
-          </p>
+        editingBranch={editingBranch}
+        parentCompanyId={parentCompanyIdForBranch}
+        companies={companies}
+        onUpdateCompanies={onUpdateCompanies}
+        userAccounts={userAccounts}
+        onUpdateAccounts={onUpdateAccounts}
+        onRefresh={onRefresh}
+        breadcrumbRoot="Companies"
+      />
 
-          {/* General Center Specifications */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">1. Regional Center Specifications</h4>
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input
-                label="Branch Name (e.g. GCRI Siddhpur) *"
-                placeholder="e.g. GCRI Siddhpur"
-                value={branchForm.name}
-                onChange={e => setBranchForm({ ...branchForm, name: e.target.value })}
-              />
-              <Input
-                label="Branch Code (e.g. SIDD) *"
-                placeholder="e.g. SIDD"
-                value={branchForm.branchCode}
-                onChange={e => setBranchForm({ ...branchForm, branchCode: e.target.value.toUpperCase() })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3 text-left">
-              <Input
-                label="Branch Location / Address *"
-                placeholder="e.g. Siddhpur Highway, Patan"
-                value={branchForm.location}
-                onChange={e => setBranchForm({ ...branchForm, location: e.target.value })}
-              />
-              <Select
-                label="Operational Status *"
-                value={branchForm.status}
-                onChange={e => setBranchForm({ ...branchForm, status: e.target.value as 'Active' | 'Inactive' })}
-                options={[
-                  { value: 'Active', label: 'Active (Permit Portal Access)' },
-                  { value: 'Inactive', label: 'Suspended (Revoke Branch Portal Access)' }
-                ]}
-              />
-            </div>
-          </div>
-
-          {/* Branch Authority Credentials */}
-          <div className="space-y-3 pt-2">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">2. Local Leadership (Branch Admin)</h4>
-            <div className="grid grid-cols-3 gap-3 text-left">
-              <div className="col-span-1">
-                <Input
-                  label="Branch Admin Full Name *"
-                  placeholder="e.g. Dr. Harshit Patel"
-                  value={branchForm.adminName}
-                  onChange={e => setBranchForm({ ...branchForm, adminName: e.target.value })}
-                />
-              </div>
-              <div className="col-span-1">
-                <Input
-                  label="Branch Contact Email *"
-                  placeholder="e.g. siddhpur@gcri.in"
-                  type="email"
-                  value={branchForm.email}
-                  onChange={e => setBranchForm({ ...branchForm, email: e.target.value })}
-                />
-              </div>
-              <div className="col-span-1">
-                <Input
-                  label="Branch Contact Phone *"
-                  placeholder="e.g. +91 9988776655"
-                  value={branchForm.phone}
-                  onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })}
-                />
-              </div>
-            </div>
-            {!editingBranch && (
-              <p className="text-[10px] text-gray-400 italic mt-0.5">
-                * Note: Login ID will be derived from email username (e.g. `siddhpur`). Default access password is <strong>welcome123</strong>.
-              </p>
-            )}
-          </div>
-
-          {/* Capacity and Statutory Parameters */}
-          <div className="space-y-3 pt-2">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">3. Capacity & Statutory Payroll Configurations</h4>
-            <div className="grid grid-cols-3 gap-3 text-left">
-              <Input
-                label="Max Employee Capacity Limit *"
-                type="number"
-                disabled={true}
-                value={branchForm.employeeCapacity}
-                className="bg-gray-50 text-gray-500 font-bold cursor-not-allowed"
-                title="Capacity upgrades must be executed through the Billing tab."
-              />
-              <Input
-                label="PF Contribution Rate (%)"
-                type="number"
-                step="0.01"
-                placeholder="e.g. 12"
-                value={branchForm.pfRate}
-                onChange={e => setBranchForm({ ...branchForm, pfRate: Number(e.target.value) || 12 })}
-              />
-              <Input
-                label="ESIC Contribution Rate (%)"
-                type="number"
-                step="0.01"
-                placeholder="e.g. 3.25"
-                value={branchForm.esicRate}
-                onChange={e => setBranchForm({ ...branchForm, esicRate: Number(e.target.value) || 3.25 })}
-              />
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-left">
-              <Input
-                label="Basic Salary % of CTC (%)"
-                type="number"
-                placeholder="e.g. 50"
-                value={branchForm.basicPercent}
-                onChange={e => setBranchForm({ ...branchForm, basicPercent: Number(e.target.value) || 50 })}
-              />
-              <Input
-                label="Overtime Rate Multiplier"
-                type="number"
-                step="0.1"
-                placeholder="e.g. 1.5"
-                value={branchForm.overtimeRate}
-                onChange={e => setBranchForm({ ...branchForm, overtimeRate: Number(e.target.value) || 1.5 })}
-              />
-              <Input
-                label="Professional Tax Rate (INR)"
-                type="number"
-                placeholder="e.g. 200"
-                value={branchForm.profTaxRate}
-                onChange={e => setBranchForm({ ...branchForm, profTaxRate: Number(e.target.value) || 200 })}
-              />
-            </div>
-          </div>
-
-          {/* Local Notification Privileges */}
-          <div className="space-y-3 pt-2 text-left">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider border-b pb-1">4. Subsidiary Notification & Scopes</h4>
-            <div className="flex flex-col gap-2 pt-1 text-xs">
-              <label className="flex items-center gap-2 font-medium text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={branchForm.enableBroadcasts}
-                  onChange={e => setBranchForm({ ...branchForm, enableBroadcasts: e.target.checked })}
-                  className="rounded text-brand-700 focus:ring-brand-500 w-3.5 h-3.5"
-                />
-                Permit local Broadcast Dispatch to all devices in this branch
-              </label>
-              <label className="flex items-center gap-2 font-medium text-gray-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={branchForm.enableSystemAlerts}
-                  onChange={e => setBranchForm({ ...branchForm, enableSystemAlerts: e.target.checked })}
-                  className="rounded text-brand-700 focus:ring-brand-500 w-3.5 h-3.5"
-                />
-                Receive automatic critical biometric and compliance alerts
-              </label>
-            </div>
-          </div>
-        </div>
-      </Modal>
       {/* Workspace Assignment Modal */}
       <Modal
         open={!!workspaceAssignUser}

@@ -466,7 +466,7 @@ exports.getAllUsers = async (req, res) => {
 //   Company Admin → management users within their company
 //   HR/Branch     → management users within their assigned company/branch
 // Each row is enriched with companyName + branchName for the @mention card.
-const MANAGEMENT_ROLES = ['Super Admin', 'Company Head', 'Company Admin', 'HR', 'HR Admin', 'Finance', 'Branch Admin', 'Manager'];
+const MANAGEMENT_ROLES = ['Super Admin', 'Company Head', 'Company Admin', 'HR', 'HR Admin', 'Finance', 'Branch Admin', 'Manager', 'Employee', 'Custom', 'Payroll', 'Recruiter'];
 
 exports.getAssignableUsers = async (req, res) => {
   try {

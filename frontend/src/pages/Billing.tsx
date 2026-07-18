@@ -433,18 +433,43 @@ export const Billing: React.FC<BillingProps> = ({
         avatar: branchForm.adminName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
       };
 
-      Promise.all([
-        api.branches.create(newBranchObj).catch(e => { console.error("Branch create error:", e); throw e; }),
-        api.users.create({ ...newAdminUser, password: newAdminUser.passwordStr }).catch(e => { console.error("User create error:", e); throw e; })
-      ]).then(() => {
-        onUpdateAccounts([...userAccounts, newAdminUser]);
+      // Create the branch FIRST (authoritative), then provision the admin against
+      // the REAL branch id the server assigns. These used to run in Promise.all,
+      // which forced the admin's companyId to be `newId` — a fake client-side
+      // string ("c-br-<ts>") — while User.companyId is an Int, so Prisma rejected
+      // it with "Argument `companyId`: Expected Int or Null, provided String".
+      // Running them in order also means a rejected branch no longer orphans an
+      // admin user. Mirrors the Companies page flow. (Branch creation is
+      // unlimited — permission-gated only; there is no slot/quota check.)
+      (async () => {
+        let createdBranch: any;
+        try {
+          // `newBranchObj` is COMPANY-shaped (it doubles as the local UI row) so it
+          // carries `parentCompanyId`; the Branch API stores the parent as
+          // `companyId`, and it must be a NUMBER (Branch.companyId is Int).
+          createdBranch = await api.branches.create({ ...newBranchObj, companyId: Number(parentCompanyIdForBranch) });
+        } catch (e) {
+          console.error('Branch create error:', e);
+          ui.toast.error(getApiErrorMessage(e, 'Could not create the branch.'));
+          return;   // keep the modal open so the user can adjust / upgrade
+        }
+
+        let adminMsg = '';
+        try {
+          await api.users.create({ ...newAdminUser, companyId: createdBranch?.id, password: newAdminUser.passwordStr });
+          onUpdateAccounts([...userAccounts, newAdminUser]);
+          adminMsg = `\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`;
+        } catch (uErr) {
+          console.warn('Branch created, but admin account was not created:', uErr);
+          adminMsg = '\n\nNote: the branch admin account could not be auto-created (it may already exist).';
+        }
+
         const finalized = syncAndRecalculateBilling([...companies, newBranchObj], parentCompanyIdForBranch || 'c-gcri');
         onUpdateCompanies(finalized);
-        ui.alert({ title: 'Branch Created', message: `Branch created successfully.\n\nGenerated Branch Admin Account:\nLogin ID: ${newAdminUser.username}\nPassword: ${newAdminUser.passwordStr}`, variant: 'success' });
-      }).catch(err => {
-        console.error(err);
-        ui.toast.error(getApiErrorMessage(err, 'Could not create the branch.'));
-      });
+        setBranchModalOpen(false);
+        ui.alert({ title: 'Branch Created', message: `Branch created successfully.${adminMsg}`, variant: 'success' });
+      })();
+      return;
     }
 
     setBranchModalOpen(false);

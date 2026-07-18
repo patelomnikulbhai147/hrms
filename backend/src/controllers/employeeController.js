@@ -242,6 +242,9 @@ exports.createEmployee = async (req, res) => {
       data: createData
     });
 
+    const HeadcountSyncService = require('../services/headcountSyncService');
+    await HeadcountSyncService.handleEmployeeChange(null, employee);
+
     // Auto-create initial payroll draft for the current month
     if (employee.status === 'Active' && employee.salary > 0) {
       try {
@@ -356,6 +359,9 @@ exports.bulkCreate = async (req, res) => {
       }
       addToIndex(result);
     }
+
+    const HeadcountSyncService = require('../services/headcountSyncService');
+    await HeadcountSyncService.syncAllBranches();
 
     // Auto-sync payroll for imported employees in the background
     try {
@@ -559,6 +565,10 @@ exports.updateEmployee = async (req, res) => {
       where: { id: idParam(id) },
       data: prepareEmployeeWriteData(data)
     });
+
+    const HeadcountSyncService = require('../services/headcountSyncService');
+    await HeadcountSyncService.handleEmployeeChange(existingEmp, employee);
+
     res.json(employee);
   } catch (error) {
     console.error('Error updating employee:', error);
@@ -593,12 +603,12 @@ exports.validateCode = async (req, res) => {
 exports.deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
+    const existing = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true, branchId: true, status: true } });
+    if (!existing) return res.status(404).json({ error: 'Employee not found.' });
 
     // ── Write-ownership guard ────────────────────────────────────────────────
     // A non-Super-Admin may only archive an employee inside their company/branch.
     if (req.user && req.user.role !== 'Super Admin') {
-      const existing = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true, branchId: true } });
-      if (!existing) return res.status(404).json({ error: 'Employee not found.' });
       const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
       const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
       const inScope = (existing.companyId != null && companyScope.includes(String(existing.companyId)))
@@ -615,6 +625,10 @@ exports.deleteEmployee = async (req, res) => {
         exitReason: 'Admin Archived'
       }
     });
+
+    const HeadcountSyncService = require('../services/headcountSyncService');
+    await HeadcountSyncService.handleEmployeeChange(existing, employee);
+
     res.json({ message: 'Employee archived successfully', employee });
   } catch (error) {
     return respondError(res, error);
