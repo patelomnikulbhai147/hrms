@@ -58,6 +58,9 @@ function defaultPermissionsForRole(role) {
   }
   return { permissions, moduleAccess: {} };
 }
+// Exported so the public self-registration flow can grant a new Company Head the
+// same default permission blob as the Super-Admin "Add User" path.
+exports.defaultPermissionsForRole = defaultPermissionsForRole;
 
 exports.resetPassword = async (req, res) => {
   try {

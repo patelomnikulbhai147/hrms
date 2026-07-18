@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { BarChart3, FileText, Download, Eye, AlertTriangle, History, ChevronRight, ChevronDown, Search, X, Printer, LayoutGrid, Zap, Sparkles, Star, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { BarChart3, FileText, Download, Eye, AlertTriangle, History, ChevronRight, ChevronDown, Search, X, Printer, LayoutGrid, Zap, Sparkles, Star, CheckCircle2, ShieldCheck, Lock } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { isReportAllowed } from '@/config/planEntitlements';
+import { UpgradeRequiredDialog } from '@/components/subscription/PremiumLock';
 import { type Role, type Company } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -252,6 +254,23 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const grouped = useMemo(() => { const g: Record<string, any[]> = {}; catalog.forEach(r => { (g[r.category] = g[r.category] || []).push(r); }); return g; }, [catalog]);
   const selected = catalog.find(r => r.key === selectedKey);
 
+  // ── Subscription (per-report) gating ────────────────────────────────────────
+  // FREE plan: the Reports module is fully visible, but only allow-listed reports
+  // may be generated. Locked reports stay visible (greyed + Premium badge); a
+  // click opens the Upgrade dialog. The backend generate/preview endpoints are the
+  // real enforcement (403 REPORT_NOT_AVAILABLE_IN_FREE_PLAN) — this is UX only.
+  const currentPlan = (authProfile as any)?.plan
+    || (companies as any[]).find(c => String(c.id) === String(activeCompanyId))?.plan
+    || '';
+  const reportLocked = useCallback((r: any): boolean => {
+    if (isSuperAdmin) return false;
+    // Prefer the backend's authoritative planLocked flag; fall back to the mirror.
+    if (typeof r?.planLocked === 'boolean') return r.planLocked;
+    return !isReportAllowed(currentPlan, r?.key);
+  }, [isSuperAdmin, currentPlan]);
+  const [lockedReportLabel, setLockedReportLabel] = useState<string | null>(null);
+  const openReportLock = (label: string) => setLockedReportLabel(label);
+
   // ── Reports navigation: accordion categories + real-time search (UI only) ─────
   const [search, setSearch] = useState('');
   const [openCat, setOpenCat] = useState<string | null>(null);
@@ -333,6 +352,10 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
 
   const generate = async () => {
     if (!selectedKey) return flash('err', 'Select a report.');
+    // Subscription guard (defensive — the list already intercepts locked reports):
+    // a plan-locked report opens the Upgrade dialog instead of hitting the API,
+    // which would 403 with REPORT_NOT_AVAILABLE_IN_FREE_PLAN anyway.
+    if (selected && reportLocked(selected)) { openReportLock(selected.label); return; }
     // Guard in the UI as well as the API: a period-driven report without a period
     // would otherwise be a silent whole-history query.
     if (needsPeriod && !payrollPeriod) {
@@ -860,21 +883,30 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   // const openAudit = async () => { setShowAudit(s => !s); if (!showAudit) { try { setAudit(await api.complianceReports.audit() || []); } catch { setAudit([]); } } };
 
   // Reusable report card (used by Favourites and each category section).
+  // "Premium" badge shown on plan-locked reports (replaces the status badge).
+  const PremiumBadge = () => (
+    <span title="Available in Premium Plan" className="self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 bg-amber-100 text-amber-700 border-amber-200 inline-flex items-center gap-1">
+      <Lock size={9} strokeWidth={2.5} />Premium
+    </span>
+  );
+
   const renderReportCard = (r: any) => {
+    const locked = reportLocked(r);
+    const lockTip = 'Available in Premium Plan';
     const tpl = templateForKey(r.key);
     if (tpl) {
       const isFav = favs.includes(r.key);
       return (
-        <div key={r.key} className="rounded-xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50/40 p-3 flex flex-col gap-2 shadow-sm">
+        <div key={r.key} title={locked ? lockTip : undefined} className={`rounded-xl border ${locked ? 'border-slate-200 opacity-60' : 'border-emerald-200'} bg-gradient-to-br from-white to-emerald-50/40 p-3 flex flex-col gap-2 shadow-sm`}>
           <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-bold text-slate-800 leading-snug">{hl(r.label)}</p>
+            <p className="text-xs font-bold text-slate-800 leading-snug flex items-center gap-1">{locked && <Lock size={11} className="text-amber-500 shrink-0" />}{hl(r.label)}</p>
             <button onClick={() => toggleFav(r.key)} title={isFav ? 'Remove favourite' : 'Add to favourites'} className={`shrink-0 ${isFav ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></button>
           </div>
-          <span className="self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 bg-emerald-100 text-emerald-700 border-emerald-200">Live Template</span>
+          {locked ? <PremiumBadge /> : <span className="self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 bg-emerald-100 text-emerald-700 border-emerald-200">Live Template</span>}
           <p className="text-[10px] text-slate-500 leading-snug flex-1 min-h-[26px]">{tpl.description}</p>
           <div className="flex gap-1.5">
-            <Button variant="outline" size="sm" className="flex-1 text-[10px] h-7" icon={<Eye size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'preview') : openTemplate(tpl, r.label)}>Preview</Button>
-            <Button size="sm" className="flex-1 text-[10px] h-7" icon={<Zap size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'generate') : openTemplate(tpl, r.label)}>Generate</Button>
+            <Button variant="outline" size="sm" className="flex-1 text-[10px] h-7" icon={locked ? <Lock size={11} /> : <Eye size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'preview') : locked ? openReportLock(r.label) : openTemplate(tpl, r.label)}>Preview</Button>
+            <Button size="sm" className="flex-1 text-[10px] h-7" icon={locked ? <Lock size={11} /> : <Zap size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'generate') : locked ? openReportLock(r.label) : openTemplate(tpl, r.label)}>Generate</Button>
           </div>
         </div>
       );
@@ -886,16 +918,16 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         : { cls: 'bg-slate-100 text-slate-500 border-slate-200', label: 'Requires Setup' };
     const isFav = favs.includes(r.key);
     return (
-      <div key={r.key} className="rounded-xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-3 flex flex-col gap-2">
+      <div key={r.key} title={locked ? lockTip : undefined} className={`rounded-xl border border-slate-200 ${locked ? 'opacity-60' : ''} bg-gradient-to-br from-white to-slate-50 p-3 flex flex-col gap-2`}>
         <div className="flex items-start justify-between gap-2">
-          <p className="text-xs font-bold text-slate-800 leading-snug">{hl(r.label)}</p>
+          <p className="text-xs font-bold text-slate-800 leading-snug flex items-center gap-1">{locked && <Lock size={11} className="text-amber-500 shrink-0" />}{hl(r.label)}</p>
           <button onClick={() => toggleFav(r.key)} title={isFav ? 'Remove favourite' : 'Add to favourites'} className={`shrink-0 ${isFav ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></button>
         </div>
-        <span className={`self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 ${badge.cls}`}>{badge.label}</span>
+        {locked ? <PremiumBadge /> : <span className={`self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 ${badge.cls}`}>{badge.label}</span>}
         <p className="text-[10px] text-slate-500 leading-snug flex-1 min-h-[26px]">{r.description}</p>
         <div className="flex gap-1.5">
-          <Button variant="outline" size="sm" className="flex-1 text-[10px] h-7" icon={<Eye size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'preview') : openPreview(r.key)} disabled={r.status === 'coming'}>Preview</Button>
-          <Button size="sm" className="flex-1 text-[10px] h-7" icon={<Zap size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'generate') : goGenerate(r.key)} disabled={!r.available}>Generate</Button>
+          <Button variant="outline" size="sm" className="flex-1 text-[10px] h-7" icon={locked ? <Lock size={11} /> : <Eye size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'preview') : locked ? openReportLock(r.label) : openPreview(r.key)} disabled={!locked && r.status === 'coming'}>Preview</Button>
+          <Button size="sm" className="flex-1 text-[10px] h-7" icon={locked ? <Lock size={11} /> : <Zap size={11} />} onClick={() => isSuperAdmin ? openConfigForReport(r.key, 'generate') : locked ? openReportLock(r.label) : goGenerate(r.key)} disabled={!locked && !r.available}>Generate</Button>
         </div>
       </div>
     );
@@ -962,11 +994,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
             <Card>
               <h3 className="text-sm font-bold text-slate-800 mb-2 flex items-center gap-2"><History size={15} className="text-slate-500" /> Recently Generated</h3>
               <div className="flex flex-wrap gap-2">
-                {metrics.recent.map(rc => (
-                  <button key={rc.key} onClick={() => isSuperAdmin ? openConfigForReport(rc.key, 'generate') : goGenerate(rc.key)} className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-700 bg-slate-50 hover:bg-brand-50 hover:text-brand-700 border border-slate-200 rounded-full px-3 py-1.5 transition-colors">
-                    <FileText size={11} /> {rc.label}
+                {metrics.recent.map(rc => {
+                  const rcLocked = reportLocked(rc);
+                  return (
+                  <button key={rc.key} title={rcLocked ? 'Available in Premium Plan' : undefined} onClick={() => isSuperAdmin ? openConfigForReport(rc.key, 'generate') : rcLocked ? openReportLock(rc.label) : goGenerate(rc.key)} className={`flex items-center gap-1.5 text-[11px] font-semibold border rounded-full px-3 py-1.5 transition-colors ${rcLocked ? 'text-slate-400 bg-slate-50 border-slate-200 opacity-70' : 'text-slate-700 bg-slate-50 hover:bg-brand-50 hover:text-brand-700 border-slate-200'}`}>
+                    {rcLocked ? <Lock size={11} className="text-amber-500" /> : <FileText size={11} />} {rc.label}
                   </button>
-                ))}
+                  );
+                })}
               </div>
             </Card>
           )}
@@ -1046,13 +1081,17 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
               <div key={cat}>
                 <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">{cat}</p>
                 <div className="space-y-0.5">
-                  {grouped[cat].map(r => (
-                    <button key={r.key} disabled={!r.available} onClick={() => { setSelectedKey(r.key); setReport(null); }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${selectedKey === r.key ? 'bg-brand-50 border border-brand-200 text-brand-700 font-semibold' : r.available ? 'hover:bg-slate-50 border border-transparent text-slate-700' : 'text-slate-300 cursor-not-allowed'}`}>
-                      <span className="flex items-center gap-1.5"><FileText size={12} />{r.label}</span>
-                      {r.available ? <ChevronRight size={12} /> : <span className="text-[9px] font-bold text-amber-500">SOON</span>}
+                  {grouped[cat].map(r => {
+                    const rLocked = reportLocked(r);
+                    return (
+                    <button key={r.key} disabled={!rLocked && !r.available} title={rLocked ? 'Available in Premium Plan' : undefined}
+                      onClick={() => rLocked ? openReportLock(r.label) : (setSelectedKey(r.key), setReport(null))}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs flex items-center justify-between transition-colors ${rLocked ? 'opacity-60 text-slate-500 border border-transparent hover:bg-amber-50/40' : selectedKey === r.key ? 'bg-brand-50 border border-brand-200 text-brand-700 font-semibold' : r.available ? 'hover:bg-slate-50 border border-transparent text-slate-700' : 'text-slate-300 cursor-not-allowed'}`}>
+                      <span className="flex items-center gap-1.5">{rLocked ? <Lock size={12} className="text-amber-500" /> : <FileText size={12} />}{r.label}</span>
+                      {rLocked ? <span className="text-[8px] font-bold uppercase text-amber-600 inline-flex items-center gap-0.5"><Lock size={8} />Premium</span> : r.available ? <ChevronRight size={12} /> : <span className="text-[9px] font-bold text-amber-500">SOON</span>}
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -1732,6 +1771,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
           </div>
         </div>
       </Modal>
+
+      {/* Per-report premium-upgrade dialog (opened by clicking a locked report). */}
+      <UpgradeRequiredDialog
+        open={!!lockedReportLabel}
+        onClose={() => setLockedReportLabel(null)}
+        moduleLabel={lockedReportLabel ? `The "${lockedReportLabel}" report` : undefined}
+        onUpgrade={() => setLockedReportLabel(null)}
+      />
     </div>
   );
 };

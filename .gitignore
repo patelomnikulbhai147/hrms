@@ -20,3 +20,8 @@ backend/scripts/seedViewOnlyTestUser.js
 corehrms_dump.sql
 *.sql
 dump_err.txt
+
+# Runtime integration config (per-install; may hold Google Maps/reCAPTCHA keys on the server)
+backend/data/
+# Build-artifact zips (never commit)
+dist.zip

@@ -5,6 +5,25 @@ const prisma = require('../config/prisma');
 const { sendOtpEmail } = require('../services/emailService');
 const integrationSettings = require('../services/integrationSettings');
 const { generateCaptchaCode, generateSvgCaptcha } = require('../utils/captcha');
+const { getLockedModules } = require('../services/planEntitlements');
+
+// Resolve a user's effective plan + locked modules from their company so the
+// frontend has an authoritative copy for sidebar locking / route guards (it also
+// keeps its own mirror as a fallback). Super Admin has no company plan.
+const attachPlanInfo = async (safeUser) => {
+  try {
+    if (!safeUser || safeUser.role === 'Super Admin' || !safeUser.companyId) return safeUser;
+    let company = await prisma.company.findUnique({ where: { id: Number(safeUser.companyId) }, select: { plan: true, parentCompanyId: true } });
+    // A branch workspace resolves to its parent company for the plan.
+    if (company && company.parentCompanyId) {
+      company = await prisma.company.findUnique({ where: { id: Number(company.parentCompanyId) }, select: { plan: true } });
+    }
+    const planName = company?.plan || '';
+    safeUser.plan = planName;
+    safeUser.lockedModules = getLockedModules(planName);
+  } catch (_) { /* non-fatal — frontend mirror still applies */ }
+  return safeUser;
+};
 
 // ----------------------------------------------------------------------------
 // Helpers
@@ -396,7 +415,7 @@ exports.login = async (req, res) => {
       message: 'Login successful',
       token: generateToken(user.id, Boolean(rememberMe)),
       rememberMe: Boolean(rememberMe),
-      user: toSafeUser(user),
+      user: await attachPlanInfo(toSafeUser(user)),
     });
   } catch (error) {
     // Detailed server-side logging for login failures.
@@ -433,7 +452,7 @@ exports.getMe = async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    return res.json(toSafeUser(user));
+    return res.json(await attachPlanInfo(toSafeUser(user)));
   } catch (error) {
     console.error('GetMe Error:', error);
     return res.status(500).json({ error: 'Server error fetching user details.' });

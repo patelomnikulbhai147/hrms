@@ -43,6 +43,10 @@ export interface UserAccount {
   employeeId?: string;
   moduleAccess?: Record<AppModules, boolean>;
   permissions?: Record<AppModules, ModulePermissions>;
+  // Subscription plan + locked module keys, attached by the backend on login/getMe.
+  // Drives sidebar locking and route guards for restricted (e.g. FREE) plans.
+  plan?: string;
+  lockedModules?: string[];
 }
 
 interface LoginProps {
@@ -50,6 +54,8 @@ interface LoginProps {
   companies: Company[];
   onLogin: (user: UserAccount, selectedCompanyId?: string) => void;
   sessionMessage?: string | null;
+  /** Switch the unauthenticated view to the public company-registration wizard. */
+  onCreateAccount?: () => void;
 }
 
 // Six nodes on a REGULAR hexagon (60° apart, equal radius) centred on the logo —
@@ -64,7 +70,7 @@ const FEATURES: { key: string; Icon: React.ComponentType<any>; color: string; bg
   { key: 'Documents', Icon: FileText, color: '#0EA5E9', bg: '#E0F2FE', top: '86%', left: '71%' },  // lower-right
 ];
 
-export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, companies, onLogin, sessionMessage }) => {
+export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, companies, onLogin, sessionMessage, onCreateAccount }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -718,11 +724,34 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         <ArrowRight size={18} strokeWidth={2.5} className="absolute right-5" />
                       </button>
                     </div>
+
+                    {/* Public self-registration — Free plan. */}
+                    {onCreateAccount && (
+                      <>
+                        <div className="flex items-center gap-3 pt-[clamp(10px,1.6vh,16px)]">
+                          <div className="h-px flex-1 bg-slate-200" />
+                          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">or</span>
+                          <div className="h-px flex-1 bg-slate-200" />
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[13px] text-slate-500 font-medium mb-2">Don't have an account?</p>
+                          <button
+                            type="button"
+                            onClick={onCreateAccount}
+                            className="w-full h-[clamp(46px,6.4vh,56px)] rounded-2xl text-[15px] font-bold flex items-center justify-center gap-2 border-2 transition-all duration-200 hover:-translate-y-0.5 active:scale-[0.98] bg-white"
+                            style={{ color: BROWN, borderColor: BROWN }}
+                          >
+                            <ShieldCheck size={18} strokeWidth={2.5} />
+                            Create Free Account
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </form>
 
                   <div className="text-center pt-[clamp(12px,2.2vh,20px)]">
                     <p className="text-[13px] text-slate-500 font-medium">
-                      Don't have an account? <a href="#" className="font-bold hover:underline" style={{ color: BROWN }}>Contact Support</a>
+                      Need help? <a href="#" className="font-bold hover:underline" style={{ color: BROWN }}>Contact Support</a>
                     </p>
                   </div>
                 </>

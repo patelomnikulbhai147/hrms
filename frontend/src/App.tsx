@@ -34,7 +34,10 @@ const Contracts = React.lazy(() => import('@/pages/Contracts').then(m => ({ defa
 const CompanyProfile = React.lazy(() => import('@/pages/CompanyProfile').then(m => ({ default: m.CompanyProfile })));
 const CompanyEdit = React.lazy(() => import('@/pages/CompanyEdit').then(m => ({ default: m.CompanyEdit })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
+const CompanyRegistration = React.lazy(() => import('@/pages/CompanyRegistration').then(m => ({ default: m.CompanyRegistration })));
 import type { UserAccount, AppModules } from '@/pages/Login';
+import { isModuleLocked, isPageLocked } from '@/config/planEntitlements';
+import { PremiumRequiredScreen } from '@/components/subscription/PremiumLock';
 import { authStorage } from '@/utils/authStorage';
 import { safeSetJSON, pruneLargeLegacyCaches } from '@/utils/safeStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from '@/context/PermissionContext';
@@ -539,6 +542,8 @@ export default function App() {
   });
   // Message shown on the Login page after an auto-logout (inactivity / expiry).
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+  // Unauthenticated view: sign-in vs the public company-registration wizard.
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [isHydrating, setIsHydrating] = useState(true);
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
@@ -1151,9 +1156,24 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   }, [resolvedRole, currentPage, authProfile]);
 
   if (!isAuthenticated || !authProfile) {
+    const authFallback = <div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>;
+    if (authView === 'register') {
+      return (
+        <React.Suspense fallback={authFallback}>
+          <CompanyRegistration
+            onBack={() => setAuthView('login')}
+            onRegistered={(user) => {
+              setAuthView('login');
+              // Company Head lands directly in their brand-new workspace.
+              handleLogin(user, user.companyId != null ? String(user.companyId) : undefined);
+            }}
+          />
+        </React.Suspense>
+      );
+    }
     return (
-      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
-        <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} sessionMessage={sessionMessage} />
+      <React.Suspense fallback={authFallback}>
+        <Login userAccounts={userAccounts} companies={companies} onLogin={handleLogin} sessionMessage={sessionMessage} onCreateAccount={() => setAuthView('register')} />
       </React.Suspense>
     );
   }
@@ -1184,6 +1204,30 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'loan-management' ? 'loans'
       : currentPage === 'compliance-management' ? 'compliance'
       : currentPage) as AppModules;
+
+    // ── Subscription / plan gate (direct-URL block) ──────────────────────────
+    // A restricted plan (e.g. FREE) locks premium modules. The user may HOLD the
+    // RBAC permission (a Company Head has full perms), but the plan doesn't
+    // include the module — so show the Premium Required screen instead of the
+    // page. Mirrors the backend requirePlanModule gate. Super Admin is never
+    // plan-limited (nor a Super Admin masquerading into a company).
+    const currentPlan = (authProfile as any).plan
+      || companies.find(c => String(c.id) === String(activeCompanyId))?.plan
+      || '';
+    // Blocked when the module's permission key is locked OR the specific page id is
+    // locked (e.g. Custom Report Builder, which rides on the now-unlocked `reports`
+    // key but is premium in its own right).
+    const planBlocked = isModuleLocked(currentPlan, permPage) || isPageLocked(currentPlan, currentPage);
+    if (permissionRole !== 'Super Admin' && authProfile.role !== 'Super Admin' && planBlocked) {
+      return (
+        <PremiumRequiredScreen
+          moduleLabel={pageTitles[currentPage] || currentPage}
+          onUpgrade={() => handleNavigate('settings')}
+          onBack={() => handleNavigate('dashboard')}
+        />
+      );
+    }
+
     // Governance modules (Tender / Contract Management) belong to the COMPANY HEAD
     // only — Super Admin (platform admin) must not manage a company's tenders or
     // contracts. A Super Admin masquerading into a company resolves to

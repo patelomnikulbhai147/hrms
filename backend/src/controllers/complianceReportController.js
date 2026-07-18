@@ -9,10 +9,30 @@
  */
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { isReportAllowed } = require('../services/planEntitlements');
+const { resolveCompany } = require('../middleware/subscriptionMiddleware');
 
 const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
 const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 const canAccess = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
+
+// Per-report SUBSCRIPTION gate. A restricted plan (FREE) may generate only its
+// allow-listed reports (see planEntitlements). Returns a 403 body to send, or
+// null when allowed. Super Admin is never plan-limited. The `reports` MODULE
+// itself is open to FREE — only individual reports are gated here (authoritative;
+// the frontend lock is UX only).
+async function reportPlanBlock(req, reportKey) {
+  if (isSuperAdmin(req)) return null;
+  const company = await resolveCompany(req).catch(() => null);
+  if (company && !isReportAllowed(company.plan, reportKey)) {
+    return {
+      success: false,
+      code: 'REPORT_NOT_AVAILABLE_IN_FREE_PLAN',
+      message: 'Upgrade your subscription to access this report.',
+    };
+  }
+  return null;
+}
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const PF_WAGE_CEILING = 15000, ESI_GROSS_CEILING = 21000, ESI_EMP_RATE = 0.75;
@@ -1357,9 +1377,21 @@ async function demoCompany() {
 }
 
 // ── Endpoints ────────────────────────────────────────────────────────────────
-exports.catalog = (req, res) => {
+exports.catalog = async (req, res) => {
   if (!canAccess(req)) return res.status(403).json({ error: 'You do not have access to reports.' });
-  const list = Object.entries(REPORTS).map(([key, r]) => ({ key, label: r.label, category: r.category, available: !!r.available, description: describe(key, r), status: statusOf(key, r), filters: filtersFor(key, r.category) }));
+  // Resolve the caller's plan so each report carries an authoritative `planLocked`
+  // flag (Super Admin is never plan-limited). The frontend greys locked reports
+  // from this; the generate endpoint is the real enforcement.
+  let plan = null;
+  if (!isSuperAdmin(req)) {
+    const company = await resolveCompany(req).catch(() => null);
+    plan = company?.plan || null;
+  }
+  const list = Object.entries(REPORTS).map(([key, r]) => ({
+    key, label: r.label, category: r.category, available: !!r.available,
+    description: describe(key, r), status: statusOf(key, r), filters: filtersFor(key, r.category),
+    planLocked: plan ? !isReportAllowed(plan, key) : false,
+  }));
   res.json(list);
 };
 
@@ -1427,6 +1459,9 @@ exports.preview = async (req, res) => {
     const key = req.body?.reportKey;
     const def = REPORTS[key];
     if (!def) return res.status(400).json({ error: 'Unknown report.' });
+    // Subscription gate — a FREE plan must not preview a locked report either.
+    const blocked = await reportPlanBlock(req, key);
+    if (blocked) return res.status(403).json(blocked);
     const demo = await demoCompany();
     if (!demo) return res.status(404).json({ error: 'Demo data not found. Ask an admin to run scripts/seedDemoCompany.js.' });
     // Default scope spanning the seeded demo period so date-based reports show data.
@@ -1452,6 +1487,9 @@ exports.generate = async (req, res) => {
     const def = REPORTS[key];
     if (!def) return res.status(400).json({ error: 'Unknown report.' });
     if (!def.available) return res.status(400).json({ error: `${def.label} is not available yet.` });
+    // Subscription gate — FREE plan may generate only its allow-listed reports.
+    const blocked = await reportPlanBlock(req, key);
+    if (blocked) return res.status(403).json(blocked);
     const scope = resolveScope(req);
     // ── Active-workspace BRANCH scope (top-right scope selector) ────────────────
     // A company-level user (or Super Admin) who switched their active workspace to

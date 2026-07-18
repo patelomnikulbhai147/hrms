@@ -156,6 +156,13 @@ function pickCompanyData(body) {
   return data;
 }
 
+// Exported so the public self-registration flow (companyProvisioning service) can
+// build the same Prisma-safe Company payload + apply the same registration
+// mirrors as the Super-Admin Create Company path — one whitelist, no drift.
+exports.pickCompanyData = pickCompanyData;
+exports.applyRegistrationDefaults = applyRegistrationDefaults;
+exports.COMPANY_FIELDS = COMPANY_FIELDS;
+
 exports.updateBranding = async (req, res) => {
   try {
     const role = req.user?.role;

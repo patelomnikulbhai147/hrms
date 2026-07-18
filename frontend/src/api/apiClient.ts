@@ -146,6 +146,23 @@ export const api = {
         headers: getHeaders()
       });
     },
+    // Public company self-registration (FREE plan). Step 1 validates + sends the
+    // email OTP and returns a signed verificationToken; step 2 verifies the OTP,
+    // provisions the workspace and returns { token, user } for auto-login.
+    registerCompanyStart: async (data: any) => {
+      return await apiFetch(`${BASE_URL}/auth/register-company/start`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    registerCompanyVerify: async (data: { verificationToken: string; otp: string }) => {
+      return await apiFetch(`${BASE_URL}/auth/register-company/verify`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
     getMe: async () => {
       return await apiFetch(`${BASE_URL}/auth/me`, {
         headers: getHeaders()
