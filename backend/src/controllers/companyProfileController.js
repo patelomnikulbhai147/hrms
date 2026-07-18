@@ -234,7 +234,7 @@ exports.getProfile = async (req, res) => {
     }
     const enrichedBranches = branches.map((b) => ({
       ...b,
-      headcount: totalBy[b.id] || 0,
+      headcount: activeBy[b.id] || 0,
       activeHeadcount: activeBy[b.id] || 0,
     }));
 

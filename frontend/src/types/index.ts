@@ -15,7 +15,7 @@ export interface Company {
   adminEmail: string;
   phone: string;
   industry: string;
-  status: 'Active' | 'Pending' | 'Inactive' | 'Expiring Soon' | 'Renewal Pending' | 'Offboarding In Progress' | 'Tender Completed' | 'Archived';
+  status: 'Active' | 'Pending' | 'Inactive' | 'Expiring Soon' | 'Renewal Pending' | 'Offboarding In Progress' | 'Tender Completed' | 'Archived' | 'Offboarded';
   employeeCount: number;
   joinDate: string;
   plan: 'Starter' | 'Professional' | 'Enterprise';

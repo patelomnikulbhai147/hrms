@@ -80,6 +80,9 @@ interface DashboardProps {
   onNavigate: (page: any) => void;
   activeCompanyId: string;
   onStartMasquerade: (companyId: string, kind?: 'company' | 'branch') => void;
+  /** Proper workspace switch (validates access, no support-session/masquerade).
+   *  Used by the Branches Overview rows to drill into a branch dashboard. */
+  onSelectWorkspace?: (companyId: string, kind?: 'company' | 'branch') => void;
   companies: Company[];
   employees: Employee[];
   attendance: AttendanceRecord[];
@@ -110,6 +113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigate,
   activeCompanyId,
   onStartMasquerade,
+  onSelectWorkspace,
   companies: rawCompanies,
   employees: rawEmployees,
   attendance: rawAttendance,
@@ -177,6 +181,29 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [activeCompanyId, role]);
 
   const isParentCompany = !currentCompany?.parentCompanyId;
+
+  // The Branches Overview card is a READ-ONLY summary — it has no create/edit/
+  // offboard actions. ALL branch management lives in Company Profile → Branch
+  // Information (the single source of truth), so "Manage" deep-links there.
+  // Uses the existing one-shot localStorage handoff that CompanyProfile reads on
+  // mount (the same mechanism the audit "View all" link below uses);
+  // handleNavigate takes a page id only and drops query strings.
+  const goToBranchManagement = () => {
+    localStorage.setItem('hrms_company_profile_tab', 'branches');
+    onNavigate('company-profile');
+  };
+
+  // Drill into a branch dashboard from the Branches Overview card. Uses the
+  // proper workspace switcher (validates access + reloads the dashboard for the
+  // branch — the auto-switch requirement); falls back to masquerade if the
+  // switcher prop wasn't supplied. The dashboard re-renders on activeCompanyId
+  // change, so the layout flips to the branch view automatically.
+  const goToBranch = (id: string | number) => {
+    const sid = String(id);
+    if (onSelectWorkspace) onSelectWorkspace(sid, 'branch');
+    else onStartMasquerade(sid, 'branch');
+  };
+
   const [selectedAudience, setSelectedAudience] = useState(isParentCompany ? 'all' : 'branch');
   const [selectedBranch, setSelectedBranch] = useState(isParentCompany ? '' : activeCompanyId);
   const [selectedDept, setSelectedDept] = useState('all');
@@ -994,6 +1021,50 @@ export const Dashboard: React.FC<DashboardProps> = ({
       e.status === 'Inactive' || (e.exitDate && e.status !== 'Archived')
     ).length;
 
+    // ─── Branches Overview (MAIN COMPANY view only) ─────────────────────────
+    // Consolidated, per-branch metrics for the "Branches Overview" card that
+    // replaces "Attendance Trend" when the active workspace is the main company.
+    // Everything is derived from the SAME already-loaded datasets (employees /
+    // attendance / leaves / payroll) using the existing isCompanyIdMatch scoping
+    // — no extra API calls, no duplicate queries. Null on a branch workspace so
+    // the branch dashboard keeps its Attendance Trend chart untouched.
+    const branchOverview = isParentCompany ? (() => {
+      const branchRows = companies.filter(b => String((b as any).parentCompanyId) === String(activeCompanyId));
+      const globalDepts = new Set<string>();
+      const rows = branchRows.map(b => {
+        const emps = employees.filter(e => isCompanyIdMatch(e.companyId, b.id, companies as any[], (e as any).branchLocation, (e as any).branchId));
+        const empIds = new Set(emps.map(e => e.id));
+        const activeEmps = emps.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
+        const branchDepts = new Set<string>();
+        emps.forEach(e => { const d = e.department || 'Other'; branchDepts.add(d); globalDepts.add(d); });
+        const present = attendance.filter(a => a.date === todayStr && /present/i.test(String(a.status)) && empIds.has(a.employeeId)).length;
+        const pendingLeaves = leaves.filter(l =>
+          (empIds.has(l.employeeId) || isCompanyIdMatch(l.companyId, b.id, companies as any[])) && String(l.status) === 'Pending'
+        ).length;
+        const pay = deriveCompanyPayrollStatus(b.id, payroll);
+        return {
+          id: b.id,
+          name: (b as any).branchName || b.name,
+          status: String((b as any).status || 'Active'),
+          employees: emps.length,
+          present,
+          attnPct: activeEmps.length ? Math.round((present / activeEmps.length) * 100) : 0,
+          pendingLeaves,
+          payrollLabel: pay.status ? pay.label : 'No Payroll',
+          payrollStatus: (pay.status || 'none') as string,
+          departments: branchDepts.size,
+        };
+      }).sort((a, b) => b.employees - a.employees);
+      return {
+        rows,
+        totalBranches: branchRows.length,
+        activeBranches: branchRows.filter(b => String((b as any).status || 'Active').toLowerCase() === 'active').length,
+        totalEmployeesAll: rows.reduce((s, r) => s + r.employees, 0),
+        totalDepartments: globalDepts.size,
+        maxEmp: Math.max(1, ...rows.map(r => r.employees)),
+      };
+    })() : null;
+
     // 10. Recent Activities = real record events (joins, leaves, payroll, documents).
     return (
       <motion.div
@@ -1175,16 +1246,19 @@ export const Dashboard: React.FC<DashboardProps> = ({
               {/* Department Distribution */}
               <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 h-[320px] flex flex-col">
                 <h3 className="text-[14px] font-bold text-gray-800 mb-2">Department Distribution</h3>
-                <div className="flex-1 flex flex-col items-center justify-center relative mt-2">
-                  <div className="w-full h-[180px]">
+                <div className="flex-1 min-h-0 flex flex-col mt-2">
+                  {/* Donut — proportional to the card (basis, not a fixed pixel
+                      height) so it stays centered and fully visible at any size.
+                      `shrink-0` guarantees the legend can never grow over it. */}
+                  <div className="shrink-0 basis-1/2 min-h-0 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={deptDistribution.length ? deptDistribution : [{ name: 'No Data', value: 1, color: '#E5E7EB' }]}
                           cx="50%"
                           cy="50%"
-                          innerRadius={55}
-                          outerRadius={80}
+                          innerRadius="52%"
+                          outerRadius="80%"
                           paddingAngle={3}
                           dataKey="value"
                           stroke="none"
@@ -1197,16 +1271,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-4 px-2">
-                    {deptDistribution.length === 0 ? (
+                  {/* Legend — takes the remaining space and SCROLLS inside it, so
+                      it never overlaps the donut nor overflows the card, no matter
+                      how many departments. Responsive 1/2-column grid; each name
+                      truncates with an ellipsis and shows the full label on hover. */}
+                  {deptDistribution.length === 0 ? (
+                    <div className="flex-1 min-h-0 flex items-center justify-center">
                       <span className="text-[11px] font-medium text-gray-400">No employee records in scope</span>
-                    ) : deptDistribution.map(d => (
-                      <div key={d.name} className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-600">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }}></span>
-                        <span>{d.name} ({d.value})</span>
+                    </div>
+                  ) : (
+                    <div className="flex-1 min-h-0 overflow-y-auto mt-3 pr-1">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                        {deptDistribution.map(d => (
+                          <div
+                            key={d.name}
+                            title={`${d.name} (${d.value})`}
+                            className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold text-gray-600"
+                          >
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: d.color }}></span>
+                            <span className="truncate">{d.name}</span>
+                            <span className="ml-auto shrink-0 text-gray-400 tabular-nums">{d.value}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1238,31 +1327,113 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-              {/* Attendance Trend */}
-              <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
-                  <div className="flex gap-3 text-[10px] font-semibold">
-                    <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#C77E52]"></span> Present (count)</span>
+              {isParentCompany && branchOverview ? (
+                /* ─── Branches Overview — MAIN COMPANY view (replaces Attendance
+                   Trend). Consolidated per-branch metrics; each row is clickable
+                   and drills into that branch dashboard. ─── */
+                <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 flex flex-col">
+                  <div className="flex justify-between items-center gap-3 mb-3">
+                    <h3 className="text-[14px] font-bold text-gray-800">Branches Overview</h3>
+                    {/* Summary card — no create/edit/offboard here. "Manage" is the
+                        single way out, into Company Profile → Branch Information. */}
+                    <span
+                      onClick={goToBranchManagement}
+                      title="Manage branches in Company Profile → Branch Information"
+                      className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline shrink-0"
+                    >
+                      Manage
+                    </span>
+                  </div>
+                  {/* Consolidated aggregate tiles */}
+                  <div className="grid grid-cols-4 gap-2 mb-4">
+                    {[
+                      { label: 'Branches', value: branchOverview.totalBranches },
+                      { label: 'Active', value: branchOverview.activeBranches },
+                      { label: 'Employees', value: branchOverview.totalEmployeesAll },
+                      { label: 'Depts', value: branchOverview.totalDepartments },
+                    ].map(t => (
+                      <div key={t.label} className="rounded-xl bg-brand-50/40 border border-[#E5E7EB] px-2 py-2 text-center">
+                        <div className="text-[16px] font-bold text-gray-900 leading-tight">{t.value}</div>
+                        <div className="text-[9px] font-semibold text-gray-500 uppercase tracking-wide mt-0.5">{t.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Branch-wise rows. The per-row bar IS the "employee count by
+                      branch" graph. Scrolls within a bounded area for many branches. */}
+                  {branchOverview.rows.length === 0 ? (
+                    <div className="flex-1 flex items-center justify-center py-8 text-[12px] text-gray-400 font-medium">No branches yet for this company.</div>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                      {branchOverview.rows.map(r => {
+                        const payCls =
+                          r.payrollStatus === 'paid' || r.payrollStatus === 'payslip_generated' ? 'bg-green-50 text-green-600'
+                          : r.payrollStatus === 'verified' ? 'bg-blue-50 text-blue-600'
+                          : r.payrollStatus === 'prepared' ? 'bg-amber-50 text-amber-600'
+                          : r.payrollStatus === 'draft' ? 'bg-gray-100 text-gray-500'
+                          : r.payrollStatus === 'failed' ? 'bg-red-50 text-red-600'
+                          : 'bg-gray-100 text-gray-400';
+                        const isActive = r.status.toLowerCase() === 'active';
+                        return (
+                          <button
+                            key={r.id}
+                            onClick={() => goToBranch(r.id)}
+                            title={`Open ${r.name} dashboard`}
+                            className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[#E5E7EB] hover:border-[#C77E52]/60 hover:bg-brand-50/30 transition-colors text-left"
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                                <span className="text-[12px] font-bold text-gray-800 truncate">{r.name}</span>
+                              </div>
+                              <div className="mt-1.5 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+                                <div className="h-full rounded-full bg-[#C77E52]" style={{ width: `${(r.employees / branchOverview.maxEmp) * 100}%` }}></div>
+                              </div>
+                              <div className="mt-1.5 flex items-center flex-wrap gap-x-2 gap-y-1 text-[10px] font-semibold text-gray-500">
+                                <span>Present {r.present} ({r.attnPct}%)</span>
+                                <span className="text-gray-300">•</span>
+                                <span>{r.pendingLeaves} leave</span>
+                                <span className="text-gray-300">•</span>
+                                <span className={`px-1.5 py-0.5 rounded-md ${payCls}`}>{r.payrollLabel}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-[15px] font-bold text-gray-900 leading-none">{r.employees}</div>
+                              <div className="text-[9px] text-gray-400 font-semibold uppercase mt-0.5">Emp</div>
+                            </div>
+                            <ChevronRight size={15} className="text-gray-300 shrink-0" />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Attendance Trend — BRANCH view (unchanged) */
+                <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-[14px] font-bold text-gray-800">Attendance Trend <span className="text-gray-500 font-medium">(Last 14 Days)</span></h3>
+                    <div className="flex gap-3 text-[10px] font-semibold">
+                      <span className="flex items-center gap-1 text-gray-600"><span className="w-3 h-0.5 bg-[#C77E52]"></span> Present (count)</span>
+                    </div>
+                  </div>
+                  <div className="w-full h-[180px] mt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#C77E52" stopOpacity={0.22} />
+                            <stop offset="95%" stopColor="#C77E52" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6B7280' }} dy={10} interval={2} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} allowDecimals={false} />
+                        <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Area type="monotone" dataKey="present" stroke="#C77E52" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#C77E52', stroke: '#fff', strokeWidth: 2 }} />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
-                <div className="w-full h-[180px] mt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={attendanceTrendLive} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorAtt" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#C77E52" stopOpacity={0.22} />
-                          <stop offset="95%" stopColor="#C77E52" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: '#6B7280' }} dy={10} interval={2} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#6B7280' }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ borderRadius: '8px', border: '1px solid #E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                      <Area type="monotone" dataKey="present" stroke="#C77E52" strokeWidth={2.5} fillOpacity={1} fill="url(#colorAtt)" activeDot={{ r: 5, fill: '#C77E52', stroke: '#fff', strokeWidth: 2 }} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 

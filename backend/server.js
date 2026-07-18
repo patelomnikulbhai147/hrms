@@ -236,6 +236,15 @@ app.use((err, req, res, next) => {
 
 const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+  
+  // Run one-time headcount synchronization (data repair routine)
+  const HeadcountSyncService = require('./src/services/headcountSyncService');
+  HeadcountSyncService.syncAllBranches().then(count => {
+    console.log(`[server] One-time branch headcount data repair synchronized ${count} branches.`);
+  }).catch(err => {
+    console.error('[server] Headcount synchronization error:', err);
+  });
+
   // Start the production automation scheduler (per-minute autonomous sends).
   // Extend-only: fires existing automation rules; "Send Test Message" untouched.
   try { require('./src/services/automation/automationScheduler').start(); }

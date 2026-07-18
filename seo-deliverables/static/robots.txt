@@ -1,0 +1,20 @@
+# =============================================================================
+#  zeniahr.com  —  PUBLIC marketing website
+#  Static fallback for hosts WITHOUT Next.js (e.g. CloudFront static site).
+#  If the marketing site IS Next.js, use app/robots.ts instead and delete this.
+# =============================================================================
+User-agent: *
+Allow: /
+
+# Never index app / auth / portal routes.
+Disallow: /api/
+Disallow: /login
+Disallow: /signin
+Disallow: /signup
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /employee-portal
+Disallow: /superadmin
+Disallow: /account
+
+Sitemap: https://zeniahr.com/sitemap.xml

@@ -184,22 +184,27 @@ export const CompanyEdit: React.FC<CompanyEditProps> = ({ companyId, companies, 
 
   return (
     <div className="space-y-5">
-      <Breadcrumbs />
-
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-[#FCF4EE] flex items-center justify-center overflow-hidden border border-[#F7E3D3]">
-            <Building2 size={20} className="text-[#C77E52]" />
+      {/* Sticky action header — the SINGLE source of truth for Save/Cancel. Stays
+          pinned to the top of the scroll area while editing. The negative margins
+          full-bleed it across the page's padding so it reads as a clean toolbar,
+          and the canvas background hides content scrolling underneath. There is
+          intentionally NO duplicate footer action bar. */}
+      <div className="sticky top-0 z-20 -mx-4 md:-mx-6 px-4 md:px-6 -mt-4 md:-mt-6 pt-4 md:pt-6 pb-3 bg-[var(--surface-canvas)] border-b border-slate-200/70 space-y-3">
+        <Breadcrumbs />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-[#FCF4EE] flex items-center justify-center overflow-hidden border border-[#F7E3D3]">
+              <Building2 size={20} className="text-[#C77E52]" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">{companyName}</h1>
+              <p className="text-xs text-slate-500 font-semibold">Edit company profile and configuration.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-extrabold text-slate-800 tracking-tight">{companyName}</h1>
-            <p className="text-xs text-slate-500 font-semibold">Edit company profile and configuration.</p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={onDone}>Cancel</Button>
+            <Button onClick={handleSave} loading={saving} icon={<Save size={14} />} style={{ backgroundColor: '#B5673A' }}>Save Changes</Button>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={onDone}>Cancel</Button>
-          <Button onClick={handleSave} loading={saving} icon={<Save size={14} />} style={{ backgroundColor: '#B5673A' }}>Save Changes</Button>
         </div>
       </div>
 
@@ -244,13 +249,6 @@ export const CompanyEdit: React.FC<CompanyEditProps> = ({ companyId, companies, 
           </div>
         </div>
       </Card>
-
-      {/* Footer actions (mirror the header so the page is actionable from the
-          bottom on long forms, matching the app's page-form pattern). */}
-      <div className="flex items-center justify-end gap-2 pb-2">
-        <Button variant="outline" onClick={onDone}>Cancel</Button>
-        <Button onClick={handleSave} loading={saving} icon={<Save size={14} />} style={{ backgroundColor: '#B5673A' }}>Save Changes</Button>
-      </div>
     </div>
   );
 };

@@ -294,10 +294,36 @@ export const api = {
         body: JSON.stringify(data)
       });
     },
+    /** Soft-offboard a branch. Never deletes: employees are transferred,
+     *  archived or marked inactive, and all history is retained. */
+    offboard: async (id: string | number, data: {
+      employeeAction: 'transfer' | 'archive' | 'inactive';
+      destinationBranchId?: string | number | null;
+      reason: string;
+      effectiveDate: string;
+    }) => {
+      return await apiFetch(`${BASE_URL}/branches/${id}/offboard`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
     archive: async (id: string) => {
       // Company controller handles branch archiving securely too
       return await apiFetch(`${BASE_URL}/companies/${id}/archive`, {
         method: 'PUT',
+        headers: getHeaders()
+      });
+    },
+    archiveBranch: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/branches/${id}/archive`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
+    },
+    reactivate: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/branches/${id}/reactivate`, {
+        method: 'POST',
         headers: getHeaders()
       });
     },
@@ -373,6 +399,14 @@ export const api = {
 
   audit: {
     getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
+  },
+  tasks: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/tasks`, { headers: getHeaders() }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/tasks`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/tasks/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    delete: async (id: string) => { return await apiFetch(`${BASE_URL}/tasks/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    getComments: async (id: string) => { return await apiFetch(`${BASE_URL}/tasks/${id}/comments`, { headers: getHeaders() }); },
+    addComment: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/tasks/${id}/comments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
   },
   users: {
     getAll: async () => {

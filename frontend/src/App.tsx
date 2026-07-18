@@ -1231,6 +1231,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onNavigate={handleNavigate}
             activeCompanyId={resolvedCompanyId}
             onStartMasquerade={handleStartMasquerade}
+            onSelectWorkspace={handleCompanyChange}
             companies={companies}
             employees={activeEmployees}
             attendance={attendance}
@@ -1411,6 +1412,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onUpdateCompanies={handleUpdateCompanies}
             onCompanySynced={handleCompanyProfileSync}
             onNavigate={handleNavigate}
+            onRefresh={hydrateAll}
           />
         );
       case 'attendance':
@@ -1569,6 +1571,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             onNavigate={handleNavigate}
             activeCompanyId={resolvedCompanyId}
             onStartMasquerade={handleStartMasquerade}
+            onSelectWorkspace={handleCompanyChange}
             companies={companies}
             employees={activeEmployees}
             attendance={attendance}

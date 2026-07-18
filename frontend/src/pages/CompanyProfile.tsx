@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Building2, FileText, ShieldCheck, Palette, GitBranch, History,
   Plus, Edit, Trash2, Upload, X, Download, Save, AlertTriangle, CheckCircle2,
-  Clock, Search, ExternalLink,
+  Clock, Search, ExternalLink, Archive, Eye, MoreVertical, RefreshCw,
 } from 'lucide-react';
 import type { Role, Company } from '@/types';
 import type { UserAccount } from '@/pages/Login';
@@ -21,6 +22,9 @@ import { ui } from '@/components/ui/feedback';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ComplianceManagement } from '@/components/companyProfile/ComplianceManagement';
+import { BranchFormModal } from '@/components/branches/BranchFormModal';
+import { BranchOffboardModal } from '@/components/branches/BranchOffboardModal';
+import { useDismissable } from '@/hooks/useDismissable';
 
 // ── Field configuration ──────────────────────────────────────────────────────
 type FieldType = 'text' | 'textarea' | 'date' | 'email' | 'select' | 'website' | 'social';
@@ -243,14 +247,28 @@ interface CompanyProfileProps {
   // Governed by the company-profile permission (not the SaaS `companies` one).
   onCompanySynced?: (company: any) => void;
   onNavigate?: (page: any) => void;
+  /** Re-hydrates global app data (App.hydrateAll). Branch create/offboard must
+   *  call this as well as the local profile reload: `load()` only refreshes THIS
+   *  page's `profile.branches`, while the Dashboard's Branches Overview counts
+   *  derive from App's global `companies` array. Without it, the dashboard keeps
+   *  showing stale branch/employee/department totals. */
+  onRefresh?: () => void;
 }
 
-export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId, authProfile, onUpdateCompanies, onCompanySynced, onNavigate }) => {
+export const CompanyProfile: React.FC<CompanyProfileProps> = ({ role, activeCompanyId, authProfile, onUpdateCompanies, onCompanySynced, onNavigate, onRefresh }) => {
   const { canEdit, canCreate } = usePermissions();
   const editable = canEdit('company-profile');
-  // Branch Management lives under the Companies module — used only to optionally
-  // surface a "Create First Branch" shortcut in the (read-only) Branch tab.
+  // Branch Management is governed by the Companies module permission. This tab is
+  // the single place branches are created/edited, so `canCreateBranch` gates the
+  // Add + Edit actions (HR without the flag gets a view-only table).
   const canCreateBranch = canCreate('companies');
+  // Offboarding archives an entire workforce, so it is leadership-only —
+  // Company Head + Super Admin. This MIRRORS the backend's
+  // requireLeadershipAccess gate on POST /branches/:id/offboard; it is a UI
+  // convenience, not the enforcement point. It is deliberately NOT canEdit:
+  // the RBAC layer folds create/delete into `edit`, so an HR user with edit
+  // would otherwise see (and be refused) the action.
+  const canOffboardBranch = role === 'Company Head' || role === 'Super Admin';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -434,7 +452,13 @@ export const CompanyProfile: React.FC<CompanyProfileProps> = ({ activeCompanyId,
       )}
 
       {tab === 'branches' && (
-        <CompanyBranches profile={profile} onNavigate={onNavigate} canCreateBranch={canCreateBranch} />
+        <CompanyBranches
+          profile={profile}
+          onNavigate={onNavigate}
+          canCreateBranch={canCreateBranch}
+          canOffboardBranch={canOffboardBranch}
+          reload={() => { load(); onRefresh?.(); }}
+        />
       )}
 
       {tab === 'audit' && (
@@ -951,52 +975,463 @@ const CompanyDocuments: React.FC<{ profile: any; editable: boolean; reload: () =
 // (/company-profile/contacts) and the CompanyContact table are intentionally left
 // intact so the module can be re-enabled in the future without a migration.
 
-// ── Branch Information (read-only informational summary) ─────────────────────
-// Rows are intentionally NOT clickable — this is a read-only summary of the
-// CURRENT company's live branches (isolation enforced server-side). Any future
-// actions must be explicit buttons, never a row click. Data (including employee
-// counts) is scoped to this company by the backend; nothing is hardcoded.
-const CompanyBranches: React.FC<{ profile: any; onNavigate?: (p: string) => void; canCreateBranch?: boolean }> = ({ profile, onNavigate, canCreateBranch }) => {
+
+// ── Branch Information — the single source of truth for branch management ────
+// Every branch operation (create, edit, view, offboard) happens HERE. The
+// Dashboard's Branches Overview card is a read-only summary that links into this
+// tab; there is deliberately no second branch-management screen.
+//
+// Rows are still NOT clickable — actions are explicit buttons only.
+const BRANCH_STATUS_VARIANT: Record<string, 'green' | 'red' | 'gray' | 'orange'> = {
+  active: 'green',
+  offboarded: 'red',
+  archived: 'gray',
+  inactive: 'orange',
+};
+
+const estimateMenuHeight = (branch: any, canCreateBranch: boolean, canOffboardBranch: boolean) => {
+  const status = String(branch.status || '').toLowerCase();
+  const live = !branch.isArchived && !['offboarded', 'archived'].includes(status);
+  
+  let items = 1; // "View" is always there
+  if (canCreateBranch && (live || status === 'offboarded')) items++; // "Edit"
+  if (canOffboardBranch && live) items++; // "Offboard"
+  if (canOffboardBranch && status === 'offboarded') items += 2; // "Reactivate" + "Archive"
+  if (canOffboardBranch && status === 'archived') items++; // "Restore"
+  
+  return items * 32 + 8; // 32px per item + 8px padding
+};
+
+const BranchRowActions: React.FC<{
+  branch: any;
+  canCreateBranch?: boolean;
+  canOffboardBranch?: boolean;
+  onView: () => void;
+  onEdit: () => void;
+  onOffboard: () => void;
+  onReactivate: () => void;
+  onArchive: () => void;
+}> = ({
+  branch,
+  canCreateBranch,
+  canOffboardBranch,
+  onView,
+  onEdit,
+  onOffboard,
+  onReactivate,
+  onArchive,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useDismissable(open, useCallback(() => setOpen(false), []), [wrapRef, menuRef]);
+
+  const toggle = () => {
+    if (!open) {
+      const b = btnRef.current?.getBoundingClientRect();
+      if (b) {
+        const menuH = estimateMenuHeight(branch, !!canCreateBranch, !!canOffboardBranch);
+        const spaceBelow = window.innerHeight - b.bottom;
+        const openUpward = spaceBelow < menuH + 10 && b.top > menuH + 10;
+        setPos({
+          top: openUpward ? b.top - menuH - 4 : b.bottom + 4,
+          left: Math.max(8, b.right - 160),
+        });
+      }
+    }
+    setOpen(o => !o);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    let active = false;
+    const timer = setTimeout(() => {
+      active = true;
+    }, 100);
+    const dismiss = () => {
+      if (active) setOpen(false);
+    };
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open && btnRef.current && menuRef.current) {
+      const b = btnRef.current.getBoundingClientRect();
+      const m = menuRef.current.getBoundingClientRect();
+      const menuH = m.height || estimateMenuHeight(branch, !!canCreateBranch, !!canOffboardBranch);
+      const spaceBelow = window.innerHeight - b.bottom;
+      const openUpward = spaceBelow < menuH + 10 && b.top > menuH + 10;
+      setPos({
+        top: openUpward ? b.top - menuH - 4 : b.bottom + 4,
+        left: Math.max(8, b.right - (m.width || 160)),
+      });
+    }
+  }, [open, branch, canCreateBranch, canOffboardBranch]);
+
+  useEffect(() => {
+    if (open && pos) {
+      menuRef.current?.focus();
+    }
+  }, [open, pos]);
+
+  const status = String(branch.status || '').toLowerCase();
+  const live = !branch.isArchived && !['offboarded', 'archived'].includes(status);
+
+  return (
+    <div ref={wrapRef} className="relative inline-block">
+      <button
+        ref={btnRef}
+        onClick={toggle}
+        title="Branch actions"
+        aria-label={`Actions for ${branch.branchName}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="p-1.5 rounded-lg hover:bg-slate-100 text-gray-500 transition-colors"
+      >
+        <MoreVertical size={15} />
+      </button>
+
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          tabIndex={-1}
+          style={{ top: pos.top, left: pos.left }}
+          className="fixed z-[9999] w-40 bg-white rounded-xl border border-gray-200 shadow-lg py-1 text-left outline-none"
+        >
+          {/* Action: View (always available) */}
+          <button
+            role="menuitem"
+            onClick={() => { setOpen(false); onView(); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-slate-50"
+          >
+            <Eye size={13} /> View
+          </button>
+
+          {/* Action: Edit (only if live/active or offboarded, and user has edit permissions) */}
+          {canCreateBranch && (live || status === 'offboarded') && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onEdit(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-slate-50"
+            >
+              <Edit size={13} /> Edit
+            </button>
+          )}
+
+          {/* Action: Offboard (only if live/active and user has leadership/offboard permissions) */}
+          {canOffboardBranch && live && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onOffboard(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+            >
+              <Archive size={13} /> Offboard
+            </button>
+          )}
+
+          {/* Action: Reactivate (only if offboarded and user has leadership permissions) */}
+          {canOffboardBranch && status === 'offboarded' && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onReactivate(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-brand-600 hover:bg-brand-50"
+            >
+              <RefreshCw size={13} /> Reactivate
+            </button>
+          )}
+
+          {/* Action: Archive (only if offboarded and user has permissions) */}
+          {canOffboardBranch && status === 'offboarded' && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onArchive(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-gray-600 hover:bg-slate-50"
+            >
+              <Archive size={13} /> Archive
+            </button>
+          )}
+
+          {/* Action: Restore (only if archived and user has leadership permissions) */}
+          {canOffboardBranch && status === 'archived' && (
+            <button
+              role="menuitem"
+              onClick={() => { setOpen(false); onReactivate(); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-brand-600 hover:bg-brand-50"
+            >
+              <RefreshCw size={13} /> Restore
+            </button>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
+const CompanyBranches: React.FC<{
+  profile: any;
+  onNavigate?: (p: string) => void;
+  canCreateBranch?: boolean;
+  canOffboardBranch?: boolean;
+  reload: () => void;
+}> = ({ profile, canCreateBranch, canOffboardBranch, reload }) => {
   const branches: any[] = profile.branches || [];
+  const companyId = String(profile?.company?.id ?? '');
+
+  const [formModal, setFormModal] = useState<{ branch: any | null; readOnly: boolean } | null>(null);
+  const [offboardTargets, setOffboardTargets] = useState<any[] | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  const [reactivateTarget, setReactivateTarget] = useState<any | null>(null);
+  const [reactivating, setReactivating] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<any | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // An already-offboarded/archived branch can't be offboarded again.
+  const isLive = (b: any) => !b.isArchived && !['offboarded', 'archived'].includes(String(b.status || '').toLowerCase());
+  const selectableIds = branches.filter(isLive).map(b => String(b.id));
+  const selected = branches.filter(b => selectedIds.includes(String(b.id)));
+
+  // Drop selections that are no longer selectable (e.g. after a reload where a
+  // branch became offboarded), so the bulk button can't act on a stale id.
+  useEffect(() => {
+    setSelectedIds(prev => prev.filter(id => selectableIds.includes(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile]);
+
+  const allSelected = selectableIds.length > 0 && selectedIds.length === selectableIds.length;
+  const toggleAll = () => setSelectedIds(allSelected ? [] : selectableIds);
+  const toggleOne = (id: string) =>
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const handleReactivate = async () => {
+    if (!reactivateTarget) return;
+    setReactivating(true);
+    try {
+      await api.branches.reactivate(reactivateTarget.id);
+      ui.toast.success('Branch reactivated successfully.');
+      setReactivateTarget(null);
+      reload();
+    } catch (err) {
+      ui.toast.error(getApiErrorMessage(err) || 'Failed to reactivate branch.');
+    } finally {
+      setReactivating(false);
+    }
+  };
+
+  const handleArchive = async () => {
+    if (!archiveTarget) return;
+    setArchiving(true);
+    try {
+      await api.branches.archiveBranch(archiveTarget.id);
+      ui.toast.success('Branch archived successfully.');
+      setArchiveTarget(null);
+      reload();
+    } catch (err) {
+      ui.toast.error(getApiErrorMessage(err) || 'Failed to archive branch.');
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  const actions = (
+    <div className="flex items-center gap-2">
+      {canCreateBranch && (
+        <Button size="sm" icon={<Plus size={14} />} onClick={() => setFormModal({ branch: null, readOnly: false })}>
+          Add Branch
+        </Button>
+      )}
+      {canOffboardBranch && (
+        <Button
+          size="sm"
+          variant="danger"
+          icon={<Archive size={14} />}
+          disabled={selected.length === 0}
+          onClick={() => setOffboardTargets(selected)}
+        >
+          Offboard Branch{selected.length > 0 ? ` (${selected.length})` : ''}
+        </Button>
+      )}
+      <ExportMenu fileName="Branches" title="Branches"
+        columns={[
+          { header: 'Branch', key: 'branchName', width: 26 }, { header: 'Code', key: 'branchCode', width: 14 },
+          { header: 'Location', key: 'location', width: 26 }, { header: 'Manager', key: 'adminName', width: 20 },
+          { header: 'Employees', key: 'headcount', width: 12 }, { header: 'Status', key: 'status', width: 12 },
+        ]}
+        rows={() => branches} size="sm" />
+    </div>
+  );
+
+  const modals = (
+    <>
+      {formModal && (
+        <BranchFormModal
+          open={!!formModal}
+          onClose={() => setFormModal(null)}
+          editingBranch={formModal.branch}
+          parentCompanyId={companyId}
+          companies={branches}
+          onUpdateCompanies={() => { /* the profile reload below is the source of truth */ }}
+          onRefresh={reload}
+          readOnly={formModal.readOnly}
+          breadcrumbRoot="Company Profile"
+        />
+      )}
+      {offboardTargets && offboardTargets.length > 0 && (
+        <BranchOffboardModal
+          open={!!offboardTargets}
+          onClose={() => setOffboardTargets(null)}
+          branches={offboardTargets}
+          allBranches={branches}
+          onDone={() => { setSelectedIds([]); reload(); }}
+        />
+      )}
+      {reactivateTarget && (
+        <Modal
+          open={!!reactivateTarget}
+          onClose={() => setReactivateTarget(null)}
+          title="Reactivate Branch"
+          size="sm"
+          footer={
+            <>
+              <Button variant="outline" size="sm" onClick={() => setReactivateTarget(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" loading={reactivating} onClick={handleReactivate}>
+                Reactivate
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              This will restore the branch and allow it to resume normal operations.
+            </p>
+          </div>
+        </Modal>
+      )}
+      {archiveTarget && (
+        <Modal
+          open={!!archiveTarget}
+          onClose={() => setArchiveTarget(null)}
+          title="Archive Branch"
+          size="sm"
+          footer={
+            <>
+              <Button variant="outline" size="sm" onClick={() => setArchiveTarget(null)}>
+                Cancel
+              </Button>
+              <Button variant="danger" size="sm" loading={archiving} onClick={handleArchive}>
+                Archive
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <p className="text-sm text-slate-600">
+              This will permanently archive the branch. Its historical records will still be accessible, but no new operations can be performed.
+            </p>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
 
   if (branches.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-        <div className="w-12 h-12 rounded-full bg-[#FCF4EE] flex items-center justify-center mb-3"><GitBranch size={20} className="text-[#C77E52]" /></div>
-        <p className="text-sm font-semibold text-slate-500">No branches have been created for this company yet.</p>
-        {canCreateBranch && onNavigate && (
-          <Button size="sm" className="mt-4" icon={<Plus size={14} />} onClick={() => onNavigate('companies')}>Create First Branch</Button>
-        )}
-      </div>
+      <>
+        <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+          <div className="w-12 h-12 rounded-full bg-[#FCF4EE] flex items-center justify-center mb-3"><GitBranch size={20} className="text-[#C77E52]" /></div>
+          <p className="text-sm font-semibold text-slate-500">No branches have been created for this company yet.</p>
+          {canCreateBranch && (
+            <Button size="sm" className="mt-4" icon={<Plus size={14} />} onClick={() => setFormModal({ branch: null, readOnly: false })}>
+              Create First Branch
+            </Button>
+          )}
+        </div>
+        {modals}
+      </>
     );
   }
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <ExportMenu fileName="Branches" title="Branches"
-          columns={[
-            { header: 'Branch', key: 'branchName', width: 26 }, { header: 'Code', key: 'branchCode', width: 14 },
-            { header: 'Location', key: 'location', width: 26 }, { header: 'Manager', key: 'adminName', width: 20 },
-            { header: 'Employees', key: 'headcount', width: 12 }, { header: 'Status', key: 'status', width: 12 },
-          ]}
-          rows={() => branches} size="sm" />
-      </div>
+      <div className="flex justify-end">{actions}</div>
       <Table>
-        <Thead><Tr><Th>Branch</Th><Th>Code</Th><Th>Location</Th><Th>Manager</Th><Th>Employees</Th><Th>Status</Th></Tr></Thead>
+        <Thead>
+          <Tr>
+            {canOffboardBranch && (
+              <Th className="w-8">
+                <input
+                  type="checkbox"
+                  aria-label="Select all branches"
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5"
+                  checked={allSelected}
+                  disabled={selectableIds.length === 0}
+                  onChange={toggleAll}
+                />
+              </Th>
+            )}
+            <Th>Branch</Th><Th>Code</Th><Th>Location</Th><Th>Manager</Th><Th>Employees</Th><Th>Status</Th>
+            <Th className="text-right">Actions</Th>
+          </Tr>
+        </Thead>
         <Tbody>
-          {branches.map(b => (
-            <Tr key={b.id}>
-              <Td className="!text-slate-200">{b.branchName}</Td>
-              <Td>{b.branchCode || '—'}</Td>
-              <Td>{b.location || '—'}</Td>
-              <Td>{b.adminName || '—'}</Td>
-              <Td>{b.headcount ?? 0}</Td>
-              <Td><Badge variant={String(b.status).toLowerCase() === 'active' ? 'green' : 'gray'}>{b.status || '—'}</Badge></Td>
-            </Tr>
-          ))}
+          {branches.map(b => {
+            const id = String(b.id);
+            const live = isLive(b);
+            const status = String(b.status || '').toLowerCase();
+            return (
+              <Tr key={b.id}>
+                {canOffboardBranch && (
+                  <Td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${b.branchName}`}
+                      className="rounded border-gray-300 text-brand-600 focus:ring-brand-500 w-3.5 h-3.5 disabled:opacity-40"
+                      checked={selectedIds.includes(id)}
+                      disabled={!live}
+                      title={live ? undefined : 'Already offboarded'}
+                      onChange={() => toggleOne(id)}
+                    />
+                  </Td>
+                )}
+                <Td className="!text-slate-200">{b.branchName}</Td>
+                <Td>{b.branchCode || '—'}</Td>
+                <Td>{b.location || '—'}</Td>
+                <Td>{b.adminName || '—'}</Td>
+                <Td>{b.headcount ?? 0}</Td>
+                <Td>
+                  <Badge variant={BRANCH_STATUS_VARIANT[status] || 'gray'}>{b.status || '—'}</Badge>
+                </Td>
+                <Td className="text-right">
+                  <BranchRowActions
+                    branch={b}
+                    canCreateBranch={canCreateBranch}
+                    canOffboardBranch={canOffboardBranch}
+                    onView={() => setFormModal({ branch: b, readOnly: true })}
+                    onEdit={() => setFormModal({ branch: b, readOnly: false })}
+                    onOffboard={() => setOffboardTargets([b])}
+                    onReactivate={() => setReactivateTarget(b)}
+                    onArchive={() => setArchiveTarget(b)}
+                  />
+                </Td>
+              </Tr>
+            );
+          })}
         </Tbody>
       </Table>
+      {modals}
     </div>
   );
 };
