@@ -335,12 +335,81 @@ export const Employees: React.FC<EmployeesProps> = ({
     } catch (err: any) { ui.toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
   };
   // A blank header-only workbook the user fills in for Bulk Import.
-  const downloadImportTemplate = () => {
+  // Professional, self-documenting Sample File: a styled data sheet pre-filled with
+  // two complete demo employees (importable as-is if the branch exists) + an
+  // Instructions sheet. Built with ExcelJS for real formatting (bold header, fill,
+  // borders, frozen header, auto width, preserved text/number types).
+  const downloadSampleFile = async () => {
     setActionsMenuOpen(false);
     try {
-      exportRowsToExcel(`Employee_Import_Template_${new Date().toISOString().slice(0, 10)}`, EMPLOYEE_EXPORT_COLUMNS, [], 'Template');
-      ui.toast.success('Employee import template downloaded.');
-    } catch (err: any) { ui.toast.error('Could not generate the template: ' + (err?.message || 'Unknown error')); }
+      const ExcelJS: any = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'ZeniaHR';
+
+      // The data sheet is named after the branch so the importer maps it to the
+      // Head Office branch; the "Branch" column carries the same value.
+      const ws = wb.addWorksheet('Head Office', { views: [{ state: 'frozen', ySplit: 1 }] });
+      const headers = ['Employee Code', 'Employee Name', 'Gender', 'Mobile', 'Email', 'Date of Birth', 'Joining Date', 'Department', 'Designation', 'Branch', 'Shift', 'Salary', 'Status'];
+      ws.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(14, h.length + 4) }));
+      ws.addRow(['EMP0001', 'Rahul Sharma', 'Male', '9876543210', 'rahul.sharma@example.com', '15/08/1995', '01/01/2026', 'HR', 'HR Executive', 'Head Office', 'General Shift', 25000, 'Active']);
+      ws.addRow(['EMP0002', 'Priya Patel', 'Female', '9876501234', 'priya.patel@example.com', '22/05/1997', '15/01/2026', 'Accounts', 'Accountant', 'Head Office', 'General Shift', 32000, 'Active']);
+
+      // Preserve data types: text for code/mobile/dates (no auto-coercion), number for salary.
+      [1, 4, 6, 7].forEach((c) => { ws.getColumn(c).numFmt = '@'; });
+      ws.getColumn(12).numFmt = '#,##0';
+
+      const thin = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+      ws.eachRow((row: any, rowNumber: number) => {
+        row.eachCell((cell: any) => { cell.border = { top: thin, left: thin, bottom: thin, right: thin }; });
+        if (rowNumber === 1) {
+          row.height = 22;
+          row.eachCell((cell: any) => {
+            cell.font = { bold: true, color: { argb: 'FF3730A3' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }; // light purple
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          });
+        } else {
+          row.eachCell((cell: any) => { cell.alignment = { vertical: 'middle' }; });
+        }
+      });
+
+      // Instructions sheet — the import guide.
+      const ins = wb.addWorksheet('Instructions');
+      ins.getColumn(1).width = 108;
+      const notes: [string, boolean][] = [
+        ['Employee Import — Instructions', true],
+        ['', false],
+        ['1. Do not change the column names in the "Head Office" sheet.', false],
+        ['2. Do not delete required columns (Employee Code, Employee Name, Branch).', false],
+        ['3. Date format must be DD/MM/YYYY (e.g. 01/01/2026).', false],
+        ['4. Mobile number should contain only digits (10 digits).', false],
+        ['5. Email must be a valid email address.', false],
+        ['6. Salary must be numeric (no symbols or commas).', false],
+        ['7. Employee Code must be unique — an existing code updates that employee instead of duplicating.', false],
+        ['8. Department, Branch, Designation and Shift should already exist in the system (or follow the application’s import rules).', false],
+        ['9. Remove the two sample rows before importing your real data if you do not want them imported.', false],
+        ['', false],
+        ['Tip: rename the "Head Office" sheet to your branch name to import into a different branch.', false],
+      ];
+      notes.forEach(([text, header], i) => {
+        const r = ins.addRow([text]);
+        if (i === 0) { r.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF6D28D9' } }; r.height = 24; }
+        else if (header) r.getCell(1).font = { bold: true };
+        else r.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Employee_Import_Sample_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      ui.toast.success('Sample file downloaded — includes 2 demo employees + an Instructions sheet.');
+    } catch (err: any) {
+      ui.toast.error('Could not generate the sample file: ' + (err?.message || 'Unknown error'));
+    }
   };
   const refreshTemps = async () => {
     try { const list: any = await api.temporaryEmployees.getAll(); const arr = Array.isArray(list) ? list : []; setTemps(arr); return arr; }
@@ -1646,13 +1715,103 @@ export const Employees: React.FC<EmployeesProps> = ({
         logs.push(`Successfully loaded file: ${file.name}`);
         logs.push(`Detected branch sheets: ${workbook.SheetNames.filter(n => n !== 'Sheet1').join(', ')}`);
 
+        // DD/MM/YYYY (or D/M/YYYY, dot/dash separators) → ISO YYYY-MM-DD so the
+        // backend's `new Date()` parses it correctly (JS would mis-read 15/08/1995).
+        const toISO = (s: string): string => {
+          const v = String(s ?? '').trim();
+          const m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+          if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+          return v === '-' ? '' : v;
+        };
+        // Friendly "Sample File" layout detection: map header NAMES → column index.
+        // Requires a strong signal (code+name+salary+status) so a legacy GCRI sheet
+        // is never mis-detected as the friendly format.
+        const HEADER_PATTERNS: [string, RegExp][] = [
+          ['code', /employee\s*code|emp\s*code|^code$|employee\s*id/i],
+          ['name', /employee\s*name|full\s*name|^name$/i],
+          ['gender', /gender|sex/i],
+          ['mobile', /mobile|phone|contact/i],
+          ['email', /e-?mail/i],
+          ['dob', /birth|dob/i],
+          ['joindate', /join/i],
+          ['department', /department|dept/i],
+          ['designation', /designation|title|^role$/i],
+          ['branch', /branch/i],
+          ['shift', /shift/i],
+          ['salary', /salary|ctc|wage|gross/i],
+          ['status', /status/i],
+        ];
+        const mapFriendlyHeaders = (hdr: string[]): Record<string, number> | null => {
+          const map: Record<string, number> = {};
+          hdr.forEach((cell, idx) => {
+            for (const [key, re] of HEADER_PATTERNS) {
+              if (map[key] === undefined && re.test(cell)) { map[key] = idx; break; }
+            }
+          });
+          const strong = map.code !== undefined && map.name !== undefined && map.salary !== undefined && map.status !== undefined;
+          return strong ? map : null;
+        };
+
         workbook.SheetNames.forEach(sheetName => {
-          if (sheetName === 'Sheet1') return;
+          if (sheetName === 'Sheet1' || sheetName.trim().toLowerCase() === 'instructions') return;
           const worksheet = workbook.Sheets[sheetName];
           const json: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           if (json.length < 2) return;
 
+          // ── Friendly named-column format (the downloadable Sample File) ────────
+          const friendly = mapFriendlyHeaders((json[0] || []).map((h: any) => String(h ?? '').trim()));
+          if (friendly) {
+            let vc = 0, dc = 0;
+            const get = (row: any[], key: string) => (friendly[key] !== undefined ? cleanExcelValue(row[friendly[key]]) : '');
+            for (let i = 1; i < json.length; i++) {
+              const row = json[i];
+              if (!row || row.length === 0) continue;
+              const empCode = get(row, 'code');
+              const fullName = get(row, 'name');
+              if ((empCode === '-' || !empCode) && (fullName === '-' || !fullName)) continue;
+
+              const isDup = (!!empCode && employees.some(e => String(e.employeeId).toUpperCase() === empCode.toUpperCase()))
+                || (!!empCode && allRows.some(e => String(e.employeeId).toUpperCase() === empCode.toUpperCase()));
+              if (isDup) { dc++; continue; }
+
+              const branchName = get(row, 'branch') || sheetName;
+              const matchedBranch = companies.find(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'
+                && String(c.branchName || c.name).toLowerCase() === branchName.toLowerCase());
+              const gender = get(row, 'gender');
+              const statusVal = get(row, 'status');
+              const emailVal = get(row, 'email');
+
+              allRows.push({
+                id: `emp-sample-${empCode || i}`,
+                employeeId: empCode || `TEMP-${i}`,
+                companyId: parentCompanyId,
+                branchId: matchedBranch?.id || null,
+                name: fullName || 'Unknown Employee',
+                firstName: (fullName || '').split(/\s+/)[0] || fullName,
+                lastName: (fullName || '').split(/\s+/).slice(1).join(' ') || '',
+                email: emailVal && emailVal !== '-' ? emailVal : undefined,
+                phone: get(row, 'mobile'),
+                gender: /^f/i.test(gender) ? 'Female' : (/^m/i.test(gender) ? 'Male' : gender),
+                dob: toISO(get(row, 'dob')),
+                joinDate: toISO(get(row, 'joindate')),
+                department: get(row, 'department'),
+                designation: get(row, 'designation'),
+                role: 'Staff' as Role,
+                status: (/(archiv|inactive|exit|left|resign)/i.test(statusVal) ? 'Archived' : 'Active') as EmployeeStatus,
+                salary: Number(String(get(row, 'salary')).replace(/[^0-9.]/g, '')) || 0,
+                shift: get(row, 'shift') || undefined,
+                branchLocation: branchName,
+                location: branchName,
+                avatar: (fullName || 'EM').slice(0, 2).toUpperCase(),
+              });
+              vc++;
+            }
+            logs.push(`Sheet [${sheetName}] (sample format): parsed ${vc} employees${dc ? `, skipped ${dc} duplicates` : ''}.`);
+            return;
+          }
+
+          // ── Legacy fixed-column (branch-master) format ────────────────────────
           let validCount = 0;
           let dupCount = 0;
 
@@ -1893,7 +2052,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="px-3.5 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Import</div>
                     <button onClick={() => { setActionsMenuOpen(false); setImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Upload size={15} className="text-slate-400" /> Bulk Import Employees</button>
                     <button onClick={() => { setActionsMenuOpen(false); setBioImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Fingerprint size={15} className="text-slate-400" /> Import Biometric Codes</button>
-                    <button onClick={downloadImportTemplate} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><FileDown size={15} className="text-slate-400" /> Download Employee Import Template</button>
+                    <button onClick={downloadSampleFile} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><FileDown size={15} className="text-slate-400" /> Download Sample File</button>
                   </>
                 )}
               </div>
