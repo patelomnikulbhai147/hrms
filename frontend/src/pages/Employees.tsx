@@ -58,6 +58,10 @@ const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Email', key: 'email', width: 28 },
   { header: 'Salary', key: 'salary', width: 14 },
   { header: 'Status', key: 'status', width: 14 },
+  { header: 'PAN', key: 'pan', width: 16 },
+  { header: 'UAN', key: 'uan', width: 16 },
+  { header: 'ESIC Number', key: 'esiNumber', width: 18 },
+  { header: 'WC Policy Number', key: 'wcPolicyNumber', width: 20 },
 ];
 
 // ── Temporary-employee approval gate (mirrors the backend; keep in sync) ──────
@@ -349,13 +353,13 @@ export const Employees: React.FC<EmployeesProps> = ({
       // The data sheet is named after the branch so the importer maps it to the
       // Head Office branch; the "Branch" column carries the same value.
       const ws = wb.addWorksheet('Head Office', { views: [{ state: 'frozen', ySplit: 1 }] });
-      const headers = ['Employee Code', 'Employee Name', 'Gender', 'Mobile', 'Email', 'Date of Birth', 'Joining Date', 'Department', 'Designation', 'Branch', 'Shift', 'Salary', 'Status'];
+      const headers = ['Employee Code', 'Employee Name', 'Gender', 'Mobile', 'Email', 'Date of Birth', 'Joining Date', 'Department', 'Designation', 'Branch', 'Shift', 'Salary', 'Status', 'WC Policy Number'];
       ws.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(14, h.length + 4) }));
-      ws.addRow(['EMP0001', 'Rahul Sharma', 'Male', '9876543210', 'rahul.sharma@example.com', '15/08/1995', '01/01/2026', 'HR', 'HR Executive', 'Head Office', 'General Shift', 25000, 'Active']);
-      ws.addRow(['EMP0002', 'Priya Patel', 'Female', '9876501234', 'priya.patel@example.com', '22/05/1997', '15/01/2026', 'Accounts', 'Accountant', 'Head Office', 'General Shift', 32000, 'Active']);
+      ws.addRow(['EMP0001', 'Rahul Sharma', 'Male', '9876543210', 'rahul.sharma@example.com', '15/08/1995', '01/01/2026', 'HR', 'HR Executive', 'Head Office', 'General Shift', 25000, 'Active', 'WC-2026/0001']);
+      ws.addRow(['EMP0002', 'Priya Patel', 'Female', '9876501234', 'priya.patel@example.com', '22/05/1997', '15/01/2026', 'Accounts', 'Accountant', 'Head Office', 'General Shift', 32000, 'Active', 'WC-2026/0002']);
 
-      // Preserve data types: text for code/mobile/dates (no auto-coercion), number for salary.
-      [1, 4, 6, 7].forEach((c) => { ws.getColumn(c).numFmt = '@'; });
+      // Preserve data types: text for code/mobile/dates/WC-policy (no auto-coercion), number for salary.
+      [1, 4, 6, 7, 14].forEach((c) => { ws.getColumn(c).numFmt = '@'; });
       ws.getColumn(12).numFmt = '#,##0';
 
       const thin = { style: 'thin', color: { argb: 'FFD1D5DB' } };
@@ -387,7 +391,8 @@ export const Employees: React.FC<EmployeesProps> = ({
         ['6. Salary must be numeric (no symbols or commas).', false],
         ['7. Employee Code must be unique — an existing code updates that employee instead of duplicating.', false],
         ['8. Department, Branch, Designation and Shift should already exist in the system (or follow the application’s import rules).', false],
-        ['9. Remove the two sample rows before importing your real data if you do not want them imported.', false],
+        ['9. WC Policy Number is OPTIONAL (max 100 chars; letters, numbers and - / allowed). Leave blank if not applicable. UAN, PF and ESIC are optional too.', false],
+        ['10. Remove the two sample rows before importing your real data if you do not want them imported.', false],
         ['', false],
         ['Tip: rename the "Head Office" sheet to your branch name to import into a different branch.', false],
       ];
@@ -825,6 +830,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     pfNumber: '',
     uan: '',
     esic: '',
+    wcPolicyNumber: '',
     bankName: '',
     accountNumber: '',
     confirmAccountNumber: '',
@@ -886,7 +892,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       nationality: DEFAULT_COUNTRY, fatherSpouseName: '', relationType: 'FATHER',
       emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
       exitDate: '', exitReason: '', branchLocation: initialBranch, biometricId: '',
-      aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
+      aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '', wcPolicyNumber: '',
       bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
       ...BLANK_ADDRESS_VALUES,
       state: '', city: '',
@@ -1369,6 +1375,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       pfNumber: form.pfNumber,
       uan: form.uan,
       esic: form.esic,
+      wcPolicyNumber: form.wcPolicyNumber,
       bankName: form.bankName,
       accountNumber: form.accountNumber,
       ifsc: form.ifsc,
@@ -1740,6 +1747,7 @@ export const Employees: React.FC<EmployeesProps> = ({
           ['shift', /shift/i],
           ['salary', /salary|ctc|wage|gross/i],
           ['status', /status/i],
+          ['wcpolicy', /wc\s*policy|workmen|wc\s*no|compensation/i],
         ];
         const mapFriendlyHeaders = (hdr: string[]): Record<string, number> | null => {
           const map: Record<string, number> = {};
@@ -1800,6 +1808,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 role: 'Staff' as Role,
                 status: (/(archiv|inactive|exit|left|resign)/i.test(statusVal) ? 'Archived' : 'Active') as EmployeeStatus,
                 salary: Number(String(get(row, 'salary')).replace(/[^0-9.]/g, '')) || 0,
+                wcPolicyNumber: (() => { const v = get(row, 'wcpolicy'); return v && v !== '-' ? v.slice(0, 100) : undefined; })(),
                 shift: get(row, 'shift') || undefined,
                 branchLocation: branchName,
                 location: branchName,
@@ -2876,9 +2885,13 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <p className="text-[10px] text-gray-400">Universal Account No (UAN)</p>
                   <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.uan || '—'}</p>
                 </div>
-                <div className="col-span-2">
+                <div>
                   <p className="text-[10px] text-gray-400">ESIC IP Number</p>
                   <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || (viewEmp as any).esiNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Workmen Compensation (WC) Policy No.</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).wcPolicyNumber || '—'}</p>
                 </div>
               </div>
             )}
@@ -3536,9 +3549,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(form.pan)} onChange={e => setForm({ ...form, pan: rawPan(e.target.value) })} error={errors.pan} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input id="field-pfNumber" label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
-                <Input id="field-uan" label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
-                <Input id="field-esic" label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
+                <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
+                <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                <Input id="field-esic" label="ESIC IP Number (Optional)" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={form.wcPolicyNumber} onChange={e => setForm({ ...form, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
               </div>
               <BankDetails
                 data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState }}
@@ -3737,9 +3753,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(editEmp.pan || '')} onChange={e => setEditEmp({ ...editEmp, pan: rawPan(e.target.value) })} error={errors.pan} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Input id="field-pfNumber" label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
-                  <Input id="field-uan" label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
-                  <Input id="field-esic" label="ESIC IP Number" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
+                  <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
+                  <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                  <Input id="field-esic" label="ESIC IP Number (Optional)" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={(editEmp as any).wcPolicyNumber || ''} onChange={e => setEditEmp({ ...editEmp, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
                 </div>
                 <BankDetails
                   data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState }}

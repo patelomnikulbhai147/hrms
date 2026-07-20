@@ -159,6 +159,8 @@ export interface Employee {
   pfNumber?: string;
   uan?: string;
   esic?: string;
+  esiNumber?: string;
+  wcPolicyNumber?: string;
 
   bankName?: string;
   accountNumber?: string;

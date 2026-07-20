@@ -718,6 +718,7 @@ model Employee {
   uan                 String?
   pfNumber            String?
   esiNumber           String?
+  wcPolicyNumber      String?             @db.VarChar(100) // Workmen Compensation (WC) insurance policy no. — optional
   bankName            String?
   accountNumber       String?
   ifsc                String?
