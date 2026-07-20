@@ -173,6 +173,12 @@ app.use('/api/overtime', pii('Overtime'), overtimeRoutes);
 app.use('/api/shifts', pii('Shifts'), shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
 app.use('/api/employee-subscription', employeeSubscriptionRoutes);
+// Super Admin Subscription Management (plan/pricing/permissions control center).
+app.use('/api/subscriptions', require('./src/routes/subscriptionRoutes'));
+// First-login onboarding (welcome gate + sample workspace) for company accounts.
+app.use('/api/onboarding', require('./src/routes/onboardingRoutes'));
+app.use('/api/plan-config', require('./src/routes/planConfigRoutes')); // editable plan master config
+app.use('/api/subscription-invoices', require('./src/routes/subscriptionInvoiceRoutes')); // Super Admin billing
 app.use('/api/statistics', statisticsRoutes);
 // Global third-party integration config (Google Maps). Public key read for any
 // authenticated user; Super-Admin-only writes/test inside the router.

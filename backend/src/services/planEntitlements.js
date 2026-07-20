@@ -1,131 +1,195 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// PLAN ENTITLEMENTS — the single authoritative source of truth (backend) for
-// which modules a subscription plan unlocks and its usage limits.
+// PLAN ENTITLEMENTS — the single authoritative resolver (backend) for which
+// modules/reports a subscription plan unlocks, its usage limits and its pricing.
 //
-// Kept as a CODE MAP (not a DB table) on purpose: this install has a history of
-// data loss from schema drift, so the FREE self-registration feature ships with
-// ZERO schema migration. `Company.plan` (a plain string) is the only per-tenant
-// input; this map turns it into entitlements.
+// ⚠️  PLANS ARE NO LONGER HARDCODED. The plan definitions live in the editable
+//     master store (services/planStore.js → data/planDefinitions.json), which the
+//     Super Admin "Subscription Plans" page edits. This module turns a plan (a
+//     plain `Company.plan` string) into concrete entitlements by reading that
+//     store — so enabling a module on, say, the FREE plan instantly grants it to
+//     every FREE company with NO code change. The static maps below remain ONLY
+//     as a seed/fallback for when the store can't be read.
 //
-// ⚠️  MIRROR: frontend/src/config/planEntitlements.ts must be kept in sync with
-//     this file. Same concept, two files — the only intentional duplication.
+// The API stays fully SYNCHRONOUS (the store is file-backed + cached) so existing
+// callers (subscriptionMiddleware, attachPlanInfo, report gate) are unchanged.
 //
-// Keys in `locked` are PERMISSION KEYS (AppModules), not sidebar page ids, so a
-// sub-feature that rides on a parent key (Custom Report Builder → `reports`) is
-// locked together with its parent automatically.
+// ⚠️  MIRROR: frontend/src/config/planEntitlements.ts is the presentation-only
+//     mirror; the backend is authoritative (attachPlanInfo hands the resolved
+//     lists to the client so the mirror rarely has to guess).
+//
+// Keys in `locked` are PERMISSION KEYS (AppModules), not sidebar page ids.
 // ─────────────────────────────────────────────────────────────────────────────
+const store = require('./planStore');
 
-// Premium modules a FREE workspace cannot use. Everything NOT listed here is
-// unlocked (dashboard, employees, attendance, leaves, payroll, documents,
-// company-profile, settings, users, billing, companies, audit).
-//
-// NOTE: the Reports MODULE is intentionally NOT locked — FREE users can open
-// Reports, but only a subset of individual reports is generatable (see
-// FREE_ALLOWED_REPORTS + isReportAllowed). The Custom Report Builder is a
-// separate premium module locked via the synthetic 'custom-reports' key (it
-// shares the 'reports' permission key, so it can't be locked by that alone).
-const FREE_LOCKED = [
-  'communication',   // Communication Center
-  'tasks',           // Task Manager
-  'tenders',         // Tender Management
-  'contracts',       // Contract Management
-  'invoicing',       // Invoice Management
-  'loans',           // Employee Loans (Finance & Compliance)
-  'compliance',      // Statutory Compliance (Finance & Compliance)
-  'custom-reports',  // Custom Report Builder (synthetic gate key; NOT an AppModules perm)
-];
+const { PREMIUM_MODULES, PAGE_FOR_MODULE, FREE_ALLOWED_REPORTS } = store;
 
-// Sidebar PAGE ids locked for FREE that can't be expressed via a permission key
-// (Custom Report Builder's permission is `reports`, which is unlocked). The
-// frontend sidebar / route-guard lock these page ids in addition to `locked`.
+// ── Static seed/fallback (used only if the store is unreadable) ───────────────
+const FREE_LOCKED = PREMIUM_MODULES.slice(); // FREE unlocks none of the premium set
 const FREE_LOCKED_PAGES = ['custom-report-builder'];
 
-// FREE plan: the ONLY compliance reports that may be generated. Keys are the
-// literal REPORTS registry keys in complianceReportController.js. Every other
-// report is visible but returns 403 on generate. To change what FREE can run,
-// edit THIS list (and its frontend mirror) — no other code changes needed.
-const FREE_ALLOWED_REPORTS = [
-  'salary_register',  // Salary Register
-  'salary_slip',      // Salary Slip
-  'payroll_summary',  // Payroll Summary
-  'pf_register',      // PF Report
-  'leave_register',   // Leave Report
-  'esi_register',     // ESIC Report
-  'bonus_register',   // Bonus Report
-  'wage_register',    // Wage Report
-];
-
-// name → entitlements. Paid tiers unlock everything (locked: [], allowedReports:
-// null = ALL reports), preserving existing behavior exactly. Only FREE restricts.
 const PLAN_ENTITLEMENTS = {
-  Free: {
-    locked: FREE_LOCKED,
-    lockedPages: FREE_LOCKED_PAGES,
-    allowedReports: FREE_ALLOWED_REPORTS, // an allow-list → all others locked
-    limits: { maxEmployees: 25, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 },
-  },
+  Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 30, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
   Starter: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 3, storageMB: 5120 } },
   Professional: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 1000, maxBranches: 5, maxAdminUsers: 15, storageMB: 51200 } },
   Enterprise: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: -1, maxBranches: 999, maxAdminUsers: -1, storageMB: -1 } },
+  Custom: { locked: [], lockedPages: [], allowedReports: null, limits: {} },
 };
 
-// Unknown / unset plan → treat as UNRESTRICTED. A paid customer whose plan string
-// doesn't match must never be accidentally locked out; only an explicit "Free"
-// (or any future plan we add to the map with a `locked` list) restricts access.
-// allowedReports: null means "all reports allowed".
+// Legacy pricing map — kept as the fallback if a plan def lacks explicit prices.
+const PLAN_PRICING = {
+  Free: { quarterly: 0, yearly: 0 },
+  Starter: { quarterly: 25, yearly: 20 },
+  Professional: { quarterly: 20, yearly: 16 },
+  Enterprise: { quarterly: 15, yearly: 12 },
+  Custom: null,
+};
+
+const PLAN_META = {
+  Free: { label: 'Free', range: 'Up to 100 employees', quarterly: 0, yearly: 0 },
+  Starter: { label: 'Starter', range: '0–100 employees', quarterly: 25, yearly: 20, yearlySavings: '20%' },
+  Professional: { label: 'Professional', range: '101–500 employees', quarterly: 20, yearly: 16, yearlySavings: '20%' },
+  Enterprise: { label: 'Enterprise', range: '500+ employees', quarterly: 15, yearly: 12, yearlySavings: '20%' },
+  Custom: { label: 'Custom', range: 'Manual pricing', custom: true },
+};
+
 const DEFAULT_ENTITLEMENTS = { locked: [], lockedPages: [], allowedReports: null, limits: {} };
 
-function normalizePlan(plan) {
-  return String(plan || '').trim();
+function normalizePlan(plan) { return String(plan || '').trim(); }
+
+const cycleKey = (cycle) => (String(cycle || '').toLowerCase() === 'yearly' ? 'yearly' : 'quarterly');
+
+// Convert an editable plan DEFINITION (store shape) into runtime entitlements.
+// enabledModules holds the ENABLED premium keys → everything premium NOT enabled
+// is locked; a locked module that owns a sidebar page also locks that page.
+function defToEntitlements(def) {
+  const enabled = new Set(Array.isArray(def.enabledModules) ? def.enabledModules : []);
+  const locked = PREMIUM_MODULES.filter((m) => !enabled.has(m));
+  const lockedPages = [];
+  for (const m of locked) { const pg = PAGE_FOR_MODULE[m]; if (pg) lockedPages.push(pg); }
+  const allowedReports = def.enabledReports === 'all' || def.enabledReports == null ? null : (Array.isArray(def.enabledReports) ? def.enabledReports : null);
+  const lim = def.limits || {};
+  return {
+    locked,
+    lockedPages,
+    allowedReports,
+    limits: {
+      maxEmployees: lim.employeeLimit ?? -1,
+      maxBranches: lim.branchLimit ?? -1,
+      maxAdminUsers: lim.adminUserLimit ?? -1,
+      storageMB: lim.storageMB ?? -1,
+    },
+  };
 }
 
+// Entitlements for a plan NAME — from the editable store, else the static seed.
 function getEntitlements(plan) {
-  return PLAN_ENTITLEMENTS[normalizePlan(plan)] || DEFAULT_ENTITLEMENTS;
+  const p = normalizePlan(plan);
+  try {
+    const def = store.getPlan(p);
+    if (def) return defToEntitlements(def);
+  } catch (_) { /* fall through to static seed */ }
+  return PLAN_ENTITLEMENTS[p] || DEFAULT_ENTITLEMENTS;
 }
 
-// Is a given permission key locked for this plan?
-function isModuleLocked(plan, permKey) {
-  return getEntitlements(plan).locked.includes(permKey);
+// THE centralized resolver. A CUSTOM plan's entitlements come from the company's
+// CompanySubscription record (per-company allow-lists); every other plan resolves
+// from the editable master store. This is the single place plan → entitlements is
+// decided, so no module ever hardcodes `if (plan === 'Free')`.
+function resolveEntitlements(plan, sub) {
+  const p = normalizePlan(plan);
+  if (p === 'Custom' && sub) {
+    const enabled = new Set(Array.isArray(sub.customModules) ? sub.customModules : []);
+    const locked = PREMIUM_MODULES.filter((m) => !enabled.has(m));
+    const lockedPages = [];
+    for (const m of locked) { const pg = PAGE_FOR_MODULE[m]; if (pg) lockedPages.push(pg); }
+    const cr = sub.customReports;
+    const allowedReports = (cr == null || cr === 'all') ? null : (Array.isArray(cr) ? cr : []);
+    return {
+      locked,
+      lockedPages,
+      allowedReports,
+      limits: {
+        maxEmployees: sub.employeeLimit ?? -1,
+        maxBranches: sub.branchLimit ?? -1,
+        maxAdminUsers: sub.adminUserLimit ?? -1,
+        storageMB: sub.storageMB ?? -1,
+      },
+    };
+  }
+  return getEntitlements(plan);
 }
 
-// The list of locked permission keys for a plan (handed to the frontend so the
-// sidebar/route-guard have an authoritative copy alongside their own mirror).
-function getLockedModules(plan) {
-  return [...getEntitlements(plan).locked];
+// ── Pricing engine (per-employee, per billing period) ────────────────────────
+// Rate is per employee PER billing period; the master store's plan prices win,
+// falling back to the legacy code map. Custom uses the manual per-company rate.
+function pricePerEmployee(plan, cycle, customRate) {
+  const p = normalizePlan(plan);
+  if (p === 'Custom') return Number(customRate) || 0;
+  try {
+    const def = store.getPlan(p);
+    if (def) return Number(cycleKey(cycle) === 'yearly' ? def.priceYearly : def.priceQuarterly) || 0;
+  } catch (_) { /* fall through */ }
+  const tier = PLAN_PRICING[p];
+  return tier ? Number(tier[cycleKey(cycle)]) || 0 : 0;
 }
 
-// Sidebar page ids locked for a plan beyond the permission-key locks (e.g. Custom
-// Report Builder, which shares the unlocked `reports` permission key).
-function getLockedPages(plan) {
-  return [...(getEntitlements(plan).lockedPages || [])];
+// The authoritative amount for a subscription: employeeCount × rate − discount.
+function calcAmount(plan, cycle, employeeCount, customRate, discountPercent) {
+  const rate = pricePerEmployee(plan, cycle, customRate);
+  const gross = (Number(employeeCount) || 0) * rate;
+  const disc = Math.round(gross * ((Number(discountPercent) || 0) / 100));
+  return Math.max(0, gross - disc);
 }
 
-function isPageLocked(plan, pageId) {
-  return getLockedPages(plan).includes(pageId);
+// Plan catalog for the Super Admin Change-Plan UI — from the editable store.
+function getPlanCatalog() {
+  try {
+    return store.getPlans().map((p) => ({
+      key: p.key, label: p.name, range: rangeLabel(p),
+      quarterly: p.priceQuarterly, yearly: p.priceYearly,
+      custom: !!p.custom, color: p.color, status: p.status,
+    }));
+  } catch (_) {
+    return Object.entries(PLAN_META).map(([key, m]) => ({ key, ...m }));
+  }
 }
 
-// Per-report gate. `allowedReports === null` (paid/unknown plans) → every report
-// is allowed. Otherwise only the listed report keys may be generated.
-function isReportAllowed(plan, reportKey) {
-  const allowed = getEntitlements(plan).allowedReports;
-  if (!allowed) return true;          // null/undefined → all reports allowed
+function rangeLabel(p) {
+  if (p.custom) return 'Manual pricing';
+  const max = p.employeeMax === -1 ? '∞' : p.employeeMax;
+  return `${p.employeeMin}–${max} employees`;
+}
+
+function isModuleLocked(plan, permKey, sub) { return resolveEntitlements(plan, sub).locked.includes(permKey); }
+function getLockedModules(plan, sub) { return [...resolveEntitlements(plan, sub).locked]; }
+function getLockedPages(plan, sub) { return [...(resolveEntitlements(plan, sub).lockedPages || [])]; }
+function isPageLocked(plan, pageId, sub) { return getLockedPages(plan, sub).includes(pageId); }
+
+function isReportAllowed(plan, reportKey, sub) {
+  const allowed = resolveEntitlements(plan, sub).allowedReports;
+  if (!allowed) return true;
   return allowed.includes(reportKey);
 }
 
-// The allow-list for a plan (null = all). Handed to the frontend as an
-// authoritative copy for report-card locking.
-function getAllowedReports(plan) {
-  const allowed = getEntitlements(plan).allowedReports;
+function getAllowedReports(plan, sub) {
+  const allowed = resolveEntitlements(plan, sub).allowedReports;
   return allowed ? [...allowed] : null;
 }
 
 module.exports = {
   PLAN_ENTITLEMENTS,
+  PREMIUM_MODULES,
+  PLAN_PRICING,
+  PLAN_META,
   getEntitlements,
+  resolveEntitlements,
   isModuleLocked,
   getLockedModules,
   getLockedPages,
   isPageLocked,
   isReportAllowed,
   getAllowedReports,
+  pricePerEmployee,
+  calcAmount,
+  getPlanCatalog,
 };

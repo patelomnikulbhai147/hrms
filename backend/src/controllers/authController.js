@@ -5,24 +5,54 @@ const prisma = require('../config/prisma');
 const { sendOtpEmail } = require('../services/emailService');
 const integrationSettings = require('../services/integrationSettings');
 const { generateCaptchaCode, generateSvgCaptcha } = require('../utils/captcha');
-const { getLockedModules } = require('../services/planEntitlements');
+const { getLockedModules, getLockedPages, getAllowedReports } = require('../services/planEntitlements');
+const { subscriptionForPlan } = require('../middleware/subscriptionMiddleware');
 
-// Resolve a user's effective plan + locked modules from their company so the
-// frontend has an authoritative copy for sidebar locking / route guards (it also
-// keeps its own mirror as a fallback). Super Admin has no company plan.
+// Resolve a user's effective plan + entitlements from their company so the
+// frontend has an AUTHORITATIVE copy for sidebar locking / route guards / report
+// locks (it keeps its own mirror only as a fallback). Custom-aware (loads the
+// CompanySubscription overrides). Super Admin has no company plan.
 const attachPlanInfo = async (safeUser) => {
   try {
     if (!safeUser || safeUser.role === 'Super Admin' || !safeUser.companyId) return safeUser;
-    let company = await prisma.company.findUnique({ where: { id: Number(safeUser.companyId) }, select: { plan: true, parentCompanyId: true } });
-    // A branch workspace resolves to its parent company for the plan.
+    let company = await prisma.company.findUnique({ where: { id: Number(safeUser.companyId) }, select: { id: true, plan: true, parentCompanyId: true, onboardingState: true } });
+    // A branch workspace resolves to its parent company for the plan + onboarding.
     if (company && company.parentCompanyId) {
-      company = await prisma.company.findUnique({ where: { id: Number(company.parentCompanyId) }, select: { plan: true } });
+      company = await prisma.company.findUnique({ where: { id: Number(company.parentCompanyId) }, select: { id: true, plan: true, onboardingState: true } });
     }
     const planName = company?.plan || '';
+    const sub = company ? await subscriptionForPlan(company.id, planName) : null;
     safeUser.plan = planName;
-    safeUser.lockedModules = getLockedModules(planName);
+    safeUser.lockedModules = getLockedModules(planName, sub);
+    safeUser.lockedPages = getLockedPages(planName, sub);
+    safeUser.allowedReports = getAllowedReports(planName, sub); // null = all reports
+
+    // Live subscription seat usage → the client renders "current / limit" and
+    // gates the Add Employee button. Re-fetched on /auth/me (focus + every 2 min)
+    // so a Super-Admin upgrade lifts the cap with NO logout.
+    try {
+      const cap = await require('../services/employeeLimitService').getCapacity(safeUser.companyId);
+      safeUser.employeeLimit = cap.limit;          // null = unlimited
+      safeUser.employeeCount = cap.current;
+    } catch (_) { /* non-fatal */ }
+
+    // First-login onboarding ledger (per head company) — drives the one-time
+    // welcome gate and the "Remove Sample Data" affordance.
+    safeUser.onboarding = normalizeOnboarding(company?.onboardingState);
   } catch (_) { /* non-fatal — frontend mirror still applies */ }
   return safeUser;
+};
+
+// Canonical onboarding shape so the client never has to null-check.
+const normalizeOnboarding = (state) => {
+  const s = (state && typeof state === 'object') ? state : {};
+  return {
+    firstLoginCompleted: !!s.firstLoginCompleted,
+    onboardingCompleted: !!s.onboardingCompleted,
+    usedSampleWorkspace: !!s.usedSampleWorkspace,
+    sampleDataRemoved: !!s.sampleDataRemoved,
+    choice: s.choice || null,
+  };
 };
 
 // ----------------------------------------------------------------------------

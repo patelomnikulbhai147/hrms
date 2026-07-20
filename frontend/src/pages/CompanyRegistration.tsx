@@ -23,6 +23,21 @@ const COUNTRIES = ['India', 'United States', 'United Kingdom', 'United Arab Emir
 const BROWN = '#C67B49';
 const NAVY = '#16284A';
 
+// Icon absolutely-positioned inside a field. Constant string → module scope.
+const iconL = 'absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none';
+
+// Field wrapper. MUST live at module scope so it has a STABLE component identity
+// across renders. If defined inside CompanyRegistration it would be a brand-new
+// function on every render, so React would unmount/remount each <input> on every
+// keystroke and the field would lose focus mid-typing (the classic
+// "input loses focus after one character" bug).
+const Field: React.FC<{ children: React.ReactNode; icon: React.ReactNode }> = ({ children, icon }) => (
+  <div className="relative">
+    <span className={iconL}>{icon}</span>
+    {children}
+  </div>
+);
+
 export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack, onRegistered }) => {
   const [phase, setPhase] = useState<'form' | 'otp' | 'success'>('form');
   const [step, setStep] = useState(1); // 1..4
@@ -172,15 +187,7 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
     'transition-all duration-200 active:scale-[0.98] disabled:opacity-60 shadow-[0_14px_28px_-10px_rgba(22,40,74,0.5)]';
   const ghostBtn =
     'h-12 px-5 rounded-2xl text-[15px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 flex items-center justify-center gap-2 transition-all active:scale-[0.98]';
-  const iconL = 'absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none';
   const withIcon = `${inputBase} pl-11 pr-4`;
-
-  const Field: React.FC<{ children: React.ReactNode; icon: React.ReactNode }> = ({ children, icon }) => (
-    <div className="relative">
-      <span className={iconL}>{icon}</span>
-      {children}
-    </div>
-  );
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 font-sans"

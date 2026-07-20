@@ -10,7 +10,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { isReportAllowed } = require('../services/planEntitlements');
-const { resolveCompany } = require('../middleware/subscriptionMiddleware');
+const { resolveCompany, subscriptionForPlan } = require('../middleware/subscriptionMiddleware');
 
 const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
 const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
@@ -24,7 +24,8 @@ const canAccess = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.us
 async function reportPlanBlock(req, reportKey) {
   if (isSuperAdmin(req)) return null;
   const company = await resolveCompany(req).catch(() => null);
-  if (company && !isReportAllowed(company.plan, reportKey)) {
+  const sub = company ? await subscriptionForPlan(company.id, company.plan) : null;
+  if (company && !isReportAllowed(company.plan, reportKey, sub)) {
     return {
       success: false,
       code: 'REPORT_NOT_AVAILABLE_IN_FREE_PLAN',
@@ -1383,17 +1384,25 @@ exports.catalog = async (req, res) => {
   // flag (Super Admin is never plan-limited). The frontend greys locked reports
   // from this; the generate endpoint is the real enforcement.
   let plan = null;
+  let sub = null;
   if (!isSuperAdmin(req)) {
     const company = await resolveCompany(req).catch(() => null);
     plan = company?.plan || null;
+    sub = company ? await subscriptionForPlan(company.id, company.plan) : null;
   }
   const list = Object.entries(REPORTS).map(([key, r]) => ({
     key, label: r.label, category: r.category, available: !!r.available,
     description: describe(key, r), status: statusOf(key, r), filters: filtersFor(key, r.category),
-    planLocked: plan ? !isReportAllowed(plan, key) : false,
+    planLocked: plan ? !isReportAllowed(plan, key, sub) : false,
   }));
   res.json(list);
 };
+
+// Plain report catalog (key + label + category) — no auth/plan context. Consumed
+// by the Subscription-Plans editor's "Report Access" section so a plan can pick
+// exactly which reports it unlocks. Presentation metadata only.
+exports.reportCatalogMeta = () =>
+  Object.entries(REPORTS).map(([key, r]) => ({ key, label: r.label, category: r.category }));
 
 // Preview a report using the VISHV ENTERPRISE demo company — sample layout + demo
 // data only. NEVER touches the user's real company and is NOT audit-logged as a

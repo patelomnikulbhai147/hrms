@@ -234,6 +234,13 @@ exports.createEmployee = async (req, res) => {
       data.employeeId = await generateEmployeeCode(data.branchId, data.companyId);
     }
 
+    // ── Subscription employee-limit guard ───────────────────────────────────
+    // Enforced for EVERY creator (incl. Super Admin) because the cap belongs to
+    // the company's plan, not the actor. FREE = 30. Returns 403
+    // EMPLOYEE_LIMIT_REACHED so the client can show the upgrade dialog.
+    const cap = await require('../services/employeeLimitService').assertCapacity(data.companyId, 1);
+    if (!cap.ok) return res.status(cap.status).json(cap.body);
+
     // Whitelist to real Employee columns + coerce bonus config fields. `employeeId`
     // was just resolved above, so re-attach it after the pick.
     const createData = prepareEmployeeWriteData(data);
@@ -318,46 +325,111 @@ exports.bulkCreate = async (req, res) => {
     const created = [];
     const merged = [];
     const skipped = [];
+    const failed = [];
+    // Per-row audit for the import log (row number, who, outcome, why). The client
+    // renders this verbatim so the user sees EXACTLY what happened to every row —
+    // no silent merges/skips can hide behind a blanket "success".
+    const results = [];
+
+    // ── Subscription employee-limit guard (per tenant) ───────────────────────
+    // Only genuinely NEW inserts consume a seat; merges/updates to existing
+    // people never do. Capacity is resolved once per company and decremented
+    // locally as we insert, so the cap holds across the whole batch. When a
+    // tenant is full, further NEW rows are skipped (never created) with a
+    // limit reason — existing-record updates still proceed.
+    const limitSvc = require('../services/employeeLimitService');
+    const { norm } = require('../utils/employeeDedup');
+    const capCache = new Map();
+    const takeSeat = async (companyId) => {
+      const key = String(companyId || '');
+      if (!capCache.has(key)) capCache.set(key, await limitSvc.getCapacity(companyId));
+      const c = capCache.get(key);
+      if (c.unlimited) return true;
+      if (c.remaining <= 0) return false;
+      c.remaining -= 1;
+      return true;
+    };
+
+    let rowNum = 0;
     for (const data of employees) {
-      if (data.joinDate && typeof data.joinDate === 'string') {
-        data.joinDate = new Date(data.joinDate);
-      }
-      if (data.exitDate && typeof data.exitDate === 'string') {
-        if (data.exitDate.trim() === '') data.exitDate = null;
-        else data.exitDate = new Date(data.exitDate);
-      } else if (data.exitDate === '') {
-        data.exitDate = null;
-      }
+      rowNum++;
+      const isBlank = (v) => v == null || String(v).trim() === '' || String(v).trim() === '-';
+      const rowLabel = (!isBlank(data.name) ? String(data.name).trim() : (!isBlank(data.employeeId) ? String(data.employeeId).trim() : `Row ${rowNum}`));
+      // Each row is isolated: a validation problem or a DB error on ONE row is
+      // recorded as a failure for THAT row and the import continues — one bad row
+      // can never abort the batch (which previously 500'd after partial commits).
+      try {
+        if (data.joinDate && typeof data.joinDate === 'string') {
+          data.joinDate = new Date(data.joinDate);
+        }
+        if (data.exitDate && typeof data.exitDate === 'string') {
+          if (data.exitDate.trim() === '') data.exitDate = null;
+          else data.exitDate = new Date(data.exitDate);
+        } else if (data.exitDate === '') {
+          data.exitDate = null;
+        }
 
-      if (data.esic !== undefined) {
-        data.esiNumber = data.esic;
-        delete data.esic;
-      }
+        if (data.esic !== undefined) {
+          data.esiNumber = data.esic;
+          delete data.esic;
+        }
 
-      const dup = matchAgainstIndex(data, index);
-      let result;
-      if (dup) {
-        // Same person already on file → UPDATE that record (never insert a 2nd
-        // row). Keep the existing unique code; don't overwrite it with a blank.
-        const patch = prepareEmployeeWriteData(data);
-        delete patch.employeeId;
-        result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
-        merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
-      } else if (data.employeeId) {
-        // Has an explicit code → upsert on the unique code.
-        const clean = prepareEmployeeWriteData(data);
-        clean.employeeId = data.employeeId;
-        result = await prisma.employee.upsert({
-          where: { employeeId: data.employeeId },
-          update: clean,
-          create: clean,
-        });
-        created.push(result);
-      } else {
-        result = await prisma.employee.create({ data: prepareEmployeeWriteData(data) });
-        created.push(result);
+        // ── Validation (reject before insert, with a clear reason) ────────────
+        if (isBlank(data.name) && isBlank(data.employeeId)) {
+          failed.push({ row: rowNum, name: rowLabel, reason: 'Missing employee name and code' });
+          results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: 'Missing employee name and code' });
+          continue;
+        }
+        if (!data.companyId) {
+          failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason: 'Missing company mapping' });
+          results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: 'Missing company mapping' });
+          continue;
+        }
+
+        const dup = matchAgainstIndex(data, index);
+        let result;
+        if (dup) {
+          // Same person already on file → UPDATE that record (never insert a 2nd
+          // row). Keep the existing unique code; don't overwrite it with a blank.
+          const patch = prepareEmployeeWriteData(data);
+          delete patch.employeeId;
+          result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
+          merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'updated', reason: `Matched an existing employee on ${dup.field} — record updated (not duplicated)` });
+        } else if (data.employeeId) {
+          // Has an explicit code → upsert on the unique code. A code NOT already on
+          // file is a new insert → it must consume a seat; an existing code updates.
+          const isNewInsert = !index.byCode.has(norm(data.employeeId));
+          if (isNewInsert && !(await takeSeat(data.companyId))) {
+            skipped.push({ name: data.name, employeeId: data.employeeId, reason: 'EMPLOYEE_LIMIT_REACHED' });
+            results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
+            continue;
+          }
+          const clean = prepareEmployeeWriteData(data);
+          clean.employeeId = data.employeeId;
+          result = await prisma.employee.upsert({
+            where: { employeeId: data.employeeId },
+            update: clean,
+            create: clean,
+          });
+          created.push(result);
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: isNewInsert ? 'created' : 'updated', reason: isNewInsert ? 'Created' : 'Existing code — record updated' });
+        } else {
+          if (!(await takeSeat(data.companyId))) {
+            skipped.push({ name: data.name, reason: 'EMPLOYEE_LIMIT_REACHED' });
+            results.push({ row: rowNum, name: rowLabel, employeeId: null, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
+            continue;
+          }
+          result = await prisma.employee.create({ data: prepareEmployeeWriteData(data) });
+          created.push(result);
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'created', reason: 'Created' });
+        }
+        addToIndex(result);
+      } catch (rowErr) {
+        console.error(`[bulkCreate] row ${rowNum} (${rowLabel}) failed:`, rowErr.message);
+        failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason: rowErr.message || 'Database error' });
+        results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: rowErr.message || 'Database error' });
       }
-      addToIndex(result);
     }
 
     const HeadcountSyncService = require('../services/headcountSyncService');
@@ -417,13 +489,23 @@ exports.bulkCreate = async (req, res) => {
       }
     } catch(e) {}
 
+    const limitSkipped = skipped.filter((s) => s.reason === 'EMPLOYEE_LIMIT_REACHED');
     res.status(201).json({
-      count: created.length,
+      total: employees.length,
+      count: created.length,           // kept for backward-compat (NEW inserts)
       createdCount: created.length,
-      mergedCount: merged.length,
+      mergedCount: merged.length,      // existing people whose record was updated
+      updatedCount: merged.length,     // alias
       skippedCount: skipped.length,
+      failedCount: failed.length,
+      skipped,
       merged,
+      failed,
+      results,                         // per-row log: { row, name, employeeId, status, reason }
       employees: created,
+      // Signal to the client that the plan cap blocked some rows → show upgrade.
+      limitReached: limitSkipped.length > 0,
+      limitSkippedCount: limitSkipped.length,
     });
   } catch (error) {
     console.error('Error in bulk create:', error);

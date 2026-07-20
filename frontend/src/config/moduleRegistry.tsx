@@ -24,7 +24,9 @@ export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
   | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
-  | 'notifications' | 'custom-report-builder' | 'company-edit';
+  | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
+  // Company-facing View Plans / upgrade screen (not a sidebar/matrix module).
+  | 'plans';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -79,7 +81,7 @@ export interface ModuleRegistryEntry {
 export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: true },
   { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'], permission: 'companies', inMatrix: true, platformOnly: true },
-  { id: 'billing', label: 'SaaS Subscriptions', icon: <CreditCard size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: true, platformOnly: true },
+  { id: 'billing', label: 'Subscription Management', icon: <CreditCard size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: true, platformOnly: true },
   { id: 'employees', label: 'Employees', icon: <UsersIcon size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'employees', inMatrix: true },
   // Employee Cards is a sub-feature of Employees — it is governed by the
   // `employees` permission everywhere in the app, so it shares that key here.

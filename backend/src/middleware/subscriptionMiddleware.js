@@ -1,6 +1,14 @@
 const prisma = require('../config/prisma');
 const { isModuleLocked } = require('../services/planEntitlements');
 
+// Load the CompanySubscription record ONLY for a Custom plan (its per-company
+// module/report allow-lists drive enforcement). Standard plans resolve entirely
+// from Company.plan + the code map, so we skip the extra query for them.
+async function subscriptionForPlan(companyId, plan) {
+  if (String(plan) !== 'Custom') return null;
+  return prisma.companySubscription.findUnique({ where: { companyId: Number(companyId) } }).catch(() => null);
+}
+
 // ===========================================================================
 //  SUBSCRIPTION / PLAN GATE.
 //
@@ -43,7 +51,8 @@ function requirePlanModule(permKey) {
       // No resolvable company → let downstream auth/permission guards decide.
       if (!company) return next();
 
-      if (isModuleLocked(company.plan, permKey)) {
+      const sub = await subscriptionForPlan(company.id, company.plan);
+      if (isModuleLocked(company.plan, permKey, sub)) {
         return res.status(403).json({
           code: 'PLAN_UPGRADE_REQUIRED',
           module: permKey,
@@ -59,4 +68,4 @@ function requirePlanModule(permKey) {
   };
 }
 
-module.exports = { requirePlanModule, resolveCompany };
+module.exports = { requirePlanModule, resolveCompany, subscriptionForPlan };

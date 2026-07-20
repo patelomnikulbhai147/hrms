@@ -25,7 +25,8 @@ const ComplianceReports = React.lazy(() => import('@/pages/ComplianceReports').t
 const CustomReportBuilder = React.lazy(() => import('@/pages/CustomReportBuilder').then(m => ({ default: m.CustomReportBuilder })));
 const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
-const Billing = React.lazy(() => import('@/pages/Billing').then(m => ({ default: m.Billing })));
+const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionManagement').then(m => ({ default: m.SubscriptionManagement })));
+const SubscriptionManage = React.lazy(() => import('@/pages/SubscriptionManage').then(m => ({ default: m.SubscriptionManage })));
 const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
 const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
 const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ default: m.TaskManager })));
@@ -35,9 +36,12 @@ const CompanyProfile = React.lazy(() => import('@/pages/CompanyProfile').then(m 
 const CompanyEdit = React.lazy(() => import('@/pages/CompanyEdit').then(m => ({ default: m.CompanyEdit })));
 const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.Login })));
 const CompanyRegistration = React.lazy(() => import('@/pages/CompanyRegistration').then(m => ({ default: m.CompanyRegistration })));
+const OnboardingWelcome = React.lazy(() => import('@/pages/OnboardingWelcome').then(m => ({ default: m.OnboardingWelcome })));
+const PlansView = React.lazy(() => import('@/pages/PlansView').then(m => ({ default: m.PlansView })));
 import type { UserAccount, AppModules } from '@/pages/Login';
-import { isModuleLocked, isPageLocked } from '@/config/planEntitlements';
+import { moduleLockedFor, pageLockedFor } from '@/config/planEntitlements';
 import { PremiumRequiredScreen } from '@/components/subscription/PremiumLock';
+import { EmployeeLimitDialog } from '@/components/subscription/EmployeeLimitDialog';
 import { authStorage } from '@/utils/authStorage';
 import { safeSetJSON, pruneLargeLegacyCaches } from '@/utils/safeStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from '@/context/PermissionContext';
@@ -85,7 +89,9 @@ const pageTitles: Record<PageId, string> = {
   reports: 'Reports',
   'custom-report-builder': 'Custom Report Builder',
   settings: 'Settings',
-  billing: 'Billing & Subscriptions',
+  billing: 'Subscription Management',
+  'subscription-manage': 'Manage Subscription',
+  plans: 'Subscription Plans',
   users: 'User Management',
   tasks: 'Task Manager',
   tenders: 'Tender Management',
@@ -102,7 +108,7 @@ const pageTitles: Record<PageId, string> = {
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
   'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'company-profile', 'company-edit', 'communication', 'notifications', 'select-workspace',
+  'company-profile', 'company-edit', 'subscription-manage', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -545,6 +551,12 @@ export default function App() {
   // Unauthenticated view: sign-in vs the public company-registration wizard.
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [isHydrating, setIsHydrating] = useState(true);
+  // First-login onboarding: set true once the user makes a choice, so the gate
+  // hides immediately even before the /auth/me refresh confirms it server-side.
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // Employee-limit upgrade dialog — populated by the global 'hrms:employee-limit'
+  // event that apiClient fires on any create hitting the plan cap.
+  const [limitInfo, setLimitInfo] = useState<any | null>(null);
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -657,10 +669,19 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     
     const latestProfile = userAccounts.find(u => u.id === storedAuthProfile.id) || storedAuthProfile;
     const computedAccess = getAccessibleWorkspaceIds(latestProfile, companies);
-    
+    const sp = storedAuthProfile as any;
+    const lp = latestProfile as any;
+
     return {
       ...latestProfile,
-      accessibleCompanyIds: computedAccess
+      accessibleCompanyIds: computedAccess,
+      // Subscription entitlements come from login/getMe (NOT the users list), so
+      // preserve them even when the hydrated users row overrides the profile —
+      // otherwise plan gating + live plan-change refresh would lose them.
+      plan: sp.plan ?? lp.plan,
+      lockedModules: sp.lockedModules ?? lp.lockedModules,
+      lockedPages: sp.lockedPages ?? lp.lockedPages,
+      allowedReports: sp.allowedReports !== undefined ? sp.allowedReports : lp.allowedReports,
     };
   }, [storedAuthProfile, userAccounts, companies]);
 
@@ -681,6 +702,13 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     const seg = window.location.pathname.replace(/^\/+/, '').split('/');
     if (seg[0] === 'company-edit' && seg[1]) return decodeURIComponent(seg[1]);
     return localStorage.getItem('hrms_edit_company_id');
+  });
+  // Full-page "Manage Subscription" detail (/subscription-manage/:companyId) —
+  // same dedicated-route pattern as company-edit.
+  const [manageSubId, setManageSubId] = useState<string | null>(() => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    if (seg[0] === 'subscription-manage' && seg[1]) return decodeURIComponent(seg[1]);
+    return localStorage.getItem('hrms_manage_sub_id');
   });
   const [role, setRole] = useState<Role>(() => {
     const rawProfile = authStorage.get('hrms_profile');
@@ -930,6 +958,18 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
+  const handleManageSubscription = (companyId: string | number) => {
+    const id = String(companyId);
+    setManageSubId(id);
+    localStorage.setItem('hrms_manage_sub_id', id);
+    setCurrentPage('subscription-manage');
+    localStorage.setItem('hrms_current_page', 'subscription-manage');
+    const path = '/subscription-manage/' + encodeURIComponent(id);
+    if (window.location.pathname !== path) {
+      window.history.pushState({ page: 'subscription-manage', companyId: id }, '', path);
+    }
+  };
+
   // Browser Back/Forward → switch the in-app page (never exit the app).
   useEffect(() => {
     const onPop = () => {
@@ -942,6 +982,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           const id = decodeURIComponent(seg[1]);
           setEditCompanyId(id);
           localStorage.setItem('hrms_edit_company_id', id);
+        }
+        if (p === 'subscription-manage' && seg[1]) {
+          const id = decodeURIComponent(seg[1]);
+          setManageSubId(id);
+          localStorage.setItem('hrms_manage_sub_id', id);
         }
         setCurrentPage(p);
         localStorage.setItem('hrms_current_page', p);
@@ -962,6 +1007,54 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       window.history.replaceState({ page: currentPage }, '', '/' + currentPage);
     }
   }, [currentPage, isAuthenticated]);
+
+  // ── Live subscription refresh (no logout) ─────────────────────────────────
+  // A Super Admin changing a company's plan applies immediately server-side; the
+  // company's logged-in users pick it up here by re-fetching /auth/me on window
+  // focus and every 2 min, then merging the fresh entitlements into the profile.
+  useEffect(() => {
+    if (!isAuthenticated || !storedAuthProfile || storedAuthProfile.role === 'Super Admin') return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const me: any = await api.auth.getMe();
+        if (cancelled || !me) return;
+        setStoredAuthProfile((prev: any) => {
+          if (!prev) return prev;
+          const same = prev.plan === me.plan
+            && JSON.stringify(prev.lockedModules) === JSON.stringify(me.lockedModules)
+            && JSON.stringify(prev.lockedPages) === JSON.stringify(me.lockedPages)
+            && JSON.stringify(prev.allowedReports) === JSON.stringify(me.allowedReports)
+            && prev.employeeLimit === me.employeeLimit
+            && prev.employeeCount === me.employeeCount
+            && JSON.stringify(prev.onboarding) === JSON.stringify(me.onboarding);
+          if (same) return prev;
+          // Also carry the live seat usage + onboarding ledger so the Add-Employee
+          // gate and the "current / limit" display update with NO logout — e.g.
+          // right after a Super Admin upgrades the company's plan.
+          const merged = { ...prev, plan: me.plan, lockedModules: me.lockedModules, lockedPages: me.lockedPages, allowedReports: me.allowedReports, employeeLimit: me.employeeLimit, employeeCount: me.employeeCount, onboarding: me.onboarding };
+          try { authStorage.set('hrms_profile', JSON.stringify(merged)); } catch (_) { /* ignore */ }
+          return merged;
+        });
+      } catch (_) { /* transient — ignore */ }
+    };
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+    const timer = setInterval(refresh, 120000);
+    refresh();
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, storedAuthProfile?.id]);
+
+  // ── Employee-limit upgrade dialog ─────────────────────────────────────────
+  // apiClient broadcasts 'hrms:employee-limit' whenever ANY create hits the plan
+  // cap (add / import / bulk / temp-convert), so one listener covers every path.
+  useEffect(() => {
+    const onLimit = (e: any) => setLimitInfo(e?.detail || { plan: (authProfile as any)?.plan, limit: (authProfile as any)?.employeeLimit, current: (authProfile as any)?.employeeCount });
+    window.addEventListener('hrms:employee-limit', onLimit as any);
+    return () => window.removeEventListener('hrms:employee-limit', onLimit as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authProfile]);
 
   // Record whether the entered workspace is a company or a branch. Branch ids
   // overlap company ids in the DB, so this hint is what lets the scoping layer
@@ -1186,7 +1279,41 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     );
   }
 
+  // ── First-login onboarding gate ───────────────────────────────────────────
+  // A brand-new company (onboarding not yet completed) sees the welcome screen
+  // once, before the dashboard. Company accounts only (never Super Admin). On
+  // choice, we refresh /auth/me so onboarding + seat usage update with no logout.
+  const onboardingState = (authProfile as any).onboarding;
+  const needsOnboarding =
+    authProfile.role !== 'Super Admin' &&
+    onboardingState && onboardingState.onboardingCompleted === false &&
+    !onboardingDismissed;
+  if (needsOnboarding) {
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
+        <OnboardingWelcome
+          userName={(authProfile as any).name}
+          onDone={async () => {
+            setOnboardingDismissed(true);
+            setCurrentPage('dashboard');
+            try { const me: any = await api.auth.getMe(); if (me) setStoredAuthProfile((prev: any) => prev ? { ...prev, ...me } : prev); } catch (_) { /* ignore */ }
+          }}
+        />
+      </React.Suspense>
+    );
+  }
+
   const renderPage = () => {
+    // Company-facing View Plans screen — reachable from the upgrade dialog. Not a
+    // permission-matrix page, so handled up-front before the RBAC/plan gates.
+    if (currentPage === 'plans') {
+      return (
+        <React.Suspense fallback={<div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
+          <PlansView onBack={() => handleNavigate('dashboard')} />
+        </React.Suspense>
+      );
+    }
+
     // Employee Cards is gated on the Employees module permission (it has no
     // dedicated permission-matrix row).
     const permPage = (currentPage === 'employee-cards' ? 'employees'
@@ -1214,10 +1341,18 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     const currentPlan = (authProfile as any).plan
       || companies.find(c => String(c.id) === String(activeCompanyId))?.plan
       || '';
+    // Authoritative, Custom-aware entitlement view of the current user (backend
+    // lists win; the plan-keyed mirror is the fallback with the company plan).
+    const ent = {
+      plan: currentPlan,
+      lockedModules: (authProfile as any).lockedModules,
+      lockedPages: (authProfile as any).lockedPages,
+      allowedReports: (authProfile as any).allowedReports,
+    };
     // Blocked when the module's permission key is locked OR the specific page id is
     // locked (e.g. Custom Report Builder, which rides on the now-unlocked `reports`
     // key but is premium in its own right).
-    const planBlocked = isModuleLocked(currentPlan, permPage) || isPageLocked(currentPlan, currentPage);
+    const planBlocked = moduleLockedFor(ent, permPage) || pageLockedFor(ent, currentPage);
     if (permissionRole !== 'Super Admin' && authProfile.role !== 'Super Admin' && planBlocked) {
       return (
         <PremiumRequiredScreen
@@ -1365,21 +1500,22 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           />
         );
       case 'billing':
-        return (
-          <Billing
-            companies={companies}
-            onUpdateCompanies={handleUpdateCompanies}
-            plans={plans}
-            onUpdatePlans={handleUpdatePlans}
-            payments={payments}
-            onUpdatePayments={handleUpdatePayments}
-            employees={employees}
-            onUpdateEmployees={handleUpdateEmployees}
-            userAccounts={userAccounts}
-            onUpdateAccounts={handleUpdateAccounts}
-            onStartMasquerade={handleStartMasquerade}
-          />
-        );
+        // Super Admin Subscription Management (redesigned) — replaces the old
+        // Billing / SaaS Subscriptions page.
+        return <SubscriptionManagement onManage={handleManageSubscription} />;
+      case 'subscription-manage':
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <ShieldAlert className="w-12 h-12 mb-4" style={{ color: '#dc2626' }} />
+              <h2 className="text-2xl font-bold mb-2 text-slate-900">Access Denied</h2>
+              <p className="max-w-md text-slate-500">Subscription management is available to Super Admin accounts only.</p>
+            </div>
+          );
+        }
+        return manageSubId
+          ? <SubscriptionManage companyId={manageSubId} onBack={() => handleNavigate('billing')} onSaved={hydrateAll} />
+          : <SubscriptionManagement onManage={handleManageSubscription} />;
       case 'employees':
         return (
           <Employees
@@ -1746,6 +1882,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Subscription employee-limit reached → upgrade dialog (global). */}
+      <EmployeeLimitDialog
+        open={!!limitInfo}
+        plan={limitInfo?.plan}
+        limit={limitInfo?.limit}
+        current={limitInfo?.current}
+        onClose={() => setLimitInfo(null)}
+        onUpgrade={() => { setLimitInfo(null); handleNavigate('plans'); }}
+        onViewPlans={() => { setLimitInfo(null); handleNavigate('plans'); }}
+      />
 
     </div>
     </PermissionProvider>

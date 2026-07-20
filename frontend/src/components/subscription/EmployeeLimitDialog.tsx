@@ -1,0 +1,58 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// EMPLOYEE LIMIT REACHED — upgrade dialog.
+// Shown whenever a company hits its subscription employee cap (FREE = 30) on any
+// create path. Buttons: Upgrade Plan · View Plans · Cancel. Portaled to
+// document.body so App's page-transform wrapper can't clip the fixed overlay.
+// ─────────────────────────────────────────────────────────────────────────────
+import React from 'react';
+import { createPortal } from 'react-dom';
+import { AlertTriangle, Crown, ArrowRight, X } from 'lucide-react';
+
+interface Props {
+  open: boolean;
+  plan?: string;
+  limit?: number | null;
+  current?: number | null;
+  onUpgrade: () => void;
+  onViewPlans: () => void;
+  onClose: () => void;
+}
+
+export const EmployeeLimitDialog: React.FC<Props> = ({ open, plan = 'FREE', limit = 30, current, onUpgrade, onViewPlans, onClose }) => {
+  if (!open) return null;
+  const planLabel = (plan || 'FREE').toUpperCase();
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-[460px] bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 rounded-lg p-1"><X size={18} /></button>
+        <div className="px-7 pt-8 pb-2 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle size={30} className="text-amber-500" />
+          </div>
+          <h2 className="text-[20px] font-extrabold text-slate-900">Employee Limit Reached</h2>
+          <p className="text-[14px] text-slate-500 mt-2 leading-relaxed">
+            Your <span className="font-bold text-slate-700">{planLabel}</span> plan allows up to{' '}
+            <span className="font-bold text-slate-700">{limit ?? 30}</span> employees
+            {typeof current === 'number' ? <> (you have <span className="font-bold text-slate-700">{current}</span>)</> : null}.
+            <br />Upgrade your subscription to continue adding employees and unlock premium features.
+          </p>
+        </div>
+        <div className="px-7 py-6 flex flex-col gap-2.5">
+          <button onClick={onUpgrade} className="h-12 rounded-2xl bg-[#16284A] hover:bg-[#20365C] text-white text-[15px] font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+            <Crown size={17} /> Upgrade Plan
+          </button>
+          <button onClick={onViewPlans} className="h-12 rounded-2xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-[15px] font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+            View Plans <ArrowRight size={16} />
+          </button>
+          <button onClick={onClose} className="h-11 rounded-2xl text-slate-500 hover:text-slate-700 text-[14px] font-semibold transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+};
+
+export default EmployeeLimitDialog;

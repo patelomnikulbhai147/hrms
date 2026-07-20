@@ -16,7 +16,7 @@ const crypto = require('crypto');
 const prisma = require('../config/prisma');
 const { sendOtpEmail } = require('../services/emailService');
 const { provisionFreeCompany } = require('../services/companyProvisioning');
-const { getLockedModules } = require('../services/planEntitlements');
+const { getLockedModules, getLockedPages, getAllowedReports, getEntitlements } = require('../services/planEntitlements');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const REG_PURPOSE = 'company_registration';
@@ -194,6 +194,14 @@ exports.registerCompanyVerify = async (req, res) => {
     const safeUser = toSafeUser(created.head);
     safeUser.plan = created.company.plan;
     safeUser.lockedModules = getLockedModules(created.company.plan);
+    safeUser.lockedPages = getLockedPages(created.company.plan);
+    safeUser.allowedReports = getAllowedReports(created.company.plan);
+    // A brand-new FREE workspace: seat usage + the un-onboarded ledger, so the
+    // first-login onboarding gate shows immediately (no /auth/me round-trip flash).
+    const lim = getEntitlements(created.company.plan).limits || {};
+    safeUser.employeeLimit = (lim.maxEmployees == null || lim.maxEmployees < 0) ? null : lim.maxEmployees;
+    safeUser.employeeCount = 0;
+    safeUser.onboarding = { firstLoginCompleted: false, onboardingCompleted: false, usedSampleWorkspace: false, sampleDataRemoved: false, choice: null };
 
     return res.status(201).json({
       message: 'Welcome to ZeniaHR! Your free workspace has been created.',

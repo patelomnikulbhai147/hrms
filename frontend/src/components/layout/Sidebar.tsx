@@ -8,7 +8,7 @@ import { ZeniaLogo, BRAND_NAME } from '@/components/brand/ZeniaLogo';
 import { CompanyBrand } from '@/components/brand/CompanyBrand';
 import { resolveWorkspaceBranding } from '@/services/brandingService';
 import { MODULE_REGISTRY, type PageId } from '@/config/moduleRegistry';
-import { isModuleLocked, isPageLocked } from '@/config/planEntitlements';
+import { moduleLockedFor, pageLockedFor } from '@/config/planEntitlements';
 import { UpgradeRequiredDialog } from '@/components/subscription/PremiumLock';
 import type { Role } from '@/data/mockData';
 
@@ -55,16 +55,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const currentPlan = (authProfile as any)?.plan
     || companies?.find(c => String(c.id) === String(activeCompanyId))?.plan
     || '';
-  // A nav item is locked when EVERY permission key that governs it is locked on the
-  // plan (an aggregate like Finance & Compliance is locked only if both its
-  // loans + compliance keys are).
+  // Authoritative, Custom-aware entitlement view (backend lists win; the plan-keyed
+  // mirror + company plan are the fallback).
+  const ent = {
+    plan: currentPlan,
+    lockedModules: (authProfile as any)?.lockedModules,
+    lockedPages: (authProfile as any)?.lockedPages,
+    allowedReports: (authProfile as any)?.allowedReports,
+  };
+  // A nav item is locked when EVERY permission key that governs it is locked (an
+  // aggregate like Finance & Compliance is locked only if both loans + compliance
+  // are), or the page id itself is locked (e.g. Custom Report Builder).
   const isItemLocked = (item: (typeof MODULE_REGISTRY)[number]): boolean => {
     if (planImmune) return false;
-    // A page can be locked in its own right (e.g. Custom Report Builder shares the
-    // now-unlocked `reports` permission key but is premium).
-    if (isPageLocked(currentPlan, item.id)) return true;
+    if (pageLockedFor(ent, item.id)) return true;
     const permKeys = (item.anyPermission ?? [item.permission]) as AppModules[];
-    return permKeys.every(k => isModuleLocked(currentPlan, k));
+    return permKeys.every(k => moduleLockedFor(ent, k as string));
   };
 
   const branding = React.useMemo(

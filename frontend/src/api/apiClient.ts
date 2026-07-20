@@ -93,6 +93,12 @@ async function apiFetch(url: string, options?: RequestInit) {
         authStorage.broadcastLogout('expired');
         try { window.dispatchEvent(new CustomEvent('hrms:unauthorized')); } catch (_) { /* ignore */ }
       }
+      // Subscription employee cap hit on ANY create path (add / import / bulk /
+      // temp-convert). Broadcast once so App can show the upgrade dialog no matter
+      // which screen made the call — a single, comprehensive enforcement surface.
+      if (code === 'EMPLOYEE_LIMIT_REACHED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
+      }
       const err: any = new Error(msg);
       err.status = res.status;
       err.code = code;
@@ -985,6 +991,73 @@ export const api = {
         body: JSON.stringify(data)
       });
     }
+  },
+
+  // First-login onboarding (company accounts): welcome gate + sample workspace,
+  // plus a company-readable plan catalog for the View Plans screen.
+  onboarding: {
+    status: async () => { return await apiFetch(`${BASE_URL}/onboarding/status`, { headers: getHeaders() }); },
+    choose: async (choice: 'blank' | 'sample') => { return await apiFetch(`${BASE_URL}/onboarding/choose`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ choice }) }); },
+    plans: async () => { return await apiFetch(`${BASE_URL}/onboarding/plans`, { headers: getHeaders() }); },
+    removeSample: async () => { return await apiFetch(`${BASE_URL}/onboarding/remove-sample`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
+  },
+
+  // Super Admin Subscription Management.
+  subscriptions: {
+    dashboard: async () => { return await apiFetch(`${BASE_URL}/subscriptions/dashboard`, { headers: getHeaders() }); },
+    catalog: async () => { return await apiFetch(`${BASE_URL}/subscriptions/catalog`, { headers: getHeaders() }); },
+    list: async () => { return await apiFetch(`${BASE_URL}/subscriptions`, { headers: getHeaders() }); },
+    get: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}`, { headers: getHeaders() }); },
+    update: async (companyId: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    suspend: async (companyId: string | number, reason?: string) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/suspend`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }); },
+    activate: async (companyId: string | number, reason?: string) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/activate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }); },
+    history: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/history`, { headers: getHeaders() }); },
+    allHistory: async () => { return await apiFetch(`${BASE_URL}/subscriptions/history/all`, { headers: getHeaders() }); },
+    billing: async () => { return await apiFetch(`${BASE_URL}/subscriptions/billing/all`, { headers: getHeaders() }); },
+  },
+
+  // Editable plan master configuration (Subscription Plans tab) — the source of
+  // truth for what each plan unlocks. Editing here re-permissions companies live.
+  planConfig: {
+    list: async () => { return await apiFetch(`${BASE_URL}/plan-config`, { headers: getHeaders() }); },
+    metadata: async () => { return await apiFetch(`${BASE_URL}/plan-config/metadata`, { headers: getHeaders() }); },
+    getSettings: async () => { return await apiFetch(`${BASE_URL}/plan-config/settings`, { headers: getHeaders() }); },
+    updateSettings: async (data: any) => { return await apiFetch(`${BASE_URL}/plan-config/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/plan-config`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (key: string, data: any) => { return await apiFetch(`${BASE_URL}/plan-config/${encodeURIComponent(key)}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (key: string) => { return await apiFetch(`${BASE_URL}/plan-config/${encodeURIComponent(key)}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
+  // Super Admin Subscription Billing — real GST invoices per company subscription.
+  subscriptionInvoices: {
+    dashboard: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/dashboard`, { headers: getHeaders() }); },
+    reports: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/reports`, { headers: getHeaders() }); },
+    list: async (params: Record<string, any> = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '' && v !== 'all') q.append(k, String(v)); });
+      const qs = q.toString();
+      return await apiFetch(`${BASE_URL}/subscription-invoices${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+    },
+    get: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { headers: getHeaders() }); },
+    companyBilling: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/company/${companyId}`, { headers: getHeaders() }); },
+    preview: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    generate: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    setStatus: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    payments: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { headers: getHeaders() }); },
+    addPayment: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    duplicate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders() }); },
+    regenerate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/regenerate`, { method: 'POST', headers: getHeaders() }); },
+    renew: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/renew`, { method: 'POST', headers: getHeaders() }); },
+    email: async (id: string | number, data: any = {}) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // Authenticated fetch of the server-rendered A4 invoice HTML (for on-screen
+    // preview via iframe srcDoc + print/PDF). Returns the raw HTML string.
+    fetchHtml: async (id: string | number): Promise<string> => {
+      const r = await fetch(`${BASE_URL}/subscription-invoices/${id}/html`, { headers: getHeaders() });
+      if (!r.ok) throw new Error('Failed to load invoice document');
+      return await r.text();
+    },
   },
 
   payments: {

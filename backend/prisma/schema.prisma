@@ -71,7 +71,7 @@ model Company {
   status                      String              @default("Active")
   accountStatus               String              @default("Active")
   paymentStatus               String              @default("Paid")
-  plan                        String              @default("Starter")
+  plan                        String              @default("Free")
   employeeCount               Int                 @default(0)
   joinDate                    DateTime            @default(now())
   logo                        String?             @db.LongText
@@ -79,6 +79,11 @@ model Company {
   isHeadOffice                Boolean             @default(true)
   parentCompanyId             Int?
   offboardingState            Json?
+  // First-login onboarding ledger (per head-office company):
+  //   { firstLoginCompleted, onboardingCompleted, usedSampleWorkspace,
+  //     sampleDataRemoved, choice, completedAt }
+  // Stored as JSON (like offboardingState) — barely counts toward the row limit.
+  onboardingState             Json?
   createdAt                   DateTime            @default(now())
   updatedAt                   DateTime            @updatedAt
   basicPercent                Float?
@@ -1373,6 +1378,113 @@ model SubscriptionBillingAudit {
   createdAt   DateTime @default(now())
 
   @@index([companyId])
+}
+
+// ── Subscription Management (Super Admin) ────────────────────────────────────
+// ONE row per company = its live subscription. Additive & isolated (scalar
+// companyId, no relations). The plan tier is ALSO mirrored onto Company.plan so
+// the existing permission engine (planEntitlements + subscriptionMiddleware)
+// stays the single enforcement source of truth. Pricing is per-employee-per-
+// billing-period, derived from the plan tier + cycle (code map) EXCEPT for
+// Custom, whose price + entitlement allow-lists are stored here.
+model CompanySubscription {
+  id               Int       @id @default(autoincrement())
+  companyId        Int       @unique
+  plan             String    @default("Free") // Free / Starter / Professional / Enterprise / Custom
+  billingCycle     String    @default("Quarterly") // Quarterly / Yearly
+  status           String    @default("Active") // Active / Suspended / Expired / Cancelled
+  pricePerEmployee Float? // Custom (or a per-company override); standard tiers derive from the code map
+  discountPercent  Float     @default(0)
+  renewalDate      DateTime?
+  // Custom-plan overrides (null → derive from the plan's code-map defaults):
+  employeeLimit    Int?
+  branchLimit      Int?
+  storageMB        Int?
+  adminUserLimit   Int?
+  customModules    Json? // Custom: allowed module permission keys
+  customReports    Json? // Custom: allowed report keys (or "all")
+  customFeatures   Json? // Custom: forward-looking feature flags
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+// Append-only history of subscription/plan changes (Super Admin audit trail).
+model SubscriptionHistory {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  companyName String?
+  changedBy   String?
+  oldPlan     String?
+  newPlan     String?
+  oldCycle    String?
+  newCycle    String?
+  oldAmount   Float?
+  newAmount   Float?
+  reason      String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+}
+
+// ── Subscription Billing (Super Admin) ───────────────────────────────────────
+// A REAL GST invoice per company subscription billing period. Additive & isolated
+// (scalar companyId, no relations) — distinct from the company-side Invoice model
+// (companies invoicing THEIR customers). Every invoice is linked to a company +
+// plan + headcount + cycle and carries a full GST breakdown. Snapshots company
+// identity so a historical invoice never changes if the company later edits.
+model SubscriptionInvoice {
+  id               Int       @id @default(autoincrement())
+  invoiceNo        String    @unique
+  companyId        Int
+  companyName      String?
+  companyHead      String?
+  companyEmail     String?
+  billingAddress   String?   @db.Text
+  gstin            String?
+  plan             String    @default("Free")
+  billingCycle     String    @default("Quarterly") // Quarterly / Yearly
+  periodStart      DateTime?
+  periodEnd        DateTime?
+  employeeCount    Int       @default(0)
+  pricePerEmployee Float     @default(0)
+  subtotal         Float     @default(0)
+  discountPercent  Float     @default(0)
+  discountAmount   Float     @default(0)
+  gstPercent       Float     @default(0)
+  gstAmount        Float     @default(0)
+  cgst             Float     @default(0)
+  sgst             Float     @default(0)
+  igst             Float     @default(0)
+  interState       Boolean   @default(false)
+  grandTotal       Float     @default(0)
+  amountPaid       Float     @default(0)
+  status           String    @default("Pending") // Draft/Pending/Paid/Overdue/Cancelled/Refunded
+  invoiceDate      DateTime  @default(now())
+  dueDate          DateTime?
+  notes            String?   @db.Text
+  terms            String?   @db.Text
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+}
+
+// Payment(s) recorded against a subscription invoice (partial payments allowed).
+model SubscriptionInvoicePayment {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  companyId   Int?
+  amount      Float
+  method      String? // Cash / Bank Transfer / UPI / Card / Cheque / Other
+  referenceNo String?
+  paidAt      DateTime @default(now())
+  collectedBy String?
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 // ── Task Manager ─────────────────────────────────────────────────────────────

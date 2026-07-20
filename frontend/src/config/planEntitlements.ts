@@ -59,10 +59,14 @@ const FREE_ALLOWED_REPORTS = [
 ];
 
 export const PLAN_ENTITLEMENTS: Record<string, PlanEntitlements> = {
-  Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 25, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
+  Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 30, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
   Starter: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 3, storageMB: 5120 } },
   Professional: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 1000, maxBranches: 5, maxAdminUsers: 15, storageMB: 51200 } },
   Enterprise: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: -1, maxBranches: 999, maxAdminUsers: -1, storageMB: -1 } },
+  // Custom's real entitlements are per-company and come from the backend
+  // (authProfile.lockedModules/lockedPages/allowedReports). This mirror entry is
+  // only a fallback → unrestricted. Prefer the *For(user, …) helpers below.
+  Custom: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: -1, maxBranches: -1, maxAdminUsers: -1, storageMB: -1 } },
 };
 
 // Unknown / unset plan → UNRESTRICTED (never accidentally lock a paid customer).
@@ -92,3 +96,28 @@ export const hasReportRestrictions = (plan?: string | null): boolean =>
 /** Does this plan lock ANY module (i.e. is it a restricted/free tier)? */
 export const isRestrictedPlan = (plan?: string | null): boolean =>
   getEntitlements(plan).locked.length > 0 || getEntitlements(plan).allowedReports !== null;
+
+// ── Authoritative, per-user helpers (Custom-aware) ───────────────────────────
+// The backend attaches the resolved entitlements to the logged-in user on
+// login/getMe (plan + lockedModules/lockedPages/allowedReports). Those are the
+// source of truth (they honor CUSTOM per-company config); the plan-keyed mirror
+// above is only a fallback when the backend didn't supply them (stale session).
+export interface EntitledUser {
+  plan?: string;
+  lockedModules?: string[];
+  lockedPages?: string[];
+  allowedReports?: string[] | null;
+}
+
+export const moduleLockedFor = (user: EntitledUser | null | undefined, permKey: string): boolean =>
+  Array.isArray(user?.lockedModules) ? user!.lockedModules!.includes(permKey) : isModuleLocked(user?.plan, permKey as LockKey);
+
+export const pageLockedFor = (user: EntitledUser | null | undefined, pageId: string): boolean =>
+  Array.isArray(user?.lockedPages) ? user!.lockedPages!.includes(pageId) : isPageLocked(user?.plan, pageId);
+
+export const reportAllowedForUser = (user: EntitledUser | null | undefined, reportKey: string): boolean => {
+  const allowed = user?.allowedReports;
+  if (allowed === undefined) return isReportAllowed(user?.plan, reportKey); // no backend data → mirror
+  if (allowed === null) return true;                                        // null = all reports
+  return allowed.includes(reportKey);
+};

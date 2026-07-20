@@ -270,6 +270,13 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [importOpen, setImportOpen] = useState(false);
   const [importedRows, setImportedRows] = useState<any[]>([]);
   const [importLogs, setImportLogs] = useState<string[]>([]);
+  // Honest post-commit outcome (created/updated/skipped/failed + per-row log).
+  // Non-null → the importer modal shows the completion summary instead of a toast.
+  const [importResult, setImportResult] = useState<{
+    total: number; createdN: number; updatedN: number; skippedN: number; failedN: number;
+    results: { row: number; name: string; employeeId?: string | null; status: string; reason?: string }[];
+    limitReached?: boolean;
+  } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -780,6 +787,22 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
   // Auto-generate employee code on add open
+  // Proactive subscription-cap guard: before opening the Add form, check seat
+  // capacity. If the plan is full, show the upgrade dialog (via the same global
+  // event apiClient fires) instead of the form. The backend still enforces the
+  // cap on submit, so this is a UX shortcut, not the security boundary.
+  const guardCapacityThenAdd = async (open: () => void) => {
+    try {
+      const s: any = await api.onboarding.status();
+      const cap = s?.capacity;
+      if (cap && cap.limit != null && cap.remaining != null && cap.remaining <= 0) {
+        window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: { plan: cap.plan, limit: cap.limit, current: cap.current } }));
+        return;
+      }
+    } catch (_) { /* company-scope only / transient — let the submit-time 403 handle it */ }
+    open();
+  };
+
   const handleStartAdd = () => {
     const initialBranch = isBranchWorkspace ? (currentComp?.branchName || currentComp?.name || '') : (branchOptions[0] || '');
 
@@ -1748,16 +1771,58 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     try {
       const response = await api.employees.bulkCreate(importedRows);
-      onUpdateEmployees([...response.employees, ...employees]);
+      const createdN = Number(response.createdCount ?? response.count ?? 0);
+      const updatedN = Number(response.mergedCount ?? response.updatedCount ?? 0);
+      const skippedN = Number(response.skippedCount ?? 0);
+      const failedN = Number(response.failedCount ?? 0);
+
+      // AUTO-REFRESH from the database (source of truth) so BOTH newly-created and
+      // updated employees appear immediately and every count reflects reality.
+      // We re-fetch the whole roster instead of trusting the client-side array —
+      // this is what makes the list, counts and dashboard update without a manual
+      // reload. Branch/department/headcount are synced server-side during import.
+      await refreshAfterBiometric();
+
+      setImportResult({
+        total: Number(response.total ?? importedRows.length),
+        createdN, updatedN, skippedN, failedN,
+        results: Array.isArray(response.results) ? response.results : [],
+        limitReached: !!response.limitReached,
+      });
       setImportedRows([]);
-      setImportLogs([]);
-      setImportOpen(false);
-      ui.toast.success(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
+
+      // HONEST messaging — NEVER claim success when nothing was committed.
+      if (createdN + updatedN === 0) {
+        ui.toast.error(`Import completed but NO employees were added (${skippedN} skipped, ${failedN} failed). See the import log.`);
+      } else if (skippedN + failedN > 0) {
+        ui.toast.warning(`Import completed: ${createdN} added, ${updatedN} updated, ${skippedN} skipped, ${failedN} failed.`);
+      } else {
+        ui.toast.success(`Import completed: ${createdN} added${updatedN ? `, ${updatedN} updated` : ''} — all committed to the database.`);
+      }
+      if (response.limitReached) {
+        ui.toast.error('Some rows were skipped: the plan employee limit was reached. Upgrade the subscription to add more.');
+      }
     } catch (error) {
       console.error('Bulk commit failed:', error);
       ui.toast.error(getApiErrorMessage(error, 'Could not save the imported employees.'));
     }
   };
+
+  // Build + download a per-row CSV import log (Row, Name, Employee Code, Status, Reason).
+  const downloadImportLog = () => {
+    const rows = importResult?.results || [];
+    const head = 'Row,Employee Name,Employee Code,Status,Reason';
+    const body = rows.map((r) => [r.row, r.name, r.employeeId || '', r.status, r.reason || '']
+      .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([`${head}\n${body}`], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `employee_import_log_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // Reset the importer to a clean state (used by the completion screen's Done/close).
+  const resetImporter = () => { setImportResult(null); setImportedRows([]); setImportLogs([]); setImportOpen(false); };
 
 
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
@@ -1843,9 +1908,9 @@ export const Employees: React.FC<EmployeesProps> = ({
               </Button>
               {addMenuOpen && (
                 <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-                  <button onClick={() => { setAddMenuOpen(false); handleStartAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-brand-50 hover:text-brand-700"><UserPlus size={15} className="text-brand-600" /> Add Full Employee</button>
+                  <button onClick={() => { setAddMenuOpen(false); guardCapacityThenAdd(handleStartAdd); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-brand-50 hover:text-brand-700"><UserPlus size={15} className="text-brand-600" /> Add Full Employee</button>
                   <div className="h-px bg-slate-100" />
-                  <button onClick={() => { setAddMenuOpen(false); openQuickAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
+                  <button onClick={() => { setAddMenuOpen(false); guardCapacityThenAdd(openQuickAdd); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
                 </div>
               )}
             </div>
@@ -2951,8 +3016,70 @@ export const Employees: React.FC<EmployeesProps> = ({
       />
 
       {/* Bulk Excel Import Dialog */}
-      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Enterprise Excel Importer" size="md">
+      <Modal open={importOpen} onClose={resetImporter} title={importResult ? 'Import Completed' : 'Enterprise Excel Importer'} size={importResult ? 'lg' : 'md'}>
         <div className="space-y-4 text-left text-xs font-sans">
+        {importResult ? (
+          /* ── HONEST completion summary + per-row import log ─────────────── */
+          <div className="space-y-4">
+            <div className={`p-3 rounded-lg border ${importResult.createdN + importResult.updatedN === 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : (importResult.skippedN + importResult.failedN > 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800')}`}>
+              <h4 className="font-bold text-[13px]">
+                {importResult.createdN + importResult.updatedN === 0
+                  ? 'No employees were added'
+                  : 'Employees committed to the database'}
+              </h4>
+              <p className="mt-0.5 text-[11px] leading-relaxed">
+                Processed {importResult.total} row{importResult.total === 1 ? '' : 's'}. The list and counts below reflect the database — they have already been refreshed.
+              </p>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Imported', n: importResult.createdN, cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+                { label: 'Updated', n: importResult.updatedN, cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+                { label: 'Skipped', n: importResult.skippedN, cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+                { label: 'Failed', n: importResult.failedN, cls: 'text-rose-700 bg-rose-50 border-rose-200' },
+              ].map((s) => (
+                <div key={s.label} className={`rounded-lg border p-2.5 text-center ${s.cls}`}>
+                  <div className="text-xl font-extrabold tabular-nums">{s.n}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide">{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {importResult.results.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">Import Log ({importResult.results.length} rows)</p>
+                  <Button size="xs" variant="outline" icon={<Download size={12} />} onClick={downloadImportLog}>Download Log</Button>
+                </div>
+                <div className="border border-slate-200 rounded max-h-64 overflow-y-auto">
+                  <table className="w-full text-[10px] text-slate-700 border-collapse text-left">
+                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold">
+                      <tr><th className="p-1.5">#</th><th className="p-1.5">Employee</th><th className="p-1.5">Code</th><th className="p-1.5">Status</th><th className="p-1.5">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                      {importResult.results.map((r, i) => {
+                        const v: any = r.status === 'created' ? 'green' : r.status === 'updated' ? 'blue' : r.status === 'skipped' ? 'amber' : 'red';
+                        return (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="p-1.5 tabular-nums text-slate-400">{r.row}</td>
+                            <td className="p-1.5 font-semibold">{r.name}</td>
+                            <td className="p-1.5">{r.employeeId || '—'}</td>
+                            <td className="p-1.5"><Badge variant={v}>{r.status}</Badge></td>
+                            <td className="p-1.5 text-slate-500">{r.reason || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setImportResult(null)}>Import Another File</Button>
+              <Button icon={<CheckCircle2 size={12} />} onClick={resetImporter}>Done</Button>
+            </div>
+          </div>
+        ) : (
+        <>
           <div className="p-3 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg">
             <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">Excel Master Import Protocol</h4>
             <p className="mt-1 leading-relaxed">
@@ -3029,6 +3156,8 @@ export const Employees: React.FC<EmployeesProps> = ({
               </div>
             </div>
           )}
+        </>
+        )}
         </div>
       </Modal>
 

@@ -43,10 +43,14 @@ export interface UserAccount {
   employeeId?: string;
   moduleAccess?: Record<AppModules, boolean>;
   permissions?: Record<AppModules, ModulePermissions>;
-  // Subscription plan + locked module keys, attached by the backend on login/getMe.
-  // Drives sidebar locking and route guards for restricted (e.g. FREE) plans.
+  // Subscription plan + resolved entitlements, attached by the backend on
+  // login/getMe. Drives sidebar locking, route guards and report locks — and is
+  // the authoritative source for CUSTOM plans (per-company config). Refreshed
+  // live (getMe on focus/interval) so a plan change applies without re-login.
   plan?: string;
   lockedModules?: string[];
+  lockedPages?: string[];
+  allowedReports?: string[] | null;
 }
 
 interface LoginProps {

@@ -104,6 +104,11 @@ async function provisionFreeCompany({ company = {}, head = {}, branch = {} }) {
     data: { ...companyData, id: await nextEntityId() },
   });
 
+  // FREE subscription record (mirrors Company.plan) — best-effort.
+  prisma.companySubscription.create({
+    data: { companyId: createdCompany.id, plan: 'Free', billingCycle: 'Quarterly', status: 'Active' },
+  }).catch(() => {});
+
   // From here on, roll back the company on any failure so a half-provisioned
   // workspace never lingers (no interactive transaction because nextEntityId /
   // nextBranchNo run their own aggregate queries).
