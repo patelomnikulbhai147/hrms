@@ -22,8 +22,11 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
     
-    // Save to a file via a quick fetch to backend or just alert
-    fetch('http://localhost:5000/api/log-error', {
+    // Best-effort error telemetry. Use the SAME env-driven API base as the rest of
+    // the app (relative "/api" in production via the nginx proxy) — never a
+    // hardcoded localhost, which fails from the browser in production.
+    const apiBase = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+    fetch(`${apiBase}/log-error`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ error: error.toString(), stack: error.stack, info: errorInfo })
