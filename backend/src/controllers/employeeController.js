@@ -5,7 +5,7 @@ const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
-const { prepareEmployeeWriteData } = require('../utils/employeeWriteData');
+const { prepareEmployeeWriteData, applyCreateDefaults, describePrismaWriteError } = require('../utils/employeeWriteData');
 const locationMaster = require('./locationMasterController');
 
 // Remember any custom state/city on an employee payload for dropdown reuse
@@ -243,7 +243,7 @@ exports.createEmployee = async (req, res) => {
 
     // Whitelist to real Employee columns + coerce bonus config fields. `employeeId`
     // was just resolved above, so re-attach it after the pick.
-    const createData = prepareEmployeeWriteData(data);
+    const createData = applyCreateDefaults(prepareEmployeeWriteData(data));
     createData.employeeId = data.employeeId;
     const employee = await prisma.employee.create({
       data: createData
@@ -410,7 +410,7 @@ exports.bulkCreate = async (req, res) => {
           result = await prisma.employee.upsert({
             where: { employeeId: data.employeeId },
             update: clean,
-            create: clean,
+            create: applyCreateDefaults(clean),
           });
           created.push(result);
           results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: isNewInsert ? 'created' : 'updated', reason: isNewInsert ? 'Created' : 'Existing code — record updated' });
@@ -420,15 +420,16 @@ exports.bulkCreate = async (req, res) => {
             results.push({ row: rowNum, name: rowLabel, employeeId: null, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
             continue;
           }
-          result = await prisma.employee.create({ data: prepareEmployeeWriteData(data) });
+          result = await prisma.employee.create({ data: applyCreateDefaults(prepareEmployeeWriteData(data)) });
           created.push(result);
           results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'created', reason: 'Created' });
         }
         addToIndex(result);
       } catch (rowErr) {
-        console.error(`[bulkCreate] row ${rowNum} (${rowLabel}) failed:`, rowErr.message);
-        failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason: rowErr.message || 'Database error' });
-        results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: rowErr.message || 'Database error' });
+        const reason = describePrismaWriteError(rowErr);
+        console.error(`[bulkCreate] row ${rowNum} (${rowLabel}) failed:`, reason, '|', rowErr.message);
+        failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason });
+        results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason });
       }
     }
 
