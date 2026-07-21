@@ -657,6 +657,32 @@ model ComplianceReportLog {
   @@map("compliance_report_logs")
 }
 
+// ── EPFO ECR generation history (isolated PF report) ─────────────────────────
+// Append-only log of every generated Electronic Challan cum Return, with the
+// exact file body stored so it can be re-downloaded. Isolated scalar companyId
+// (no relation) — additive; touches no existing model.
+model EcrHistory {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  companyName     String?
+  branchId        Int?
+  branchName      String?
+  month           String
+  year            Int
+  department      String?
+  employeeStatus  String?
+  employeeCount   Int      @default(0) // eligible members written to the file
+  totalEmployees  Int      @default(0) // total considered for the period
+  fileName        String?
+  fileContent     String?  @db.LongText
+  generatedBy     String?
+  generatedByName String?
+  createdAt       DateTime @default(now())
+
+  @@index([companyId])
+  @@map("ecr_history")
+}
+
 // ── Raw device push log (Phase 6: ADMS-style receiver, DEBUG only) ───────────
 // Captures every inbound request from an attendance device exactly as received.
 // This is a debug/inspection table — it is NOT the attendance table and is never

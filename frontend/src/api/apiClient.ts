@@ -565,6 +565,10 @@ export const api = {
     duplicateInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders(), body: '{}' }),
     setInvoiceStatus: async (id: any, status: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/status`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status }) }),
     logInvoiceAction: async (id: any, action: string, detail?: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/log`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, detail }) }),
+    // Email the invoice with its PDF attached. `html` is the exact document the
+    // client is rendering, so the attachment matches the invoice on screen.
+    emailInvoice: async (id: any, data: { to: string; cc?: string; subject?: string; message?: string; html?: string }) =>
+      apiFetch(`${BASE_URL}/invoicing/invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
     recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
@@ -704,6 +708,14 @@ export const api = {
     preview: async (reportKey: string) => { return await apiFetch(`${BASE_URL}/compliance-reports/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reportKey }) }); },
     logDownload: async (data: any) => { return await apiFetch(`${BASE_URL}/compliance-reports/log-download`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     audit: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/audit`, { headers: getHeaders() }); },
+  },
+
+  // EPFO ECR Generation — isolated PF report (own endpoints; never touches other reports).
+  epfoEcr: {
+    preview: async (data: any) => { return await apiFetch(`${BASE_URL}/epfo-ecr/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    generate: async (data: any) => { return await apiFetch(`${BASE_URL}/epfo-ecr/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    history: async (companyId?: string | number) => { return await apiFetch(`${BASE_URL}/epfo-ecr/history${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    download: async (id: number | string) => { return await apiFetch(`${BASE_URL}/epfo-ecr/history/${id}/download`, { headers: getHeaders() }); },
   },
 
   // Country / State / City masters for the creatable location dropdowns.
@@ -1030,6 +1042,9 @@ export const api = {
 
   // Super Admin Subscription Billing — real GST invoices per company subscription.
   subscriptionInvoices: {
+    // Issuer/branding/bank/signature config for the subscription invoice document.
+    getSettings: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/settings`, { headers: getHeaders() }); },
+    updateSettings: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     dashboard: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/dashboard`, { headers: getHeaders() }); },
     reports: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/reports`, { headers: getHeaders() }); },
     list: async (params: Record<string, any> = {}) => {
@@ -1051,6 +1066,12 @@ export const api = {
     regenerate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/regenerate`, { method: 'POST', headers: getHeaders() }); },
     renew: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/renew`, { method: 'POST', headers: getHeaders() }); },
     email: async (id: string | number, data: any = {}) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // ── Interactive Invoice Editor (Super Admin) ──
+    getEditor: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/editor`, { headers: getHeaders() }); },
+    saveEditor: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/editor`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    finalize: async (id: string | number, data: any = {}) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/finalize`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    unlock: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    editorAudit: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/audit`, { headers: getHeaders() }); },
     // Authenticated fetch of the server-rendered A4 invoice HTML (for on-screen
     // preview via iframe srcDoc + print/PDF). Returns the raw HTML string.
     fetchHtml: async (id: string | number): Promise<string> => {

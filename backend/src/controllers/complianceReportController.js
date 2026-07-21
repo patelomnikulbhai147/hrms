@@ -719,12 +719,71 @@ async function pfExitForm(s, form) {
   const note = form === '19' ? 'Form 19 — EPF final settlement / withdrawal for exited members.' : 'Form 10C — EPS (pension) withdrawal / scheme certificate for exited members.';
   return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'uan', label: 'UAN' }, { key: 'pf', label: 'PF No' }, { key: 'doj', label: 'DOJ' }, { key: 'exit', label: 'Exit Date' }, { key: 'years', label: 'Service Yrs' }, { key: 'reason', label: 'Reason' }], rows, warnings: [note, ...(rows.length ? [] : ['No exited members in scope.'])] };
 }
+/**
+ * ECR File Generator — the rows returned here ARE the EPFO upload file.
+ *
+ * Every row is a member that passed the full statutory eligibility check, in the
+ * exact 11-column ECR order, so the on-screen preview and the Notepad (.txt)
+ * upload file can never disagree with one another. Members that fail validation
+ * are NOT silently dropped — each one is reported, with its reason, in
+ * `warnings` (the validation report shown above the preview).
+ *
+ * Amounts are whole rupees: the EPFO upload format carries no paise. That is a
+ * formatting rule of the ECR file only — the PF calculation itself is unchanged.
+ */
 async function ecrFile(s) {
-  const pay = await prisma.payroll.findMany({ where: payrollWhere(s), orderBy: { employeeName: 'asc' } });
-  const emps = await scopedEmps(s); const em = new Map(emps.map(e => [e.id, e]));
-  const rows = pay.map((p, i) => { const w = Math.min(p.basicSalary, PF_WAGE_CEILING); const e = em.get(p.employeeId) || {}; return { sr: i + 1, uan: e.uan || '', code: e.employeeId || '', name: p.employeeName, gross: r2(grossOf(p)), epfWages: r2(w), epsWages: r2(w), edliWages: r2(w), epfContrib: r2(w * 12 / 100), epsContrib: r2(w * EPS_RATE / 100), erDiff: r2(w * EPF_ER_DIFF / 100), ncpDays: r2(p.lwpDays || 0), refund: 0 }; });
-  const missing = rows.filter(r => !r.uan).length;
-  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'uan', label: 'UAN' }, { key: 'name', label: 'Member Name' }, { key: 'gross', label: 'Gross Wages' }, { key: 'epfWages', label: 'EPF Wages' }, { key: 'epsWages', label: 'EPS Wages' }, { key: 'edliWages', label: 'EDLI Wages' }, { key: 'epfContrib', label: 'EE PF' }, { key: 'epsContrib', label: 'EPS' }, { key: 'erDiff', label: 'ER PF Diff' }, { key: 'ncpDays', label: 'NCP Days' }, { key: 'refund', label: 'Refund' }], rows, warnings: ['ECR upload data — export to Excel for the EPFO portal.', ...(missing ? [`${missing} member(s) missing UAN — required for ECR.`] : [])] };
+  const pay = await prisma.payroll.findMany({ where: payrollWhere(s) });
+  const payByEmp = new Map(pay.map(p => [p.employeeId, p]));
+  const emps = await scopedEmps(s);
+
+  // Duplicate-UAN detection across the whole scoped roster (a UAN may belong to
+  // exactly one member — EPFO rejects the return otherwise).
+  const uanSeen = new Map();
+  for (const e of emps) { const u = String(e.uan || '').trim(); if (u) uanSeen.set(u, (uanSeen.get(u) || 0) + 1); }
+
+  const rows = [];
+  const excluded = [];
+  const reject = (e, reason) => excluded.push({ name: e.name || '—', code: e.employeeId || '—', reason });
+  const r0 = (n) => Math.round(Number(n) || 0);
+
+  for (const e of [...emps].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))) {
+    const uan = String(e.uan || '').trim();
+    const p = payByEmp.get(e.id);
+    // Order matters: report the FIRST blocking problem for each member.
+    if (!/active/i.test(String(e.status || ''))) { reject(e, 'Employee is not Active'); continue; }
+    if (!p) { reject(e, 'Payroll not generated for the selected period'); continue; }
+    if (!uan) { reject(e, 'Missing UAN'); continue; }
+    if (!/^\d{12}$/.test(uan)) { reject(e, `Invalid UAN "${uan}" — must be exactly 12 digits`); continue; }
+    if ((uanSeen.get(uan) || 0) > 1) { reject(e, `Duplicate UAN ${uan} — used by more than one member`); continue; }
+    if (!String(e.pfNumber || '').trim()) { reject(e, 'PF not enabled (PF Number missing)'); continue; }
+    const memberName = String(p.employeeName || e.name || '').trim();
+    if (!memberName) { reject(e, 'Missing mandatory field: member name'); continue; }
+    const basic = Number(p.basicSalary) || 0;
+    if (basic <= 0) { reject(e, 'Invalid PF wages — basic salary is zero for this period'); continue; }
+
+    const w = Math.min(basic, PF_WAGE_CEILING);
+    rows.push({
+      sr: rows.length + 1, uan, code: e.employeeId || '', name: memberName,
+      gross: r0(grossOf(p)), epfWages: r0(w), epsWages: r0(w), edliWages: r0(w),
+      epfContrib: r0(w * 12 / 100), epsContrib: r0(w * EPS_RATE / 100), erDiff: r0(w * EPF_ER_DIFF / 100),
+      ncpDays: r0(p.lwpDays || 0), refund: 0,
+    });
+  }
+
+  // Detailed validation report — a failed member is always named, never silent.
+  const warnings = [`Validation: ${rows.length} of ${emps.length} member(s) eligible for ECR${excluded.length ? ` · ${excluded.length} excluded` : ''}.`];
+  if (!excluded.length && rows.length) warnings.push('All members passed validation — export via Notepad (.txt) to upload to the EPFO portal.');
+  if (excluded.length) {
+    const byReason = excluded.reduce((m, x) => { m[x.reason] = (m[x.reason] || 0) + 1; return m; }, {});
+    warnings.push(`Excluded by reason — ${Object.entries(byReason).map(([k, v]) => `${k}: ${v}`).join(' · ')}`);
+    for (const x of excluded.slice(0, 50)) warnings.push(`EXCLUDED — ${x.name} (${x.code}): ${x.reason}`);
+    if (excluded.length > 50) warnings.push(`…and ${excluded.length - 50} more excluded member(s).`);
+  }
+
+  const sum = (k) => rows.reduce((t, r) => t + r[k], 0);
+  const summary = { members: rows.length, epfWages: sum('epfWages'), epfContrib: sum('epfContrib'), epsContrib: sum('epsContrib'), erDiff: sum('erDiff') };
+
+  return { rows, summary, warnings, columns: [{ key: 'sr', label: 'Sr' }, { key: 'uan', label: 'UAN' }, { key: 'name', label: 'Member Name' }, { key: 'gross', label: 'Gross Wages' }, { key: 'epfWages', label: 'EPF Wages' }, { key: 'epsWages', label: 'EPS Wages' }, { key: 'edliWages', label: 'EDLI Wages' }, { key: 'epfContrib', label: 'EE PF' }, { key: 'epsContrib', label: 'EPS' }, { key: 'erDiff', label: 'ER PF Diff' }, { key: 'ncpDays', label: 'NCP Days' }, { key: 'refund', label: 'Refund' }] };
 }
 async function kycExport(s) {
   const emps = await scopedEmps(s);

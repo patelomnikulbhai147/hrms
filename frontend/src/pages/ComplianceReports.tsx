@@ -18,7 +18,17 @@ import { ReportTemplateViewer } from '@/components/reports/ReportTemplateViewer'
 import { isStatutoryReport } from '@/components/reports/reportClassification';
 import { BusinessReportView } from '@/components/reports/BusinessReportView';
 import { EditableReportCanvas } from '@/components/reports/EditableReportCanvas';
+import { EpfoEcrGeneration } from '@/components/reports/EpfoEcrGeneration';
 import { exportWageRules, getSettings as getWageSettings } from '@/utils/wageMaster';
+import { ui } from '@/components/ui/feedback';
+
+// Isolated PF report injected client-side into the catalog (keeps every backend
+// API byte-identical). Its card opens the dedicated ECR Generation panel.
+const ECR_REPORT_KEY = 'epfo_ecr_generation';
+const ECR_CATALOG_ENTRY = { key: ECR_REPORT_KEY, label: 'Electronic Challan Cum Return (ECR)', category: 'PF Reports', available: true, status: 'available', description: 'Generate monthly EPFO ECR files.', filters: ['payrollPeriod', 'branch', 'department'], planLocked: false };
+
+// Month names for the ECR upload file name (ECR_July_2026.txt).
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
 interface Props { role: Role; activeCompanyId: string; companies?: Company[]; authProfile?: UserAccount | null; }
 
@@ -61,6 +71,8 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const flash = (k: 'ok' | 'err', m: string) => { setToast({ kind: k, msg: m }); setTimeout(() => setToast(null), 4000); };
 
+  // Isolated ECR Generation panel (opened from the ECR report card).
+  const [ecrOpen, setEcrOpen] = useState(false);
   // Template gallery (landing) vs. live-generate mode + demo preview state.
   const [mode, setMode] = useState<'gallery' | 'generate'>('gallery');
   // Preview presentation: editable Document canvas (default) vs the analytical Data view.
@@ -243,7 +255,14 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const [favs, setFavs] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem('hrms_report_favs') || '[]'); } catch { return []; } });
   const toggleFav = (key: string) => setFavs(prev => { const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]; localStorage.setItem('hrms_report_favs', JSON.stringify(next)); return next; });
 
-  const loadCatalog = useCallback(async () => { try { setCatalog(await api.complianceReports.catalog() || []); } catch { setCatalog([]); } }, []);
+  const loadCatalog = useCallback(async () => {
+    try {
+      const cat = (await api.complianceReports.catalog()) || [];
+      // Append the isolated ECR report (skip if the backend ever ships its own).
+      const withEcr = cat.some((r: any) => r.key === ECR_REPORT_KEY) ? cat : [...cat, ECR_CATALOG_ENTRY];
+      setCatalog(withEcr);
+    } catch { setCatalog([ECR_CATALOG_ENTRY]); }
+  }, []);
   const loadAuditQuiet = useCallback(async () => { try { setAudit(await api.complianceReports.audit() || []); } catch { /* non-blocking */ } }, []);
   const loadEmployees = useCallback(async () => { try { const e = await api.employees.getAll(); setEmployees(Array.isArray(e) ? e : (e?.employees || [])); } catch { setEmployees([]); } }, []);
   useEffect(() => { loadCatalog(); loadEmployees(); loadAuditQuiet(); }, [loadCatalog, loadEmployees, loadAuditQuiet]);
@@ -549,6 +568,50 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
     a.href = url; a.download = `${report.reportName.replace(/[^a-z0-9]+/gi, '_')}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format: 'CSV', companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {});
+  };
+
+  // ── ECR File Generator: Notepad (.txt) upload file ─────────────────────────
+  // Only offered for the ECR report. The file is built from the SAME rows the
+  // preview renders, so preview and export can never diverge. The backend has
+  // already excluded every member that failed validation and listed each one in
+  // report.warnings; if anything was excluded we surface that and require an
+  // explicit confirmation rather than shipping a quietly incomplete return.
+  const isEcrReport = report?.reportKey === 'ecr_file';
+  const ECR_DELIMITER = '#~#';
+  const ECR_FIELDS = ['uan', 'name', 'gross', 'epfWages', 'epsWages', 'edliWages', 'epfContrib', 'epsContrib', 'erDiff', 'ncpDays', 'refund'];
+
+  const exportEcrTxt = async () => {
+    if (!isEcrReport) return;
+    const rows: any[] = report?.rows || [];
+    const excludedLines: string[] = (report?.warnings || []).filter((w: string) => w.startsWith('EXCLUDED'));
+    if (!rows.length) {
+      await ui.alert({ title: 'ECR cannot be generated', message: 'No member passed validation for this period, so there is nothing to upload. Review the validation report above, fix the member data, then generate the report again.' });
+      return;
+    }
+    if (excludedLines.length) {
+      const ok = await ui.confirm({
+        title: 'Validation found excluded members',
+        message: `${excludedLines.length} member(s) failed ECR validation and are NOT in the file (missing UAN, duplicate UAN, PF not enabled, missing payroll or invalid PF wages). Only the ${rows.length} validated member(s) will be exported.\n\nFix the flagged members and regenerate, or export the partial return now?`,
+        confirmText: `Export ${rows.length} validated member(s)`,
+      });
+      if (!ok) return;
+    }
+    // Plain EPFO upload text: one member per line, `#~#` separated, no header,
+    // no BOM (a Blob from a JS string is bare UTF-8), CRLF for Windows Notepad.
+    const text = rows
+      .map((r) => ECR_FIELDS.map((f) => String(r[f] ?? '').trim()).join(ECR_DELIMITER))
+      .join('\r\n');
+    const period = String(report?.filters?.payrollPeriod || '');           // "YYYY-MM"
+    const [py, pm] = period.split('-');
+    const name = py && pm
+      ? `ECR_${MONTH_NAMES[Number(pm) - 1] || pm}_${py}.txt`
+      : `ECR_${String(report?.filters?.period || 'Report').replace(/[^a-z0-9]+/gi, '_')}.txt`;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format: 'TXT', companyId, filters: filtersMeta(), rowCount: rows.length }).catch(() => {});
   };
 
   const exportPdf = async () => {
@@ -893,6 +956,21 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
   const renderReportCard = (r: any) => {
     const locked = reportLocked(r);
     const lockTip = 'Available in Premium Plan';
+    // Isolated ECR report — a single "Open" card that launches the dedicated panel.
+    if (r.key === ECR_REPORT_KEY) {
+      const isFav = favs.includes(r.key);
+      return (
+        <div key={r.key} className="rounded-xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50/40 p-3 flex flex-col gap-2 shadow-sm">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-bold text-slate-800 leading-snug flex items-center gap-1">{hl(r.label)}</p>
+            <button onClick={() => toggleFav(r.key)} title={isFav ? 'Remove favourite' : 'Add to favourites'} className={`shrink-0 ${isFav ? 'text-amber-400' : 'text-slate-300 hover:text-amber-400'}`}><Star size={14} fill={isFav ? 'currentColor' : 'none'} /></button>
+          </div>
+          <span className="self-start text-[8px] font-bold uppercase tracking-wider border rounded-full px-1.5 py-0.5 bg-indigo-100 text-indigo-700 border-indigo-200">EPFO</span>
+          <p className="text-[10px] text-slate-500 leading-snug flex-1 min-h-[26px]">{r.description}</p>
+          <Button size="sm" className="text-[10px] h-7" icon={<Zap size={11} />} onClick={() => setEcrOpen(true)}>Open ECR Generator</Button>
+        </div>
+      );
+    }
     const tpl = templateForKey(r.key);
     if (tpl) {
       const isFav = favs.includes(r.key);
@@ -1116,6 +1194,10 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                     <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={report.isMultiCompany ? exportExcelMulti : exportExcel}>Excel</Button>
                     <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={report.isMultiCompany ? exportPdfMulti : exportPdf}>PDF</Button>
                     <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={report.isMultiCompany ? exportCsvMulti : exportCsv}>CSV</Button>
+                    {/* ECR File Generator only — the official EPFO upload file. */}
+                    {isEcrReport && !report.isMultiCompany && (
+                      <Button variant="outline" size="sm" icon={<FileText size={13} />} onClick={exportEcrTxt}>Notepad (.txt)</Button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1311,6 +1393,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                   canEdit={['Super Admin', 'Company Head', 'HR'].includes(role)}
                   userName={authProfile?.name || authProfile?.email || role}
                   role={role}
+                  onNotepad={isEcrReport ? exportEcrTxt : undefined}
                   onLog={(format) => api.complianceReports.logDownload({ reportKey: report.reportKey, reportName: report.reportName, format, companyId, filters: filtersMeta(), rowCount: report.rows.length }).catch(() => {})}
                 />
               ) : isStatutoryReport(report.reportKey, report.category) ? (
@@ -1706,7 +1789,7 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
                     value={cfgStatus} 
                     onChange={e => setCfgStatus(e.target.value)} 
                     options={[
-                      { value: '', label: 'All Statuses' },
+                      { value: '', label: 'All Status' },
                       { value: 'Active', label: 'Active Only' },
                       { value: 'Inactive', label: 'Inactive / Suspended' }
                     ]} 
@@ -1779,6 +1862,15 @@ export const ComplianceReports: React.FC<Props> = ({ role, activeCompanyId, comp
         moduleLabel={lockedReportLabel ? `The "${lockedReportLabel}" report` : undefined}
         onUpgrade={() => setLockedReportLabel(null)}
       />
+
+      {ecrOpen && (
+        <EpfoEcrGeneration
+          companyId={String(companyId || activeCompanyId || '')}
+          companies={companies}
+          isSuperAdmin={isSuperAdmin}
+          onClose={() => setEcrOpen(false)}
+        />
+      )}
     </div>
   );
 };

@@ -38,7 +38,11 @@ function periodEndFor(start, cycle) {
 // bumped on the rare unique collision). Prefix comes from platform settings.
 async function nextInvoiceNo(invoiceDate) {
   const settings = store.getSettings();
-  const prefix = (settings.invoicePrefix || 'INV').trim();
+  // The Invoice Settings screen (invoiceIssuerStore) is the authoritative prefix;
+  // platform settings stay as a fallback so existing numbering never breaks.
+  let issuerPrefix = '';
+  try { issuerPrefix = (require('./invoiceIssuerStore').getIssuer().invoicePrefix || '').trim(); } catch (_) { /* fallback below */ }
+  const prefix = (issuerPrefix || settings.invoicePrefix || 'INV').trim();
   const year = new Date(invoiceDate || Date.now()).getFullYear();
   let seq = (await prisma.subscriptionInvoice.count()) + 1;
   // Guarantee uniqueness even if numbering was edited / rows deleted.

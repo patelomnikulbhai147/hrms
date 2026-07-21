@@ -25,6 +25,9 @@ export type PageId =
   | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
   | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
+  // Dedicated full-page Subscription Invoice (/subscription-invoice/:invoiceId).
+  // Super-Admin billing route — never rendered as a modal.
+  | 'subscription-invoice'
   // Company-facing View Plans / upgrade screen (not a sidebar/matrix module).
   | 'plans';
 

@@ -14,7 +14,8 @@ interface Props {
   companies: any[];              // rows from api.subscriptions.list()
   settings: any;                 // platform settings (taxPercent, invoiceTerms…)
   onClose: () => void;
-  onCreated: () => void;
+  /** Receives the new invoice id so the caller can open its dedicated page. */
+  onCreated: (newId?: number | string) => void;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -57,12 +58,13 @@ export const GenerateInvoiceModal: React.FC<Props> = ({ companies, settings, onC
     if (!companyId) { ui.toast.error('Select a company first.'); return; }
     setSaving(true);
     try {
-      await api.subscriptionInvoices.generate({
+      const created: any = await api.subscriptionInvoices.generate({
         companyId: Number(companyId), plan, billingCycle, employeeCount, pricePerEmployee,
         discountPercent, gstPercent, interState, invoiceDate, dueDate, notes, terms,
       });
       ui.toast.success('Invoice generated.');
-      onCreated();
+      // Hand the new id back so the caller can open its dedicated invoice page.
+      onCreated(created?.id ?? created?.invoice?.id);
     } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
     finally { setSaving(false); }
   };

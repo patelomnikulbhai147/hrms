@@ -8,6 +8,9 @@ const { requireSuperAdmin } = require('../middleware/rbacMiddleware');
 router.use(protect);
 router.use(requireSuperAdmin);
 
+// NOTE: literal paths MUST stay above '/:id' or they'd be captured as an id.
+router.get('/settings', ctrl.getSettings);             // issuer/branding/bank config
+router.put('/settings', ctrl.updateSettings);          // save issuer config
 router.get('/dashboard', ctrl.dashboard);              // summary cards
 router.get('/reports', ctrl.reports);                  // revenue / outstanding / GST / register
 router.post('/preview', ctrl.preview);                 // compute totals without saving
@@ -25,5 +28,6 @@ router.post('/:id/duplicate', ctrl.duplicate);         // duplicate as Draft
 router.post('/:id/regenerate', ctrl.regenerate);       // recompute from live company data
 router.post('/:id/renew', ctrl.renew);                 // generate the next period's invoice
 router.post('/:id/email', ctrl.email);                 // email the invoice
+
 
 module.exports = router;

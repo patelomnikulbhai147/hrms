@@ -163,6 +163,8 @@ app.use('/api/location-masters', require('./src/routes/locationMasterRoutes'));
 // Reports MODULE is open to FREE (per-report gating happens inside the controller's
 // generate/preview — see complianceReportController.reportPlanBlock). No module gate here.
 app.use('/api/compliance-reports', pii('Reports'), require('./src/routes/complianceReportRoutes'));
+// EPFO ECR Generation — isolated PF report (own controller + ecr_history table).
+app.use('/api/epfo-ecr', pii('Reports'), require('./src/routes/epfoEcrRoutes'));
 // Custom Report Builder stays a premium module — gated by the synthetic
 // 'custom-reports' key (it shares the now-unlocked 'reports' permission key).
 app.use('/api/custom-reports', pii('Reports'), plan('custom-reports'), require('./src/routes/customReportRoutes'));

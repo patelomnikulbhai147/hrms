@@ -17,7 +17,7 @@
 // existing { meta, columns, rows, summary } contract.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Printer, FileDown, FileSpreadsheet, Pencil, Eye, RotateCcw, Check, Save, History, ScrollText, Lock } from 'lucide-react';
+import { Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, Undo2, Redo2, Printer, FileDown, FileSpreadsheet, Pencil, Eye, RotateCcw, Check, Save, History, ScrollText, Lock, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
 import { printNode, nodeToPdf, rowsToExcel } from './reportExport';
@@ -36,6 +36,12 @@ interface Props {
   canEdit?: boolean;
   userName?: string;
   role?: string;
+  /**
+   * Optional extra export, rendered as a "Notepad (.txt)" toolbar button. Only
+   * the ECR File Generator supplies it; every other report leaves it undefined
+   * and its toolbar is unchanged.
+   */
+  onNotepad?: () => void;
 }
 
 const toNum = (v: any): number | null => {
@@ -86,7 +92,7 @@ const EditableCell: React.FC<{
   />
 ), (a, b) => a.html === b.html && a.editMode === b.editMode && a.numeric === b.numeric);
 
-export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog, canEdit = true, userName = '', role = '' }) => {
+export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog, canEdit = true, userName = '', role = '', onNotepad }) => {
   const m = report.meta || {};
   const cols = report.columns || [];
   const rows = report.rows || [];
@@ -318,6 +324,8 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
         <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={onPrint}>Print</Button>
         <Button variant="outline" size="sm" icon={<FileSpreadsheet size={13} />} onClick={onExcel} loading={busy === 'excel'}>Excel</Button>
         <Button size="sm" icon={<FileDown size={13} />} onClick={onPdf} loading={busy === 'pdf'}>Export PDF</Button>
+        {/* ECR File Generator only — supplied by the parent, absent elsewhere. */}
+        {onNotepad && <Button variant="outline" size="sm" icon={<FileText size={13} />} onClick={onNotepad}>Notepad (.txt)</Button>}
       </div>
 
       {/* Versions panel */}
@@ -422,6 +430,11 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
             </tbody>
           </table>
 
+          {/* Closing block — Remarks → Signature → Seal → Footer. Marked
+              [data-keep-together] so the print CSS and the PDF paginator treat it
+              as ONE atomic unit: it is never split, and it only moves to the next
+              page when it genuinely does not fit in the space that is left. */}
+          <div data-keep-together>
           {/* Remarks / Notes */}
           <div className="mt-5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1" style={{ fontFamily: 'system-ui, sans-serif' }}>Remarks / Notes</p>
@@ -443,6 +456,7 @@ export const EditableReportCanvas: React.FC<Props> = ({ report, companyId, onLog
 
           {/* Report footer banner from Company Profile. */}
           {m.reportFooterImage && <img src={m.reportFooterImage} alt="" style={{ width: '100%', objectFit: 'contain', marginTop: 16 }} />}
+          </div>{/* /keep-together closing block */}
           </div>{/* /content layer */}
         </div>
       </div>

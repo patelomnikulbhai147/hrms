@@ -12,6 +12,34 @@ const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const { pricePerEmployee } = require('../services/planEntitlements');
 const { computeInvoice, periodEndFor, nextInvoiceNo, r2 } = require('../services/subscriptionInvoiceEngine');
 const { renderInvoiceHtml } = require('../services/subscriptionInvoiceHtml');
+const issuerStore = require('../services/invoiceIssuerStore');
+
+// ── Invoice issuer settings (Super Admin customization) ──────────────────────
+// Branding, statutory ids, bank details, signature, notes/terms, footer and
+// invoice prefix used by the Subscription Billing invoice document.
+exports.getSettings = (req, res) => {
+  try {
+    return res.json(issuerStore.getIssuer());
+  } catch (e) {
+    console.error('[subscriptionInvoices.getSettings]', e);
+    return res.status(500).json({ error: 'Failed to load invoice settings.' });
+  }
+};
+
+exports.updateSettings = (req, res) => {
+  try {
+    const saved = issuerStore.saveIssuer(req.body || {});
+    if (req.user?.id) {
+      AuditService.logAudit(req.user.id, 'UPDATE_INVOICE_SETTINGS', 'Subscription Billing', 'settings', {
+        by: req.user?.name || req.user?.email || 'Super Admin',
+      }).catch(() => {});
+    }
+    return res.json(saved);
+  } catch (e) {
+    console.error('[subscriptionInvoices.updateSettings]', e);
+    return res.status(500).json({ error: e.message || 'Failed to save invoice settings.' });
+  }
+};
 
 const actorOf = (req) => req.user?.name || req.user?.email || 'Super Admin';
 const HEAD_OFFICE_WHERE = { parentCompanyId: null };

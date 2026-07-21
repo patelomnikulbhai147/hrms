@@ -27,6 +27,7 @@ const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionManagement').then(m => ({ default: m.SubscriptionManagement })));
 const SubscriptionManage = React.lazy(() => import('@/pages/SubscriptionManage').then(m => ({ default: m.SubscriptionManage })));
+const SubscriptionInvoicePage = React.lazy(() => import('@/pages/SubscriptionInvoicePage').then(m => ({ default: m.SubscriptionInvoicePage })));
 const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
 const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
 const TaskManager = React.lazy(() => import('@/pages/TaskManager').then(m => ({ default: m.TaskManager })));
@@ -98,6 +99,7 @@ const pageTitles: Record<PageId, string> = {
   contracts: 'Contract Management',
   'company-profile': 'Company Profile',
   'company-edit': 'Edit Company',
+  'subscription-invoice': 'Invoice',
   communication: 'Communication Center',
   notifications: 'Notifications',
   'select-workspace': 'Select Workspace'
@@ -108,7 +110,7 @@ const pageTitles: Record<PageId, string> = {
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
   'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
-  'company-profile', 'company-edit', 'subscription-manage', 'communication', 'notifications', 'select-workspace',
+  'company-profile', 'company-edit', 'subscription-manage', 'subscription-invoice', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -710,6 +712,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     if (seg[0] === 'subscription-manage' && seg[1]) return decodeURIComponent(seg[1]);
     return localStorage.getItem('hrms_manage_sub_id');
   });
+  // Full-page Subscription Invoice (/subscription-invoice/:invoiceId). The
+  // invoice preview is NEVER a modal — it is always this dedicated route, so
+  // refresh, deep link and browser Back all resolve the right invoice.
+  const [invoiceViewId, setInvoiceViewId] = useState<string | null>(() => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    if (seg[0] === 'subscription-invoice' && seg[1]) return decodeURIComponent(seg[1]);
+    return localStorage.getItem('hrms_invoice_view_id');
+  });
   const [role, setRole] = useState<Role>(() => {
     const rawProfile = authStorage.get('hrms_profile');
     if (rawProfile) {
@@ -970,6 +980,19 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     }
   };
 
+  // Open the dedicated Subscription Invoice page. Replaces the old popup preview.
+  const handleOpenInvoice = (id: string | number) => {
+    const invId = String(id);
+    setInvoiceViewId(invId);
+    localStorage.setItem('hrms_invoice_view_id', invId);
+    setCurrentPage('subscription-invoice');
+    localStorage.setItem('hrms_current_page', 'subscription-invoice');
+    const path = '/subscription-invoice/' + encodeURIComponent(invId);
+    if (window.location.pathname !== path) {
+      window.history.pushState({ page: 'subscription-invoice', invoiceId: invId }, '', path);
+    }
+  };
+
   // Browser Back/Forward → switch the in-app page (never exit the app).
   useEffect(() => {
     const onPop = () => {
@@ -987,6 +1010,11 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           const id = decodeURIComponent(seg[1]);
           setManageSubId(id);
           localStorage.setItem('hrms_manage_sub_id', id);
+        }
+        if (p === 'subscription-invoice' && seg[1]) {
+          const id = decodeURIComponent(seg[1]);
+          setInvoiceViewId(id);
+          localStorage.setItem('hrms_invoice_view_id', id);
         }
         setCurrentPage(p);
         localStorage.setItem('hrms_current_page', p);
@@ -1502,7 +1530,20 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       case 'billing':
         // Super Admin Subscription Management (redesigned) — replaces the old
         // Billing / SaaS Subscriptions page.
-        return <SubscriptionManagement onManage={handleManageSubscription} />;
+        return <SubscriptionManagement onManage={handleManageSubscription} onOpenInvoice={handleOpenInvoice} />;
+      case 'subscription-invoice':
+        // Dedicated full-page Subscription Invoice (never a modal/popup).
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <ShieldAlert className="w-12 h-12 mb-4" style={{ color: '#dc2626' }} />
+              <h2 className="text-2xl font-bold mb-2 text-slate-900">Access Denied</h2>
+              <p className="max-w-md text-slate-500">Subscription billing is available to Super Admin accounts only.</p>
+            </div>
+          );
+        }
+        if (!invoiceViewId) return <SubscriptionManagement onManage={handleManageSubscription} onOpenInvoice={handleOpenInvoice} />;
+        return <SubscriptionInvoicePage invoiceId={invoiceViewId} onBack={() => handleNavigate('billing')} />;
       case 'subscription-manage':
         if (permissionRole !== 'Super Admin') {
           return (

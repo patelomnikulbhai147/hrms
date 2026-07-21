@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, ClipboardList, Search, Trash2, MessageSquare, Paperclip, Clock,
-  AlertTriangle, CheckCircle2, Circle, X, Send, AtSign
+  AlertTriangle, CheckCircle2, X, Send, AtSign
 } from 'lucide-react';
 import { type Role, type Company, resolveActiveWorkspace } from '@/types';
 import { Card, StatCard } from '@/components/ui/Card';
@@ -16,6 +16,10 @@ import { type UserAccount } from '@/pages/Login';
 import { usePermissions } from '@/context/PermissionContext';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
+import {
+  TASK_STATUSES, TASK_FILTER_STATUSES, TASK_STATUS_VARIANT, DEFAULT_TASK_STATUS,
+  normalizeTaskStatus, effectiveTaskStatus, isTaskOverdue,
+} from '@/utils/taskStatus';
 
 interface TaskManagerProps {
   role: Role;
@@ -25,9 +29,10 @@ interface TaskManagerProps {
 }
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Critical'];
-const STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled', 'Overdue'];
 const PRIORITY_VARIANT: Record<string, any> = { Low: 'gray', Medium: 'blue', High: 'amber', Critical: 'red' };
-const STATUS_VARIANT: Record<string, any> = { Pending: 'amber', 'In Progress': 'blue', Completed: 'green', Cancelled: 'gray', Overdue: 'red' };
+// Selectable statuses (In Progress / Completed / Cancelled) and the display
+// variants live in utils/taskStatus — "Overdue" is calculated, never selected.
+const STATUS_VARIANT = TASK_STATUS_VARIANT;
 
 type TabId = 'all' | 'assignedToMe' | 'assignedByMe';
 
@@ -81,23 +86,27 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
     return true;
   };
 
+  // Every screen reads the EFFECTIVE status (stored status upgraded to "Overdue"
+  // when it is past due and still open) so filters, cards, table, detail and
+  // exports can never disagree with one another.
   const filtered = useMemo(() => {
     return tasks
       .filter(t => matchMine(t, tab))
-      .filter(t => !statusFilter || t.status === statusFilter)
+      .filter(t => !statusFilter || effectiveTaskStatus(t) === statusFilter)
       .filter(t => !search || (t.title || '').toLowerCase().includes(search.toLowerCase()) || (t.createdByName || '').toLowerCase().includes(search.toLowerCase()));
   }, [tasks, tab, statusFilter, search, myUserId, myEmpId]);
 
   const stats = useMemo(() => ({
     total: tasks.length,
-    pending: tasks.filter(t => t.status === 'Pending').length,
-    inProgress: tasks.filter(t => t.status === 'In Progress').length,
-    completed: tasks.filter(t => t.status === 'Completed').length,
-    overdue: tasks.filter(t => t.status === 'Overdue').length,
+    inProgress: tasks.filter(t => effectiveTaskStatus(t) === 'In Progress').length,
+    completed: tasks.filter(t => effectiveTaskStatus(t) === 'Completed').length,
+    overdue: tasks.filter(t => isTaskOverdue(t)).length,
   }), [tasks]);
 
   /* ─── create form ─── */
-  const emptyForm = { title: '', description: '', priority: 'Medium', status: 'Pending', startDate: '', dueDate: '', startTime: '', endTime: '', assignmentType: 'user', department: '', targetRole: '' };
+  // Tasks are managed by DATE only — no startTime/endTime is collected or sent.
+  // The columns still exist in the DB (untouched); they simply stay empty.
+  const emptyForm = { title: '', description: '', priority: 'Medium', status: DEFAULT_TASK_STATUS, startDate: '', dueDate: '', assignmentType: 'user', department: '', targetRole: '' };
   const [form, setForm] = useState<any>(emptyForm);
   const [picked, setPicked] = useState<any[]>([]);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -126,9 +135,26 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
   // The TOP-LEVEL company this workspace rolls up to (branch → its parent;
   // company → itself). The branch selector only ever lists THIS company's branches.
   const activeParentId = (activeWorkspace as any)?.parentCompanyId || (activeWorkspace as any)?.id || activeCompanyId;
-  const branchOptionsForRole = role === 'Super Admin'
-    ? (scopeCompanyId ? branchesOfCompany(scopeCompanyId) : [])
-    : branchesOfCompany(activeParentId);
+
+  // BRANCH SCOPE.
+  // Working inside a branch workspace (e.g. "Rajkot Branch") pins every new task
+  // to THAT branch — the picker is replaced by a read-only field so the branch
+  // cannot be switched. Parent-company users keep the picker, listing only their
+  // OWN company's active branches (never another company's). Super Admin picks
+  // the company first, then that company's branches. The backend re-checks all
+  // of this on create, so hiding the control is convenience, not the guard.
+  const isSuperAdmin = role === 'Super Admin';
+  const lockedBranch = !isSuperAdmin && (activeWorkspace as any)?.parentCompanyId ? (activeWorkspace as any) : null;
+  const lockedBranchName = lockedBranch ? (lockedBranch.branchName || lockedBranch.name || 'Current Branch') : '';
+  const isActiveBranch = (b: any) => {
+    const s = String(b?.status ?? b?.accountStatus ?? 'Active').toLowerCase();
+    return !b?.isArchived && s !== 'inactive' && s !== 'archived' && s !== 'suspended';
+  };
+  const branchOptionsForRole = isSuperAdmin
+    ? (scopeCompanyId ? branchesOfCompany(scopeCompanyId).filter(isActiveBranch) : [])
+    // A branch user gets NO options — their branch is fixed.
+    : (lockedBranch ? [] : branchesOfCompany(activeParentId).filter(isActiveBranch));
+  const showBranchPicker = isSuperAdmin || (!lockedBranch && branchOptionsForRole.length > 0);
 
   // The stripped search term (a leading "@" is optional, so "@har" → "har").
   const mentionTerm = mentionQuery.replace(/^@+/, '').trim();
@@ -245,7 +271,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
       const d = new Date(t.createdAt);
       if (range === 'custom') return (!cLo || d >= cLo) && (!cHi || d <= cHi);
       return lo ? d >= lo : true;
-    }).map(t => ({ ...t, assignees: (t.assigneeNames || []).join(', ') }));
+    }).map(t => ({ ...t, status: effectiveTaskStatus(t), assignees: (t.assigneeNames || []).join(', ') }));
   }, [tasks, range, from, to]);
 
   const TASK_COLS: ExportColumn[] = [
@@ -282,21 +308,22 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
 
       {toast && <div className={`px-4 py-2.5 rounded-lg text-xs font-semibold ${toast.kind === 'ok' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>{toast.msg}</div>}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      {/* Four evenly-spaced summary cards. Overdue is COUNTED, not stored. */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Total Tasks" value={stats.total} icon={<ClipboardList size={16} />} color="bg-brand-500" />
-        <StatCard label="Pending" value={stats.pending} icon={<Circle size={16} />} color="bg-amber-500" />
         <StatCard label="In Progress" value={stats.inProgress} icon={<Clock size={16} />} color="bg-brand-500" />
         <StatCard label="Completed" value={stats.completed} icon={<CheckCircle2 size={16} />} color="bg-emerald-500" />
         <StatCard label="Overdue" value={stats.overdue} icon={<AlertTriangle size={16} />} color="bg-rose-500" />
       </div>
 
       <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-44"><Input icon={<Search size={14} />} placeholder="Search tasks…" value={search} onChange={e => setSearch(e.target.value)} /></div>
-            <div className="w-40"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All Statuses' }, ...STATUSES.map(s => ({ value: s, label: s }))]} /></div>
-          </div>
-          {canExport && <ExportMenu fileName="Task_Report" title="Task Report" sheetName="Tasks" columns={TASK_COLS} rows={() => filtered.map(t => ({ ...t, assignees: (t.assigneeNames || []).join(', ') }))} />}
+        {/* Filter bar: the search field absorbs all spare width; the status
+            dropdown stays compact (just wide enough for "All Status") and the
+            export button keeps its natural size. Stacks on mobile. */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+          <div className="flex-1 min-w-[160px]"><Input icon={<Search size={14} />} placeholder="Search tasks…" value={search} onChange={e => setSearch(e.target.value)} /></div>
+          <div className="w-full sm:w-[170px] sm:shrink-0"><Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{ value: '', label: 'All Status' }, ...TASK_FILTER_STATUSES.map(s => ({ value: s, label: s }))]} /></div>
+          {canExport && <div className="sm:shrink-0"><ExportMenu fileName="Task_Report" title="Task Report" sheetName="Tasks" columns={TASK_COLS} rows={() => filtered.map(t => ({ ...t, status: effectiveTaskStatus(t), assignees: (t.assigneeNames || []).join(', ') }))} /></div>}
         </div>
         <div className="overflow-x-auto">
           <Table>
@@ -313,10 +340,15 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
                   </Td>
                   <Td><Badge variant={PRIORITY_VARIANT[t.priority] || 'gray'}>{t.priority}</Badge></Td>
                   <Td>
-                    <select value={t.status} onChange={e => changeStatus(t, e.target.value)} disabled={isEmployee && !(t.assigneeIds || []).map(String).includes(myEmpId) && !(t.assigneeIds || []).map(String).includes(myUserId)}
-                      className="text-[11px] font-bold rounded-md border border-slate-200 px-1.5 py-1 bg-white text-slate-700">
-                      {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    {/* The dropdown only ever offers the three real statuses; an
+                        overdue task is flagged beside it, never selected. */}
+                    <div className="flex items-center gap-1.5">
+                      <select value={normalizeTaskStatus(t.status)} onChange={e => changeStatus(t, e.target.value)} disabled={isEmployee && !(t.assigneeIds || []).map(String).includes(myEmpId) && !(t.assigneeIds || []).map(String).includes(myUserId)}
+                        className="text-[11px] font-bold rounded-md border border-slate-200 px-1.5 py-1 bg-white text-slate-700">
+                        {TASK_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                      {isTaskOverdue(t) && <Badge variant="red">Overdue</Badge>}
+                    </div>
                   </Td>
                   <Td><span className="text-[11px] text-slate-600">{(t.assigneeNames || []).join(', ') || (t.department || t.targetRole || '—')}</span></Td>
                   <Td><span className="text-[11px] text-slate-500">{t.dueDate || '—'}</span></Td>
@@ -356,25 +388,37 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
           <Textarea label="Description" rows={3} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Select label="Priority" value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} options={PRIORITIES.map(p => ({ value: p, label: p }))} />
-            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={STATUSES.map(s => ({ value: s, label: s }))} />
+            <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} options={TASK_STATUSES.map(s => ({ value: s, label: s }))} />
             <Input label="Start Date" type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
             <Input label="Due Date" type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} />
-            <Input label="Start Time" type="time" value={form.startTime} onChange={e => setForm({ ...form, startTime: e.target.value })} />
-            <Input label="End Time" type="time" value={form.endTime} onChange={e => setForm({ ...form, endTime: e.target.value })} />
             <Select label="Assignment Type" value={form.assignmentType} onChange={e => setForm({ ...form, assignmentType: e.target.value })} options={[{ value: 'user', label: 'Single / Multiple Users' }, { value: 'department', label: 'Department' }, { value: 'branch', label: 'Branch' }, { value: 'role', label: 'Role' }]} />
             {form.assignmentType === 'department' && <Input label="Department" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} />}
             {form.assignmentType === 'role' && <Select label="Role" value={form.targetRole} onChange={e => setForm({ ...form, targetRole: e.target.value })} options={[{ value: '', label: 'Select…' }, ...['Company Head', 'HR', 'Finance', 'Employee'].map(r => ({ value: r, label: r }))]} />}
           </div>
 
-          {/* Workspace scope (Super Admin: Company + Branch; Company Head: Branch) */}
-          {(role === 'Super Admin' || branchOptionsForRole.length > 0) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 rounded-lg bg-slate-50 border border-slate-100 p-3">
-              {role === 'Super Admin' && (
+          {/* Workspace scope — Super Admin: Company + Branch · Parent company:
+              Branch · Branch user: read-only branch. The grid only goes to two
+              columns when there really are two fields, so nothing is left blank. */}
+          {(showBranchPicker || lockedBranch) && (
+            <div className={`grid grid-cols-1 ${isSuperAdmin ? 'md:grid-cols-2' : ''} gap-3 rounded-lg bg-slate-50 border border-slate-100 p-3`}>
+              {isSuperAdmin && (
                 <Select label="Company" value={scopeCompanyId} onChange={e => { setScopeCompanyId(e.target.value); setScopeBranchId(''); setPicked([]); }}
                   options={[{ value: '', label: 'All Companies' }, ...parentCompanies.map(c => ({ value: String(c.id), label: c.name }))]} />
               )}
-              <Select label="Branch" value={scopeBranchId} onChange={e => { setScopeBranchId(e.target.value); setPicked([]); }}
-                options={[{ value: '', label: role === 'Super Admin' && !scopeCompanyId ? 'All Branches' : 'All Branches in Scope' }, ...branchOptionsForRole.map(b => ({ value: String(b.id), label: (b as any).branchName || b.name }))]} />
+              {showBranchPicker && (
+                <Select label="Branch" value={scopeBranchId} onChange={e => { setScopeBranchId(e.target.value); setPicked([]); }}
+                  options={[{ value: '', label: isSuperAdmin && !scopeCompanyId ? 'All Branches' : 'All Branches in Scope' }, ...branchOptionsForRole.map(b => ({ value: String(b.id), label: (b as any).branchName || b.name }))]} />
+              )}
+              {lockedBranch && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Branch</label>
+                  <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-100/70 px-3 py-2">
+                    <span className="text-sm font-semibold text-slate-700">{lockedBranchName}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Read only</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400">Tasks created here are assigned to your branch.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -453,7 +497,8 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ role, activeCompanyId,
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge variant={PRIORITY_VARIANT[detail.priority] || 'gray'}>{detail.priority}</Badge>
-              <Badge variant={STATUS_VARIANT[detail.status] || 'gray'}>{detail.status}</Badge>
+              <Badge variant={STATUS_VARIANT[normalizeTaskStatus(detail.status)] || 'gray'}>{normalizeTaskStatus(detail.status)}</Badge>
+              {isTaskOverdue(detail) && <Badge variant="red">Overdue</Badge>}
               {detail.dueDate && <Badge variant="blue">Due {detail.dueDate}</Badge>}
             </div>
             {detail.description && <p className="text-sm text-slate-600">{detail.description}</p>}

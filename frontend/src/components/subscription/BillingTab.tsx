@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Wallet, TrendingUp, CalendarRange, AlertTriangle, BadgeCheck, Clock, Ban,
   CalendarClock, Search, RefreshCw, Plus, FileDown, Eye, MoreVertical, Printer,
-  Mail, Copy, RotateCcw, CheckCircle2, Trash2, FileBarChart2, LayoutList,
+  Mail, Copy, RotateCcw, CheckCircle2, Trash2, FileBarChart2, LayoutList, Settings2,
 } from 'lucide-react';
 import { Card, StatCard, SectionHeader } from '@/components/ui/Card';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
@@ -20,11 +20,17 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { inr } from '@/config/subscriptionPricing';
 import { INVOICE_STATUS_VARIANT, RENEWAL_VARIANT } from './billing/calc';
 import { GenerateInvoiceModal } from './billing/GenerateInvoiceModal';
-import { InvoiceDetailModal } from './billing/InvoiceDetailModal';
+import { InvoiceSettingsModal } from './billing/InvoiceSettingsModal';
 
 const shortDate = (d: any) => d ? new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }) : '—';
 
-export const BillingTab: React.FC = () => {
+interface BillingTabProps {
+  /** Opens the dedicated full-page invoice route. The invoice is NEVER shown in
+   *  a modal/popup — clicking an invoice number or View navigates to its page. */
+  onOpenInvoice?: (invoiceId: string | number) => void;
+}
+
+export const BillingTab: React.FC<BillingTabProps> = ({ onOpenInvoice }) => {
   const [view, setView] = useState<'invoices' | 'reports'>('invoices');
   const [summary, setSummary] = useState<any>({});
   const [rows, setRows] = useState<any[]>([]);
@@ -32,7 +38,13 @@ export const BillingTab: React.FC = () => {
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
-  const [detailId, setDetailId] = useState<number | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  // Navigate to the dedicated invoice page (falls back to a deep link if this tab
+  // is ever rendered without the navigation prop).
+  const openInvoice = useCallback((id: number | string) => {
+    if (onOpenInvoice) onOpenInvoice(id);
+    else window.location.href = `/subscription-invoice/${encodeURIComponent(String(id))}`;
+  }, [onOpenInvoice]);
   const [menuId, setMenuId] = useState<number | null>(null);
 
   // filters
@@ -125,6 +137,7 @@ export const BillingTab: React.FC = () => {
               <button onClick={() => setView('invoices')} className={`px-3 h-9 text-[13px] font-semibold flex items-center gap-1.5 ${view === 'invoices' ? 'bg-brand-600 text-white' : 'text-ink-secondary'}`}><LayoutList size={14} />Invoices</button>
               <button onClick={() => setView('reports')} className={`px-3 h-9 text-[13px] font-semibold flex items-center gap-1.5 ${view === 'reports' ? 'bg-brand-600 text-white' : 'text-ink-secondary'}`}><FileBarChart2 size={14} />Reports</button>
             </div>
+            <Button variant="outline" size="sm" icon={<Settings2 size={14} />} onClick={() => setShowSettings(true)}>Invoice Settings</Button>
             <Button variant="outline" size="sm" icon={<RefreshCw size={14} />} onClick={load} loading={loading}>Refresh</Button>
             <Button size="sm" icon={<Plus size={15} />} onClick={() => setGenerating(true)}>Generate Invoice</Button>
           </div>
@@ -184,7 +197,7 @@ export const BillingTab: React.FC = () => {
                     <Tr><Td colSpan={14}><div className="py-12 text-center text-ink-muted text-sm flex flex-col items-center gap-2"><Wallet size={22} className="opacity-40" />No invoices yet. Click <b>Generate Invoice</b> to create the first one.</div></Td></Tr>
                   ) : rows.map((r) => (
                     <Tr key={r.id}>
-                      <Td><button onClick={() => setDetailId(r.id)} className="font-bold text-brand-700 hover:underline">{r.invoiceNo}</button></Td>
+                      <Td><button onClick={() => openInvoice(r.id)} className="font-bold text-brand-700 hover:underline">{r.invoiceNo}</button></Td>
                       <Td><div className="font-semibold text-ink whitespace-nowrap">{r.companyName}</div><div className="text-[11px] text-ink-muted">{r.companyHead}</div></Td>
                       <Td>{r.plan}</Td>
                       <Td className="text-[13px] text-ink-secondary">{r.billingCycle}</Td>
@@ -199,7 +212,7 @@ export const BillingTab: React.FC = () => {
                       <Td><Badge variant={RENEWAL_VARIANT[r.renewalStatus] || 'gray'}>{r.renewalStatus}</Badge></Td>
                       <Td>
                         <div className="flex items-center gap-1 relative">
-                          <button onClick={() => setDetailId(r.id)} title="View" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><Eye size={14} /></button>
+                          <button onClick={() => openInvoice(r.id)} title="View" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><Eye size={14} /></button>
                           <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === r.id ? null : r.id); }} title="More" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><MoreVertical size={14} /></button>
                           {menuId === r.id && (
                             <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-8 z-30 w-48 rounded-xl border border-hairline bg-surface shadow-lg py-1 text-[13px]">
@@ -223,8 +236,20 @@ export const BillingTab: React.FC = () => {
         </>
       )}
 
-      {generating && <GenerateInvoiceModal companies={companies} settings={settings} onClose={() => setGenerating(false)} onCreated={() => { setGenerating(false); load(); }} />}
-      {detailId != null && <InvoiceDetailModal invoiceId={detailId} onClose={() => setDetailId(null)} onChanged={load} />}
+      {generating && (
+        <GenerateInvoiceModal
+          companies={companies}
+          settings={settings}
+          onClose={() => setGenerating(false)}
+          // After generating, go straight to the new invoice's dedicated page.
+          onCreated={(newId?: number | string) => {
+            setGenerating(false);
+            load();
+            if (newId != null) openInvoice(newId);
+          }}
+        />
+      )}
+      {showSettings && <InvoiceSettingsModal onClose={() => setShowSettings(false)} onSaved={load} />}
     </div>
   );
 };

@@ -33,6 +33,8 @@ import { PlanSettingsTab } from '@/components/subscription/PlanSettingsTab';
 
 interface Props {
   onManage: (companyId: string | number) => void;
+  /** Open the dedicated full-page Subscription Invoice (never a modal). */
+  onOpenInvoice?: (invoiceId: string | number) => void;
 }
 
 type TabKey = 'companies' | 'plans' | 'billing' | 'history' | 'settings';
@@ -44,7 +46,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: 'settings', label: 'Plan Settings', icon: <SlidersHorizontal size={15} /> },
 ];
 
-export const SubscriptionManagement: React.FC<Props> = ({ onManage }) => {
+export const SubscriptionManagement: React.FC<Props> = ({ onManage, onOpenInvoice }) => {
   const [tab, setTab] = useState<TabKey>('companies');
 
   return (
@@ -72,7 +74,7 @@ export const SubscriptionManagement: React.FC<Props> = ({ onManage }) => {
 
       {tab === 'companies' && <CompaniesTab onManage={onManage} />}
       {tab === 'plans' && <PlansTab />}
-      {tab === 'billing' && <BillingTab />}
+      {tab === 'billing' && <BillingTab onOpenInvoice={onOpenInvoice} />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'settings' && <PlanSettingsTab />}
     </div>
