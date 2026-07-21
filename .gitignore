@@ -25,3 +25,6 @@ dump_err.txt
 backend/data/
 # Build-artifact zips (never commit)
 dist.zip
+
+# Local backup of backend/.env taken during the email de-branding change (holds SMTP creds)
+backend/.env.bak-*

@@ -41,7 +41,7 @@ const csvCell = (v: any) => { const s = String(v ?? ''); return /[",\n]/.test(s)
 // so the .txt is byte-identical to the official ECR apart from the line endings.
 const toWindowsText = (content: string) => String(content || '').replace(/\r\n|\r|\n/g, '\r\n');
 
-/** e.g. ECR_PulpitMobility_Jun_2026.txt */
+/** e.g. ECR_AcmeIndustries_Jun_2026.txt */
 const notepadFileName = (companyName: string, month: string, year: string) => {
   const safe = (s: string) => String(s || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 40);
   return `ECR_${safe(companyName) || 'Company'}_${safe(month).slice(0, 3)}_${safe(year)}.txt`;

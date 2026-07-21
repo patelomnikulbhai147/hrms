@@ -7,6 +7,7 @@
 const prisma = require('../config/prisma');
 const AuditService = require('../services/auditService');
 const emailService = require('../services/emailService');
+const { DEFAULT_BRAND } = require('../services/emailBranding');
 const store = require('../services/planStore');
 const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const { pricePerEmployee } = require('../services/planEntitlements');
@@ -333,7 +334,12 @@ exports.email = async (req, res) => {
     const to = (req.body.to && String(req.body.to).trim()) || inv.companyEmail;
     if (!to) return res.status(400).json({ error: 'No recipient email on file for this company.' });
     const html = renderInvoiceHtml(inv, { settings: store.getSettings() });
+    // A SUBSCRIPTION invoice comes from the PLATFORM, not from the customer, so
+    // the sender is the configured issuer (Super Admin → Invoice Settings),
+    // falling back to ZeniaHR — never a hardcoded name.
+    const issuerName = (require('../services/invoiceIssuerStore').getIssuer().name || '').trim();
     const result = await emailService.sendMail({
+      branding: { ...DEFAULT_BRAND, name: issuerName || DEFAULT_BRAND.name },
       to, subject: `Invoice ${inv.invoiceNo} — ${store.getSettings().currency || 'INR'} ${inv.grandTotal.toLocaleString('en-IN')}`,
       text: `Please find your subscription invoice ${inv.invoiceNo} for ${inv.companyName}. Amount due: ${inv.grandTotal}.`,
       html,

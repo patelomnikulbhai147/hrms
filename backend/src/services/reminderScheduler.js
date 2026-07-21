@@ -47,7 +47,7 @@ async function deliver({ companyId, employeeId, employeeName, extraUserIds = [],
 
   if (email.isSmtpConfigured && email.isSmtpConfigured()) {
     const to = [...new Set(mgrs.map((m) => m.email).filter((e) => e && e.includes('@')))];
-    if (to.length) await email.sendMail({ to: to.join(','), subject: emailSubject || title, text: message, html: emailHtml || `<p>${message}</p>` }).catch(() => {});
+    if (to.length) await email.sendMail({ companyId, to: to.join(','), subject: emailSubject || title, text: message, html: emailHtml || `<p>${message}</p>` }).catch(() => {});
   }
   try {
     await prisma.whatsAppQueue.create({ data: { companyId: Number(companyId), employeeId: employeeId ? Number(employeeId) : null, employeeName: employeeName || null, templateName: queueLabel || `Reminder · ${title}`, payload: JSON.stringify({ title, message }).slice(0, 4000), status: 'Pending', developmentMode: true, simulated: true } });

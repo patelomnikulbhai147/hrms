@@ -601,7 +601,9 @@ exports.forgotPassword = async (req, res) => {
       data: { userId: user.id, email: user.email, otpHash, expiresAt },
     });
 
-    const delivery = await sendOtpEmail(user.email, otp, user.name, OTP_EXPIRY_MINUTES);
+    // Branded with the user's own company (falls back to ZeniaHR when the user
+    // is not attached to one, e.g. a platform-level account).
+    const delivery = await sendOtpEmail(user.email, otp, user.name, OTP_EXPIRY_MINUTES, user.companyId);
 
     // SMTP is configured but the provider rejected the message — be honest and
     // void the just-created code so the user can safely retry.

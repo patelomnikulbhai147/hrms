@@ -13,6 +13,7 @@
 // SCOPE: nothing here is used by subscription invoices, payslips or vendor bills.
 // ─────────────────────────────────────────────────────────────────────────────
 const { sendMail, isSmtpConfigured } = require('./emailService');
+const { DEFAULT_BRAND } = require('./emailBranding');
 
 let browserPromise = null;
 async function getBrowser() {
@@ -60,7 +61,7 @@ function mailBody({ invoice, companyName, message }) {
     <tr><td style="padding:4px 14px 4px 0;color:#6b7280">Amount</td><td style="padding:4px 0;font-weight:700">${money(invoice.grandTotal)}</td></tr>
     ${due > 0 ? `<tr><td style="padding:4px 14px 4px 0;color:#6b7280">Outstanding</td><td style="padding:4px 0;font-weight:700;color:#b91c1c">${money(due)}</td></tr>` : ''}
   </table>
-  <p style="color:#6b7280;font-size:12px">Regards,<br/>${esc(companyName || 'Accounts')}</p>
+  <p style="color:#6b7280;font-size:12px">Regards,<br/>${esc(companyName || DEFAULT_BRAND.name)}</p>
 </div>`;
 }
 
@@ -68,7 +69,7 @@ function mailBody({ invoice, companyName, message }) {
  * Build the PDF and email it.
  * @returns {Promise<{delivered:boolean, devMode?:boolean, configured?:boolean, error?:string, pdfBytes?:number}>}
  */
-async function emailInvoicePdf({ to, cc, subject, message, html, invoice, companyName }) {
+async function emailInvoicePdf({ to, cc, subject, message, html, invoice, companyName, companyId }) {
   let pdf = null;
   try {
     pdf = await htmlToPdf(html);
@@ -78,10 +79,11 @@ async function emailInvoicePdf({ to, cc, subject, message, html, invoice, compan
   const fileName = `${String(invoice.invoiceNumber || 'Invoice').replace(/[^\w.-]+/g, '_')}.pdf`;
   const res = await sendMail({
     to, cc,
-    subject: subject || `Invoice ${invoice.invoiceNumber} from ${companyName || 'us'}`,
+    subject: subject || `Invoice ${invoice.invoiceNumber} from ${companyName || DEFAULT_BRAND.name}`,
     text: `Please find attached invoice ${invoice.invoiceNumber} dated ${invoice.invoiceDate} for ${money(invoice.grandTotal)}.`,
     html: mailBody({ invoice, companyName, message }),
     attachments: [{ filename: fileName, content: pdf, contentType: 'application/pdf' }],
+    companyId,
   });
   return { ...res, pdfBytes: pdf.length, fileName };
 }

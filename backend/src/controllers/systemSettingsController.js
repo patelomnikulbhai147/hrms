@@ -88,7 +88,7 @@ function coordsFromUrl(url) {
 
 async function expandShortLink(url) {
   try {
-    const r = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 HRMate' } });
+    const r = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 ZeniaHR' } });
     return r.url || url;
   } catch (_) {
     return url;
