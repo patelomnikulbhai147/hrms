@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // EMPLOYEE LIMIT REACHED — upgrade dialog.
-// Shown whenever a company hits its subscription employee cap (FREE = 30) on any
+// Shown whenever a company hits its subscription employee cap (FREE = 100) on any
 // create path. Buttons: Upgrade Plan · View Plans · Cancel. Portaled to
 // document.body so App's page-transform wrapper can't clip the fixed overlay.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -18,7 +18,7 @@ interface Props {
   onClose: () => void;
 }
 
-export const EmployeeLimitDialog: React.FC<Props> = ({ open, plan = 'FREE', limit = 30, current, onUpgrade, onViewPlans, onClose }) => {
+export const EmployeeLimitDialog: React.FC<Props> = ({ open, plan = 'FREE', limit = 100, current, onUpgrade, onViewPlans, onClose }) => {
   if (!open) return null;
   const planLabel = (plan || 'FREE').toUpperCase();
   return createPortal(
@@ -33,9 +33,9 @@ export const EmployeeLimitDialog: React.FC<Props> = ({ open, plan = 'FREE', limi
           <h2 className="text-[20px] font-extrabold text-slate-900">Employee Limit Reached</h2>
           <p className="text-[14px] text-slate-500 mt-2 leading-relaxed">
             Your <span className="font-bold text-slate-700">{planLabel}</span> plan allows up to{' '}
-            <span className="font-bold text-slate-700">{limit ?? 30}</span> employees
+            <span className="font-bold text-slate-700">{limit ?? 100}</span> active employees
             {typeof current === 'number' ? <> (you have <span className="font-bold text-slate-700">{current}</span>)</> : null}.
-            <br />Upgrade your subscription to continue adding employees and unlock premium features.
+            <br />To add more employees, please upgrade your subscription plan.
           </p>
         </div>
         <div className="px-7 py-6 flex flex-col gap-2.5">

@@ -684,6 +684,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       lockedModules: sp.lockedModules ?? lp.lockedModules,
       lockedPages: sp.lockedPages ?? lp.lockedPages,
       allowedReports: sp.allowedReports !== undefined ? sp.allowedReports : lp.allowedReports,
+      // Onboarding ledger + seat usage ALSO come only from login/getMe — the
+      // users-list row has no such fields. Without this, the moment `userAccounts`
+      // hydrated, `latestProfile` replaced the profile and `onboarding` became
+      // undefined, which silently closed the first-login welcome gate after a
+      // fraction of a second and dropped the user on the dashboard unasked.
+      onboarding: sp.onboarding ?? lp.onboarding,
+      employeeLimit: sp.employeeLimit !== undefined ? sp.employeeLimit : lp.employeeLimit,
+      employeeCount: sp.employeeCount !== undefined ? sp.employeeCount : lp.employeeCount,
     };
   }, [storedAuthProfile, userAccounts, companies]);
 
@@ -1060,7 +1068,10 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           // Also carry the live seat usage + onboarding ledger so the Add-Employee
           // gate and the "current / limit" display update with NO logout — e.g.
           // right after a Super Admin upgrades the company's plan.
-          const merged = { ...prev, plan: me.plan, lockedModules: me.lockedModules, lockedPages: me.lockedPages, allowedReports: me.allowedReports, employeeLimit: me.employeeLimit, employeeCount: me.employeeCount, onboarding: me.onboarding };
+          // `?? prev` on the onboarding ledger: attachPlanInfo swallows its own
+          // errors, so a transient failure can return a user WITHOUT `onboarding`.
+          // Overwriting with undefined would close the first-login gate unasked.
+          const merged = { ...prev, plan: me.plan, lockedModules: me.lockedModules, lockedPages: me.lockedPages, allowedReports: me.allowedReports, employeeLimit: me.employeeLimit, employeeCount: me.employeeCount, onboarding: me.onboarding ?? prev.onboarding };
           try { authStorage.set('hrms_profile', JSON.stringify(merged)); } catch (_) { /* ignore */ }
           return merged;
         });

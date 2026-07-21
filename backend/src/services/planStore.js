@@ -105,7 +105,7 @@ function seedPlans() {
       status: 'Active', isSystem: true, color: '#64748b', displayOrder: 1,
       employeeMin: 0, employeeMax: 100, priceQuarterly: 0, priceYearly: 0, discountPercent: 0,
       enabledModules: [], enabledReports: FREE_ALLOWED_REPORTS.slice(),
-      limits: { employeeLimit: 25, branchLimit: 1, adminUserLimit: 1, storageMB: 500, apiCalls: -1, whatsappMessages: 0, documents: 100, mobileUsers: 25 },
+      limits: { employeeLimit: 100, branchLimit: 1, adminUserLimit: 1, storageMB: 500, apiCalls: -1, whatsappMessages: 0, documents: 100, mobileUsers: 100 },
       features: freeFeatures(),
     },
     {

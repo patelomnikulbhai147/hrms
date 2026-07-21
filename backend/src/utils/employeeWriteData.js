@@ -9,14 +9,26 @@
  */
 const { Prisma } = require('@prisma/client');
 
-// Real, writable scalar columns on Employee (excludes relations + the id PK),
-// each mapped to its Prisma scalar TYPE (Int / Float / DateTime / Boolean / …).
-// Read from the schema metadata so it can never drift from the actual columns.
+// SYSTEM columns the client may never write. The edit form spreads the WHOLE
+// record it loaded into the request body, so it echoes `id`, `createdAt` and
+// `updatedAt` straight back. `updatedAt` is `@updatedAt`, but Prisma only fills
+// it in when the caller does NOT supply it — an explicit value wins. The result
+// on production: every save wrote the row's OWN stale timestamp back, so
+// `updatedAt` never advanced (employee #8 still read 2026-06-16 after four
+// successful saves today) and "when was this record last changed?" became
+// unanswerable for audit, sync and support. Writing `createdAt` is worse still:
+// a client could rewrite a record's history.
+const SYSTEM_COLUMNS = new Set(['id', 'createdAt', 'updatedAt']);
+
+// Real, writable scalar columns on Employee (excludes relations, the id PK and
+// the system timestamps above), each mapped to its Prisma scalar TYPE
+// (Int / Float / DateTime / Boolean / …). Read from the schema metadata so it
+// can never drift from the actual columns.
 const EMPLOYEE_FIELD_TYPES = (() => {
   const model = Prisma.dmmf.datamodel.models.find((m) => m.name === 'Employee');
   const map = new Map();
   model.fields
-    .filter((f) => f.kind === 'scalar' && f.name !== 'id')
+    .filter((f) => f.kind === 'scalar' && !SYSTEM_COLUMNS.has(f.name))
     .forEach((f) => map.set(f.name, f.type));
   // companyId / branchId / shiftId are FK scalars Prisma exposes for writes.
   // (They're already scalar in the datamodel, but assert their Int type here so

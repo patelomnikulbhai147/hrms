@@ -424,7 +424,7 @@ exports.approve = async (req, res) => {
 
     // ── Subscription employee-limit guard ───────────────────────────────────
     // Converting a temp record to a REAL Active employee consumes a seat, so the
-    // plan cap is enforced here too (FREE = 30). 403 → client upgrade dialog.
+    // plan cap is enforced here too (FREE = 100). 403 → client upgrade dialog.
     const cap = await require('../services/employeeLimitService').assertCapacity(t.companyId, 1);
     if (!cap.ok) return res.status(cap.status).json(cap.body);
 

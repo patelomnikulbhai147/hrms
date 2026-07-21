@@ -28,7 +28,7 @@ const FREE_LOCKED = PREMIUM_MODULES.slice(); // FREE unlocks none of the premium
 const FREE_LOCKED_PAGES = ['custom-report-builder'];
 
 const PLAN_ENTITLEMENTS = {
-  Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 30, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
+  Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
   Starter: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 3, storageMB: 5120 } },
   Professional: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 1000, maxBranches: 5, maxAdminUsers: 15, storageMB: 51200 } },
   Enterprise: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: -1, maxBranches: 999, maxAdminUsers: -1, storageMB: -1 } },

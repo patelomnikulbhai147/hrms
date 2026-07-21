@@ -281,6 +281,12 @@ export const Employees: React.FC<EmployeesProps> = ({
     results: { row: number; name: string; employeeId?: string | null; status: string; reason?: string }[];
     limitReached?: boolean;
   } | null>(null);
+  // Set when the backend rejected the ENTIRE file up-front on the plan employee
+  // cap. Nothing was written, so the parsed rows stay on screen and the user can
+  // trim the file (or upgrade) and commit again.
+  const [importBlocked, setImportBlocked] = useState<{
+    plan: string; limit: number; current: number; importCount: number; availableSlots: number;
+  } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1936,6 +1942,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleBulkCommit = async () => {
     setIsConfirmingBulk(false);
     if (importedRows.length === 0) return;
+    setImportBlocked(null);
 
     try {
       const response = await api.employees.bulkCreate(importedRows);
@@ -1970,8 +1977,28 @@ export const Employees: React.FC<EmployeesProps> = ({
       if (response.limitReached) {
         ui.toast.error('Some rows were skipped: the plan employee limit was reached. Upgrade the subscription to add more.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Bulk commit failed:', error);
+      // The plan cap rejects the WHOLE file before anything is written, and tells
+      // us exactly how many seats are left — surface that instead of a generic
+      // failure so the user knows precisely what to trim (or to upgrade).
+      if (error?.code === 'EMPLOYEE_LIMIT_REACHED') {
+        const d = error.data || {};
+        const slots = Number(d.availableSlots ?? 0);
+        setImportBlocked({
+          plan: d.plan || 'Free',
+          limit: Number(d.limit ?? 100),
+          current: Number(d.current ?? 0),
+          importCount: Number(d.importCount ?? importedRows.length),
+          availableSlots: slots,
+        });
+        ui.toast.error(
+          slots > 0
+            ? `Import blocked — only ${slots} more employee${slots === 1 ? '' : 's'} can be added on your ${d.plan || 'Free'} plan.`
+            : `Import blocked — your ${d.plan || 'Free'} plan employee limit has been reached.`,
+        );
+        return;
+      }
       ui.toast.error(getApiErrorMessage(error, 'Could not save the imported employees.'));
     }
   };
@@ -1990,7 +2017,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   };
 
   // Reset the importer to a clean state (used by the completion screen's Done/close).
-  const resetImporter = () => { setImportResult(null); setImportedRows([]); setImportLogs([]); setImportOpen(false); };
+  const resetImporter = () => { setImportResult(null); setImportBlocked(null); setImportedRows([]); setImportLogs([]); setImportOpen(false); };
 
 
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
@@ -3258,6 +3285,40 @@ export const Employees: React.FC<EmployeesProps> = ({
               Drop your real employee master dataset (`.xlsx`) to parse all location sheets (AHMEDABAD, BHAVNAGAR, RAJKOT, SIDDHPUR) and synchronise them dynamically.
             </p>
           </div>
+
+          {/* Plan cap rejected the whole file — nothing was imported. */}
+          {importBlocked && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">
+                <AlertTriangle size={13} /> Import Blocked — Employee Limit
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Current Employees', n: importBlocked.current },
+                  { label: 'Import File', n: importBlocked.importCount },
+                  { label: 'Available Slots', n: importBlocked.availableSlots },
+                ].map((s) => (
+                  <div key={s.label} className="rounded-md border border-amber-200 bg-white/70 px-2 py-1.5">
+                    <p className="text-[9px] uppercase tracking-wide text-amber-700 font-bold">{s.label}</p>
+                    <p className="text-[15px] font-extrabold text-amber-900 leading-tight">{s.n}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="leading-relaxed">
+                Your <b>{importBlocked.plan}</b> plan allows up to <b>{importBlocked.limit}</b> active employees.
+                {importBlocked.availableSlots > 0
+                  ? <> Only <b>{importBlocked.availableSlots}</b> more employee{importBlocked.availableSlots === 1 ? '' : 's'} can be added.</>
+                  : <> No further employees can be added.</>} Nothing was imported —
+                please reduce the file or upgrade your plan to continue.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setImportBlocked(null)}>Dismiss</Button>
+                {/* Reuse the global upgrade dialog (App owns the Plans route) — the
+                    same event apiClient fires on any EMPLOYEE_LIMIT_REACHED 403. */}
+                <Button onClick={() => window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: { plan: importBlocked.plan, limit: importBlocked.limit, current: importBlocked.current } }))}>View Plans</Button>
+              </div>
+            </div>
+          )}
 
 
 

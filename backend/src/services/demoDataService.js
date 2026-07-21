@@ -106,11 +106,19 @@ async function generateDemoWorkspace(headCompanyId, actor = 'System') {
       const first = pick(FIRST_NAMES);
       const last = pick(LAST_NAMES);
       const designation = pick(DESIGNATIONS[dept]);
-      let email = `${slug(first)}.${slug(last)}@${DEMO_EMAIL_DOMAIN}`;
-      while (usedEmails.has(email)) email = `${slug(first)}.${slug(last)}${seq}@${DEMO_EMAIL_DOMAIN}`;
+      // Employee.email has no unique constraint today, but scoping the local part
+      // by company keeps demo rosters distinguishable across tenants. The
+      // @demo.zeniahr.local domain (the tagging marker) is unchanged.
+      let email = `${slug(first)}.${slug(last)}.c${companyId}@${DEMO_EMAIL_DOMAIN}`;
+      while (usedEmails.has(email)) email = `${slug(first)}.${slug(last)}${seq}.c${companyId}@${DEMO_EMAIL_DOMAIN}`;
       usedEmails.add(email);
       rows.push({
-        employeeId: `${DEMO_EMPLOYEE_PREFIX}${String(seq).padStart(4, '0')}`,
+        // Employee.employeeId is GLOBALLY unique (not per company), so a fixed
+        // 'DEMO-0001'…'DEMO-0030' meant only the FIRST company on the platform
+        // could ever seed demo data — every later tenant died on a P2002 unique
+        // violation. The company id makes the code unique per tenant while still
+        // matching the `DEMO-%` prefix that hasDemoData/removeSampleData use.
+        employeeId: `${DEMO_EMPLOYEE_PREFIX}${companyId}-${String(seq).padStart(4, '0')}`,
         companyId, branchId,
         name: `${first} ${last}`,
         firstName: first, lastName: last,
@@ -137,7 +145,39 @@ async function generateDemoWorkspace(headCompanyId, actor = 'System') {
     select: { id: true, name: true, department: true, salary: true, joinDate: true },
   });
 
-  const rich = await generateRichDemoData(companyId, emps);
+  // If ANY layer of the rich seed throws, undo the whole thing rather than
+  // leaving the tenant with half a demo workspace.
+  let rich;
+  try {
+    rich = await generateRichDemoData(companyId, emps);
+  } catch (e) {
+    try { await removeSampleData(companyId); } catch (_) { /* best-effort rollback */ }
+    throw e;
+  }
+
+  // ── Verify before declaring success ────────────────────────────────────────
+  // The caller only marks the workspace as "demo installed" if this returns, so
+  // a half-written seed must NEVER look like a success — that is precisely how a
+  // tenant ended up with the "Remove Demo Data" button and an empty dashboard.
+  // Anything missing → delete everything we just wrote and throw.
+  const empIds = emps.map((e) => e.id);
+  const verify = {
+    employees: emps.length,
+    departments: mergedDepts.length,
+    attendance: empIds.length ? await prisma.attendance.count({ where: { employeeId: { in: empIds } } }) : 0,
+    payroll: empIds.length ? await prisma.payroll.count({ where: { employeeId: { in: empIds } } }) : 0,
+  };
+  const failures = [];
+  if (verify.employees < DEMO_COUNT) failures.push(`employees ${verify.employees} < ${DEMO_COUNT}`);
+  if (verify.departments < 1) failures.push('no departments');
+  if (verify.attendance < 1) failures.push('no attendance');
+  if (verify.payroll < 1) failures.push('no payroll');
+  if (failures.length) {
+    try { await removeSampleData(companyId); } catch (_) { /* best-effort rollback */ }
+    const err = new Error(`Demo verification failed: ${failures.join('; ')}`);
+    err.code = 'DEMO_VERIFY_FAILED';
+    throw err;
+  }
 
   // Keep Company.employeeCount in sync with the new roster.
   try {
@@ -145,7 +185,7 @@ async function generateDemoWorkspace(headCompanyId, actor = 'System') {
     if (HeadcountSyncService.syncAllBranches) await HeadcountSyncService.syncAllBranches();
   } catch (_) { /* non-fatal */ }
 
-  return { created: rows.length, skipped: false, departments: DEPARTMENTS.length, branchId, ...rich };
+  return { created: rows.length, skipped: false, departments: DEPARTMENTS.length, branchId, verified: verify, ...rich };
 }
 
 // ── Rich demo data (Phase 2) ─────────────────────────────────────────────────

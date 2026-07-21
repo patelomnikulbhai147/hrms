@@ -3,7 +3,7 @@
 // subscription employee cap and its live headcount.
 //
 // The cap is per TENANT (head office + all its branches), resolved from the plan
-// via planEntitlements (Custom-aware). FREE = 30. A limit of -1 means unlimited.
+// via planEntitlements (Custom-aware). FREE = 100. A limit of -1 means unlimited.
 // Every employee-creation path (create / bulk / temp→real) calls
 // assertCapacity() so the limit is enforced on the backend, not just the UI.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -77,12 +77,15 @@ async function assertCapacity(companyId, addCount = 1) {
       status: 403,
       body: {
         code: 'EMPLOYEE_LIMIT_REACHED',
-        error: `Your ${cap.plan} plan allows up to ${cap.limit} employees. ` +
-          `You currently have ${cap.current}. Upgrade your subscription to add more.`,
+        error: `Your ${cap.plan} plan allows up to ${cap.limit} active employees. ` +
+          `You currently have ${cap.current}. To add more employees, please upgrade your subscription plan.`,
         plan: cap.plan,
         limit: cap.limit,
         current: cap.current,
         remaining: cap.remaining,
+        // How many MORE employees still fit — what the importer reports back.
+        availableSlots: cap.remaining,
+        requested: addCount,
       },
     };
   }

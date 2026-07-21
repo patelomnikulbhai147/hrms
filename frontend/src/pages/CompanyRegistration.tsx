@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Building2, Mail, Phone, Briefcase, Users, Globe, MapPin, User, Lock, Smartphone,
+  Building2, Mail, Phone, Briefcase, Globe, MapPin, User, Lock, Smartphone,
   Eye, EyeOff, ShieldCheck, RefreshCw, ArrowRight, ArrowLeft, CheckCircle2, PartyPopper, Sparkles, Rocket,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
@@ -17,7 +17,6 @@ interface CompanyRegistrationProps {
 }
 
 const INDUSTRIES = ['Information Technology', 'Manufacturing', 'Retail & E-commerce', 'Healthcare', 'Finance & Banking', 'Construction', 'Education', 'Hospitality', 'Logistics', 'Security Services', 'Consulting', 'Other'];
-const COMPANY_SIZES = ['1–10', '11–25', '26–50', '51–100', '101–250', '251–500', '500+'];
 const COUNTRIES = ['India', 'United States', 'United Kingdom', 'United Arab Emirates', 'Singapore', 'Australia', 'Canada', 'Other'];
 
 const BROWN = '#C67B49';
@@ -46,7 +45,10 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
   const [showPassword, setShowPassword] = useState(false);
 
   // Form data
-  const [company, setCompany] = useState({ name: '', email: '', phone: '', industry: '', companySize: '', country: 'India', state: '', city: '' });
+  // No company-size field: every self-registration lands on the FREE plan, whose
+  // employee cap is fixed by the plan itself — asking for headcount up front adds
+  // nothing, so the field was removed rather than hidden.
+  const [company, setCompany] = useState({ name: '', email: '', phone: '', industry: '', country: 'India', state: '', city: '' });
   const [head, setHead] = useState({ name: '', email: '', mobile: '', password: '', confirmPassword: '' });
   const [branch, setBranch] = useState({ branchName: 'Head Office', address: '' });
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -93,7 +95,6 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
       if (!ec.isValid) return ec.error || 'Please enter a valid company email.';
       if (!company.phone.trim()) return 'Please enter a company phone number.';
       if (!company.industry) return 'Please select an industry.';
-      if (!company.companySize) return 'Please select a company size.';
       if (!company.country) return 'Please select a country.';
       if (!company.state.trim()) return 'Please enter a state.';
       if (!company.city.trim()) return 'Please enter a city.';
@@ -233,11 +234,12 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
                   <Field icon={<Building2 size={17} />}><input className={withIcon} placeholder="Company name" value={company.name} onChange={e => cx('name', e.target.value)} /></Field>
                   <Field icon={<Mail size={17} />}><input type="email" className={withIcon} placeholder="Company email" value={company.email} onChange={e => cx('email', e.target.value)} /></Field>
                   <Field icon={<Phone size={17} />}><input className={withIcon} placeholder="Company phone" value={company.phone} onChange={e => cx('phone', e.target.value)} /></Field>
+                  {/* Industry pairs with Country now that Company size is gone —
+                      the row stays full, so there is no orphaned half-width gap. */}
                   <div className="grid grid-cols-2 gap-3">
                     <Field icon={<Briefcase size={17} />}><select className={`${withIcon} appearance-none`} value={company.industry} onChange={e => cx('industry', e.target.value)}><option value="">Industry</option>{INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}</select></Field>
-                    <Field icon={<Users size={17} />}><select className={`${withIcon} appearance-none`} value={company.companySize} onChange={e => cx('companySize', e.target.value)}><option value="">Company size</option>{COMPANY_SIZES.map(i => <option key={i} value={i}>{i} employees</option>)}</select></Field>
+                    <Field icon={<Globe size={17} />}><select className={`${withIcon} appearance-none`} value={company.country} onChange={e => cx('country', e.target.value)}><option value="">Country</option>{COUNTRIES.map(i => <option key={i} value={i}>{i}</option>)}</select></Field>
                   </div>
-                  <Field icon={<Globe size={17} />}><select className={`${withIcon} appearance-none`} value={company.country} onChange={e => cx('country', e.target.value)}><option value="">Country</option>{COUNTRIES.map(i => <option key={i} value={i}>{i}</option>)}</select></Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field icon={<MapPin size={17} />}><input className={withIcon} placeholder="State" value={company.state} onChange={e => cx('state', e.target.value)} /></Field>
                     <Field icon={<MapPin size={17} />}><input className={withIcon} placeholder="City" value={company.city} onChange={e => cx('city', e.target.value)} /></Field>
@@ -328,6 +330,7 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
               <div>
                 <h2 className="text-[22px] font-extrabold text-slate-900 flex items-center justify-center gap-2">🎉 Welcome to ZeniaHR</h2>
                 <p className="text-[14px] text-slate-500 mt-1.5">Your <b>Free</b> workspace has been created successfully.</p>
+                <p className="text-[12.5px] text-slate-400 mt-1">Free plan · up to 100 active employees · 1 branch</p>
               </div>
               <div className="flex flex-col gap-2.5 pt-1">
                 <button onClick={enterApp} className={`${primaryBtn} w-full`}><Rocket size={17} />Go to Dashboard</button>

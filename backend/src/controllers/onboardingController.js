@@ -37,10 +37,22 @@ function guardCompanyUser(req, res) {
 async function buildStatus(companyId) {
   const head = await resolveHead(companyId);
   const cap = await getCapacity(companyId);
+  const s = normalize(head?.onboardingState);
+  // Demo data is a ONE-WAY street with exactly three states:
+  //   never installed → installed → removed (and never again).
+  // `demoDataInstalled` / `demoDataRemoved` are derived from the stored ledger so
+  // the client never has to reason about the underlying flags.
+  const demoDataRemoved = s.sampleDataRemoved;
+  const demoDataInstalled = s.usedSampleWorkspace && !demoDataRemoved;
   return {
-    onboarding: normalize(head?.onboardingState),
+    onboarding: s,
+    demoDataInstalled,
+    demoDataRemoved,
+    // Offer "Load Demo Data" only while it has never been installed AND never
+    // removed — after either, the affordance is gone for good.
+    canLoadDemoData: !!head && !s.usedSampleWorkspace && !demoDataRemoved,
     capacity: { plan: cap.plan, limit: cap.limit, current: cap.current, remaining: cap.remaining === Infinity ? null : cap.remaining },
-    canRemoveSampleData: head ? (normalize(head.onboardingState).usedSampleWorkspace && !normalize(head.onboardingState).sampleDataRemoved && await hasDemoData(head.id)) : false,
+    canRemoveSampleData: head ? (demoDataInstalled && await hasDemoData(head.id)) : false,
   };
 }
 
@@ -94,9 +106,12 @@ exports.plans = async (req, res) => {
 exports.choose = async (req, res) => {
   try {
     if (!guardCompanyUser(req, res)) return;
+    // 'cancelled' = the user dismissed the welcome modal. It settles onboarding
+    // exactly like 'blank' (no demo data, never asked again) but is recorded
+    // distinctly so the audit trail shows a dismissal rather than a choice.
     const choice = String(req.body?.choice || '').toLowerCase();
-    if (!['blank', 'sample'].includes(choice)) {
-      return res.status(400).json({ error: "choice must be 'blank' or 'sample'." });
+    if (!['blank', 'sample', 'cancelled'].includes(choice)) {
+      return res.status(400).json({ error: "choice must be 'blank', 'sample' or 'cancelled'." });
     }
     const head = await resolveHead(req.user.companyId);
     if (!head) return res.status(404).json({ error: 'Company not found.' });
@@ -109,7 +124,15 @@ exports.choose = async (req, res) => {
 
     let demo = null;
     if (choice === 'sample') {
-      demo = await generateDemoWorkspace(head.id, actorOf(req));
+      // The seed VERIFIES itself and rolls back on failure. If it throws we must
+      // leave onboarding un-completed so the user can retry or start blank —
+      // never mark the workspace "demo installed" over an empty database.
+      try {
+        demo = await generateDemoWorkspace(head.id, actorOf(req));
+      } catch (seedErr) {
+        console.error('[onboarding.choose] demo seed failed:', seedErr);
+        return res.status(500).json({ error: 'Unable to generate demo workspace.', code: 'DEMO_SEED_FAILED' });
+      }
     }
 
     const next = {
@@ -132,6 +155,64 @@ exports.choose = async (req, res) => {
   } catch (e) {
     console.error('[onboarding.choose]', e);
     return res.status(500).json({ error: 'Failed to complete onboarding.' });
+  }
+};
+
+// POST /api/onboarding/load-sample — install the demo dataset AFTER onboarding
+// has already been settled (the user picked Blank, or dismissed the modal, and
+// later clicked "Load Demo Data" in the dashboard header).
+//
+// Strictly one-time. It is refused once demo data has ever been installed, and
+// refused permanently once it has been removed — so the same records can never
+// be created twice, and a removal can never be undone.
+exports.loadSample = async (req, res) => {
+  try {
+    if (!guardCompanyUser(req, res)) return;
+    const head = await resolveHead(req.user.companyId);
+    if (!head) return res.status(404).json({ error: 'Company not found.' });
+
+    const current = normalize(head.onboardingState);
+    if (current.sampleDataRemoved) {
+      return res.status(409).json({ error: 'Demo data was removed from this workspace and cannot be loaded again.', code: 'DEMO_REMOVED' });
+    }
+    if (current.usedSampleWorkspace) {
+      // Idempotent — already installed; report the state rather than duplicating.
+      return res.json({ alreadyInstalled: true, ...(await buildStatus(head.id)) });
+    }
+
+    // Same contract as `choose`: verified-or-rolled-back, and the ledger is only
+    // written once the seed has actually produced data.
+    let demo;
+    try {
+      demo = await generateDemoWorkspace(head.id, actorOf(req));
+    } catch (seedErr) {
+      console.error('[onboarding.loadSample] demo seed failed:', seedErr);
+      return res.status(500).json({ error: 'Unable to generate demo workspace.', code: 'DEMO_SEED_FAILED' });
+    }
+    await prisma.company.update({
+      where: { id: head.id },
+      data: {
+        onboardingState: {
+          ...current,
+          firstLoginCompleted: true,
+          onboardingCompleted: true,      // loading demo also settles onboarding
+          usedSampleWorkspace: true,
+          sampleDataRemoved: false,
+          demoLoadedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    if (req.user?.id) {
+      AuditService.logAudit(req.user.id, 'LOAD_SAMPLE_DATA', 'Onboarding', String(head.id), {
+        demoCreated: demo?.created || 0, by: actorOf(req),
+      }).catch(() => {});
+    }
+
+    return res.json({ ...(await buildStatus(head.id)), demo });
+  } catch (e) {
+    console.error('[onboarding.loadSample]', e);
+    return res.status(500).json({ error: 'Failed to load demo data.' });
   }
 };
 

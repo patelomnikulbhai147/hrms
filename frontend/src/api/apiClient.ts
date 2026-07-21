@@ -1009,8 +1009,9 @@ export const api = {
   // plus a company-readable plan catalog for the View Plans screen.
   onboarding: {
     status: async () => { return await apiFetch(`${BASE_URL}/onboarding/status`, { headers: getHeaders() }); },
-    choose: async (choice: 'blank' | 'sample') => { return await apiFetch(`${BASE_URL}/onboarding/choose`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ choice }) }); },
+    choose: async (choice: 'blank' | 'sample' | 'cancelled') => { return await apiFetch(`${BASE_URL}/onboarding/choose`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ choice }) }); },
     plans: async () => { return await apiFetch(`${BASE_URL}/onboarding/plans`, { headers: getHeaders() }); },
+    loadSample: async () => { return await apiFetch(`${BASE_URL}/onboarding/load-sample`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
     removeSample: async () => { return await apiFetch(`${BASE_URL}/onboarding/remove-sample`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
   },
 

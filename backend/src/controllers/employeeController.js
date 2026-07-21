@@ -236,7 +236,7 @@ exports.createEmployee = async (req, res) => {
 
     // ── Subscription employee-limit guard ───────────────────────────────────
     // Enforced for EVERY creator (incl. Super Admin) because the cap belongs to
-    // the company's plan, not the actor. FREE = 30. Returns 403
+    // the company's plan, not the actor. FREE = 100. Returns 403
     // EMPLOYEE_LIMIT_REACHED so the client can show the upgrade dialog.
     const cap = await require('../services/employeeLimitService').assertCapacity(data.companyId, 1);
     if (!cap.ok) return res.status(cap.status).json(cap.body);
@@ -322,6 +322,54 @@ exports.bulkCreate = async (req, res) => {
       const em = normEmail(e.email); if (em) index.byEmail.set(em, e);
     };
 
+    // ── PRE-FLIGHT plan-capacity check (whole file, BEFORE any write) ────────
+    // The plan caps ACTIVE employees, so an import that would breach the cap is
+    // rejected in full rather than committing part of the file and silently
+    // skipping the tail. Only genuinely NEW people count towards the cap — rows
+    // that match someone already on file are updates and consume no seat — and
+    // the file is de-duplicated against itself so one person listed twice asks
+    // for one seat. Nothing is written when this fires; the response says how
+    // many slots are still available.
+    const limitSvc = require('../services/employeeLimitService');
+    const { norm, normPhone, normEmail } = require('../utils/employeeDedup');
+    {
+      const seenCode = new Set(), seenPhone = new Set(), seenEmail = new Set(), seenName = new Set();
+      const newPerCompany = new Map();
+      for (const data of employees) {
+        if (!data || !data.companyId) continue;
+        if (matchAgainstIndex(data, index)) continue;         // existing person → update
+        const code = norm(data.employeeId);
+        const ph = normPhone(data.phone);
+        const em = normEmail(data.email);
+        const nm = norm(data.name);
+        const nameSeenKey = `${data.companyId}|${nm}`;
+        if ((code && seenCode.has(code)) || (ph && seenPhone.has(ph)) ||
+            (em && seenEmail.has(em)) || (nm && nm !== '-' && seenName.has(nameSeenKey))) continue;
+        if (code) seenCode.add(code);
+        if (ph) seenPhone.add(ph);
+        if (em) seenEmail.add(em);
+        if (nm && nm !== '-') seenName.add(nameSeenKey);
+        const key = String(data.companyId);
+        newPerCompany.set(key, (newPerCompany.get(key) || 0) + 1);
+      }
+      for (const [companyId, addCount] of newPerCompany) {
+        const guard = await limitSvc.assertCapacity(companyId, addCount);
+        if (!guard.ok) {
+          const slots = guard.cap.remaining;
+          return res.status(403).json({
+            ...guard.body,
+            importCount: addCount,
+            availableSlots: slots,
+            imported: 0,
+            error:
+              `Your ${guard.cap.plan} plan allows up to ${guard.cap.limit} active employees. ` +
+              `Current employees: ${guard.cap.current}. This file adds ${addCount} new employee(s), ` +
+              `but only ${slots} more can be added. Please upgrade your plan to continue.`,
+          });
+        }
+      }
+    }
+
     const created = [];
     const merged = [];
     const skipped = [];
@@ -336,9 +384,8 @@ exports.bulkCreate = async (req, res) => {
     // people never do. Capacity is resolved once per company and decremented
     // locally as we insert, so the cap holds across the whole batch. When a
     // tenant is full, further NEW rows are skipped (never created) with a
-    // limit reason — existing-record updates still proceed.
-    const limitSvc = require('../services/employeeLimitService');
-    const { norm } = require('../utils/employeeDedup');
+    // limit reason — existing-record updates still proceed. After the pre-flight
+    // above this is a belt-and-braces net (e.g. a concurrent import racing us).
     const capCache = new Map();
     const takeSeat = async (companyId) => {
       const key = String(companyId || '');
@@ -644,10 +691,22 @@ exports.updateEmployee = async (req, res) => {
       }
     }
 
-    const employee = await prisma.employee.update({
+    await prisma.employee.update({
       where: { id: idParam(id) },
       data: prepareEmployeeWriteData(data)
     });
+
+    // Read the row back BEFORE reporting success, and answer with that. The
+    // client shows "saved" on a 2xx, so the response must be the committed DB
+    // state — not the payload we were handed. If the re-read fails or the row
+    // has vanished, this is NOT a success and must not be reported as one.
+    const employee = await prisma.employee.findUnique({ where: { id: idParam(id) } });
+    if (!employee) {
+      return res.status(500).json({
+        code: 'UPDATE_NOT_CONFIRMED',
+        error: 'The update could not be confirmed in the database. Please retry and check the record.',
+      });
+    }
 
     const HeadcountSyncService = require('../services/headcountSyncService');
     await HeadcountSyncService.handleEmployeeChange(existingEmp, employee);

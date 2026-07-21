@@ -1,4 +1,4 @@
-// End-to-end verification of Phase-1 onboarding + FREE 30-employee limit.
+// End-to-end verification of Phase-1 onboarding + the FREE employee limit (100).
 // Builds a throwaway FREE company, generates the sample workspace, asserts the
 // count + cap + enforcement, then removes ONLY what it created. Touches no real
 // tenant. Run: node scripts/verifyOnboardingPhase1.js
@@ -33,20 +33,20 @@ const ok = (c, m) => console.log(`${c ? 'PASS ✔' : 'FAIL ✗'}  ${m}`);
     const gen2 = await generateDemoWorkspace(CID, 'Verifier');
     ok(gen2.skipped === true, `re-generation is a no-op (skipped=${gen2.skipped})`);
 
-    // 3) Capacity resolves to FREE 30, current 30, remaining 0.
+    // 3) Capacity resolves to FREE 100, current 30, remaining 70. (Cap enforcement
+    //    at the boundary itself is covered by scripts/verifyFreePlanLimit.js.)
     const cap = await getCapacity(CID);
-    ok(cap.plan === 'Free' && cap.limit === 30 && cap.current === 30 && cap.remaining === 0,
+    ok(cap.plan === 'Free' && cap.limit === 100 && cap.current === 30 && cap.remaining === 70,
       `capacity = ${cap.plan} ${cap.current}/${cap.limit} remaining ${cap.remaining}`);
 
-    // 4) One more employee is blocked with EMPLOYEE_LIMIT_REACHED.
+    // 4) The sample workspace leaves plenty of room — adding is still allowed.
     const guard = await assertCapacity(CID, 1);
-    ok(guard.ok === false && guard.body.code === 'EMPLOYEE_LIMIT_REACHED',
-      `31st employee blocked (${guard.ok === false ? guard.body.code : 'ALLOWED — WRONG'})`);
+    ok(guard.ok === true, `adding is allowed with 30/100 used (ok=${guard.ok})`);
 
-    // 5) After removing demo data, capacity frees up to 0/30.
+    // 5) After removing demo data, capacity frees up to 0/100.
     await prisma.employee.deleteMany({ where: { companyId: CID, employeeId: { startsWith: DEMO_EMPLOYEE_PREFIX } } });
     const cap2 = await getCapacity(CID);
-    ok(cap2.current === 0 && cap2.remaining === 30, `after removal capacity = ${cap2.current}/${cap2.limit} remaining ${cap2.remaining}`);
+    ok(cap2.current === 0 && cap2.remaining === 100, `after removal capacity = ${cap2.current}/${cap2.limit} remaining ${cap2.remaining}`);
     const guard2 = await assertCapacity(CID, 1);
     ok(guard2.ok === true, `adding is allowed again after removal (ok=${guard2.ok})`);
   } finally {

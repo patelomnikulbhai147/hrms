@@ -41,7 +41,7 @@ async function uniqueUsername(email) {
  * Provision a brand-new FREE workspace.
  *
  * @param {object} input
- * @param {object} input.company  { name, email, phone, industry, companySize, country, state, city }
+ * @param {object} input.company  { name, email, phone, industry, country, state, city }
  * @param {object} input.head     { name, email, mobile, passwordHash }  (password already bcrypt-hashed)
  * @param {object} input.branch   { branchName, address }
  * @returns {Promise<{ company, branch, head }>}  the created rows.
