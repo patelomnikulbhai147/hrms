@@ -64,6 +64,10 @@ export interface ServiceItem {
   unit?: string;
   rate: number;
   discountPct?: number;
+  /** Absolute discount. When present it WINS over discountPct (see
+   *  computeInvoice), so editing the % clears it. Was always read by the money
+   *  engine but missing from this type. */
+  discountAmt?: number;
   taxRate: number;
   productId?: any;
 }
@@ -146,7 +150,11 @@ export const outstandingOf = (grandTotal: number, amountPaid: number) => r2(Math
 // Template Settings configured once are reused by every future invoice.
 export interface Issuer {
   logo: string; seal: string; signature: string; qr: string; signatureText: string;
-  name: string; address: string; phone: string; email: string; website: string;
+  /** LEGAL entity name — the parent company, never a branch. */
+  name: string;
+  /** Operating location: "Head Office" | "Ahmedabad Branch". Blank when unknown. */
+  branchLabel: string;
+  address: string; phone: string; email: string; website: string;
   gstin: string; pan: string; cin: string;
   bankDetails: string; upiId: string;
   footerText: string; notes: string; terms: string; accent: string;
@@ -212,7 +220,11 @@ export function resolveIssuer(company: any, settings: any, override?: any): Issu
     qr: img(o.qr, s.qrUrl, c.paymentQrImage, c.qrImage),
     signatureText: first(c.signatureText, c.authorizedSignatory && `${c.authorizedSignatory}${c.signatoryDesignation ? `, ${c.signatoryDesignation}` : ''}`),
 
+    // The legal entity. `company` is already parent-resolved by invoiceIdentity —
+    // a branch name can never land here — and `branchLabel` names the operating
+    // location underneath it.
     name: first(c.name, c.companyName, 'Your Company'),
+    branchLabel: first(c.branchLabel),
     address,
     phone: first(c.phone, c.contactNumber, c.mobile),
     email: first(c.contactEmail, c.email, c.adminEmail, c.supportEmail),
@@ -246,6 +258,8 @@ export const SERVICE_INVOICE_CSS = `
 .si-head-r{flex:1;padding:0}
 .si-logo{max-height:46px;max-width:170px;object-fit:contain;margin-bottom:6px;display:block}
 .si-co-name{font-size:16px;font-weight:800;letter-spacing:.2px;line-height:1.2}
+.si-co-branch{font-size:10.5px;font-weight:700;color:#374151;letter-spacing:.2px;margin-top:5px;
+  padding-top:4px;border-top:1px dashed #d1d5db}
 .si-co-line{font-size:10.5px;color:#374151;margin-top:2px}
 .si-co-stat{font-size:10.5px;font-weight:700;margin-top:4px}
 .si-title{background:#111827;color:#fff;text-align:center;font-size:13px;font-weight:800;
@@ -377,6 +391,7 @@ export function serviceInvoiceHtml(
       <td><div class="si-desc">${esc(l.name || 'Service')}</div>${l.description ? `<div class="si-sub">${nl(l.description)}</div>` : ''}${l.hsnSac ? `<div class="si-sub">SAC/HSN: ${esc(l.hsnSac)}</div>` : ''}</td>
       <td class="num">${inr(l.rate)}</td>
       <td class="ctr">${inr(l.quantity)}${l.unit ? ` ${esc(l.unit)}` : ''}</td>
+      <td class="ctr">${l.discountPct ? `${inr(l.discountPct)}%` : '—'}</td>
       <td class="num">${inr(l.taxableValue)}</td>
       <td class="ctr">${inr(l.taxRate)}%</td>
       <td class="num">${inr(l.taxAmount)}</td>
@@ -409,6 +424,9 @@ export function serviceInvoiceHtml(
         <div class="si-co-stat">GSTIN: ${iss.gstin ? esc(iss.gstin) : `<span class="si-missing">${NOT_CONFIGURED}</span>`}</div>
         <div class="si-co-stat">PAN: ${iss.pan ? esc(iss.pan) : `<span class="si-missing">${NOT_CONFIGURED}</span>`}</div>
         ${iss.cin ? `<div class="si-co-stat">CIN: ${esc(iss.cin)}</div>` : ''}
+        ${/* The operating location, stated separately BELOW the legal identity —
+              never a replacement for the company name above. */''}
+        ${iss.branchLabel ? `<div class="si-co-branch">Branch: ${esc(iss.branchLabel)}</div>` : ''}
       </div>
       <div class="si-head-r">
         <div class="si-title">TAX INVOICE</div>
@@ -431,11 +449,12 @@ export function serviceInvoiceHtml(
 
     <table class="si-items">
       <thead><tr>
-        <th style="width:6%">Sr</th><th style="width:34%">Particulars / Service Description</th>
-        <th style="width:11%">Rate</th><th style="width:9%">Qty</th><th style="width:12%">Taxable</th>
-        <th style="width:8%">GST %</th><th style="width:10%">GST Amt</th><th style="width:12%">Total</th>
+        <th style="width:5%">Sr</th><th style="width:31%">Particulars / Service Description</th>
+        <th style="width:10%">Rate</th><th style="width:8%">Qty</th><th style="width:7%">Disc %</th>
+        <th style="width:11%">Taxable</th>
+        <th style="width:7%">GST %</th><th style="width:10%">GST Amt</th><th style="width:11%">Total</th>
       </tr></thead>
-      <tbody>${rows || '<tr><td colspan="8" class="ctr" style="padding:18px;color:#9ca3af">No items</td></tr>'}</tbody>
+      <tbody>${rows || '<tr><td colspan="9" class="ctr" style="padding:18px;color:#9ca3af">No items</td></tr>'}</tbody>
     </table>
 
     <div class="si-foot">

@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { GripVertical, Plus, Trash2, Copy, Upload, RotateCcw } from 'lucide-react';
 import { ui } from '@/components/ui/feedback';
 import { ASSET_RULES, acceptAttr, prepareAsset, type AssetKey, type BrandingOverride } from './invoiceAssets';
+import { InvoicePicker, type PickerOption } from './InvoicePicker';
 import {
   SERVICE_INVOICE_CSS, computeInvoice, resolveIssuer, amountInWords, inr,
   outstandingOf, blankServiceItem, r2, NOT_CONFIGURED, NO_SIGNATURE,
@@ -42,15 +43,22 @@ const useServiceInvoiceCss = () => {
       .si-addrow{border:1px dashed #cbd5e1;color:#6366f1;background:#fff;width:100%;padding:5px;
         font-size:10.5px;font-weight:700;cursor:pointer;border-radius:0 0 4px 4px}
       .si-addrow:hover{background:#eef2ff}
-      /* Branding asset slots — the image is always contained, never stretched. */
-      .si-slot{position:relative;display:inline-flex;align-items:center;justify-content:center}
+      /* Branding asset slots — the image is always contained, never stretched,
+         and the slot itself can never grow past the cell it sits in (a wide logo
+         used to push against the invoice frame). */
+      .si-slot{position:relative;display:inline-flex;align-items:center;justify-content:center;max-width:100%}
       .si-slot img{max-width:100%;max-height:100%;object-fit:contain}
       .si-upload{display:inline-flex;align-items:center;gap:4px;border:1px dashed #a5b4fc;color:#4f46e5;
         background:#eef2ff;border-radius:5px;padding:4px 8px;font-size:9.5px;font-weight:700;
         cursor:pointer;white-space:nowrap;line-height:1.2}
       .si-upload:hover{background:#e0e7ff}
       .si-upload:disabled{opacity:.6;cursor:default}
-      .si-slot-tools{position:absolute;top:-7px;right:-7px;display:none;gap:2px}
+      /* Replace / Reset buttons sit INSIDE the slot. They used to be offset to
+         top:-7px right:-7px, which put them outside the header cell and painted
+         over the invoice frame's border — the border looked cut wherever a slot
+         touched it. Keeping them inside cannot break the frame at any zoom. */
+      .si-slot-tools{position:absolute;top:1px;right:1px;display:none;gap:2px;z-index:2;
+        background:rgba(255,255,255,.92);border-radius:4px;padding:1px}
       .si-slot:hover .si-slot-tools{display:flex}
     `;
     document.head.appendChild(el);
@@ -82,6 +90,18 @@ interface Props {
   /** Per-invoice asset override {logo,signature,stamp,qr} — this invoice only. */
   override?: BrandingOverride;
   onOverrideChange?: (next: BrandingOverride) => void;
+
+  // ── Master data for the in-document pickers (Customers / Products & Services).
+  // Supplied by the editor, which owns the API calls; this component never
+  // fetches. Omitting them degrades the fields to plain text inputs.
+  customers?: any[];
+  products?: any[];
+  /** Fill the whole Bill-To section from a customer record. */
+  onPickCustomer?: (customerId: any) => void;
+  /** Fill one item row from a product record. */
+  onPickProduct?: (index: number, product: any) => void;
+  onCreateCustomer?: () => void;
+  onCreateProduct?: (index: number) => void;
 }
 
 // ── Inline primitives (controlled inputs — no contentEditable, so the caret
@@ -123,13 +143,20 @@ const AssetSlot: React.FC<{
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = React.useState(false);
 
+  // `busy` MUST be cleared in `finally`: prepareAsset reads the file, and a read
+  // error used to throw straight past `setBusy(false)`, leaving this uploader
+  // permanently disabled with no way back except a page reload.
   const pick = async (file?: File | null) => {
     setBusy(true);
-    const res = await prepareAsset(kind, file);
-    setBusy(false);
-    if (!res.ok) { ui.toast.error(res.error); return; }
-    onUpload(res.dataUrl);
-    ui.toast.success(`${rule.label} updated${res.note ? ` · ${res.note}` : ''}.`);
+    try {
+      const res = await prepareAsset(kind, file);
+      if (!res.ok) { ui.toast.error(res.error); return; }
+      onUpload(res.dataUrl);
+      ui.toast.success(`${rule.label} updated${res.note ? ` · ${res.note}` : ''}.`);
+    } catch (e) {
+      console.error('[invoice] asset upload failed', e);
+      ui.toast.error('Could not read that file. Please try another image.');
+    } finally { setBusy(false); }
   };
 
   if (readOnly && !src) return null;
@@ -156,8 +183,34 @@ const AssetSlot: React.FC<{
   );
 };
 
-export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company, settings, intraState, readOnly, qrDataUrl, override, onOverrideChange }) => {
+export const ServiceInvoiceDocument: React.FC<Props> = ({
+  doc, onChange, company, settings, intraState, readOnly, qrDataUrl, override, onOverrideChange,
+  customers, products, onPickCustomer, onPickProduct, onCreateCustomer, onCreateProduct,
+}) => {
   useServiceInvoiceCss();
+
+  // ── Picker options ─────────────────────────────────────────────────────────
+  // `search` is pre-lowercased and pre-joined once per list change, so filtering
+  // thousands of records is a plain substring test per keystroke.
+  const customerOptions: PickerOption[] = useMemo(() => (customers || []).map((c: any) => ({
+    id: c.id,
+    label: c.companyName || c.contactPerson || 'Unnamed customer',
+    sub: [c.gstin && `GSTIN: ${c.gstin}`, c.contactPerson, [c.city, c.state].filter(Boolean).join(', ')].filter(Boolean).join(' · '),
+    meta: c.customerCode || '',
+    // Searchable by name, company, GSTIN, mobile and email.
+    search: [c.companyName, c.contactPerson, c.gstin, c.pan, c.phone, c.email, c.customerCode, c.city, c.state]
+      .filter(Boolean).join(' ').toLowerCase(),
+  })), [customers]);
+
+  const productOptions: PickerOption[] = useMemo(() => (products || []).map((p: any) => ({
+    id: p.id,
+    label: p.name || 'Unnamed item',
+    sub: [p.hsnSac && `HSN/SAC: ${p.hsnSac}`, p.description].filter(Boolean).join(' · '),
+    meta: `${inr(p.rate)} · ${p.taxRate ?? 0}%`,
+    // Searchable by name, SKU and HSN/SAC.
+    search: [p.name, p.sku, p.code, p.hsnSac, p.description, p.unit].filter(Boolean).join(' ').toLowerCase(),
+  })), [products]);
+
   // Assets resolve override → company default → Company Profile (invoiceAssets).
   const ov = override || {};
   const iss = resolveIssuer(company, settings, ov);
@@ -231,6 +284,8 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
         <div className="si-head">
           <div className="si-head-l">
             {slot('logo', iss.logo, 'si-logo', { maxHeight: 46, maxWidth: 170, marginBottom: 6 })}
+            {/* Legal entity first — identical markup/CSS to serviceInvoiceHtml so
+                screen === print === PDF. The branch follows the company block. */}
             <div className="si-co-name">{iss.name}</div>
             {iss.address && <div className="si-co-line">{iss.address}</div>}
             {iss.phone && <div className="si-co-line">Phone: {iss.phone}</div>}
@@ -239,6 +294,8 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
             <div className="si-co-stat">GSTIN: {iss.gstin || <span className="si-missing">{NOT_CONFIGURED}</span>}</div>
             <div className="si-co-stat">PAN: {iss.pan || <span className="si-missing">{NOT_CONFIGURED}</span>}</div>
             {iss.cin && <div className="si-co-stat">CIN: {iss.cin}</div>}
+            {/* Operating location — stated separately below the legal identity. */}
+            {iss.branchLabel && <div className="si-co-branch">Branch: {iss.branchLabel}</div>}
             {/* Everything above is read LIVE from Company Profile — never typed
                 here, and never cached, so a profile change shows immediately. */}
             {!readOnly && (!iss.logo || !iss.gstin) && (
@@ -269,7 +326,17 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
         <div className="si-bill">
           <div className="si-bill-l">
             <div className="si-lbl">Bill To</div>
-            <Txt className="si-bill-name" value={doc.billToName} onChange={(v) => set('billToName', v)} placeholder="Customer / company name" readOnly={readOnly} />
+            {/* Searchable customer list. Picking one fills the whole Bill-To
+                section; typing a name that matches nothing still works, so a
+                one-off customer never needs a master record first. */}
+            {onPickCustomer
+              ? <InvoicePicker className="si-bill-name" menuWidth={340}
+                  value={doc.billToName || ''} onChange={(v) => set('billToName', v)}
+                  onSelect={(o) => onPickCustomer(o.id)}
+                  options={customerOptions} placeholder="Search customer…" readOnly={readOnly}
+                  createLabel={onCreateCustomer ? 'Create New Customer' : undefined}
+                  onCreate={onCreateCustomer} emptyLabel="No customers found." />
+              : <Txt className="si-bill-name" value={doc.billToName} onChange={(v) => set('billToName', v)} placeholder="Customer / company name" readOnly={readOnly} />}
             <Area className="si-bill-line" value={doc.billToAddress} onChange={(v) => set('billToAddress', v)} placeholder="Address" readOnly={readOnly} />
             <div className="si-bill-line" style={{ display: 'flex', gap: 4 }}>
               <Txt value={doc.billToCity} onChange={(v) => set('billToCity', v)} placeholder="City" readOnly={readOnly} />
@@ -302,9 +369,10 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
         {/* ── ITEMS ── */}
         <table className="si-items">
           <thead><tr>
-            <th style={{ width: '6%' }}>Sr</th><th style={{ width: '34%' }}>Particulars / Service Description</th>
-            <th style={{ width: '11%' }}>Rate</th><th style={{ width: '9%' }}>Qty</th><th style={{ width: '12%' }}>Taxable</th>
-            <th style={{ width: '8%' }}>GST %</th><th style={{ width: '10%' }}>GST Amt</th><th style={{ width: '12%' }}>Total</th>
+            <th style={{ width: '5%' }}>Sr</th><th style={{ width: '31%' }}>Particulars / Service Description</th>
+            <th style={{ width: '10%' }}>Rate</th><th style={{ width: '8%' }}>Qty</th><th style={{ width: '7%' }}>Disc %</th>
+            <th style={{ width: '11%' }}>Taxable</th>
+            <th style={{ width: '7%' }}>GST %</th><th style={{ width: '10%' }}>GST Amt</th><th style={{ width: '11%' }}>Total</th>
           </tr></thead>
           <tbody>
             {t.lines.map((l: any, i: number) => (
@@ -326,7 +394,18 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
                   {i + 1}
                 </td>
                 <td>
-                  <Txt className="si-desc" value={items[i].name} onChange={(v) => setItem(i, { name: v })} placeholder="Service description" readOnly={readOnly} />
+                  {/* Searchable product / service list. Picking one fills the
+                      description, HSN/SAC, unit, rate, GST% and any configured
+                      discount; free text still creates a one-off line. */}
+                  {onPickProduct
+                    ? <InvoicePicker className="si-desc" menuWidth={360}
+                        value={items[i].name || ''} onChange={(v) => setItem(i, { name: v })}
+                        onSelect={(o) => onPickProduct(i, (products || []).find((p: any) => String(p.id) === String(o.id)))}
+                        options={productOptions} placeholder="Search product / service…" readOnly={readOnly}
+                        createLabel={onCreateProduct ? 'Create New Product' : undefined}
+                        onCreate={onCreateProduct ? () => onCreateProduct(i) : undefined}
+                        emptyLabel="No products found." />
+                    : <Txt className="si-desc" value={items[i].name} onChange={(v) => setItem(i, { name: v })} placeholder="Service description" readOnly={readOnly} />}
                   <Area className="si-sub" value={items[i].description} onChange={(v) => setItem(i, { description: v })} placeholder="Additional details (optional)" readOnly={readOnly} rows={1} />
                   <div className="si-sub" style={{ display: 'flex', gap: 4 }}>
                     <span>SAC/HSN</span>
@@ -335,6 +414,9 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({ doc, onChange, company
                 </td>
                 <td className="num"><Num value={items[i].rate} onChange={(v) => setItem(i, { rate: v })} readOnly={readOnly} step={0.01} /></td>
                 <td className="ctr"><Num value={items[i].quantity} onChange={(v) => setItem(i, { quantity: v })} readOnly={readOnly} step={0.01} /></td>
+                {/* Optional per-line discount — auto-filled from the product when
+                    it has one configured, editable either way. */}
+                <td className="ctr"><Num value={items[i].discountPct ?? 0} onChange={(v) => setItem(i, { discountPct: v, discountAmt: undefined })} readOnly={readOnly} step={0.01} /></td>
                 {/* calculated — never typed */}
                 <td className="num">{inr(l.taxableValue)}</td>
                 <td className="ctr">

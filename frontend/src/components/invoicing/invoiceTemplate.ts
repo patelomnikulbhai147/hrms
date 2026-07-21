@@ -319,10 +319,13 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
   };
   const logoHtml = getLogoHtml();
   const taglineHtml = d.header.showTagline && (company?.tagline || company?.motto) ? `<div class="muted" style="font-style:italic">${esc(company.tagline || company.motto)}</div>` : '';
+  // Legal entity (parent company) first; the branch is only the operating
+  // location. `company` is parent-resolved upstream by invoiceIdentity.ts.
   const companyBlock = `${logoHtml}<div class="brand">${esc(company?.name || 'Company')}</div>
       ${d.header.showAddress ? `<div class="muted">${esc(company?.address || company?.city || '')}</div>` : ''}
       ${taglineHtml}
-      ${d.header.showGstin ? `<div class="muted">GSTIN: ${esc(inv.companyGstin || company?.gstin || '—')}</div>` : ''}`;
+      ${d.header.showGstin ? `<div class="muted">GSTIN: ${esc(inv.companyGstin || company?.gstin || '—')}</div>` : ''}
+      ${company?.branchLabel ? `<div class="brand-branch">Branch: ${esc(company.branchLabel)}</div>` : ''}`;
   const titleBlock = `<h1>${esc(d.title || 'TAX INVOICE')}</h1>
       <div class="muted"># <b>${esc(inv.invoiceNumber)}</b></div>
       <div class="muted">Date: ${esc(inv.invoiceDate)}${inv.dueDate ? ` &nbsp; Due: ${esc(inv.dueDate)}` : ''}</div>
@@ -423,6 +426,8 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
     .head-banner .muted { color: rgba(255,255,255,0.85); }
     .head-banner .status { background: rgba(255,255,255,0.2); color: #fff; }
     .brand { font-size: 20px; font-weight: ${d.font.headingBold ? 800 : 600}; color: ${primary}; font-family: ${d.font.heading}; }
+    /* Operating branch — a subtitle under the legal company name, never a substitute for it. */
+    .brand-branch { font-size: 11px; font-weight: 700; color: ${d.colors.footer}; letter-spacing: .3px; margin-top: 1px; }
     .muted { color: ${d.colors.footer}; font-size: 10px; ${d.font.italicNotes ? 'font-style: italic;' : ''} } .title { text-align: right; }
     .title h1 { margin: 0; font-size: 22px; letter-spacing: 1px; color: ${primary}; font-family: ${d.font.heading}; } .grid { display: flex; justify-content: space-between; margin: 16px 0; gap: 20px; }
     .box { flex: 1; ${radius ? `border-radius:${radius}px;` : ''} } .box h4 { margin: 0 0 4px; font-size: 10px; text-transform: uppercase; color: ${d.colors.secondary || accent}; }
@@ -538,6 +543,8 @@ export function fillCanvasTokens(text: string, inv: any, company: any): string {
     paymentterms: inv?.paymentTerms || '',
     upiid: inv?.upiId || '',
     companyname: company?.name || '',
+    // Operating location of the issuing workspace ("Head Office" / "X Branch").
+    branchname: company?.branchLabel || '',
     companyaddress: company?.address || '',
     companyemail: companyEmail,
     companyphone: company?.phone || company?.contactNumber || '',
@@ -750,11 +757,13 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
         innerHtml = `<div style="width:100%; height:100%; border:1px solid #ccc; display:flex; align-items:center; justify-content:center;">|||||||||||||||</div>`;
         break;
       case 'companyDetails':
+        // Legal entity, then the operating branch as a subtitle.
         innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : `<strong>${esc(company?.name || 'Company Name')}</strong><br/>
           ${esc(company?.address || '')}<br/>
           ${company?.gstin ? `GSTIN: ${esc(company.gstin)}<br/>` : ''}
           ${company?.email ? `${esc(company.email)}<br/>` : ''}
-          ${company?.phone ? `${esc(company.phone)}` : ''}`;
+          ${company?.phone ? `${esc(company.phone)}<br/>` : ''}
+          ${company?.branchLabel ? `<span style="font-weight:700">Branch: ${esc(company.branchLabel)}</span>` : ''}`;
         break;
       case 'customerDetails':
         innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : `<strong>${esc(inv.billToName || 'Customer')}</strong><br/>

@@ -9,28 +9,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, canvasDesignFromLayout, layoutIsElementModel, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
+import { invoiceDocHtml, resolveDesign, TEMPLATE_PRESETS, type InvoiceDesign } from '@/components/invoicing/invoiceTemplate';
 import { InvoiceDesigner } from '@/components/invoicing/InvoiceDesigner';
-import { canvasDocHtml, resolveLayout, type InvoiceLayout } from '@/components/invoicing/invoiceCanvas';
-import { serviceInvoiceHtml, resolveIssuer, parseBank, serialiseBank, BANK_FIELDS } from '@/components/invoicing/serviceInvoice';
+import { resolveLayout, type InvoiceLayout } from '@/components/invoicing/invoiceCanvas';
+import { resolveIssuer, parseBank, serialiseBank, BANK_FIELDS } from '@/components/invoicing/serviceInvoice';
 import { ASSET_RULES, acceptAttr, allowedLabel, prepareAsset, type AssetKey } from '@/components/invoicing/invoiceAssets';
 import { ServiceInvoiceEditor } from '@/components/invoicing/ServiceInvoiceEditor';
+import { useIssuerCompany } from '@/components/invoicing/invoiceIdentity';
+// One definition of each master form, shared with the Create-Invoice pickers.
+import { CustomerModal, ProductModal } from '@/components/invoicing/MasterModals';
 
-// One renderer decision for BOTH the live preview and the print/PDF path. A saved
-// canvas layout renders through the Visual Designer's own renderer (invoiceDocHtml
-// with isCanvas) when its blocks are the element model, so what the designer showed
-// is what the invoice prints. A legacy block-model layout keeps the old renderer.
-// No layout → the classic flow design. GST/totals are never touched here.
-function renderInvoiceHtml(inv: any, company: any, design: InvoiceDesign | undefined, layout: InvoiceLayout | null | undefined, opts: { print?: boolean; qrDataUrl?: string }, settings?: any): string {
-  if (layout) {
-    return layoutIsElementModel(layout)
-      ? invoiceDocHtml(inv, company, canvasDesignFromLayout(layout), opts)
-      : canvasDocHtml(inv, company, layout, opts);
-  }
-  // DEFAULT (no custom template designed): the professional A4 service invoice —
-  // the same definition the WYSIWYG editor renders, so print === what was edited.
-  return serviceInvoiceHtml(inv, company, settings, opts);
-}
+// The renderer decision now lives in invoiceRender.ts so the Template Gallery
+// preview, the Create-Invoice preview and the print/PDF path are provably ONE
+// code path — a gallery preview cannot drift from what actually prints.
+import { renderInvoiceHtml, printInvoiceDocument } from '@/components/invoicing/invoiceRender';
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -125,26 +117,12 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   const [tab, setTab] = useState<TabId>('dashboard');
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
   const propCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
-  // COMPANY PROFILE IS THE BRANDING SOURCE. App state can be stale, so the
-  // profile is re-read whenever this module opens (and on every workspace
-  // switch) — a logo/GST/bank change made in Company Profile is therefore live
-  // on the next invoice, preview and PDF. Never cached; the prop is a fallback.
-  const [liveCompany, setLiveCompany] = useState<any>(null);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const rows = await api.companies.getAll();
-        if (!alive || !Array.isArray(rows)) return;
-        const mine = rows.find((r: any) => String(r.id) === String(activeCompanyId));
-        // A branch bills under its parent company's identity/branding.
-        const owner = mine?.parentCompanyId ? rows.find((r: any) => String(r.id) === String(mine.parentCompanyId)) : mine;
-        setLiveCompany(owner || mine || null);
-      } catch { /* keep the prop fallback */ }
-    })();
-    return () => { alive = false; };
-  }, [activeCompanyId]);
-  const activeCompany = liveCompany || propCompany;
+  // COMPANY PROFILE IS THE BRANDING SOURCE, and the LEGAL ENTITY is always the
+  // parent company — a branch workspace bills under its parent and appears only
+  // as `branchLabel`. useIssuerCompany re-reads the profile on every workspace
+  // switch (so a logo/GST/bank edit is live on the next invoice) and resolves
+  // both kinds of "branch" App merges into `companies`. See invoiceIdentity.ts.
+  const activeCompany = useIssuerCompany(propCompany);
   const companyState: string = activeCompany?.state || '';
 
   const goCreate = (id: number | null = null) => { setEditInvoiceId(id); setTab('create'); };
@@ -344,7 +322,15 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const cancel = (i: any) => ui.confirm({ message: `Cancel invoice ${i.invoiceNumber}? It stays on record but is marked Cancelled.`, variant: 'danger', confirmText: 'Cancel Invoice' }).then((ok) => { if (ok) doAction(() => api.invoicing.setInvoiceStatus(i.id, 'Cancelled'), 'Invoice cancelled.'); });
   const remove = (i: any) => ui.confirm({ message: `Delete invoice ${i.invoiceNumber}? This cannot be undone.`, variant: 'danger', confirmText: 'Delete' }).then(async (ok) => { if (!ok) return; try { await api.invoicing.deleteInvoice(i.id); ui.toast.success('Invoice deleted.'); await load(); } catch (e: any) { ui.toast.error(e?.message || getApiErrorMessage(e)); } });
   const duplicate = (i: any) => doAction(() => api.invoicing.duplicateInvoice(i.id), 'Invoice duplicated as a new draft.');
-  const print = async (i: any) => { const full = i.items ? i : await api.invoicing.getInvoice(i.id); printInvoice(full, company, design, activeLayout, settings); api.invoicing.logInvoiceAction(i.id, 'PRINTED').catch(() => {}); };
+  // Every step is guarded: an unguarded `await getInvoice` used to reject into
+  // nothing, so the click silently did nothing at all.
+  const print = async (i: any) => {
+    try {
+      const full = i.items ? i : await api.invoicing.getInvoice(i.id);
+      await printInvoice(full, company, design, activeLayout, settings);
+      api.invoicing.logInvoiceAction(i.id, 'PRINTED').catch(() => {});
+    } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')); }
+  };
   // Email the invoice with the server-rendered PDF attached (additive endpoint).
   const emailInvoice = async (i: any) => {
     const to = String(i.billToEmail || '').trim();
@@ -426,7 +412,11 @@ const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolea
   return (
     <Modal open onClose={onClose} title={`${invoice.invoiceNumber}`} size="lg"
       footer={<>
-        <Button variant="outline" icon={<Printer size={14} />} onClick={() => { printInvoice(invoice, company, design, activeLayout, settings); api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}); }}>Print / PDF</Button>
+        <Button variant="outline" icon={<Printer size={14} />} onClick={() => {
+          printInvoice(invoice, company, design, activeLayout, settings)
+            .then(() => api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}))
+            .catch((e) => ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')));
+        }}>Print / PDF</Button>
         {onEmail && <Button variant="outline" icon={<Send size={14} />} onClick={onEmail}>Email</Button>}
         {canEdit && invoice.balanceDue > 0 && invoice.status !== 'Cancelled' && <Button icon={<IndianRupee size={14} />} onClick={onPay}>Record Payment</Button>}
         <Button variant="ghost" onClick={onClose}>Close</Button>
@@ -539,36 +529,6 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
     </div>
   );
 };
-const CustomerModal: React.FC<{ customer: any; onClose: () => void; onSave: (d: any) => void }> = ({ customer, onClose, onSave }) => {
-  const [f, setF] = useState<any>({ ...customer });
-  const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
-  return (
-    <Modal open onClose={onClose} title={f.id ? 'Edit Customer' : 'New Customer'} size="md"
-      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => onSave(f)} icon={<Save size={14} />}>Save</Button></>}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="mb-1 block text-[11px] font-bold text-slate-500">Client Code</label>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-mono font-bold text-[#C77E52]">{f.customerCode || 'Auto-assigned on save'}</div>
-        </div>
-        <Input label="Company Name *" value={f.companyName || ''} onChange={(e: any) => set('companyName', e.target.value)} />
-        <Input label="Contact Person" value={f.contactPerson || ''} onChange={(e: any) => set('contactPerson', e.target.value)} />
-        <Input label="GSTIN" value={f.gstin || ''} onChange={(e: any) => set('gstin', e.target.value)} />
-        <Input label="PAN" value={f.pan || ''} onChange={(e: any) => set('pan', e.target.value)} />
-        <Input label="Email" value={f.email || ''} onChange={(e: any) => set('email', e.target.value)} />
-        <Input label="Phone" value={f.phone || ''} onChange={(e: any) => set('phone', e.target.value)} />
-        <Input label="City" value={f.city || ''} onChange={(e: any) => set('city', e.target.value)} />
-        <Input label="State" value={f.state || ''} onChange={(e: any) => set('state', e.target.value)} />
-        <Input label="Country" value={f.country || 'India'} onChange={(e: any) => set('country', e.target.value)} />
-        <Input label="Payment Terms" value={f.paymentTerms || ''} onChange={(e: any) => set('paymentTerms', e.target.value)} placeholder="e.g. Net 30" />
-        <Input label="Credit Days" type="number" value={f.creditDays ?? ''} onChange={(e: any) => set('creditDays', e.target.value)} placeholder="e.g. 30" />
-        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Billing Address</label><textarea value={f.addressLine || ''} onChange={(e) => set('addressLine', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Shipping Address <span className="font-normal text-slate-400">(default; auto-filled onto new invoices)</span></label><textarea value={f.shipToAddress || ''} onChange={(e) => set('shipToAddress', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
-      </div>
-    </Modal>
-  );
-};
-
 // ══════════════════════════════════════════════════════════════════════════════
 // PRODUCTS & SERVICES
 // ══════════════════════════════════════════════════════════════════════════════
@@ -609,25 +569,6 @@ const ProductsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEd
     </div>
   );
 };
-const ProductModal: React.FC<{ product: any; onClose: () => void; onSave: (d: any) => void }> = ({ product, onClose, onSave }) => {
-  const [f, setF] = useState<any>({ ...product });
-  const set = (k: string, v: any) => setF((p: any) => ({ ...p, [k]: v }));
-  return (
-    <Modal open onClose={onClose} title={f.id ? 'Edit Product / Service' : 'New Product / Service'} size="md"
-      footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={() => onSave(f)} icon={<Save size={14} />}>Save</Button></>}>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Input label="Name *" value={f.name || ''} onChange={(e: any) => set('name', e.target.value)} />
-        <Input label="HSN / SAC Code" value={f.hsnSac || ''} onChange={(e: any) => set('hsnSac', e.target.value)} />
-        <Input label="Unit" value={f.unit || 'Nos'} onChange={(e: any) => set('unit', e.target.value)} />
-        <Input label="Rate (₹)" type="number" value={f.rate ?? 0} onChange={(e: any) => set('rate', e.target.value)} />
-        <Input label="GST %" type="number" value={f.taxRate ?? 0} onChange={(e: any) => set('taxRate', e.target.value)} />
-        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 mt-6"><input type="checkbox" checked={f.isActive !== false} onChange={(e) => set('isActive', e.target.checked)} /> Active</label>
-        <div className="md:col-span-2"><label className="mb-1 block text-[11px] font-bold text-slate-500">Description</label><textarea value={f.description || ''} onChange={(e) => set('description', e.target.value)} rows={2} className="w-full rounded-xl border border-slate-200 p-2 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
-      </div>
-    </Modal>
-  );
-};
-
 // ══════════════════════════════════════════════════════════════════════════════
 // PAYMENTS (all recorded payments across invoices)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -687,13 +628,19 @@ const AssetField: React.FC<{ kind: AssetKey; value: string; fallback?: string; d
     const [busy, setBusy] = useState(false);
     const shown = value || (fallback && /^data:image\//.test(String(fallback)) ? String(fallback) : '');
     const fromProfile = !value && !!shown;
+    // Cleared in `finally` — a file-read error used to skip setBusy(false) and
+    // leave this uploader disabled until the page was reloaded.
     const pick = async (file?: File | null) => {
       setBusy(true);
-      const res = await prepareAsset(kind, file);
-      setBusy(false);
-      if (!res.ok) { ui.toast.error(res.error); return; }
-      onChange(res.dataUrl);
-      ui.toast.success(`${rule.label} updated${res.note ? ` · ${res.note}` : ''}.`);
+      try {
+        const res = await prepareAsset(kind, file);
+        if (!res.ok) { ui.toast.error(res.error); return; }
+        onChange(res.dataUrl);
+        ui.toast.success(`${rule.label} updated${res.note ? ` · ${res.note}` : ''}.`);
+      } catch (e) {
+        console.error('[invoice] asset upload failed', e);
+        ui.toast.error('Could not read that file. Please try another image.');
+      } finally { setBusy(false); }
     };
     return (
       <div>
@@ -806,10 +753,13 @@ function printInvoice(inv: any, company: any, design?: InvoiceDesign, activeLayo
   // inside the renderer. `design` defaults to the standard layout (unchanged output).
   // When the company has an ACTIVE canvas layout, render via the same renderer the
   // visual designer uses (preview === PDF). Opt-in only.
+  //
+  // Printed through a hidden iframe (printInvoiceDocument), NOT a popup: a
+  // same-origin popup shares this tab's renderer process, so its modal print
+  // loop froze the whole app — and orphaned it permanently if the popup went
+  // away mid-dialog. See invoiceRender.printInvoiceDocument.
   const html = renderInvoiceHtml(inv, company, design, activeLayout, { print: true }, settings);
-  const w = window.open('', '_blank', 'width=900,height=1000');
-  if (!w) { ui.toast.error('Allow pop-ups to print / download the invoice.'); return; }
-  w.document.write(html); w.document.close();
+  return printInvoiceDocument(html);
 }
 
 // Fetch a company's ACTIVE canvas layout (or null → classic flow rendering).
