@@ -156,6 +156,13 @@ function pickCompanyData(body) {
   return data;
 }
 
+// Exported so the public self-registration flow (companyProvisioning service) can
+// build the same Prisma-safe Company payload + apply the same registration
+// mirrors as the Super-Admin Create Company path — one whitelist, no drift.
+exports.pickCompanyData = pickCompanyData;
+exports.applyRegistrationDefaults = applyRegistrationDefaults;
+exports.COMPANY_FIELDS = COMPANY_FIELDS;
+
 exports.updateBranding = async (req, res) => {
   try {
     const role = req.user?.role;
@@ -438,9 +445,18 @@ exports.createCompany = async (req, res) => {
       if (d.column && file && file.fileData) companyData[d.column] = file.fileData;
     }
 
+    // Every new company starts on the FREE plan unless one was explicitly chosen
+    // (the DB default is also 'Free', but set it here so it's unambiguous + audited).
+    if (isBlank(companyData.plan)) companyData.plan = 'Free';
+
     const company = await prisma.company.create({
       data: { ...companyData, id: await nextEntityId() }
     });
+
+    // Subscription record (FREE / Active) — best-effort, mirrors Company.plan.
+    prisma.companySubscription.create({
+      data: { companyId: company.id, plan: company.plan || 'Free', billingCycle: 'Quarterly', status: 'Active' },
+    }).catch(() => { /* lazily created later by the subscription controller if this fails */ });
 
     // The company row is authoritative. Everything below enriches the profile and
     // must never fail the registration — a bad owner row or an oversized upload is

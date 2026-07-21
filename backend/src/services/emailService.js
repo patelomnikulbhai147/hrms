@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { getEmailBranding, brandHeaderHtml, signOffHtml, signOffText, DEFAULT_BRAND } = require('./emailBranding');
 
 /**
  * Pluggable email transport.
@@ -32,11 +33,27 @@ const getTransporter = () => {
   return cachedTransporter;
 };
 
-// The "From" address. MAIL_FROM is the documented variable; SMTP_FROM is kept as
-// a backward-compatible fallback. Swapping the sender later means changing only
-// this env var — no code change.
-const mailFrom = () =>
-  process.env.MAIL_FROM || process.env.SMTP_FROM || 'HRMate Security <no-reply@hrmate.local>';
+// The "From" header.
+//
+// The ADDRESS comes from MAIL_FROM / SMTP_FROM (one mailbox for the platform —
+// changing it is an env change, not a code change). The DISPLAY NAME is the
+// tenant's own company name, so each company's staff see mail from *their*
+// company rather than a hardcoded product name. With no company resolved it
+// falls back to ZeniaHR.
+const DEFAULT_FROM_ADDRESS = 'no-reply@zeniahr.com';
+
+/** Strip any display name already present in the configured MAIL_FROM. */
+const fromAddressOnly = () => {
+  const raw = String(process.env.MAIL_FROM || process.env.SMTP_FROM || DEFAULT_FROM_ADDRESS).trim();
+  const angled = raw.match(/<([^>]+)>/);
+  return (angled ? angled[1] : raw).trim() || DEFAULT_FROM_ADDRESS;
+};
+
+/** `"Acme Industries" <no-reply@…>` — display name is always the company's. */
+const mailFrom = (brandName) => {
+  const name = String(brandName || DEFAULT_BRAND.name).replace(/"/g, '');
+  return `"${name}" <${fromAddressOnly()}>`;
+};
 
 /**
  * Send an email. Returns { delivered, devMode, configured, error }.
@@ -46,24 +63,32 @@ const mailFrom = () =>
  * Never throws to the caller — email problems must not crash the auth flow; the
  * caller decides how to surface a real (configured-but-failed) delivery error.
  */
-const sendMail = async ({ to, subject, text, html, attachments }) => {
+const sendMail = async ({ to, cc, subject, text, html, attachments, companyId, branding }) => {
   const transporter = getTransporter();
-  const from = mailFrom();
+  // Sender identity: the caller's company (Company Profile), else ZeniaHR.
+  // Passing `branding` avoids a second lookup when the caller already resolved it.
+  const brand = branding || (companyId ? await getEmailBranding(companyId) : { ...DEFAULT_BRAND });
+  const from = mailFrom(brand.name);
+  // A base64 company logo travels as an inline cid: attachment (see emailBranding).
+  const allAttachments = brand.logoAttachment && String(html || '').includes('cid:companylogo')
+    ? [...(attachments || []), brand.logoAttachment]
+    : attachments;
 
   if (!transporter) {
     // Dev fallback — SMTP not configured. Surface the message in the server logs
     // so the OTP flow stays testable without an email provider.
     console.log('\n========== [EMAIL — DEV MODE, not actually sent] ==========');
+    console.log(`From:    ${from}`);
     console.log(`To:      ${to}`);
     console.log(`Subject: ${subject}`);
     console.log(`Body:    ${text}`);
-    if (attachments && attachments.length) console.log(`Attachments: ${attachments.map((a) => a.filename).join(', ')}`);
+    if (allAttachments && allAttachments.length) console.log(`Attachments: ${allAttachments.map((a) => a.filename).join(', ')}`);
     console.log('===========================================================\n');
     return { delivered: false, devMode: true, configured: false };
   }
 
   try {
-    await transporter.sendMail({ from, to, subject, text, html, attachments });
+    await transporter.sendMail({ from, to, cc, subject, text, html, attachments: allAttachments });
     return { delivered: true, devMode: false, configured: true };
   } catch (err) {
     // SMTP IS configured but the send failed — report it so the caller can tell
@@ -76,35 +101,41 @@ const sendMail = async ({ to, subject, text, html, attachments }) => {
 /**
  * Send a salary-slip email with the PDF attached (base64 from the client).
  */
-const sendPayslipEmail = async ({ to, employeeName, period, companyName, pdfBase64, fileName }) => {
-  const subject = `Salary Slip — ${period} — ${companyName || 'HRMS'}`;
+const sendPayslipEmail = async ({ to, employeeName, period, companyName, companyId, pdfBase64, fileName }) => {
+  // Prefer live Company Profile branding; the caller-supplied companyName is a
+  // fallback for callers that have the name but not the id.
+  const branding = await getEmailBranding(companyId);
+  const brand = companyId ? branding.name : (companyName || branding.name);
+  const b = { ...branding, name: brand };
+  const subject = `Salary Slip — ${period} — ${brand}`;
   const text =
     `Dear ${employeeName || 'Employee'},\n\n` +
     `Please find attached your salary slip for ${period}.\n\n` +
-    `This is a system-generated document from ${companyName || 'the HR department'}.\n\n— HR / Payroll`;
+    `This is a system-generated document from ${brand}.\n\n${signOffText(b)}`;
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+      <div style="text-align:center;padding:8px 0 12px 0">${brandHeaderHtml(b, '#0F172A')}</div>
       <h2 style="color:#0F172A">Salary Slip — ${period}</h2>
       <p>Dear ${employeeName || 'Employee'},</p>
       <p>Please find attached your salary slip for <b>${period}</b>.</p>
-      <p style="color:#64748B">This is a system-generated document from ${companyName || 'the HR department'}.</p>
-      <p style="color:#94A3B8;font-size:12px">— HR / Payroll</p>
+      <p style="color:#64748B">This is a system-generated document from ${brand}.</p>
+      <p style="color:#94A3B8;font-size:12px">${signOffHtml(b)}</p>
     </div>`;
   const attachments = pdfBase64
     ? [{ filename: fileName || `Salary_Slip_${period}.pdf`, content: Buffer.from(String(pdfBase64).replace(/^data:.*;base64,/, ''), 'base64'), contentType: 'application/pdf' }]
     : [];
-  return sendMail({ to, subject, text, html, attachments });
+  return sendMail({ to, subject, text, html, attachments, branding: b });
 };
 
 /**
- * Send a password-reset OTP email — HRMate-branded, responsive HTML.
- * Branding/sender/logo/support are all env-configurable; no code change is
- * needed to switch to the official HRMate mailbox later.
+ * Send a password-reset OTP email, branded for the requesting COMPANY.
+ * `companyId` is optional: a reset for an address not yet attached to a company
+ * (e.g. during self-registration) correctly falls back to ZeniaHR.
  */
-const sendOtpEmail = async (to, otp, name, expiryMinutes = 10) => {
-  const brand = process.env.MAIL_BRAND || 'HRMate';
-  const logoUrl = process.env.MAIL_LOGO_URL || ''; // optional hosted logo
-  const support = process.env.SUPPORT_EMAIL || 'support@hrmate.com';
+const sendOtpEmail = async (to, otp, name, expiryMinutes = 10, companyId = null) => {
+  const branding = await getEmailBranding(companyId);
+  const brand = branding.name;
+  const support = branding.supportEmail;
   const subject = `${brand} Password Reset Verification Code`;
   const greetingName = name ? ` ${name}` : '';
 
@@ -115,13 +146,11 @@ const sendOtpEmail = async (to, otp, name, expiryMinutes = 10) => {
     `This code is valid for ${expiryMinutes} minutes.\n\n` +
     `If you didn't request this, you can safely ignore this email — your password ` +
     `will remain unchanged.\n\n` +
-    `Need help? Contact ${support}\n\n— The ${brand} Team`;
+    `Need help? Contact ${support}\n\n${signOffText(branding)}`;
 
-  // Header: hosted logo image if MAIL_LOGO_URL is set, else a styled wordmark
-  // (reliable across email clients that block images by default).
-  const header = logoUrl
-    ? `<img src="${logoUrl}" alt="${brand}" height="40" style="display:block;border:0;outline:none;text-decoration:none;height:40px;" />`
-    : `<span style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:0.5px;">${brand}</span>`;
+  // Header: the company's own logo when it has one, else a styled wordmark of
+  // its name (also what image-blocking clients fall back to).
+  const header = brandHeaderHtml(branding);
 
   const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${subject}</title></head>
@@ -159,6 +188,7 @@ const sendOtpEmail = async (to, otp, name, expiryMinutes = 10) => {
           <p style="margin:0 0 4px 0;font-size:12px;color:#94a3b8;">
             Need help? Contact <a href="mailto:${support}" style="color:#4F7CFF;text-decoration:none;">${support}</a>
           </p>
+          <p style="margin:0 0 6px 0;font-size:12px;color:#94a3b8;">${signOffHtml(branding)}</p>
           <p style="margin:0;font-size:11px;color:#cbd5e1;">© ${brand}. This is an automated message — please do not reply.</p>
         </td></tr>
       </table>
@@ -166,7 +196,7 @@ const sendOtpEmail = async (to, otp, name, expiryMinutes = 10) => {
   </table>
 </body></html>`;
 
-  return sendMail({ to, subject, text, html });
+  return sendMail({ to, subject, text, html, branding });
 };
 
 module.exports = { sendMail, sendOtpEmail, sendPayslipEmail, isSmtpConfigured };

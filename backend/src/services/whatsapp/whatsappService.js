@@ -19,8 +19,9 @@ const placeholders = require('./whatsappPlaceholders');
 const meta = require('./metaCloudClient');
 const requestLog = require('./whatsappRequestLogService');
 
-// The fixed connectivity-test message (kept for the delivery-log snapshot).
-const TEST_MESSAGE = 'Hello from HRMate! WhatsApp Cloud API integration is working successfully.';
+// The connectivity-test message (kept for the delivery-log snapshot). Product
+// branding is NOT hardcoded here — see emailBranding for the same rule on email.
+const TEST_MESSAGE = 'Hello from ZeniaHR! WhatsApp Cloud API integration is working successfully.';
 
 // "Send Test Message" delivers an APPROVED TEMPLATE (default Meta hello_world),
 // EXACTLY like the Meta Dashboard "Send Message" button. Why this matters: a

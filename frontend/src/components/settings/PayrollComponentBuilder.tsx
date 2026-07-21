@@ -200,7 +200,7 @@ export const PayrollComponentBuilder: React.FC<Props> = ({ isSuperOrHead, perfor
           {opt(meta.categories, 'All Categories').map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select value={fStatus} onChange={(e) => setFStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
-          {['All', 'Active', 'Inactive', 'Archived'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Statuses' : s}</option>)}
+          {['All', 'Active', 'Inactive', 'Archived'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
         </select>
         <select value={`${sortBy}:${sortDir}`} onChange={(e) => { const [b, d] = e.target.value.split(':'); setSortBy(b); setSortDir(d); }} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-brand-500 focus:outline-none">
           <option value="displayOrder:asc">Sort: Display Order</option>

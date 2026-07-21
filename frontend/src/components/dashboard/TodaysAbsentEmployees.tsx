@@ -12,10 +12,17 @@ import { api } from '@/api/apiClient';
  * then refreshes from the read-only /attendance endpoint every 60s. It NEVER
  * writes — no attendance/payroll/leave/API/DB/permission logic is changed.
  *
- * "Absent" here means "expected but not working today": explicitly Absent,
- * No Punch (no record & not on leave), on Leave, or Half Day. Weekly-Off and
- * Holiday are deliberately excluded — they are legitimate non-working days, not
- * absences, and would otherwise flood the list on a company holiday.
+ * "Absent" here means "expected but not working today": explicitly Absent, on
+ * Leave, or Half Day. Weekly-Off and Holiday are deliberately excluded — they
+ * are legitimate non-working days, not absences, and would otherwise flood the
+ * list on a company holiday.
+ *
+ * There is NO separate "No Punch" category: an employee with no valid
+ * attendance for today simply counts as ABSENT, and leaves that count the
+ * moment a record appears (biometric sync, import, manual marking or a
+ * correction) — the widget then shows whatever status the attendance engine
+ * assigned (Present / Late / Half Day / …). This is a DISPLAY rule only; no
+ * attendance status, record, rule or API is created or changed here.
  */
 interface Props {
   /** Scoped employees for the active company/branch. */
@@ -29,17 +36,20 @@ interface Props {
   onNavigate: (page: any) => void;
 }
 
-type Category = 'Absent' | 'No Punch' | 'Leave' | 'Half Day' | 'Unknown';
+type Category = 'Absent' | 'Leave' | 'Half Day' | 'Unknown';
 
 const PRESENT_STATUSES = ['Present', 'Work From Home', 'On Duty'];
+// Shift-specific "at work" outcomes the attendance engine may assign once a
+// punch arrives (Late / Early Out / Late Present …). They are recognised, never
+// redefined — the engine remains the only thing that decides them.
+const AT_WORK = /\b(late|early\s*out|early\s*going|on\s*duty|overtime)\b/i;
 const CAT: Record<Category, { badge: string; dot: string; order: number }> = {
   'Absent':   { badge: 'bg-rose-50 text-rose-600 ring-rose-200',      dot: 'bg-rose-500',   order: 0 },
-  'No Punch': { badge: 'bg-red-50 text-red-600 ring-red-200',         dot: 'bg-red-500',    order: 1 },
-  'Leave':    { badge: 'bg-orange-50 text-orange-600 ring-orange-200', dot: 'bg-orange-500', order: 2 },
-  'Half Day': { badge: 'bg-yellow-50 text-yellow-700 ring-yellow-200', dot: 'bg-yellow-500', order: 3 },
-  'Unknown':  { badge: 'bg-slate-100 text-slate-600 ring-slate-200',  dot: 'bg-slate-400',  order: 4 },
+  'Leave':    { badge: 'bg-orange-50 text-orange-600 ring-orange-200', dot: 'bg-orange-500', order: 1 },
+  'Half Day': { badge: 'bg-yellow-50 text-yellow-700 ring-yellow-200', dot: 'bg-yellow-500', order: 2 },
+  'Unknown':  { badge: 'bg-slate-100 text-slate-600 ring-slate-200',  dot: 'bg-slate-400',  order: 3 },
 };
-const FILTERS = ['All', 'Absent', 'Leave', 'Half Day', 'No Punch'] as const;
+const FILTERS = ['All', 'Absent', 'Leave', 'Half Day'] as const;
 const PAGE = 8;
 
 interface Row {
@@ -58,8 +68,19 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
 
   const scopedIds = useMemo(() => new Set(employees.map(e => e.id)), [employees]);
 
-  // Live refresh: read-only fetch now + every 60s. Falls back to the prop data
-  // if the request fails, so the widget always renders real values.
+  // A stable fingerprint of TODAY's attendance in the app's own state. The array
+  // identity changes on every render, so the refresh effect keys off this string
+  // instead — it only changes when a record is actually added or edited.
+  const todaySignature = useMemo(
+    () => attendance.filter(a => a.date === todayStr).map(a => `${a.employeeId}:${a.status}`).sort().join('|'),
+    [attendance, todayStr]
+  );
+
+  // LIVE RECALCULATION. Read-only fetch on mount, every 60s, whenever the tab
+  // regains focus, and whenever the app's own attendance state changes (manual
+  // marking, correction, import or biometric sync all flow through it). So an
+  // employee drops out of Absent as soon as their record exists — no reload,
+  // and without this widget ever writing anything.
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -70,8 +91,15 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
     };
     load();
     const id = setInterval(load, 60_000);
-    return () => { active = false; clearInterval(id); };
-  }, []);
+    const onFocus = () => { if (document.visibilityState !== 'hidden') load(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      active = false; clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [todaySignature]);
 
   const todayRecords = useMemo(() => {
     const source = live ?? attendance;
@@ -95,7 +123,7 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
       let reason = '';
       if (rec) {
         const st = String(rec.status);
-        if (PRESENT_STATUSES.includes(st)) return;           // at work → not absent
+        if (PRESENT_STATUSES.includes(st) || AT_WORK.test(st)) return; // at work → not absent
         if (st === 'Weekly Off' || st === 'Holiday') return; // legitimate day off
         if (st === 'Absent') { category = 'Absent'; reason = 'Marked absent'; }
         else if (st === 'Leave') { category = 'Leave'; reason = rec.leaveType || approvedLeave?.leaveType ? `${rec.leaveType || approvedLeave?.leaveType} Leave` : 'On leave'; }
@@ -105,8 +133,11 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
         category = 'Leave';
         reason = `${approvedLeave.leaveType} Leave`;
       } else {
-        category = 'No Punch';
-        reason = 'No punch recorded';
+        // No attendance record yet → ABSENT (no separate "No Punch" bucket).
+        // As soon as a punch/import/manual entry creates a record, the branch
+        // above takes over and the employee leaves this list automatically.
+        category = 'Absent';
+        reason = 'No attendance recorded yet';
       }
       if (!category) return;
 
@@ -120,18 +151,28 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
       });
     });
 
-    // Sort: category order (Absent → No Punch → Leave → Half Day) then name A→Z.
+    // Sort: category order (Absent → Leave → Half Day) then name A→Z.
     return out.sort((a, b) =>
       CAT[a.category].order - CAT[b.category].order || (a.emp.name || '').localeCompare(b.emp.name || '')
     );
   }, [employees, todayRecords, leaves, todayStr]);
 
+  // Present = employees the attendance engine has actually marked as at work
+  // today (its own statuses, read as-is — nothing is reclassified).
+  const presentCount = useMemo(() => employees.filter(emp => {
+    if (emp.status !== 'Active' && emp.status !== 'On Leave') return false;
+    const rec = todayRecords.get(emp.id);
+    if (!rec) return false;
+    const st = String(rec.status);
+    return PRESENT_STATUSES.includes(st) || AT_WORK.test(st);
+  }).length, [employees, todayRecords]);
+
   const summary = useMemo(() => ({
+    present: presentCount,
     absent: rows.filter(r => r.category === 'Absent').length,
     leave: rows.filter(r => r.category === 'Leave').length,
     halfDay: rows.filter(r => r.category === 'Half Day').length,
-    noPunch: rows.filter(r => r.category === 'No Punch').length,
-  }), [rows]);
+  }), [rows, presentCount]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -157,10 +198,10 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
   };
 
   const SUMMARY = [
+    { label: 'Present', value: summary.present, color: 'text-emerald-600' },
     { label: 'Absent Today', value: summary.absent, color: 'text-rose-600' },
     { label: 'Leave', value: summary.leave, color: 'text-orange-600' },
     { label: 'Half Day', value: summary.halfDay, color: 'text-yellow-700' },
-    { label: 'No Punch', value: summary.noPunch, color: 'text-red-600' },
   ];
 
   return (

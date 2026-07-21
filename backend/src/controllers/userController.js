@@ -58,6 +58,9 @@ function defaultPermissionsForRole(role) {
   }
   return { permissions, moduleAccess: {} };
 }
+// Exported so the public self-registration flow can grant a new Company Head the
+// same default permission blob as the Super-Admin "Add User" path.
+exports.defaultPermissionsForRole = defaultPermissionsForRole;
 
 exports.resetPassword = async (req, res) => {
   try {
@@ -398,11 +401,16 @@ exports.createCompanyUser = async (req, res) => {
     if (b.sendWelcomeEmail) {
       try {
         const emailService = require('../services/emailService');
+        const { getEmailBranding, brandHeaderHtml, signOffHtml, signOffText } = require('../services/emailBranding');
+        // Welcome mail carries the employing company's name + logo, not a
+        // hardcoded product name.
+        const branding = await getEmailBranding(companyId);
         await emailService.sendMail({
           to: email,
-          subject: 'Your HRMS account has been created',
-          text: `Hello ${name},\n\nAn account has been created for you.\n\nUsername: ${username}\nEmail: ${email}\nTemporary password: ${password}\n\nPlease sign in and change your password.\n`,
-          html: `<div style="font-family:Arial,sans-serif"><p>Hello ${name},</p><p>An account has been created for you.</p><ul><li><b>Username:</b> ${username}</li><li><b>Email:</b> ${email}</li><li><b>Temporary password:</b> ${password}</li></ul><p>Please sign in and change your password.</p></div>`,
+          branding,
+          subject: `Your ${branding.name} account has been created`,
+          text: `Hello ${name},\n\nAn account has been created for you on ${branding.name}.\n\nUsername: ${username}\nEmail: ${email}\nTemporary password: ${password}\n\nPlease sign in and change your password.\n\n${signOffText(branding)}`,
+          html: `<div style="font-family:Arial,sans-serif"><div style="text-align:center;padding:8px 0 12px 0">${brandHeaderHtml(branding, '#0F172A')}</div><p>Hello ${name},</p><p>An account has been created for you on <b>${branding.name}</b>.</p><ul><li><b>Username:</b> ${username}</li><li><b>Email:</b> ${email}</li><li><b>Temporary password:</b> ${password}</li></ul><p>Please sign in and change your password.</p><p style="color:#94A3B8;font-size:12px">${signOffHtml(branding)}</p></div>`,
         });
       } catch (_) { /* non-fatal */ }
     }

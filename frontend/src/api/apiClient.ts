@@ -93,6 +93,12 @@ async function apiFetch(url: string, options?: RequestInit) {
         authStorage.broadcastLogout('expired');
         try { window.dispatchEvent(new CustomEvent('hrms:unauthorized')); } catch (_) { /* ignore */ }
       }
+      // Subscription employee cap hit on ANY create path (add / import / bulk /
+      // temp-convert). Broadcast once so App can show the upgrade dialog no matter
+      // which screen made the call — a single, comprehensive enforcement surface.
+      if (code === 'EMPLOYEE_LIMIT_REACHED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
+      }
       const err: any = new Error(msg);
       err.status = res.status;
       err.code = code;
@@ -144,6 +150,23 @@ export const api = {
     getInternalCaptcha: async () => {
       return await apiFetch(`${BASE_URL}/auth/captcha`, {
         headers: getHeaders()
+      });
+    },
+    // Public company self-registration (FREE plan). Step 1 validates + sends the
+    // email OTP and returns a signed verificationToken; step 2 verifies the OTP,
+    // provisions the workspace and returns { token, user } for auto-login.
+    registerCompanyStart: async (data: any) => {
+      return await apiFetch(`${BASE_URL}/auth/register-company/start`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    registerCompanyVerify: async (data: { verificationToken: string; otp: string }) => {
+      return await apiFetch(`${BASE_URL}/auth/register-company/verify`, {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
       });
     },
     getMe: async () => {
@@ -400,14 +423,6 @@ export const api = {
   audit: {
     getAll: async (query: string = '') => { return await apiFetch(`${BASE_URL}/audit${query}`, { headers: getHeaders() }); },
   },
-  tasks: {
-    getAll: async () => { return await apiFetch(`${BASE_URL}/tasks`, { headers: getHeaders() }); },
-    create: async (data: any) => { return await apiFetch(`${BASE_URL}/tasks`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
-    update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/tasks/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
-    delete: async (id: string) => { return await apiFetch(`${BASE_URL}/tasks/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    getComments: async (id: string) => { return await apiFetch(`${BASE_URL}/tasks/${id}/comments`, { headers: getHeaders() }); },
-    addComment: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/tasks/${id}/comments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
-  },
   users: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/users`, { headers: getHeaders() });
@@ -550,6 +565,10 @@ export const api = {
     duplicateInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders(), body: '{}' }),
     setInvoiceStatus: async (id: any, status: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/status`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ status }) }),
     logInvoiceAction: async (id: any, action: string, detail?: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/log`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ action, detail }) }),
+    // Email the invoice with its PDF attached. `html` is the exact document the
+    // client is rendering, so the attachment matches the invoice on screen.
+    emailInvoice: async (id: any, data: { to: string; cc?: string; subject?: string; message?: string; html?: string }) =>
+      apiFetch(`${BASE_URL}/invoicing/invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
     recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
@@ -689,6 +708,14 @@ export const api = {
     preview: async (reportKey: string) => { return await apiFetch(`${BASE_URL}/compliance-reports/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reportKey }) }); },
     logDownload: async (data: any) => { return await apiFetch(`${BASE_URL}/compliance-reports/log-download`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     audit: async () => { return await apiFetch(`${BASE_URL}/compliance-reports/audit`, { headers: getHeaders() }); },
+  },
+
+  // EPFO ECR Generation — isolated PF report (own endpoints; never touches other reports).
+  epfoEcr: {
+    preview: async (data: any) => { return await apiFetch(`${BASE_URL}/epfo-ecr/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    generate: async (data: any) => { return await apiFetch(`${BASE_URL}/epfo-ecr/generate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    history: async (companyId?: string | number) => { return await apiFetch(`${BASE_URL}/epfo-ecr/history${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    download: async (id: number | string) => { return await apiFetch(`${BASE_URL}/epfo-ecr/history/${id}/download`, { headers: getHeaders() }); },
   },
 
   // Country / State / City masters for the creatable location dropdowns.
@@ -976,6 +1003,83 @@ export const api = {
         body: JSON.stringify(data)
       });
     }
+  },
+
+  // First-login onboarding (company accounts): welcome gate + sample workspace,
+  // plus a company-readable plan catalog for the View Plans screen.
+  onboarding: {
+    status: async () => { return await apiFetch(`${BASE_URL}/onboarding/status`, { headers: getHeaders() }); },
+    choose: async (choice: 'blank' | 'sample' | 'cancelled') => { return await apiFetch(`${BASE_URL}/onboarding/choose`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ choice }) }); },
+    plans: async () => { return await apiFetch(`${BASE_URL}/onboarding/plans`, { headers: getHeaders() }); },
+    loadSample: async () => { return await apiFetch(`${BASE_URL}/onboarding/load-sample`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
+    removeSample: async () => { return await apiFetch(`${BASE_URL}/onboarding/remove-sample`, { method: 'POST', headers: getHeaders(), body: '{}' }); },
+  },
+
+  // Super Admin Subscription Management.
+  subscriptions: {
+    dashboard: async () => { return await apiFetch(`${BASE_URL}/subscriptions/dashboard`, { headers: getHeaders() }); },
+    catalog: async () => { return await apiFetch(`${BASE_URL}/subscriptions/catalog`, { headers: getHeaders() }); },
+    list: async () => { return await apiFetch(`${BASE_URL}/subscriptions`, { headers: getHeaders() }); },
+    get: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}`, { headers: getHeaders() }); },
+    update: async (companyId: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    suspend: async (companyId: string | number, reason?: string) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/suspend`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }); },
+    activate: async (companyId: string | number, reason?: string) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/activate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }); },
+    history: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscriptions/${companyId}/history`, { headers: getHeaders() }); },
+    allHistory: async () => { return await apiFetch(`${BASE_URL}/subscriptions/history/all`, { headers: getHeaders() }); },
+    billing: async () => { return await apiFetch(`${BASE_URL}/subscriptions/billing/all`, { headers: getHeaders() }); },
+  },
+
+  // Editable plan master configuration (Subscription Plans tab) — the source of
+  // truth for what each plan unlocks. Editing here re-permissions companies live.
+  planConfig: {
+    list: async () => { return await apiFetch(`${BASE_URL}/plan-config`, { headers: getHeaders() }); },
+    metadata: async () => { return await apiFetch(`${BASE_URL}/plan-config/metadata`, { headers: getHeaders() }); },
+    getSettings: async () => { return await apiFetch(`${BASE_URL}/plan-config/settings`, { headers: getHeaders() }); },
+    updateSettings: async (data: any) => { return await apiFetch(`${BASE_URL}/plan-config/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    create: async (data: any) => { return await apiFetch(`${BASE_URL}/plan-config`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (key: string, data: any) => { return await apiFetch(`${BASE_URL}/plan-config/${encodeURIComponent(key)}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (key: string) => { return await apiFetch(`${BASE_URL}/plan-config/${encodeURIComponent(key)}`, { method: 'DELETE', headers: getHeaders() }); },
+  },
+
+  // Super Admin Subscription Billing — real GST invoices per company subscription.
+  subscriptionInvoices: {
+    // Issuer/branding/bank/signature config for the subscription invoice document.
+    getSettings: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/settings`, { headers: getHeaders() }); },
+    updateSettings: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    dashboard: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/dashboard`, { headers: getHeaders() }); },
+    reports: async () => { return await apiFetch(`${BASE_URL}/subscription-invoices/reports`, { headers: getHeaders() }); },
+    list: async (params: Record<string, any> = {}) => {
+      const q = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '' && v !== 'all') q.append(k, String(v)); });
+      const qs = q.toString();
+      return await apiFetch(`${BASE_URL}/subscription-invoices${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+    },
+    get: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { headers: getHeaders() }); },
+    companyBilling: async (companyId: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/company/${companyId}`, { headers: getHeaders() }); },
+    preview: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    generate: async (data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    update: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    remove: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
+    setStatus: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    payments: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { headers: getHeaders() }); },
+    addPayment: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    duplicate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders() }); },
+    regenerate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/regenerate`, { method: 'POST', headers: getHeaders() }); },
+    renew: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/renew`, { method: 'POST', headers: getHeaders() }); },
+    email: async (id: string | number, data: any = {}) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    // ── Interactive Invoice Editor (Super Admin) ──
+    getEditor: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/editor`, { headers: getHeaders() }); },
+    saveEditor: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/editor`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
+    finalize: async (id: string | number, data: any = {}) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/finalize`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    unlock: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/unlock`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    editorAudit: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/audit`, { headers: getHeaders() }); },
+    // Authenticated fetch of the server-rendered A4 invoice HTML (for on-screen
+    // preview via iframe srcDoc + print/PDF). Returns the raw HTML string.
+    fetchHtml: async (id: string | number): Promise<string> => {
+      const r = await fetch(`${BASE_URL}/subscription-invoices/${id}/html`, { headers: getHeaders() });
+      if (!r.ok) throw new Error('Failed to load invoice document');
+      return await r.text();
+    },
   },
 
   payments: {

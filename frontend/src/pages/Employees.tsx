@@ -58,6 +58,10 @@ const EMPLOYEE_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Email', key: 'email', width: 28 },
   { header: 'Salary', key: 'salary', width: 14 },
   { header: 'Status', key: 'status', width: 14 },
+  { header: 'PAN', key: 'pan', width: 16 },
+  { header: 'UAN', key: 'uan', width: 16 },
+  { header: 'ESIC Number', key: 'esiNumber', width: 18 },
+  { header: 'WC Policy Number', key: 'wcPolicyNumber', width: 20 },
 ];
 
 // ── Temporary-employee approval gate (mirrors the backend; keep in sync) ──────
@@ -270,6 +274,19 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [importOpen, setImportOpen] = useState(false);
   const [importedRows, setImportedRows] = useState<any[]>([]);
   const [importLogs, setImportLogs] = useState<string[]>([]);
+  // Honest post-commit outcome (created/updated/skipped/failed + per-row log).
+  // Non-null → the importer modal shows the completion summary instead of a toast.
+  const [importResult, setImportResult] = useState<{
+    total: number; createdN: number; updatedN: number; skippedN: number; failedN: number;
+    results: { row: number; name: string; employeeId?: string | null; status: string; reason?: string }[];
+    limitReached?: boolean;
+  } | null>(null);
+  // Set when the backend rejected the ENTIRE file up-front on the plan employee
+  // cap. Nothing was written, so the parsed rows stay on screen and the user can
+  // trim the file (or upgrade) and commit again.
+  const [importBlocked, setImportBlocked] = useState<{
+    plan: string; limit: number; current: number; importCount: number; availableSlots: number;
+  } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -328,12 +345,82 @@ export const Employees: React.FC<EmployeesProps> = ({
     } catch (err: any) { ui.toast.error('Export failed: ' + (err?.message || 'Unknown error')); }
   };
   // A blank header-only workbook the user fills in for Bulk Import.
-  const downloadImportTemplate = () => {
+  // Professional, self-documenting Sample File: a styled data sheet pre-filled with
+  // two complete demo employees (importable as-is if the branch exists) + an
+  // Instructions sheet. Built with ExcelJS for real formatting (bold header, fill,
+  // borders, frozen header, auto width, preserved text/number types).
+  const downloadSampleFile = async () => {
     setActionsMenuOpen(false);
     try {
-      exportRowsToExcel(`Employee_Import_Template_${new Date().toISOString().slice(0, 10)}`, EMPLOYEE_EXPORT_COLUMNS, [], 'Template');
-      ui.toast.success('Employee import template downloaded.');
-    } catch (err: any) { ui.toast.error('Could not generate the template: ' + (err?.message || 'Unknown error')); }
+      const ExcelJS: any = (await import('exceljs')).default;
+      const wb = new ExcelJS.Workbook();
+      wb.creator = 'ZeniaHR';
+
+      // The data sheet is named after the branch so the importer maps it to the
+      // Head Office branch; the "Branch" column carries the same value.
+      const ws = wb.addWorksheet('Head Office', { views: [{ state: 'frozen', ySplit: 1 }] });
+      const headers = ['Employee Code', 'Employee Name', 'Gender', 'Mobile', 'Email', 'Date of Birth', 'Joining Date', 'Department', 'Designation', 'Branch', 'Shift', 'Salary', 'Status', 'WC Policy Number'];
+      ws.columns = headers.map((h) => ({ header: h, key: h, width: Math.max(14, h.length + 4) }));
+      ws.addRow(['EMP0001', 'Rahul Sharma', 'Male', '9876543210', 'rahul.sharma@example.com', '15/08/1995', '01/01/2026', 'HR', 'HR Executive', 'Head Office', 'General Shift', 25000, 'Active', 'WC-2026/0001']);
+      ws.addRow(['EMP0002', 'Priya Patel', 'Female', '9876501234', 'priya.patel@example.com', '22/05/1997', '15/01/2026', 'Accounts', 'Accountant', 'Head Office', 'General Shift', 32000, 'Active', 'WC-2026/0002']);
+
+      // Preserve data types: text for code/mobile/dates/WC-policy (no auto-coercion), number for salary.
+      [1, 4, 6, 7, 14].forEach((c) => { ws.getColumn(c).numFmt = '@'; });
+      ws.getColumn(12).numFmt = '#,##0';
+
+      const thin = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+      ws.eachRow((row: any, rowNumber: number) => {
+        row.eachCell((cell: any) => { cell.border = { top: thin, left: thin, bottom: thin, right: thin }; });
+        if (rowNumber === 1) {
+          row.height = 22;
+          row.eachCell((cell: any) => {
+            cell.font = { bold: true, color: { argb: 'FF3730A3' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }; // light purple
+            cell.alignment = { vertical: 'middle', horizontal: 'left' };
+          });
+        } else {
+          row.eachCell((cell: any) => { cell.alignment = { vertical: 'middle' }; });
+        }
+      });
+
+      // Instructions sheet — the import guide.
+      const ins = wb.addWorksheet('Instructions');
+      ins.getColumn(1).width = 108;
+      const notes: [string, boolean][] = [
+        ['Employee Import — Instructions', true],
+        ['', false],
+        ['1. Do not change the column names in the "Head Office" sheet.', false],
+        ['2. Do not delete required columns (Employee Code, Employee Name, Branch).', false],
+        ['3. Date format must be DD/MM/YYYY (e.g. 01/01/2026).', false],
+        ['4. Mobile number should contain only digits (10 digits).', false],
+        ['5. Email must be a valid email address.', false],
+        ['6. Salary must be numeric (no symbols or commas).', false],
+        ['7. Employee Code must be unique — an existing code updates that employee instead of duplicating.', false],
+        ['8. Department, Branch, Designation and Shift should already exist in the system (or follow the application’s import rules).', false],
+        ['9. WC Policy Number is OPTIONAL (max 100 chars; letters, numbers and - / allowed). Leave blank if not applicable. UAN, PF and ESIC are optional too.', false],
+        ['10. Remove the two sample rows before importing your real data if you do not want them imported.', false],
+        ['', false],
+        ['Tip: rename the "Head Office" sheet to your branch name to import into a different branch.', false],
+      ];
+      notes.forEach(([text, header], i) => {
+        const r = ins.addRow([text]);
+        if (i === 0) { r.getCell(1).font = { bold: true, size: 14, color: { argb: 'FF6D28D9' } }; r.height = 24; }
+        else if (header) r.getCell(1).font = { bold: true };
+        else r.getCell(1).alignment = { wrapText: true, vertical: 'top' };
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Employee_Import_Sample_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      ui.toast.success('Sample file downloaded — includes 2 demo employees + an Instructions sheet.');
+    } catch (err: any) {
+      ui.toast.error('Could not generate the sample file: ' + (err?.message || 'Unknown error'));
+    }
   };
   const refreshTemps = async () => {
     try { const list: any = await api.temporaryEmployees.getAll(); const arr = Array.isArray(list) ? list : []; setTemps(arr); return arr; }
@@ -749,6 +836,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     pfNumber: '',
     uan: '',
     esic: '',
+    wcPolicyNumber: '',
     bankName: '',
     accountNumber: '',
     confirmAccountNumber: '',
@@ -780,6 +868,22 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
   // Auto-generate employee code on add open
+  // Proactive subscription-cap guard: before opening the Add form, check seat
+  // capacity. If the plan is full, show the upgrade dialog (via the same global
+  // event apiClient fires) instead of the form. The backend still enforces the
+  // cap on submit, so this is a UX shortcut, not the security boundary.
+  const guardCapacityThenAdd = async (open: () => void) => {
+    try {
+      const s: any = await api.onboarding.status();
+      const cap = s?.capacity;
+      if (cap && cap.limit != null && cap.remaining != null && cap.remaining <= 0) {
+        window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: { plan: cap.plan, limit: cap.limit, current: cap.current } }));
+        return;
+      }
+    } catch (_) { /* company-scope only / transient — let the submit-time 403 handle it */ }
+    open();
+  };
+
   const handleStartAdd = () => {
     const initialBranch = isBranchWorkspace ? (currentComp?.branchName || currentComp?.name || '') : (branchOptions[0] || '');
 
@@ -794,7 +898,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       nationality: DEFAULT_COUNTRY, fatherSpouseName: '', relationType: 'FATHER',
       emergencyContact: '', category: 'Skilled', employmentType: 'CONTRACTUAL',
       exitDate: '', exitReason: '', branchLocation: initialBranch, biometricId: '',
-      aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '',
+      aadhaar: '', pan: '', pfNumber: '', uan: '', esic: '', wcPolicyNumber: '',
       bankName: '', accountNumber: '', confirmAccountNumber: '', ifsc: '', accountHolderName: '', bankBranch: '', bankAddress: '', bankCity: '', bankDistrict: '', bankState: '', presentAddress: '', permanentAddress: '',
       ...BLANK_ADDRESS_VALUES,
       state: '', city: '',
@@ -1277,6 +1381,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       pfNumber: form.pfNumber,
       uan: form.uan,
       esic: form.esic,
+      wcPolicyNumber: form.wcPolicyNumber,
       bankName: form.bankName,
       accountNumber: form.accountNumber,
       ifsc: form.ifsc,
@@ -1623,13 +1728,105 @@ export const Employees: React.FC<EmployeesProps> = ({
         logs.push(`Successfully loaded file: ${file.name}`);
         logs.push(`Detected branch sheets: ${workbook.SheetNames.filter(n => n !== 'Sheet1').join(', ')}`);
 
+        // DD/MM/YYYY (or D/M/YYYY, dot/dash separators) → ISO YYYY-MM-DD so the
+        // backend's `new Date()` parses it correctly (JS would mis-read 15/08/1995).
+        const toISO = (s: string): string => {
+          const v = String(s ?? '').trim();
+          const m = v.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+          if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+          return v === '-' ? '' : v;
+        };
+        // Friendly "Sample File" layout detection: map header NAMES → column index.
+        // Requires a strong signal (code+name+salary+status) so a legacy GCRI sheet
+        // is never mis-detected as the friendly format.
+        const HEADER_PATTERNS: [string, RegExp][] = [
+          ['code', /employee\s*code|emp\s*code|^code$|employee\s*id/i],
+          ['name', /employee\s*name|full\s*name|^name$/i],
+          ['gender', /gender|sex/i],
+          ['mobile', /mobile|phone|contact/i],
+          ['email', /e-?mail/i],
+          ['dob', /birth|dob/i],
+          ['joindate', /join/i],
+          ['department', /department|dept/i],
+          ['designation', /designation|title|^role$/i],
+          ['branch', /branch/i],
+          ['shift', /shift/i],
+          ['salary', /salary|ctc|wage|gross/i],
+          ['status', /status/i],
+          ['wcpolicy', /wc\s*policy|workmen|wc\s*no|compensation/i],
+        ];
+        const mapFriendlyHeaders = (hdr: string[]): Record<string, number> | null => {
+          const map: Record<string, number> = {};
+          hdr.forEach((cell, idx) => {
+            for (const [key, re] of HEADER_PATTERNS) {
+              if (map[key] === undefined && re.test(cell)) { map[key] = idx; break; }
+            }
+          });
+          const strong = map.code !== undefined && map.name !== undefined && map.salary !== undefined && map.status !== undefined;
+          return strong ? map : null;
+        };
+
         workbook.SheetNames.forEach(sheetName => {
-          if (sheetName === 'Sheet1') return;
+          if (sheetName === 'Sheet1' || sheetName.trim().toLowerCase() === 'instructions') return;
           const worksheet = workbook.Sheets[sheetName];
           const json: any[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
           if (json.length < 2) return;
 
+          // ── Friendly named-column format (the downloadable Sample File) ────────
+          const friendly = mapFriendlyHeaders((json[0] || []).map((h: any) => String(h ?? '').trim()));
+          if (friendly) {
+            let vc = 0, dc = 0;
+            const get = (row: any[], key: string) => (friendly[key] !== undefined ? cleanExcelValue(row[friendly[key]]) : '');
+            for (let i = 1; i < json.length; i++) {
+              const row = json[i];
+              if (!row || row.length === 0) continue;
+              const empCode = get(row, 'code');
+              const fullName = get(row, 'name');
+              if ((empCode === '-' || !empCode) && (fullName === '-' || !fullName)) continue;
+
+              const isDup = (!!empCode && employees.some(e => String(e.employeeId).toUpperCase() === empCode.toUpperCase()))
+                || (!!empCode && allRows.some(e => String(e.employeeId).toUpperCase() === empCode.toUpperCase()));
+              if (isDup) { dc++; continue; }
+
+              const branchName = get(row, 'branch') || sheetName;
+              const matchedBranch = companies.find(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'
+                && String(c.branchName || c.name).toLowerCase() === branchName.toLowerCase());
+              const gender = get(row, 'gender');
+              const statusVal = get(row, 'status');
+              const emailVal = get(row, 'email');
+
+              allRows.push({
+                id: `emp-sample-${empCode || i}`,
+                employeeId: empCode || `TEMP-${i}`,
+                companyId: parentCompanyId,
+                branchId: matchedBranch?.id || null,
+                name: fullName || 'Unknown Employee',
+                firstName: (fullName || '').split(/\s+/)[0] || fullName,
+                lastName: (fullName || '').split(/\s+/).slice(1).join(' ') || '',
+                email: emailVal && emailVal !== '-' ? emailVal : undefined,
+                phone: get(row, 'mobile'),
+                gender: /^f/i.test(gender) ? 'Female' : (/^m/i.test(gender) ? 'Male' : gender),
+                dob: toISO(get(row, 'dob')),
+                joinDate: toISO(get(row, 'joindate')),
+                department: get(row, 'department'),
+                designation: get(row, 'designation'),
+                role: 'Staff' as Role,
+                status: (/(archiv|inactive|exit|left|resign)/i.test(statusVal) ? 'Archived' : 'Active') as EmployeeStatus,
+                salary: Number(String(get(row, 'salary')).replace(/[^0-9.]/g, '')) || 0,
+                wcPolicyNumber: (() => { const v = get(row, 'wcpolicy'); return v && v !== '-' ? v.slice(0, 100) : undefined; })(),
+                shift: get(row, 'shift') || undefined,
+                branchLocation: branchName,
+                location: branchName,
+                avatar: (fullName || 'EM').slice(0, 2).toUpperCase(),
+              });
+              vc++;
+            }
+            logs.push(`Sheet [${sheetName}] (sample format): parsed ${vc} employees${dc ? `, skipped ${dc} duplicates` : ''}.`);
+            return;
+          }
+
+          // ── Legacy fixed-column (branch-master) format ────────────────────────
           let validCount = 0;
           let dupCount = 0;
 
@@ -1745,19 +1942,82 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleBulkCommit = async () => {
     setIsConfirmingBulk(false);
     if (importedRows.length === 0) return;
+    setImportBlocked(null);
 
     try {
       const response = await api.employees.bulkCreate(importedRows);
-      onUpdateEmployees([...response.employees, ...employees]);
+      const createdN = Number(response.createdCount ?? response.count ?? 0);
+      const updatedN = Number(response.mergedCount ?? response.updatedCount ?? 0);
+      const skippedN = Number(response.skippedCount ?? 0);
+      const failedN = Number(response.failedCount ?? 0);
+
+      // AUTO-REFRESH from the database (source of truth) so BOTH newly-created and
+      // updated employees appear immediately and every count reflects reality.
+      // We re-fetch the whole roster instead of trusting the client-side array —
+      // this is what makes the list, counts and dashboard update without a manual
+      // reload. Branch/department/headcount are synced server-side during import.
+      await refreshAfterBiometric();
+
+      setImportResult({
+        total: Number(response.total ?? importedRows.length),
+        createdN, updatedN, skippedN, failedN,
+        results: Array.isArray(response.results) ? response.results : [],
+        limitReached: !!response.limitReached,
+      });
       setImportedRows([]);
-      setImportLogs([]);
-      setImportOpen(false);
-      ui.toast.success(`Bulk synchronized ${response.count} employees from Excel to local HRMS successfully.`);
-    } catch (error) {
+
+      // HONEST messaging — NEVER claim success when nothing was committed.
+      if (createdN + updatedN === 0) {
+        ui.toast.error(`Import completed but NO employees were added (${skippedN} skipped, ${failedN} failed). See the import log.`);
+      } else if (skippedN + failedN > 0) {
+        ui.toast.warning(`Import completed: ${createdN} added, ${updatedN} updated, ${skippedN} skipped, ${failedN} failed.`);
+      } else {
+        ui.toast.success(`Import completed: ${createdN} added${updatedN ? `, ${updatedN} updated` : ''} — all committed to the database.`);
+      }
+      if (response.limitReached) {
+        ui.toast.error('Some rows were skipped: the plan employee limit was reached. Upgrade the subscription to add more.');
+      }
+    } catch (error: any) {
       console.error('Bulk commit failed:', error);
+      // The plan cap rejects the WHOLE file before anything is written, and tells
+      // us exactly how many seats are left — surface that instead of a generic
+      // failure so the user knows precisely what to trim (or to upgrade).
+      if (error?.code === 'EMPLOYEE_LIMIT_REACHED') {
+        const d = error.data || {};
+        const slots = Number(d.availableSlots ?? 0);
+        setImportBlocked({
+          plan: d.plan || 'Free',
+          limit: Number(d.limit ?? 100),
+          current: Number(d.current ?? 0),
+          importCount: Number(d.importCount ?? importedRows.length),
+          availableSlots: slots,
+        });
+        ui.toast.error(
+          slots > 0
+            ? `Import blocked — only ${slots} more employee${slots === 1 ? '' : 's'} can be added on your ${d.plan || 'Free'} plan.`
+            : `Import blocked — your ${d.plan || 'Free'} plan employee limit has been reached.`,
+        );
+        return;
+      }
       ui.toast.error(getApiErrorMessage(error, 'Could not save the imported employees.'));
     }
   };
+
+  // Build + download a per-row CSV import log (Row, Name, Employee Code, Status, Reason).
+  const downloadImportLog = () => {
+    const rows = importResult?.results || [];
+    const head = 'Row,Employee Name,Employee Code,Status,Reason';
+    const body = rows.map((r) => [r.row, r.name, r.employeeId || '', r.status, r.reason || '']
+      .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([`${head}\n${body}`], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `employee_import_log_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  // Reset the importer to a clean state (used by the completion screen's Done/close).
+  const resetImporter = () => { setImportResult(null); setImportBlocked(null); setImportedRows([]); setImportLogs([]); setImportOpen(false); };
 
 
   const isHR = role === 'HR' || role === 'Company Head' || role === 'Super Admin';
@@ -1828,7 +2088,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <div className="px-3.5 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Import</div>
                     <button onClick={() => { setActionsMenuOpen(false); setImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Upload size={15} className="text-slate-400" /> Bulk Import Employees</button>
                     <button onClick={() => { setActionsMenuOpen(false); setBioImportOpen(true); }} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><Fingerprint size={15} className="text-slate-400" /> Import Biometric Codes</button>
-                    <button onClick={downloadImportTemplate} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><FileDown size={15} className="text-slate-400" /> Download Employee Import Template</button>
+                    <button onClick={downloadSampleFile} className="flex w-full items-center gap-2.5 px-3.5 py-2 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-slate-50 hover:text-slate-900"><FileDown size={15} className="text-slate-400" /> Download Sample File</button>
                   </>
                 )}
               </div>
@@ -1843,9 +2103,9 @@ export const Employees: React.FC<EmployeesProps> = ({
               </Button>
               {addMenuOpen && (
                 <div className="absolute right-0 z-50 mt-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-200/60">
-                  <button onClick={() => { setAddMenuOpen(false); handleStartAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-brand-50 hover:text-brand-700"><UserPlus size={15} className="text-brand-600" /> Add Full Employee</button>
+                  <button onClick={() => { setAddMenuOpen(false); guardCapacityThenAdd(handleStartAdd); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-brand-50 hover:text-brand-700"><UserPlus size={15} className="text-brand-600" /> Add Full Employee</button>
                   <div className="h-px bg-slate-100" />
-                  <button onClick={() => { setAddMenuOpen(false); openQuickAdd(); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
+                  <button onClick={() => { setAddMenuOpen(false); guardCapacityThenAdd(openQuickAdd); }} className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-xs font-semibold text-slate-600 text-left transition-colors hover:bg-amber-50 hover:text-amber-700"><Plus size={15} className="text-amber-600" /> Quick Add (Temp)</button>
                 </div>
               )}
             </div>
@@ -2652,9 +2912,13 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <p className="text-[10px] text-gray-400">Universal Account No (UAN)</p>
                   <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.uan || '—'}</p>
                 </div>
-                <div className="col-span-2">
+                <div>
                   <p className="text-[10px] text-gray-400">ESIC IP Number</p>
                   <p className="font-semibold text-slate-800 mt-0.5">{viewEmp.esic || (viewEmp as any).esiNumber || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-gray-400">Workmen Compensation (WC) Policy No.</p>
+                  <p className="font-semibold text-slate-800 mt-0.5">{(viewEmp as any).wcPolicyNumber || '—'}</p>
                 </div>
               </div>
             )}
@@ -2951,14 +3215,110 @@ export const Employees: React.FC<EmployeesProps> = ({
       />
 
       {/* Bulk Excel Import Dialog */}
-      <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Enterprise Excel Importer" size="md">
+      <Modal open={importOpen} onClose={resetImporter} title={importResult ? 'Import Completed' : 'Enterprise Excel Importer'} size={importResult ? 'lg' : 'md'}>
         <div className="space-y-4 text-left text-xs font-sans">
+        {importResult ? (
+          /* ── HONEST completion summary + per-row import log ─────────────── */
+          <div className="space-y-4">
+            <div className={`p-3 rounded-lg border ${importResult.createdN + importResult.updatedN === 0 ? 'bg-rose-50 border-rose-200 text-rose-800' : (importResult.skippedN + importResult.failedN > 0 ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800')}`}>
+              <h4 className="font-bold text-[13px]">
+                {importResult.createdN + importResult.updatedN === 0
+                  ? 'No employees were added'
+                  : 'Employees committed to the database'}
+              </h4>
+              <p className="mt-0.5 text-[11px] leading-relaxed">
+                Processed {importResult.total} row{importResult.total === 1 ? '' : 's'}. The list and counts below reflect the database — they have already been refreshed.
+              </p>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { label: 'Imported', n: importResult.createdN, cls: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
+                { label: 'Updated', n: importResult.updatedN, cls: 'text-blue-700 bg-blue-50 border-blue-200' },
+                { label: 'Skipped', n: importResult.skippedN, cls: 'text-amber-700 bg-amber-50 border-amber-200' },
+                { label: 'Failed', n: importResult.failedN, cls: 'text-rose-700 bg-rose-50 border-rose-200' },
+              ].map((s) => (
+                <div key={s.label} className={`rounded-lg border p-2.5 text-center ${s.cls}`}>
+                  <div className="text-xl font-extrabold tabular-nums">{s.n}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide">{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {importResult.results.length > 0 && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <p className="font-bold text-slate-700 uppercase tracking-wide text-[10px]">Import Log ({importResult.results.length} rows)</p>
+                  <Button size="xs" variant="outline" icon={<Download size={12} />} onClick={downloadImportLog}>Download Log</Button>
+                </div>
+                <div className="border border-slate-200 rounded max-h-64 overflow-y-auto">
+                  <table className="w-full text-[10px] text-slate-700 border-collapse text-left">
+                    <thead className="bg-slate-50 sticky top-0 border-b border-slate-200 font-bold">
+                      <tr><th className="p-1.5">#</th><th className="p-1.5">Employee</th><th className="p-1.5">Code</th><th className="p-1.5">Status</th><th className="p-1.5">Reason</th></tr>
+                    </thead>
+                    <tbody>
+                      {importResult.results.map((r, i) => {
+                        const v: any = r.status === 'created' ? 'green' : r.status === 'updated' ? 'blue' : r.status === 'skipped' ? 'amber' : 'red';
+                        return (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="p-1.5 tabular-nums text-slate-400">{r.row}</td>
+                            <td className="p-1.5 font-semibold">{r.name}</td>
+                            <td className="p-1.5">{r.employeeId || '—'}</td>
+                            <td className="p-1.5"><Badge variant={v}>{r.status}</Badge></td>
+                            <td className="p-1.5 text-slate-500">{r.reason || '—'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+              <Button variant="outline" onClick={() => setImportResult(null)}>Import Another File</Button>
+              <Button icon={<CheckCircle2 size={12} />} onClick={resetImporter}>Done</Button>
+            </div>
+          </div>
+        ) : (
+        <>
           <div className="p-3 bg-brand-50 border border-brand-200 text-brand-800 rounded-lg">
             <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">Excel Master Import Protocol</h4>
             <p className="mt-1 leading-relaxed">
               Drop your real employee master dataset (`.xlsx`) to parse all location sheets (AHMEDABAD, BHAVNAGAR, RAJKOT, SIDDHPUR) and synchronise them dynamically.
             </p>
           </div>
+
+          {/* Plan cap rejected the whole file — nothing was imported. */}
+          {importBlocked && (
+            <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg space-y-2">
+              <h4 className="font-bold flex items-center gap-1.5 text-[11px] uppercase tracking-wide">
+                <AlertTriangle size={13} /> Import Blocked — Employee Limit
+              </h4>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: 'Current Employees', n: importBlocked.current },
+                  { label: 'Import File', n: importBlocked.importCount },
+                  { label: 'Available Slots', n: importBlocked.availableSlots },
+                ].map((s) => (
+                  <div key={s.label} className="rounded-md border border-amber-200 bg-white/70 px-2 py-1.5">
+                    <p className="text-[9px] uppercase tracking-wide text-amber-700 font-bold">{s.label}</p>
+                    <p className="text-[15px] font-extrabold text-amber-900 leading-tight">{s.n}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="leading-relaxed">
+                Your <b>{importBlocked.plan}</b> plan allows up to <b>{importBlocked.limit}</b> active employees.
+                {importBlocked.availableSlots > 0
+                  ? <> Only <b>{importBlocked.availableSlots}</b> more employee{importBlocked.availableSlots === 1 ? '' : 's'} can be added.</>
+                  : <> No further employees can be added.</>} Nothing was imported —
+                please reduce the file or upgrade your plan to continue.
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setImportBlocked(null)}>Dismiss</Button>
+                {/* Reuse the global upgrade dialog (App owns the Plans route) — the
+                    same event apiClient fires on any EMPLOYEE_LIMIT_REACHED 403. */}
+                <Button onClick={() => window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: { plan: importBlocked.plan, limit: importBlocked.limit, current: importBlocked.current } }))}>View Plans</Button>
+              </div>
+            </div>
+          )}
 
 
 
@@ -3029,6 +3389,8 @@ export const Employees: React.FC<EmployeesProps> = ({
               </div>
             </div>
           )}
+        </>
+        )}
         </div>
       </Modal>
 
@@ -3248,9 +3610,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(form.pan)} onChange={e => setForm({ ...form, pan: rawPan(e.target.value) })} error={errors.pan} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input id="field-pfNumber" label="Provident Fund (PF) No" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
-                <Input id="field-uan" label="Universal Account No (UAN)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
-                <Input id="field-esic" label="ESIC IP Number" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
+                <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
+                <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                <Input id="field-esic" label="ESIC IP Number (Optional)" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={form.wcPolicyNumber} onChange={e => setForm({ ...form, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
               </div>
               <BankDetails
                 data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState }}
@@ -3449,9 +3814,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(editEmp.pan || '')} onChange={e => setEditEmp({ ...editEmp, pan: rawPan(e.target.value) })} error={errors.pan} />
                 </div>
                 <div className="grid grid-cols-3 gap-3">
-                  <Input id="field-pfNumber" label="Provident Fund (PF) No" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
-                  <Input id="field-uan" label="Universal Account No (UAN)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
-                  <Input id="field-esic" label="ESIC IP Number" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
+                  <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={editEmp.pfNumber || ''} onChange={e => setEditEmp({ ...editEmp, pfNumber: e.target.value })} error={errors.pfNumber} />
+                  <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={editEmp.uan || ''} onChange={e => setEditEmp({ ...editEmp, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
+                  <Input id="field-esic" label="ESIC IP Number (Optional)" value={editEmp.esic || (editEmp as any).esiNumber || ''} onChange={e => setEditEmp({ ...editEmp, esic: e.target.value })} error={errors.esic} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={(editEmp as any).wcPolicyNumber || ''} onChange={e => setEditEmp({ ...editEmp, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
                 </div>
                 <BankDetails
                   data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState }}

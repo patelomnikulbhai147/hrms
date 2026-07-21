@@ -224,6 +224,14 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
           const fixedEls = autoFixLayout(convertedEls);
           setElements(fixedEls);
           commitHistory(fixedEls, true);
+          // Opened via "Edit" on a SAVED template → stay attached to that row so
+          // Save updates it. Seeded from a master template → a new design.
+          if (seedLayout.templateId != null) {
+            setEditingTemplateId(seedLayout.templateId);
+            if (seedLayout.name) setSaveName(String(seedLayout.name));
+          }
+          // Settings are needed by the preview/print path in this mode too.
+          try { setSettings(await api.invoicing.getSettings()); } catch { /* preview still renders */ }
         } else {
           // If no seed, load the active Default layout from invoice_layouts, if any.
           const s = await api.invoicing.getSettings();

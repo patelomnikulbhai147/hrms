@@ -5,7 +5,7 @@ const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
-const { prepareEmployeeWriteData } = require('../utils/employeeWriteData');
+const { prepareEmployeeWriteData, applyCreateDefaults, describePrismaWriteError } = require('../utils/employeeWriteData');
 const locationMaster = require('./locationMasterController');
 
 // Remember any custom state/city on an employee payload for dropdown reuse
@@ -234,9 +234,16 @@ exports.createEmployee = async (req, res) => {
       data.employeeId = await generateEmployeeCode(data.branchId, data.companyId);
     }
 
+    // ── Subscription employee-limit guard ───────────────────────────────────
+    // Enforced for EVERY creator (incl. Super Admin) because the cap belongs to
+    // the company's plan, not the actor. FREE = 100. Returns 403
+    // EMPLOYEE_LIMIT_REACHED so the client can show the upgrade dialog.
+    const cap = await require('../services/employeeLimitService').assertCapacity(data.companyId, 1);
+    if (!cap.ok) return res.status(cap.status).json(cap.body);
+
     // Whitelist to real Employee columns + coerce bonus config fields. `employeeId`
     // was just resolved above, so re-attach it after the pick.
-    const createData = prepareEmployeeWriteData(data);
+    const createData = applyCreateDefaults(prepareEmployeeWriteData(data));
     createData.employeeId = data.employeeId;
     const employee = await prisma.employee.create({
       data: createData
@@ -315,49 +322,162 @@ exports.bulkCreate = async (req, res) => {
       const em = normEmail(e.email); if (em) index.byEmail.set(em, e);
     };
 
+    // ── PRE-FLIGHT plan-capacity check (whole file, BEFORE any write) ────────
+    // The plan caps ACTIVE employees, so an import that would breach the cap is
+    // rejected in full rather than committing part of the file and silently
+    // skipping the tail. Only genuinely NEW people count towards the cap — rows
+    // that match someone already on file are updates and consume no seat — and
+    // the file is de-duplicated against itself so one person listed twice asks
+    // for one seat. Nothing is written when this fires; the response says how
+    // many slots are still available.
+    const limitSvc = require('../services/employeeLimitService');
+    const { norm, normPhone, normEmail } = require('../utils/employeeDedup');
+    {
+      const seenCode = new Set(), seenPhone = new Set(), seenEmail = new Set(), seenName = new Set();
+      const newPerCompany = new Map();
+      for (const data of employees) {
+        if (!data || !data.companyId) continue;
+        if (matchAgainstIndex(data, index)) continue;         // existing person → update
+        const code = norm(data.employeeId);
+        const ph = normPhone(data.phone);
+        const em = normEmail(data.email);
+        const nm = norm(data.name);
+        const nameSeenKey = `${data.companyId}|${nm}`;
+        if ((code && seenCode.has(code)) || (ph && seenPhone.has(ph)) ||
+            (em && seenEmail.has(em)) || (nm && nm !== '-' && seenName.has(nameSeenKey))) continue;
+        if (code) seenCode.add(code);
+        if (ph) seenPhone.add(ph);
+        if (em) seenEmail.add(em);
+        if (nm && nm !== '-') seenName.add(nameSeenKey);
+        const key = String(data.companyId);
+        newPerCompany.set(key, (newPerCompany.get(key) || 0) + 1);
+      }
+      for (const [companyId, addCount] of newPerCompany) {
+        const guard = await limitSvc.assertCapacity(companyId, addCount);
+        if (!guard.ok) {
+          const slots = guard.cap.remaining;
+          return res.status(403).json({
+            ...guard.body,
+            importCount: addCount,
+            availableSlots: slots,
+            imported: 0,
+            error:
+              `Your ${guard.cap.plan} plan allows up to ${guard.cap.limit} active employees. ` +
+              `Current employees: ${guard.cap.current}. This file adds ${addCount} new employee(s), ` +
+              `but only ${slots} more can be added. Please upgrade your plan to continue.`,
+          });
+        }
+      }
+    }
+
     const created = [];
     const merged = [];
     const skipped = [];
+    const failed = [];
+    // Per-row audit for the import log (row number, who, outcome, why). The client
+    // renders this verbatim so the user sees EXACTLY what happened to every row —
+    // no silent merges/skips can hide behind a blanket "success".
+    const results = [];
+
+    // ── Subscription employee-limit guard (per tenant) ───────────────────────
+    // Only genuinely NEW inserts consume a seat; merges/updates to existing
+    // people never do. Capacity is resolved once per company and decremented
+    // locally as we insert, so the cap holds across the whole batch. When a
+    // tenant is full, further NEW rows are skipped (never created) with a
+    // limit reason — existing-record updates still proceed. After the pre-flight
+    // above this is a belt-and-braces net (e.g. a concurrent import racing us).
+    const capCache = new Map();
+    const takeSeat = async (companyId) => {
+      const key = String(companyId || '');
+      if (!capCache.has(key)) capCache.set(key, await limitSvc.getCapacity(companyId));
+      const c = capCache.get(key);
+      if (c.unlimited) return true;
+      if (c.remaining <= 0) return false;
+      c.remaining -= 1;
+      return true;
+    };
+
+    let rowNum = 0;
     for (const data of employees) {
-      if (data.joinDate && typeof data.joinDate === 'string') {
-        data.joinDate = new Date(data.joinDate);
-      }
-      if (data.exitDate && typeof data.exitDate === 'string') {
-        if (data.exitDate.trim() === '') data.exitDate = null;
-        else data.exitDate = new Date(data.exitDate);
-      } else if (data.exitDate === '') {
-        data.exitDate = null;
-      }
+      rowNum++;
+      const isBlank = (v) => v == null || String(v).trim() === '' || String(v).trim() === '-';
+      const rowLabel = (!isBlank(data.name) ? String(data.name).trim() : (!isBlank(data.employeeId) ? String(data.employeeId).trim() : `Row ${rowNum}`));
+      // Each row is isolated: a validation problem or a DB error on ONE row is
+      // recorded as a failure for THAT row and the import continues — one bad row
+      // can never abort the batch (which previously 500'd after partial commits).
+      try {
+        if (data.joinDate && typeof data.joinDate === 'string') {
+          data.joinDate = new Date(data.joinDate);
+        }
+        if (data.exitDate && typeof data.exitDate === 'string') {
+          if (data.exitDate.trim() === '') data.exitDate = null;
+          else data.exitDate = new Date(data.exitDate);
+        } else if (data.exitDate === '') {
+          data.exitDate = null;
+        }
 
-      if (data.esic !== undefined) {
-        data.esiNumber = data.esic;
-        delete data.esic;
-      }
+        if (data.esic !== undefined) {
+          data.esiNumber = data.esic;
+          delete data.esic;
+        }
 
-      const dup = matchAgainstIndex(data, index);
-      let result;
-      if (dup) {
-        // Same person already on file → UPDATE that record (never insert a 2nd
-        // row). Keep the existing unique code; don't overwrite it with a blank.
-        const patch = prepareEmployeeWriteData(data);
-        delete patch.employeeId;
-        result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
-        merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
-      } else if (data.employeeId) {
-        // Has an explicit code → upsert on the unique code.
-        const clean = prepareEmployeeWriteData(data);
-        clean.employeeId = data.employeeId;
-        result = await prisma.employee.upsert({
-          where: { employeeId: data.employeeId },
-          update: clean,
-          create: clean,
-        });
-        created.push(result);
-      } else {
-        result = await prisma.employee.create({ data: prepareEmployeeWriteData(data) });
-        created.push(result);
+        // ── Validation (reject before insert, with a clear reason) ────────────
+        if (isBlank(data.name) && isBlank(data.employeeId)) {
+          failed.push({ row: rowNum, name: rowLabel, reason: 'Missing employee name and code' });
+          results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: 'Missing employee name and code' });
+          continue;
+        }
+        if (!data.companyId) {
+          failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason: 'Missing company mapping' });
+          results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason: 'Missing company mapping' });
+          continue;
+        }
+
+        const dup = matchAgainstIndex(data, index);
+        let result;
+        if (dup) {
+          // Same person already on file → UPDATE that record (never insert a 2nd
+          // row). Keep the existing unique code; don't overwrite it with a blank.
+          const patch = prepareEmployeeWriteData(data);
+          delete patch.employeeId;
+          result = await prisma.employee.update({ where: { id: dup.match.id }, data: patch });
+          merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'updated', reason: `Matched an existing employee on ${dup.field} — record updated (not duplicated)` });
+        } else if (data.employeeId) {
+          // Has an explicit code → upsert on the unique code. A code NOT already on
+          // file is a new insert → it must consume a seat; an existing code updates.
+          const isNewInsert = !index.byCode.has(norm(data.employeeId));
+          if (isNewInsert && !(await takeSeat(data.companyId))) {
+            skipped.push({ name: data.name, employeeId: data.employeeId, reason: 'EMPLOYEE_LIMIT_REACHED' });
+            results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
+            continue;
+          }
+          const clean = prepareEmployeeWriteData(data);
+          clean.employeeId = data.employeeId;
+          result = await prisma.employee.upsert({
+            where: { employeeId: data.employeeId },
+            update: clean,
+            create: applyCreateDefaults(clean),
+          });
+          created.push(result);
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: isNewInsert ? 'created' : 'updated', reason: isNewInsert ? 'Created' : 'Existing code — record updated' });
+        } else {
+          if (!(await takeSeat(data.companyId))) {
+            skipped.push({ name: data.name, reason: 'EMPLOYEE_LIMIT_REACHED' });
+            results.push({ row: rowNum, name: rowLabel, employeeId: null, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
+            continue;
+          }
+          result = await prisma.employee.create({ data: applyCreateDefaults(prepareEmployeeWriteData(data)) });
+          created.push(result);
+          results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'created', reason: 'Created' });
+        }
+        addToIndex(result);
+      } catch (rowErr) {
+        const reason = describePrismaWriteError(rowErr);
+        console.error(`[bulkCreate] row ${rowNum} (${rowLabel}) failed:`, reason, '|', rowErr.message);
+        failed.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, reason });
+        results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId || null, status: 'failed', reason });
       }
-      addToIndex(result);
     }
 
     const HeadcountSyncService = require('../services/headcountSyncService');
@@ -417,13 +537,23 @@ exports.bulkCreate = async (req, res) => {
       }
     } catch(e) {}
 
+    const limitSkipped = skipped.filter((s) => s.reason === 'EMPLOYEE_LIMIT_REACHED');
     res.status(201).json({
-      count: created.length,
+      total: employees.length,
+      count: created.length,           // kept for backward-compat (NEW inserts)
       createdCount: created.length,
-      mergedCount: merged.length,
+      mergedCount: merged.length,      // existing people whose record was updated
+      updatedCount: merged.length,     // alias
       skippedCount: skipped.length,
+      failedCount: failed.length,
+      skipped,
       merged,
+      failed,
+      results,                         // per-row log: { row, name, employeeId, status, reason }
       employees: created,
+      // Signal to the client that the plan cap blocked some rows → show upgrade.
+      limitReached: limitSkipped.length > 0,
+      limitSkippedCount: limitSkipped.length,
     });
   } catch (error) {
     console.error('Error in bulk create:', error);
@@ -561,10 +691,22 @@ exports.updateEmployee = async (req, res) => {
       }
     }
 
-    const employee = await prisma.employee.update({
+    await prisma.employee.update({
       where: { id: idParam(id) },
       data: prepareEmployeeWriteData(data)
     });
+
+    // Read the row back BEFORE reporting success, and answer with that. The
+    // client shows "saved" on a 2xx, so the response must be the committed DB
+    // state — not the payload we were handed. If the re-read fails or the row
+    // has vanished, this is NOT a success and must not be reported as one.
+    const employee = await prisma.employee.findUnique({ where: { id: idParam(id) } });
+    if (!employee) {
+      return res.status(500).json({
+        code: 'UPDATE_NOT_CONFIRMED',
+        error: 'The update could not be confirmed in the database. Please retry and check the record.',
+      });
+    }
 
     const HeadcountSyncService = require('../services/headcountSyncService');
     await HeadcountSyncService.handleEmployeeChange(existingEmp, employee);

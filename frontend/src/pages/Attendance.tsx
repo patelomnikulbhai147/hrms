@@ -1335,7 +1335,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <Input placeholder="Search Employee..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14}/>} className="text-xs h-8" />
               </div>
               <div className="w-40">
-                <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{value: '', label: 'All Statuses'}, ...ATTENDANCE_STATUS_OPTIONS.map(s => ({value: s, label: s}))]} className="text-xs h-8" />
+                <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} options={[{value: '', label: 'All Status'}, ...ATTENDANCE_STATUS_OPTIONS.map(s => ({value: s, label: s}))]} className="text-xs h-8" />
               </div>
             </div>
             

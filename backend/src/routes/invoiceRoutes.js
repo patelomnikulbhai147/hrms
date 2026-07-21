@@ -46,6 +46,7 @@ router.put('/invoices/:id', inv.update);
 router.post('/invoices/:id/duplicate', inv.duplicate);
 router.patch('/invoices/:id/status', inv.setStatus);
 router.post('/invoices/:id/log', inv.logAction);
+router.post('/invoices/:id/email', inv.emailInvoice); // additive — email the invoice with its PDF attached
 router.delete('/invoices/:id', inv.remove);
 
 // Payments

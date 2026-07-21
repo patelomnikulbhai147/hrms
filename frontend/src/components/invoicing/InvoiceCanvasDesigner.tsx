@@ -18,6 +18,7 @@ import { ui } from '@/components/ui/feedback';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { resolveBranding } from '@/services/brandingService';
+import { printInvoiceDocument } from './invoiceRender';
 import {
   A4_PAGE, BLOCK_LIBRARY, BLOCK_LABEL, LAYOUT_PRESETS, DEFAULT_LAYOUT, resolveLayout, renderBlockHtml,
   canvasDocHtml, SAMPLE_INVOICE, type InvoiceLayout, type CanvasBlock, type BlockType, type BlockStyle,
@@ -155,11 +156,12 @@ export const InvoiceCanvasDesigner: React.FC<Props> = ({ company }) => {
     try { await api.invoicing.deleteLayout(currentId); setCurrentId(null); setLayout(DEFAULT_LAYOUT()); await loadLayouts(); ui.toast.success('Layout deleted.'); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); }
   };
-  const openPrint = () => {
-    const html = canvasDocHtml(SAMPLE_INVOICE, company, layout, { print: true });
-    const w = window.open('', '_blank', 'width=900,height=1000');
-    if (!w) { ui.toast.error('Allow pop-ups to preview the PDF.'); return; }
-    w.document.write(html); w.document.close();
+  // Hidden-iframe print (see invoiceRender.printInvoiceDocument): an auto-printing
+  // same-origin popup shares this tab's renderer process and its modal dialog
+  // froze the app.
+  const openPrint = async () => {
+    try { await printInvoiceDocument(canvasDocHtml(SAMPLE_INVOICE, company, layout, { print: true })); }
+    catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not open the print preview.')); }
   };
 
   const isActive = currentId != null && currentId === activeId;

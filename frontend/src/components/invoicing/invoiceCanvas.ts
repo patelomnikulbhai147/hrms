@@ -86,7 +86,8 @@ export const BLOCK_LABEL: Record<string, string> = Object.fromEntries(BLOCK_LIBR
 function fillTokens(text: string, inv: any, company: any, b: any): string {
   const map: Record<string, string> = {
     invoice_number: inv.invoiceNumber || '', invoice_date: inv.invoiceDate || '', due_date: inv.dueDate || '',
-    company_name: b.companyName || company?.name || '', customer_name: inv.billToName || '',
+    company_name: b.companyName || company?.name || '', branch_name: company?.branchLabel || '',
+    customer_name: inv.billToName || '',
     grand_total: inr(inv.grandTotal, inv.currency === 'INR' || !inv.currency ? '₹' : ''),
     po_number: inv.poNumber || '', place_of_supply: inv.placeOfSupply || inv.billToState || '',
   };
@@ -140,6 +141,8 @@ export function renderBlockHtml(block: CanvasBlock, ctx: BlockCtx): string {
         company?.gstNumber ? `<div style="${muted}">GSTIN: ${esc(company.gstNumber)}</div>` : '',
         company?.panNumber ? `<div style="${muted}">PAN: ${esc(company.panNumber)}</div>` : '',
         (company?.email || company?.phone) ? `<div style="${muted}">${esc(company.email || '')} ${esc(company.phone || '')}</div>` : '',
+        // Operating location, below the legal identity — never a replacement for it.
+        company?.branchLabel ? `<div style="font-weight:700">Branch: ${esc(company.branchLabel)}</div>` : '',
       ].filter(Boolean).join(''));
 
     case 'customer':

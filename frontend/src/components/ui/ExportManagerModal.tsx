@@ -281,7 +281,7 @@ export const ExportManagerModal: React.FC<ExportManagerModalProps> = ({
                 onChange={e => setStatusFilter(e.target.value)}
                 className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-brand-100 focus:border-brand-400 outline-none transition-all shadow-sm"
               >
-                <option value="All">All Statuses</option>
+                <option value="All">All Status</option>
                 <option value="Active">Active</option>
                 <option value="Inactive">Inactive</option>
                 <option value="Terminated">Terminated / Archived</option>

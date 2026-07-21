@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const authController = require('../controllers/authController');
+const registrationController = require('../controllers/registrationController');
 const { protect } = require('../middleware/authMiddleware');
 
 // Public routes
 router.post('/login', authController.login);
 router.post('/captcha-status', authController.getCaptchaStatus);
 router.get('/captcha', authController.generateInternalCaptcha);
+
+// Public company self-registration (FREE plan) — CAPTCHA + email-OTP verified.
+router.post('/register-company/start', registrationController.registerCompanyStart);   // validate + send OTP
+router.post('/register-company/verify', registrationController.registerCompanyVerify); // verify OTP → provision + auto-login
 
 // Forgot-password OTP workflow
 router.post('/forgot-password', authController.forgotPassword); // step 1: request OTP

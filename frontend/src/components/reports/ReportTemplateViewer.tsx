@@ -470,7 +470,7 @@ export const ReportTemplateViewer: React.FC<Props> = ({ def, reportName, company
               {/* Editable Remarks / Notes — appended below the prescribed form (does
                   NOT alter the statutory layout) and captured in the PDF / Print. */}
               {data && (
-                <div data-noedit className="bg-white border-t border-slate-200" style={{ padding: '10px 16px', fontFamily: 'system-ui, sans-serif' }}>
+                <div data-noedit data-keep-together className="bg-white border-t border-slate-200" style={{ padding: '10px 16px', fontFamily: 'system-ui, sans-serif' }}>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Remarks / Notes</p>
                   <div
                     contentEditable

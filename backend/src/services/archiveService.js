@@ -144,6 +144,7 @@ class ArchiveService {
           id: archived.companyId, // preserve original ID
           name: archived.companyName,
           status: 'Active',
+          plan: 'Free', // restored companies default to FREE (subscription lazily created on first view)
           employeeCount: archived.totalEmployeesArchived,
           paymentStatus: archived.paymentStatus
         }

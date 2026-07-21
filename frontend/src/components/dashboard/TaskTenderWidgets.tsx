@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ClipboardList, Briefcase, ChevronRight, Clock, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { api } from '@/api/apiClient';
+import { effectiveTaskStatus, isTaskOverdue } from '@/utils/taskStatus';
 
 interface Props {
   activeCompanyId: string;
@@ -28,10 +29,12 @@ export const TaskTenderWidgets: React.FC<Props> = ({ activeCompanyId, onNavigate
     return () => { alive = false; };
   }, [activeCompanyId, canViewTenders]);
 
-  const pending = tasks.filter(t => t.status === 'Pending').length;
-  const inProgress = tasks.filter(t => t.status === 'In Progress').length;
-  const completed = tasks.filter(t => t.status === 'Completed').length;
-  const overdue = tasks.filter(t => t.status === 'Overdue').length;
+  // Same status engine as the Task Manager page: no "Pending", and Overdue is
+  // derived from the due date rather than stored.
+  const total = tasks.length;
+  const inProgress = tasks.filter(t => effectiveTaskStatus(t) === 'In Progress').length;
+  const completed = tasks.filter(t => effectiveTaskStatus(t) === 'Completed').length;
+  const overdue = tasks.filter(t => isTaskOverdue(t)).length;
   // Operational metric (Draft + Live). The legacy "Upcoming Tenders" concept was removed.
   const liveTenders = tenders.filter(t => ['Draft', 'Live'].includes(t.status)).length;
 
@@ -44,8 +47,8 @@ export const TaskTenderWidgets: React.FC<Props> = ({ activeCompanyId, onNavigate
           <button onClick={() => onNavigate('tasks')} className="text-[11px] font-semibold text-brand-600 hover:underline flex items-center gap-0.5">Open <ChevronRight size={13} /></button>
         </div>
         <div className="grid grid-cols-4 gap-3 mb-4">
-          <div className="rounded-xl bg-amber-50 p-3 text-center"><Clock size={15} className="text-amber-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-amber-700">{pending}</p><p className="text-[10px] font-bold text-amber-500 uppercase">Pending</p></div>
-          <div className="rounded-xl bg-brand-50 p-3 text-center"><ClipboardList size={15} className="text-brand-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-brand-700">{inProgress}</p><p className="text-[10px] font-bold text-brand-500 uppercase">Active</p></div>
+          <div className="rounded-xl bg-brand-50 p-3 text-center"><ClipboardList size={15} className="text-brand-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-brand-700">{total}</p><p className="text-[10px] font-bold text-brand-500 uppercase">Total</p></div>
+          <div className="rounded-xl bg-amber-50 p-3 text-center"><Clock size={15} className="text-amber-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-amber-700">{inProgress}</p><p className="text-[10px] font-bold text-amber-500 uppercase">In Progress</p></div>
           <div className="rounded-xl bg-emerald-50 p-3 text-center"><CheckCircle2 size={15} className="text-emerald-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-emerald-700">{completed}</p><p className="text-[10px] font-bold text-emerald-500 uppercase">Done</p></div>
           <div className="rounded-xl bg-rose-50 p-3 text-center"><AlertTriangle size={15} className="text-rose-500 mx-auto mb-1" /><p className="text-xl font-extrabold text-rose-700">{overdue}</p><p className="text-[10px] font-bold text-rose-500 uppercase">Overdue</p></div>
         </div>
@@ -53,7 +56,7 @@ export const TaskTenderWidgets: React.FC<Props> = ({ activeCompanyId, onNavigate
           {tasks.slice(0, 4).map(t => (
             <button key={t.id} onClick={() => onNavigate('tasks')} className="w-full flex items-center justify-between text-left px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors">
               <span className="text-xs font-semibold text-slate-700 truncate">{t.title}</span>
-              <span className={`text-[10px] font-bold ml-2 flex-shrink-0 ${t.status === 'Completed' ? 'text-emerald-600' : t.status === 'Overdue' ? 'text-rose-600' : 'text-amber-600'}`}>{t.status}</span>
+              <span className={`text-[10px] font-bold ml-2 flex-shrink-0 ${effectiveTaskStatus(t) === 'Completed' ? 'text-emerald-600' : isTaskOverdue(t) ? 'text-rose-600' : 'text-amber-600'}`}>{effectiveTaskStatus(t)}</span>
             </button>
           ))}
           {tasks.length === 0 && <p className="text-xs text-slate-400 px-3 py-4 text-center">No tasks assigned yet.</p>}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '@/utils/cn';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Lock } from 'lucide-react';
 import type { Company } from '@/data/mockData';
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { usePermissions } from '@/context/PermissionContext';
@@ -8,6 +8,8 @@ import { ZeniaLogo, BRAND_NAME } from '@/components/brand/ZeniaLogo';
 import { CompanyBrand } from '@/components/brand/CompanyBrand';
 import { resolveWorkspaceBranding } from '@/services/brandingService';
 import { MODULE_REGISTRY, type PageId } from '@/config/moduleRegistry';
+import { moduleLockedFor, pageLockedFor } from '@/config/planEntitlements';
+import { UpgradeRequiredDialog } from '@/components/subscription/PremiumLock';
 import type { Role } from '@/data/mockData';
 
 // PageId is defined in the single module registry (config/moduleRegistry) and
@@ -39,8 +41,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onExitMasquerade,
   companies,
   activeCompanyId,
+  authProfile,
 }) => {
   const { canView } = usePermissions();
+
+  // Upgrade dialog shown when a company user clicks a plan-locked module.
+  const [lockedModuleLabel, setLockedModuleLabel] = React.useState<string | null>(null);
+
+  // Effective plan: the logged-in user's plan (backend-resolved, parent-aware) with
+  // the active company as a fallback. Super Admin is never plan-limited (incl. a
+  // Super Admin masquerading into a company).
+  const planImmune = role === 'Super Admin' || authProfile?.role === 'Super Admin';
+  const currentPlan = (authProfile as any)?.plan
+    || companies?.find(c => String(c.id) === String(activeCompanyId))?.plan
+    || '';
+  // Authoritative, Custom-aware entitlement view (backend lists win; the plan-keyed
+  // mirror + company plan are the fallback).
+  const ent = {
+    plan: currentPlan,
+    lockedModules: (authProfile as any)?.lockedModules,
+    lockedPages: (authProfile as any)?.lockedPages,
+    allowedReports: (authProfile as any)?.allowedReports,
+  };
+  // A nav item is locked when EVERY permission key that governs it is locked (an
+  // aggregate like Finance & Compliance is locked only if both loans + compliance
+  // are), or the page id itself is locked (e.g. Custom Report Builder).
+  const isItemLocked = (item: (typeof MODULE_REGISTRY)[number]): boolean => {
+    if (planImmune) return false;
+    if (pageLockedFor(ent, item.id)) return true;
+    const permKeys = (item.anyPermission ?? [item.permission]) as AppModules[];
+    return permKeys.every(k => moduleLockedFor(ent, k as string));
+  };
 
   const branding = React.useMemo(
     () => resolveWorkspaceBranding(companies as any[], activeCompanyId),
@@ -140,22 +171,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 relative z-10 sidebar-scroll">
         {visibleItems.map(item => {
           const active = currentPage === item.id;
+          const locked = isItemLocked(item);
           return (
           <button
             key={item.id}
-            onClick={() => onNavigate(item.id)}
-            title={collapsed ? item.label : undefined}
+            // Locked (premium) modules stay VISIBLE but do not open — clicking
+            // surfaces the Upgrade dialog. Backend enforcement is the real gate;
+            // this is the UX layer. Never lock the active page out from under a
+            // Super Admin (planImmune already handles that).
+            onClick={() => (locked ? setLockedModuleLabel(item.label) : onNavigate(item.id))}
+            title={collapsed ? (locked ? `${item.label} — Available in Premium Plan` : item.label) : undefined}
+            aria-disabled={locked}
             className={cn(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[15px] tracking-tight transition-all duration-200 group active:scale-[0.98] relative',
-              active
+              active && !locked
                 ? 'bg-[#C77E52] text-white font-semibold shadow-[0_6px_16px_-4px_rgba(199,126,82,0.55)]'
                 : 'text-[#E2E8F0] font-medium hover:bg-[rgba(199,126,82,0.15)] hover:text-white',
+              locked && 'opacity-55 hover:opacity-80',
               collapsed && 'justify-center px-0'
             )}
           >
             <span className={cn(
               'flex-shrink-0 transition-all duration-200 group-hover:scale-105',
-              active ? 'text-white' : 'text-[#CBD5E1] group-hover:text-[#E0996A]'
+              active && !locked ? 'text-white' : 'text-[#CBD5E1] group-hover:text-[#E0996A]'
             )}>{item.icon}</span>
             {!collapsed && (
               <span className="flex-1 text-left min-w-0">
@@ -163,23 +201,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : item.label}
               </span>
             )}
-            {/* Development-status badge — informational only, not clickable. Driven by
-                the registry `beta` flag so it stays in sync with the module's in-page
-                "Work in Progress" banner and vanishes automatically once the flag is
-                removed at production-readiness. Hidden when the rail is collapsed. */}
-            {!collapsed && item.beta && (
-              <span
-                aria-label="Under active development"
-                title="Under active development"
-                className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[9px] font-bold leading-none bg-[#FDE68A] text-[#92400E]"
-              >
-                <span aria-hidden>🚧</span>Beta
-              </span>
+            {/* Lock badge for plan-restricted modules — a small padlock + a hover
+                tooltip. Takes precedence over the Beta badge when both apply. */}
+            {locked ? (
+              !collapsed ? (
+                <span
+                  aria-label="Available in Premium Plan"
+                  title="Available in Premium Plan"
+                  className="flex-shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-[2px] text-[9px] font-bold leading-none bg-white/10 text-amber-300"
+                >
+                  <Lock size={10} strokeWidth={2.5} />
+                </span>
+              ) : (
+                <Lock size={11} strokeWidth={2.5} className="absolute top-1.5 right-1.5 text-amber-300" />
+              )
+            ) : (
+              /* Development-status badge — informational only, not clickable. Driven
+                 by the registry `beta` flag so it stays in sync with the module's
+                 in-page "Work in Progress" banner. Hidden when the rail is collapsed. */
+              !collapsed && item.beta && (
+                <span
+                  aria-label="Under active development"
+                  title="Under active development"
+                  className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[9px] font-bold leading-none bg-[#FDE68A] text-[#92400E]"
+                >
+                  <span aria-hidden>🚧</span>Beta
+                </span>
+              )
             )}
           </button>
           );
         })}
       </nav>
+
+      {/* Premium-upgrade dialog (3 actions) — opened by clicking a locked module. */}
+      <UpgradeRequiredDialog
+        open={!!lockedModuleLabel}
+        onClose={() => setLockedModuleLabel(null)}
+        moduleLabel={lockedModuleLabel ?? undefined}
+        onUpgrade={() => { setLockedModuleLabel(null); onNavigate('settings'); }}
+      />
 
       {/* Footer */}
       {!collapsed && (

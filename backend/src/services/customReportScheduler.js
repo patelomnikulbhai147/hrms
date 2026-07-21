@@ -103,7 +103,7 @@ async function sendReportNow(report, { recipients, format = 'excel', role } = {}
       console.log(`[report-scheduler] (dev, not sent) "${report.name}" → ${to.join(', ')} · ${rows.length} rows`);
       return { ok: true, delivered: false, devMode: true, rows: rows.length };
     }
-    const res = await email.sendMail({ to: to.join(','), subject: `Report: ${report.name}`, text: `Your scheduled report "${report.name}" is attached (${total} records).`, html: emailBody(report, columns, rows, total), attachments });
+    const res = await email.sendMail({ companyId: report.companyId, to: to.join(','), subject: `Report: ${report.name}`, text: `Your scheduled report "${report.name}" is attached (${total} records).`, html: emailBody(report, columns, rows, total), attachments });
     return { ok: !!res.delivered, delivered: !!res.delivered, rows: rows.length, error: res.error };
   } catch (e) {
     return { ok: false, error: e.message };

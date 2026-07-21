@@ -101,6 +101,28 @@ exports.getOne = async (req, res) => {
   } catch (e) { console.error('invoice.getOne', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };
 
+// Optional short text → trimmed, capped at the column width, blank becomes NULL.
+const trim100 = (v) => { const s = String(v ?? '').trim(); return s ? s.slice(0, 100) : null; };
+
+// Per-invoice branding override → compact JSON, or NULL when nothing is
+// overridden (so the invoice keeps following the live Company Profile).
+// Only image sources are accepted, and only the four known asset keys.
+const ASSET_KEYS = ['logo', 'signature', 'stamp', 'qr'];
+const isImageSrc = (v) => {
+  const s = String(v ?? '').trim();
+  return /^data:image\/(png|jpe?g|svg\+xml|webp|gif);base64,/i.test(s) || /^https?:\/\//i.test(s);
+};
+const brandingOverrideOf = (v) => {
+  if (v === undefined) return undefined;                 // not sent → leave as-is
+  if (v === null || v === '') return null;               // explicitly cleared
+  let obj = v;
+  if (typeof v === 'string') { try { obj = JSON.parse(v); } catch { return null; } }
+  if (!obj || typeof obj !== 'object') return null;
+  const out = {};
+  for (const k of ASSET_KEYS) if (isImageSrc(obj[k])) out[k] = String(obj[k]);
+  return Object.keys(out).length ? JSON.stringify(out) : null;
+};
+
 // Build the invoice column payload + computed items from a validated body.
 async function buildInvoiceData(companyId, b, items) {
   const homeState = (b.placeOfSupply != null ? null : await companyState(companyId)); // placeOfSupply drives it
@@ -117,6 +139,10 @@ async function buildInvoiceData(companyId, b, items) {
     billToEmail: b.billToEmail || null,
     billToPhone: b.billToPhone || null, billToState: b.billToState || supply || null,
     invoiceDate: String(b.invoiceDate), dueDate: b.dueDate || null, currency: b.currency || 'INR',
+    // Optional service-invoice header references (blank → NULL → line hidden).
+    contractNo: trim100(b.contractNo), referenceNo: trim100(b.referenceNo),
+    poNumber: trim100(b.poNumber), billingPeriod: trim100(b.billingPeriod),
+    ...(brandingOverrideOf(b.brandingOverride) !== undefined ? { brandingOverride: brandingOverrideOf(b.brandingOverride) } : {}),
     paymentTerms: b.paymentTerms || null, placeOfSupply: supply,
     notes: b.notes || null, termsConditions: b.termsConditions || null, paymentMode: b.paymentMode || null,
     bankDetails: b.bankDetails || null, upiId: b.upiId || null,
@@ -332,6 +358,40 @@ exports.dashboard = async (req, res) => {
 };
 
 // Record a print/email/whatsapp action for the audit trail (fire-and-forget).
+// ── EMAIL THE INVOICE (additive endpoint; no existing route changed) ─────────
+// The client sends the exact HTML it is showing, so the attached PDF is the very
+// invoice that was edited/printed. On success the invoice moves Draft/Generated
+// → Sent, matching the existing print/email workflow.
+exports.emailInvoice = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to send invoices.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const to = String(req.body?.to || invoice.billToEmail || '').trim();
+    if (!to) return res.status(400).json({ error: 'No customer email address for this invoice.' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: `"${to}" is not a valid email address.` });
+    const html = String(req.body?.html || '');
+    if (!html.trim()) return res.status(400).json({ error: 'Nothing to send — the invoice document was empty.' });
+
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true } }).catch(() => null);
+    const { emailInvoicePdf } = require('../services/invoicePdfMailer');
+    const result = await emailInvoicePdf({
+      to, cc: req.body?.cc || undefined, subject: req.body?.subject, message: req.body?.message,
+      html, invoice, companyName: company?.name,
+    });
+    if (result.error && !result.delivered) return res.status(502).json({ error: result.error });
+
+    audit(invoice.companyId, id, 'EMAILED', actorOf(req), `${result.delivered ? 'Sent' : 'Queued (SMTP not configured)'} to ${to}`);
+    if (result.delivered && ['Draft', 'Generated'].includes(invoice.status)) {
+      await prisma.invoice.update({ where: { id }, data: { status: 'Sent' } }).catch(() => {});
+    }
+    res.json({ ok: true, to, ...result });
+  } catch (e) { console.error('invoice.emailInvoice', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
 exports.logAction = async (req, res) => {
   try {
     if (!canView(req)) return res.status(403).json({ error: 'No permission.' });

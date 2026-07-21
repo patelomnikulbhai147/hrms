@@ -21,6 +21,75 @@ const allowedIdsFor = (req) =>
 const asArray = (v) => (Array.isArray(v) ? v : (v == null ? [] : [v]));
 const idStr = (v) => String(v);
 
+// ── Status workflow ──────────────────────────────────────────────────────────
+// "Pending" no longer exists and "Overdue" is never STORED — it is derived by
+// the UI from (today > dueDate AND status is neither Completed nor Cancelled).
+// Anything else that arrives (legacy clients, old rows) collapses to In Progress.
+const TASK_STATUSES = ['In Progress', 'Completed', 'Cancelled'];
+const DEFAULT_TASK_STATUS = 'In Progress';
+const normalizeStatus = (s) => (TASK_STATUSES.includes(String(s)) ? String(s) : DEFAULT_TASK_STATUS);
+
+// ── Branch scope ─────────────────────────────────────────────────────────────
+// Company ids and Branch ids come from ONE shared sequence, so a workspace id is
+// resolved against the Branch table FIRST — a branch user's `companyId` IS a
+// Branch id. Enforced SERVER-SIDE (the form is never trusted):
+//   • Branch user   → the task is pinned to THEIR branch; any other branch = 403.
+//   • Company user  → may pick any branch of their own company; a foreign branch
+//                     (or another company's) = 403.
+//   • Super Admin   → may pick any branch, but it must belong to the company the
+//                     task is being created for.
+const workspaceOf = async (id) => {
+  if (id == null) return null;
+  const b = await prisma.branch.findUnique({
+    where: { id }, select: { id: true, companyId: true, branchName: true, status: true, isArchived: true },
+  });
+  if (b) {
+    return {
+      id: b.id, name: b.branchName, isBranch: true, parentCompanyId: b.companyId,
+      active: !b.isArchived && !['Archived', 'Inactive'].includes(String(b.status)),
+    };
+  }
+  const c = await prisma.company.findUnique({ where: { id }, select: { id: true, name: true } });
+  return c ? { id: c.id, name: c.name, isBranch: false, parentCompanyId: null, active: true } : null;
+};
+
+/**
+ * @returns {Promise<{branchId:number|null}|{error:string}>}
+ */
+const resolveBranchScope = async (req, requestedBranchId, targetCompanyId) => {
+  const role = req.user?.role;
+  const mine = role === 'Super Admin' ? null : await workspaceOf(req.user?.companyId);
+
+  // Branch user: the branch is implicit and immutable.
+  if (mine && mine.isBranch) {
+    if (requestedBranchId != null && requestedBranchId !== mine.id) {
+      return { error: 'You can only create tasks for your own branch.' };
+    }
+    return { branchId: mine.id };
+  }
+
+  if (requestedBranchId == null) return { branchId: null };
+
+  const branch = await workspaceOf(requestedBranchId);
+  if (!branch || !branch.isBranch) {
+    return { error: 'The selected branch does not exist.' };
+  }
+  if (!branch.active) {
+    return { error: 'That branch is no longer active.' };
+  }
+  // The branch must roll up to the company the task is being created for.
+  // (Super Admin may pass a branch as the target — resolve it to its parent.)
+  let owner = mine ? mine.id : null;
+  if (!mine && targetCompanyId != null) {
+    const target = await workspaceOf(targetCompanyId);
+    owner = target ? (target.parentCompanyId || target.id) : null;
+  }
+  if (owner != null && branch.parentCompanyId !== owner) {
+    return { error: 'You can only assign tasks to branches of your own company.' };
+  }
+  return { branchId: branch.id };
+};
+
 // ── List tasks the caller is allowed to see ──────────────────────────────────
 exports.getAll = async (req, res) => {
   try {
@@ -81,18 +150,23 @@ exports.create = async (req, res) => {
       if (!companyId) companyId = req.user.companyId;
     }
 
+    // Branch scope is decided by the SERVER, not by whatever the form posted.
+    const scope = await resolveBranchScope(req, idParam(b.branchId) ?? null, companyId);
+    if (scope.error) return res.status(403).json({ error: scope.error });
+    const branchId = scope.branchId;
+
     const task = await prisma.task.create({
       data: {
         title: String(b.title).trim(),
         description: b.description || null,
         priority: b.priority || 'Medium',
-        status: b.status || 'Pending',
+        status: normalizeStatus(b.status),
         startDate: b.startDate || null,
         dueDate: b.dueDate || null,
         startTime: b.startTime || null,
         endTime: b.endTime || null,
         companyId: companyId ?? null,
-        branchId: idParam(b.branchId) ?? null,
+        branchId: branchId ?? null,
         createdById: req.user.id,
         createdByName: req.user.name || req.user.email || '',
         createdByRole: role,
@@ -114,7 +188,7 @@ exports.create = async (req, res) => {
       const prio = (task.priority || 'medium').toLowerCase();
       const assigneeUserIds = asArray(b.assigneeIds);
       if (assigneeUserIds.length) {
-        await notifyMany(assigneeUserIds, { companyId, branchId: idParam(b.branchId), type: 'task_assigned', title, message: msg, priority: prio });
+        await notifyMany(assigneeUserIds, { companyId, branchId, type: 'task_assigned', title, message: msg, priority: prio });
       } else {
         await notify({ companyId, type: 'task_assigned', title, message: msg, priority: prio });
       }
@@ -150,21 +224,23 @@ exports.update = async (req, res) => {
     const fields = ['title', 'description', 'priority', 'status', 'startDate', 'dueDate', 'startTime', 'endTime', 'department', 'targetRole'];
     const data = {};
     for (const f of fields) if (req.body[f] !== undefined) data[f] = req.body[f];
+    if (data.status !== undefined) data.status = normalizeStatus(data.status);
     for (const jf of ['assigneeIds', 'assigneeNames', 'mentions', 'attachments']) {
       if (req.body[jf] !== undefined) data[jf] = asArray(req.body[jf]);
     }
 
     const task = await prisma.task.update({ where: { id }, data });
-    if (req.body.status && req.body.status !== existing.status) {
-      await prisma.taskComment.create({ data: { taskId: id, userId: req.user.id, userName: req.user.name || '', message: `Status changed: ${existing.status} → ${req.body.status}`, isStatus: true } });
-      if (req.user?.id) await AuditService.logAudit(req.user.id, 'UPDATE_TASK_STATUS', 'Tasks', String(id), { from: existing.status, to: req.body.status, by: req.user.name });
+    const newStatus = data.status;
+    if (newStatus && newStatus !== existing.status) {
+      await prisma.taskComment.create({ data: { taskId: id, userId: req.user.id, userName: req.user.name || '', message: `Status changed: ${existing.status} → ${newStatus}`, isStatus: true } });
+      if (req.user?.id) await AuditService.logAudit(req.user.id, 'UPDATE_TASK_STATUS', 'Tasks', String(id), { from: existing.status, to: newStatus, by: req.user.name });
       // Notify the creator AND every assignee that the status changed.
       try {
         const targets = [existing.createdById, ...asArray(existing.assigneeIds)];
         await notifyMany(targets, {
           companyId: existing.companyId, branchId: existing.branchId, type: 'task_status',
           title: 'Task Status Updated',
-          message: `"${existing.title}" moved to ${req.body.status} by ${req.user.name || 'a user'}.`,
+          message: `"${existing.title}" moved to ${newStatus} by ${req.user.name || 'a user'}.`,
           priority: 'low',
         });
       } catch (ne) { console.warn('task status notification skipped:', ne.message); }

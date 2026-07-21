@@ -18,7 +18,7 @@ export interface Company {
   status: 'Active' | 'Pending' | 'Inactive' | 'Expiring Soon' | 'Renewal Pending' | 'Offboarding In Progress' | 'Tender Completed' | 'Archived' | 'Offboarded';
   employeeCount: number;
   joinDate: string;
-  plan: 'Starter' | 'Professional' | 'Enterprise';
+  plan: 'Free' | 'Starter' | 'Professional' | 'Enterprise';
   logo: string;
   logoImage?: string;
   
@@ -159,6 +159,8 @@ export interface Employee {
   pfNumber?: string;
   uan?: string;
   esic?: string;
+  esiNumber?: string;
+  wcPolicyNumber?: string;
 
   bankName?: string;
   accountNumber?: string;

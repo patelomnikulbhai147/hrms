@@ -305,6 +305,7 @@ export const TOKEN_GROUPS: TokenGroup[] = [
     label: 'Company',
     tokens: [
       { token: 'CompanyName',    label: 'Company Name' },
+      { token: 'BranchName',     label: 'Branch / Office' },
       { token: 'CompanyGst',     label: 'GST Number' },
       { token: 'CompanyAddress', label: 'Address' },
       { token: 'CompanyPhone',   label: 'Phone' },

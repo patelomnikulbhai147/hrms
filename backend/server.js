@@ -100,6 +100,14 @@ const { protect: _protect } = require('./src/middleware/authMiddleware');
 const { blockSuperAdminPII } = require('./src/middleware/supportSessionGate');
 const pii = (label) => [_protect, blockSuperAdminPII(label)];
 
+// Subscription/plan gate. `plan(key)` returns the middleware that 403s a company
+// on a restricted plan (e.g. FREE) trying to reach a premium module — for ANY
+// method. It needs `req.user`, so on mounts that are NOT wrapped in pii() (whose
+// router runs protect only internally) it is prefixed with _protect here; the
+// router's own protect runs again, idempotently.
+const { requirePlanModule } = require('./src/middleware/subscriptionMiddleware');
+const plan = (key) => requirePlanModule(key);
+
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
@@ -107,11 +115,11 @@ app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate fr
 app.use('/api/companies', companyRoutes);
 app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
 app.use('/api/company-profile', pii('CompanyProfile'), require('./src/routes/companyProfileRoutes'));
-app.use('/api/communication', require('./src/routes/communicationRoutes'));
+app.use('/api/communication', _protect, plan('communication'), require('./src/routes/communicationRoutes'));
 // Master Template Library (Super-Admin governed platform catalog; company users
 // browse to copy). Separate mount so Super Admin — blocked from the company module
 // — can still manage the master catalog.
-app.use('/api/communication-master', require('./src/routes/communicationMasterRoutes'));
+app.use('/api/communication-master', _protect, plan('communication'), require('./src/routes/communicationMasterRoutes'));
 // Public Meta WhatsApp webhook (no auth — Meta calls it; company resolved by phone_number_id).
 app.use('/api/whatsapp', require('./src/routes/whatsappWebhookRoutes'));
 app.use('/api/branches', branchRoutes);
@@ -121,11 +129,11 @@ app.use('/api/leaves', pii('Leave'), leaveRoutes);
 app.use('/api/leave-credit', pii('Leave'), leaveCreditRoutes);
 app.use('/api/leave-balances', pii('Leave'), leaveBalanceRoutes);
 app.use('/api/leave-admin', pii('Leave'), leaveAdminRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/tenders', pii('Tenders'), tenderRoutes);
-app.use('/api/contracts', pii('Contracts'), require('./src/routes/contractRoutes'));
-app.use('/api/contract-sites', pii('Contracts'), require('./src/routes/siteRoutes'));
-app.use('/api/deployments', pii('Contracts'), require('./src/routes/deploymentRoutes'));
+app.use('/api/tasks', _protect, plan('tasks'), taskRoutes);
+app.use('/api/tenders', pii('Tenders'), plan('tenders'), tenderRoutes);
+app.use('/api/contracts', pii('Contracts'), plan('contracts'), require('./src/routes/contractRoutes'));
+app.use('/api/contract-sites', pii('Contracts'), plan('contracts'), require('./src/routes/siteRoutes'));
+app.use('/api/deployments', pii('Contracts'), plan('contracts'), require('./src/routes/deploymentRoutes'));
 app.use('/api/documents', pii('Documents'), documentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
@@ -136,13 +144,13 @@ app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payroll
 // it is NOT wrapped in pii() — the router protects + role-gates edits to SA/CH.
 app.use('/api/deduction-policy', require('./src/routes/deductionPolicyRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
-app.use('/api/invoicing', require('./src/routes/invoiceRoutes'));
-app.use('/api/loans', require('./src/routes/loanRoutes'));
-app.use('/api/compliance-mgmt', require('./src/routes/complianceMgmtRoutes'));
+app.use('/api/invoicing', _protect, plan('invoicing'), require('./src/routes/invoiceRoutes'));
+app.use('/api/loans', _protect, plan('loans'), require('./src/routes/loanRoutes'));
+app.use('/api/compliance-mgmt', _protect, plan('compliance'), require('./src/routes/complianceMgmtRoutes'));
 // Employee Card Designer — per-company card templates (isolated card_templates).
 app.use('/api/card-templates', require('./src/routes/cardTemplateRoutes'));
 // Finance & Compliance → Documents — isolated statutory document repository.
-app.use('/api/compliance-documents', pii('Documents'), require('./src/routes/complianceDocumentRoutes'));
+app.use('/api/compliance-documents', pii('Documents'), plan('compliance'), require('./src/routes/complianceDocumentRoutes'));
 app.use('/api/attendance', pii('Attendance'), attendanceRoutes);
 app.use('/api/attendance-summary', pii('Attendance'), attendanceSummaryRoutes);
 app.use('/api/attendance-vendors', pii('Attendance'), attendanceVendorRoutes);
@@ -152,8 +160,14 @@ app.use('/api/etimeoffice', pii('Attendance'), require('./src/routes/etimeRoutes
 app.use('/api/bonus', pii('Bonus'), require('./src/routes/bonusRoutes'));
 app.use('/api/employee-bonuses', pii('Bonus'), require('./src/routes/employeeBonusRoutes'));
 app.use('/api/location-masters', require('./src/routes/locationMasterRoutes'));
+// Reports MODULE is open to FREE (per-report gating happens inside the controller's
+// generate/preview — see complianceReportController.reportPlanBlock). No module gate here.
 app.use('/api/compliance-reports', pii('Reports'), require('./src/routes/complianceReportRoutes'));
-app.use('/api/custom-reports', pii('Reports'), require('./src/routes/customReportRoutes'));
+// EPFO ECR Generation — isolated PF report (own controller + ecr_history table).
+app.use('/api/epfo-ecr', pii('Reports'), require('./src/routes/epfoEcrRoutes'));
+// Custom Report Builder stays a premium module — gated by the synthetic
+// 'custom-reports' key (it shares the now-unlocked 'reports' permission key).
+app.use('/api/custom-reports', pii('Reports'), plan('custom-reports'), require('./src/routes/customReportRoutes'));
 app.use('/api/nominees', pii('Nominees'), require('./src/routes/nomineeRoutes'));
 app.use('/api/ifsc', require('./src/routes/ifscRoutes'));
 app.use('/api/users', userRoutes);
@@ -161,6 +175,12 @@ app.use('/api/overtime', pii('Overtime'), overtimeRoutes);
 app.use('/api/shifts', pii('Shifts'), shiftRoutes);
 app.use('/api/plans', subscriptionPlanRoutes);
 app.use('/api/employee-subscription', employeeSubscriptionRoutes);
+// Super Admin Subscription Management (plan/pricing/permissions control center).
+app.use('/api/subscriptions', require('./src/routes/subscriptionRoutes'));
+// First-login onboarding (welcome gate + sample workspace) for company accounts.
+app.use('/api/onboarding', require('./src/routes/onboardingRoutes'));
+app.use('/api/plan-config', require('./src/routes/planConfigRoutes')); // editable plan master config
+app.use('/api/subscription-invoices', require('./src/routes/subscriptionInvoiceRoutes')); // Super Admin billing
 app.use('/api/statistics', statisticsRoutes);
 // Global third-party integration config (Google Maps). Public key read for any
 // authenticated user; Super-Admin-only writes/test inside the router.

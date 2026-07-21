@@ -1161,6 +1161,7 @@ exports.emailSlip = async (req, res) => {
       employeeName: record.employee?.name || record.employeeName,
       period,
       companyName: record.company?.name,
+      companyId: record.companyId,          // live Company Profile branding (name + logo)
       pdfBase64,
       fileName: fileName || `${record.employee?.employeeId || 'employee'}_${record.month}_${record.year}_Salary_Slip.pdf`,
     });
