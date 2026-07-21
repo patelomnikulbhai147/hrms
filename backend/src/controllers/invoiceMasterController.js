@@ -178,6 +178,9 @@ exports.saveSettings = async (req, res) => {
       defaultCurrency: b.defaultCurrency || 'INR', defaultPaymentTerms: b.defaultPaymentTerms || null,
       defaultNotes: b.defaultNotes || null, defaultTerms: b.defaultTerms || null, companyGstin: b.companyGstin || null,
       bankDetails: b.bankDetails || null, upiId: b.upiId || null, logoUrl: b.logoUrl || null, signatureUrl: b.signatureUrl || null,
+      // Invoice Branding assets — blank clears the override so the invoice falls
+      // back to Company Profile (never a stale asset).
+      stampUrl: b.stampUrl || null, qrUrl: b.qrUrl || null,
       themeColor: b.themeColor || '#4F7CFF', footerText: b.footerText || null,
       // Invoice Designer template config (JSON). undefined → left unchanged so a
       // numbering/defaults save never wipes a saved design.

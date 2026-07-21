@@ -1494,8 +1494,39 @@ model SubscriptionInvoice {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  // ── Interactive invoice editor (Super Admin) — all additive/nullable ──
+  // Editable line items ([{id,description,hsn,quantity,rate,discountPercent,
+  // taxPercent}]). NULL → legacy headcount×rate invoice; the editor seeds one
+  // item from those columns on first edit and keeps the legacy totals in sync.
+  lineItems        Json?
+  pan              String?
+  contactPerson    String?
+  companyPhone     String?
+  bankDetails      String?   @db.Text
+  roundOff         Float     @default(0)
+  editUnlocked     Boolean   @default(false) // Paid/Cancelled invoices explicitly unlocked for edit
+  finalizedAt      DateTime?
+
   @@index([companyId])
   @@index([status])
+}
+
+// Append-only edit trail for the Subscription invoice editor: one row per changed
+// field per save (old → new, who, why). Isolated scalar invoiceId (no relation).
+model SubscriptionInvoiceAudit {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  invoiceNo   String?
+  field       String
+  oldValue    String?  @db.Text
+  newValue    String?  @db.Text
+  action      String   @default("EDIT") // EDIT / FINALIZE / UNLOCK
+  reason      String?  @db.Text
+  changedBy   String?
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+  @@map("subscription_invoice_audit")
 }
 
 // Payment(s) recorded against a subscription invoice (partial payments allowed).
@@ -1522,7 +1553,7 @@ model Task {
   title          String
   description    String?  @db.Text
   priority       String   @default("Medium") // Low / Medium / High / Critical
-  status         String   @default("Pending") // Pending / In Progress / Completed / Cancelled / Overdue
+  status         String   @default("In Progress") // In Progress / Completed / Cancelled ("Overdue" is CALCULATED from dueDate, never stored)
   startDate      String?
   dueDate        String?
   startTime      String?
@@ -2299,6 +2330,12 @@ model Invoice {
   billToState   String?
   invoiceDate   String // yyyy-MM-dd
   dueDate       String?
+  // Service-invoice header references (ALL optional & additive — existing rows
+  // stay NULL and simply hide the line). Used by the professional template.
+  contractNo    String?  @db.VarChar(100)
+  referenceNo   String?  @db.VarChar(100)
+  poNumber      String?  @db.VarChar(100)
+  billingPeriod String?  @db.VarChar(100)
   currency      String   @default("INR")
   paymentTerms  String?
   placeOfSupply String? // customer state → decides CGST+SGST vs IGST
@@ -2321,6 +2358,9 @@ model Invoice {
   paymentMode      String?
   bankDetails      String? @db.Text
   upiId            String?
+  // Per-invoice branding OVERRIDE as JSON {logo,signature,stamp,qr}. NULL (the
+  // default) = this invoice uses the company / Company-Profile branding.
+  brandingOverride String? @db.Text
   isRecurringChild Boolean @default(false)
   createdBy     String?
   updatedBy     String?
@@ -2394,6 +2434,9 @@ model InvoiceSettings {
   upiId               String?
   logoUrl             String?  @db.Text
   signatureUrl        String?  @db.Text
+  // Invoice Branding assets (additive, optional; blank → Company Profile).
+  stampUrl            String?  @db.Text
+  qrUrl               String?  @db.Text
   themeColor          String?  @default("#4F7CFF")
   footerText          String?  @db.Text
   designJson          String?  @db.Text // Invoice Designer template config (JSON)

@@ -24,6 +24,7 @@ import { ui } from '@/components/ui/feedback';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { inr } from '@/config/subscriptionPricing';
 import { INVOICE_STATUS_VARIANT } from '@/components/subscription/billing/calc';
+import { InvoiceDocument } from '@/components/subscription/billing/InvoiceDocument';
 
 const PAY_METHODS = ['Bank Transfer', 'UPI', 'Card', 'Cash', 'Cheque', 'Other'];
 const A4_W = 794;    // 210mm @96dpi
@@ -47,6 +48,9 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
   // Summary panel is COLLAPSED by default so the invoice owns the full width.
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // ONE invoice document. `editing` turns its values into in-place editable
+  // fields — there is no separate preview page and no separate edit form.
+  const [editing, setEditing] = useState(false);
   const [zoom, setZoom] = useState<ZoomMode>('fitWidth');
   const [colW, setColW] = useState(0);
   const [docH, setDocH] = useState(A4_H);
@@ -75,16 +79,20 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
     const t = setTimeout(measure, 250); // after the panel transition
     window.addEventListener('resize', measure);
     return () => { clearTimeout(t); window.removeEventListener('resize', measure); };
-  }, [loading, summaryOpen]);
+  }, [loading, summaryOpen, editing]);
 
-  // Measure the rendered invoice's real height from inside the frame so the
-  // wrapper reserves exactly the right space and the page scrolls naturally.
-  const onFrameLoad = useCallback((e: React.SyntheticEvent<HTMLIFrameElement>) => {
-    try {
-      const d = e.currentTarget.contentDocument;
-      if (d) setDocH(Math.max(A4_H, d.documentElement.scrollHeight || A4_H));
-    } catch { /* cross-origin: keep the A4 default */ }
-  }, []);
+  // Measure the document's real (UNSCALED) height — offsetHeight ignores the CSS
+  // transform — so the scaled wrapper reserves exactly the right amount of space
+  // and can never overlap the sidebar or the content below it.
+  useEffect(() => {
+    const el = docRef.current;
+    if (!el) return;
+    const measure = () => setDocH(Math.max(A4_H, el.offsetHeight || A4_H));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, editing]);
 
   const scale = useMemo(() => {
     const avail = Math.max(320, colW - 8);
@@ -92,7 +100,8 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
     if (zoom === 'fitPage') return Math.min(1.75, Math.max(0.3, Math.min(avail / A4_W, (window.innerHeight - 150) / A4_H)));
     return zoom;
   }, [zoom, colW]);
-  const viewScale = scale;
+  // While editing the page renders at 100% so clicks and the caret land exactly.
+  const viewScale = editing ? 1 : scale;
 
   const act = async (fn: () => Promise<any>, okMsg: string) => {
     setBusy(true);
@@ -246,9 +255,13 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
 
           <div className="flex-1" />
 
+          {/* Edit toggle — same document, values become editable in place */}
+          {!editing && (
+            <Button size="sm" variant="outline" className="shrink-0 mr-1.5" icon={<Pencil size={14} />} onClick={() => setEditing(true)}>Edit Invoice</Button>
+          )}
 
           {/* Zoom */}
-          <div className={`flex items-center gap-0.5 rounded-lg border border-hairline p-0.5 bg-surface shrink-0`}>
+          <div className={`flex items-center gap-0.5 rounded-lg border border-hairline p-0.5 bg-surface shrink-0 ${editing ? 'hidden' : ''}`}>
             {zoomBtn('100%', zoom === 1, () => setZoom(1))}
             {zoomBtn('125%', zoom === 1.25, () => setZoom(1.25))}
             {zoomBtn('150%', zoom === 1.5, () => setZoom(1.5))}
@@ -299,7 +312,7 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
             (both are flex children, so the sidebar can only ever sit BESIDE the
             page, never on top of it). Tablet/mobile: single column, summary below. */}
         <div className="flex flex-col lg:flex-row gap-5 items-start">
-          {/* Invoice column — the rendered A4 invoice. The
+          {/* Invoice column — ONE document. Clicking "Edit Invoice" makes the
               values on this same document editable in place (no separate form,
               no separate preview page). Saving reloads the invoice + server HTML
               so Print/PDF always render the latest SAVED invoice. */}
@@ -310,18 +323,17 @@ export const SubscriptionInvoicePage: React.FC<Props> = ({ invoiceId, onBack }) 
               {/* Outer box reserves the SCALED footprint; the inner element is the
                   true A4 page scaled from its top-left corner, so the visual size
                   and the layout box always agree (no spill onto the sidebar). */}
-              <div style={{ width: A4_W * viewScale, height: docH * viewScale, margin: '0 auto' }}>
+              <div style={{ width: A4_W * viewScale, height: editing ? undefined : docH * viewScale, margin: '0 auto' }}>
                 {/* No transform at 100% — a transform (even scale(1)) creates a
                     containing block that would break the editor's sticky bar. */}
                 <div ref={docRef} style={viewScale === 1
                   ? { width: A4_W }
                   : { width: A4_W, transform: `scale(${viewScale})`, transformOrigin: 'top left' }}>
-                  <iframe
-                    title="Invoice"
-                    srcDoc={html}
-                    scrolling="no"
-                    onLoad={onFrameLoad}
-                    style={{ width: A4_W, height: docH, border: 0, display: 'block', background: '#fff' }}
+                  <InvoiceDocument
+                    invoiceId={invoiceId}
+                    editing={editing}
+                    onEditingChange={setEditing}
+                    onSaved={() => { load(); }}
                   />
                 </div>
               </div>

@@ -29,5 +29,12 @@ router.post('/:id/regenerate', ctrl.regenerate);       // recompute from live co
 router.post('/:id/renew', ctrl.renew);                 // generate the next period's invoice
 router.post('/:id/email', ctrl.email);                 // email the invoice
 
+// ── Interactive Invoice Editor (separate controller; additive) ──────────────
+const editor = require('../controllers/subscriptionInvoiceEditorController');
+router.get('/:id/editor', editor.getEditor);           // editable model + computed totals
+router.put('/:id/editor', editor.saveEditor);          // Save Draft / Save Changes
+router.post('/:id/finalize', editor.finalize);         // Mark Final
+router.post('/:id/unlock', editor.unlockEditor);       // unlock a locked invoice (audited)
+router.get('/:id/audit', editor.editorAudit);          // edit trail
 
 module.exports = router;
