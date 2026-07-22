@@ -138,7 +138,13 @@ const MARK = `QA-BROADCAST-${Date.now()}`;
   const bogus = await fetch(`${BASE}/notifications/broadcast`, {
     method: 'POST', headers: hdr(sender), body: JSON.stringify({ message: 'x', audience: 'everyone', companyId }),
   });
-  check('an unknown audience is rejected', bogus.status === 400, `status ${bogus.status}`);
+  // Either 400 (malformed) or 403 (not an audience this caller may target) is a
+  // correct refusal — the server now derives the permitted audience list per
+  // caller, so an unknown value is legitimately "not yours" rather than merely
+  // "not valid". What matters is that it is refused and nothing is delivered.
+  check('an unknown audience is rejected', bogus.status === 400 || bogus.status === 403, `status ${bogus.status}`);
+  check('and nothing was delivered for it',
+    (await prisma.notification.count({ where: { message: 'x', type: 'broadcast' } })) === 0);
 
   // ── tenant isolation ────────────────────────────────────────────────────────
   if (outsider && mine) {
