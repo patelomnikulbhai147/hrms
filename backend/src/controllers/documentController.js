@@ -50,6 +50,39 @@ async function employeeLockCheck(employeeId, user) {
   return lockRejection(emp.status, user, emp.name || 'This employee');
 }
 
+// GET /documents/:id/file — the contents of ONE document.
+// Pairs with getAll, which deliberately omits `fileData`. Scoped exactly like the
+// list, so omitting the blob from the list cannot become a way to read another
+// tenant's file by id.
+exports.getFile = async (req, res) => {
+  try {
+    const id = idParam(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Document id required.' });
+
+    const doc = await prisma.document.findUnique({
+      where: { id },
+      select: { id: true, companyId: true, branchId: true, name: true, mimeType: true, fileData: true },
+    });
+    if (!doc) return res.status(404).json({ error: 'Document not found.' });
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      const allowed = [...companyScope, ...branchScope];
+      const reachable = allowed.includes(doc.companyId) || (doc.branchId != null && allowed.includes(doc.branchId));
+      // 404 rather than 403: existence of another tenant's document id is itself
+      // information not worth confirming.
+      if (!reachable) return res.status(404).json({ error: 'Document not found.' });
+    }
+
+    if (!doc.fileData) return res.status(404).json({ error: 'This document has no attached file.' });
+    res.json({ id: doc.id, fileData: doc.fileData, mimeType: doc.mimeType, name: doc.name });
+  } catch (error) {
+    console.error('document.getFile', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
 exports.getAll = async (req, res) => {
   try {
     const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
@@ -79,7 +112,15 @@ exports.getAll = async (req, res) => {
       where: whereClause,
       orderBy: { id: 'asc' },
     });
-    res.json(data);
+
+    // A LIST must not carry file CONTENTS. `fileData` is a base64 data URL of the
+    // whole upload: in production it was 99.9% of this response (1.1 MB for four
+    // documents), re-downloaded on every login and workspace switch even though
+    // nothing on the list screen renders it — only an explicit download does.
+    // The metadata the list actually shows (name, type, size) is kept, plus
+    // `hasFile` so the UI can still tell "no attachment" from "not loaded yet".
+    // Contents come from GET /documents/:id/file.
+    res.json(data.map(({ fileData, ...rest }) => ({ ...rest, hasFile: !!fileData })));
   } catch (error) {
     console.error('Error fetching', error);
     res.status(500).json({ error: error.message || 'Server error' });

@@ -212,6 +212,15 @@ export const api = {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/companies`, { headers: getHeaders() });
     },
+    /**
+     * Heavy branding artwork (seal / letterhead / signature) for ONE company.
+     * getAll deliberately omits these — together they were 95% of its payload.
+     * Use `ensureCompanyAssets` in utils/companyAssets.ts rather than calling
+     * this directly; it caches and de-duplicates.
+     */
+    getAssets: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/companies/${encodeURIComponent(String(id))}/assets`, { headers: getHeaders() });
+    },
     create: async (data: Partial<Company>) => {
       return await apiFetch(`${BASE_URL}/companies`, {
         method: 'POST',
@@ -818,6 +827,12 @@ export const api = {
 
   documents: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/documents`, { headers: getHeaders() }); },
+    /**
+     * File CONTENTS for one document. getAll omits `fileData` (it was 99.9% of
+     * that response), so anything that previews or downloads a file fetches it
+     * here. Returns { id, fileData, mimeType, name }.
+     */
+    getFile: async (id: string | number) => { return await apiFetch(`${BASE_URL}/documents/${encodeURIComponent(String(id))}/file`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/documents`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'DELETE', headers: getHeaders() }); }

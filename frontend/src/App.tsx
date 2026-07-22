@@ -69,6 +69,7 @@ import {
 } from '@/data/mockData';
 import { calculateBranchBilling } from '@/utils/subscriptionUtils';
 import { isActiveEmployee } from '@/utils/employeeStatus';
+import { ensureCompanyAssets, mergeAssetsInto } from '@/utils/companyAssets';
 
 const pageTitles: Record<PageId, string> = {
   dashboard: 'Dashboard',
@@ -616,6 +617,22 @@ export default function App() {
           allEntities = [...allEntities, ...mappedBranches];
         }
         setCompanies(allEntities);
+
+        // Heavy branding artwork (seal / letterhead / signature) is no longer part
+        // of the companies payload — it was 95% of it. Pull it for the ACTIVE
+        // workspace only, and deliberately WITHOUT awaiting: the app renders as
+        // soon as the light payload lands, and the artwork merges itself in a
+        // moment later so every screen that reads company.stampImage &c. keeps
+        // working unchanged.
+        const activeId = activeCompanyId || allEntities[0]?.id;
+        if (activeId) {
+          ensureCompanyAssets(activeId)
+            .then((assets) => {
+              if (!assets || !Object.values(assets).some(Boolean)) return;
+              setCompanies((prev) => mergeAssetsInto(prev as any[], activeId, assets) as any);
+            })
+            .catch(() => { /* ensureCompanyAssets already degrades to {} */ });
+        }
       }
       if (fetchedEmployees) setEmployees(fetchedEmployees);
       if (fetchedUsers) setUserAccounts(fetchedUsers);

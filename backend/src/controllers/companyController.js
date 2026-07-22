@@ -351,6 +351,30 @@ exports.updateDepartments = async (req, res) => {
 };
 
 // Get all companies
+// ─────────────────────────────────────────────────────────────────────────────
+// Heavy branding assets — base64 images stored directly on the Company row.
+//
+// Measured against production (9 companies): stampImage and letterheadImage are
+// 2.6 MB EACH across the table, 95% of the entire /companies payload. They are
+// used only when RENDERING a document — invoices, payslips, Form 16, letterheads
+// — and never by the company list, the workspace switcher or the dashboard, yet
+// the app re-downloaded all of them on every login and every workspace switch.
+//
+// They are therefore omitted from the list and served on demand by
+// GET /companies/:id/assets. logoImage is deliberately NOT in this set: it is
+// ~24 KB per company and is displayed throughout the UI (topbar, cards, PDFs),
+// so lazy-loading it would trade a real win for visible logo flicker.
+const HEAVY_ASSET_FIELDS = ['stampImage', 'letterheadImage', 'digitalSignatureImage'];
+
+const stripHeavyAssets = (company) => {
+  const out = { ...company };
+  for (const f of HEAVY_ASSET_FIELDS) delete out[f];
+  // Let the client know an asset exists without shipping it, so a "no seal
+  // uploaded" empty state stays accurate while the bytes load lazily.
+  out.hasHeavyAssets = HEAVY_ASSET_FIELDS.some((f) => !!company[f]);
+  return out;
+};
+
 exports.getCompanies = async (req, res) => {
   try {
     let whereClause = {};
@@ -395,7 +419,10 @@ exports.getCompanies = async (req, res) => {
       }
     } catch { /* CompanyOwner table absent on older DBs — non-fatal */ }
 
-    res.json(enrichedCompanies);
+    // `?assets=1` opts back into the full payload for any caller that genuinely
+    // needs every company's artwork in one go (bulk document generation).
+    const withAssets = String(req.query.assets || '') === '1';
+    res.json(withAssets ? enrichedCompanies : enrichedCompanies.map(stripHeavyAssets));
   } catch (error) {
     return respondError(res, error);
   }
@@ -642,6 +669,47 @@ exports.updateCompany = async (req, res) => {
     res.json(company);
   } catch (error) {
     return respondError(res, error);
+  }
+};
+
+// GET /companies/:id/assets — the heavy branding images for ONE company.
+// Paired with the omission in getCompanies above: document-rendering screens
+// pull the artwork for the workspace they are actually printing, instead of
+// every user downloading every company's artwork at login.
+exports.getCompanyAssets = async (req, res) => {
+  try {
+    const id = idParam(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Company id required.' });
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      const allowed = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+      // A branch workspace inherits its parent company's artwork, so resolve the
+      // branch to its parent before deciding whether this caller may read it.
+      let effective = id;
+      if (!allowed.includes(id)) {
+        const branch = await prisma.branch.findUnique({ where: { id }, select: { companyId: true } });
+        if (!branch || !allowed.includes(branch.companyId)) {
+          return res.status(403).json({ error: 'Not your company.' });
+        }
+        effective = branch.companyId;
+      }
+      const c = await prisma.company.findUnique({
+        where: { id: effective },
+        select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
+      });
+      if (!c) return res.status(404).json({ error: 'Company not found.' });
+      return res.json(c);
+    }
+
+    const c = await prisma.company.findUnique({
+      where: { id },
+      select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
+    });
+    if (!c) return res.status(404).json({ error: 'Company not found.' });
+    res.json(c);
+  } catch (error) {
+    console.error('company.getAssets', error);
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 
