@@ -30,7 +30,22 @@ exports.list = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'Not authorised.' });
     const where = scopedWhere(req);
     if (where === null) return res.status(403).json({ error: 'Unauthorised workspace.' });
-    const rows = await prisma.cardTemplate.findMany({ where, orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }] });
+    // Sorted in JS, deliberately NOT by MySQL.
+    //
+    // `spec` holds a template's whole design, and since custom uploads were
+    // allowed it can carry megabytes of base64 artwork. Asking MySQL to ORDER BY
+    // makes it materialise and sort rows that wide, which overflows sort_buffer_size
+    // on the production instance and fails the whole query with
+    //   ERROR 1038 "Out of sort memory, consider increasing server sort buffer size"
+    // — so the gallery 500'd as soon as a company uploaded its first design.
+    //
+    // Sorting here costs nothing (a company has a handful of templates) and does
+    // not depend on how the database server happens to be tuned. Ordering is
+    // unchanged: default first, then most recently updated.
+    const rows = await prisma.cardTemplate.findMany({ where });
+    rows.sort((a, b) =>
+      (b.isDefault === true) - (a.isDefault === true)
+      || new Date(b.updatedAt) - new Date(a.updatedAt));
     res.json({ templates: rows.map(shape) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

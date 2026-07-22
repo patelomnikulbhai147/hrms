@@ -1,6 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
-const { grantedCompanyIds, canReachCompany } = require('../utils/companyScope');
+const { grantedCompanyIds, grantedBranchIds, canReachCompany } = require('../utils/companyScope');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Overtime form and the Overtime table have never agreed on field names.
@@ -56,12 +56,27 @@ exports.getAll = async (req, res) => {
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
-      whereClause.companyId = { in: grantedCompanyIds(req) };
+      // Mirror the create check: a user granted only certain BRANCHES of a
+      // company must still see the overtime raised for employees in them, even
+      // though the row itself is stamped with the parent company id.
+      const branchIds = grantedBranchIds(req);
+      whereClause.OR = [
+        { companyId: { in: grantedCompanyIds(req) } },
+        ...(branchIds.length ? [{ employee: { branchId: { in: branchIds } } }] : []),
+      ];
       if (companyId) {
         if (!canReachCompany(req, companyId)) {
           return res.status(403).json({ error: 'Unauthorized' });
         }
-        whereClause.companyId = companyId;
+        delete whereClause.OR;
+        // The requested workspace may be a BRANCH. Overtime rows are stamped with
+        // the PARENT company id (the model has no branchId), so filtering by the
+        // branch id directly would match nothing — a branch user would see an
+        // empty overtime list. Match on the employee's branch instead.
+        // branchCompanyMap is built by authMiddleware: branch id → parent company.
+        const isBranch = !!(req.user.branchCompanyMap || {})[companyId];
+        if (isBranch) whereClause.employee = { branchId: companyId };
+        else whereClause.companyId = companyId;
       }
     } else if (companyId) {
       whereClause.companyId = companyId;
@@ -89,9 +104,28 @@ exports.create = async (req, res) => {
       });
     }
 
-    if (!canReachCompany(req, row.companyId)) {
-      return res.status(403).json({ error: 'Not your workspace.' });
-    }
+    // Authorise against the EMPLOYEE, not just the company id on the payload.
+    //
+    // resolveAccess (authMiddleware) demotes a company to branch-level access
+    // whenever the user is granted specific branches of it: a Company Head with
+    // branches 7 and 8 of company 2 gets accessibleBranchIds [7,8] and company 2
+    // is NOT in accessibleCompanyIds. Overtime rows only carry companyId, so a
+    // company-level check refused every entry for a branch the user genuinely
+    // administers. Verified in production — raising overtime for an employee in
+    // branch 7 of company 2 returned 403.
+    const employee = await prisma.employee.findUnique({
+      where: { id: row.employeeId },
+      select: { id: true, companyId: true, branchId: true },
+    });
+    if (!employee) return res.status(404).json({ error: 'Employee not found.' });
+
+    const reachable = canReachCompany(req, employee.companyId)
+      || (employee.branchId != null && canReachCompany(req, employee.branchId));
+    if (!reachable) return res.status(403).json({ error: 'Not your workspace.' });
+
+    // Keep the stored companyId consistent with the employee it belongs to,
+    // rather than trusting whatever the client posted.
+    row.companyId = employee.companyId;
 
     const data = await prisma.overtime.create({ data: row });
     res.status(201).json(shapeOvertime(data));

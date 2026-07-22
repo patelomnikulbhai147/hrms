@@ -37,27 +37,34 @@ const created = [];
     where: { role: { in: ['Company Head', 'HR'] }, companyId: { not: null } },
     select: { id: true, email: true, companyId: true, accessibleCompanyIds: true },
   });
-  // Prefer an employee in a company the user can ACCESS but does not call home.
-  // That is the case the mixed-type grant list broke: accessibleCompanyIds holds
-  // strings, so `[companyId, ...accessible].includes(2)` was false and the write
-  // 403'd. Testing only against the user's own company (a real number) hides it.
-  let user = null, emp = null, homeOnly = false;
-  const pickEmp = (where) => prisma.employee.findFirst({ where, select: { id: true, name: true, employeeId: true, companyId: true, department: true } });
+  // Pick an employee the server will genuinely consider in scope, using the SAME
+  // resolver the auth middleware uses. The raw accessibleCompanyIds column is not
+  // the grant set: resolveAccess demotes a company to BRANCH-level access when the
+  // user holds specific branches of it, so a company id sitting in that column may
+  // be legitimately unreachable company-wide. Reading the raw column here produced
+  // three false failures against production.
+  const { resolveAccess } = require('../src/utils/accessScope');
+  const [companies, branches] = await Promise.all([
+    prisma.company.findMany({ select: { id: true } }),
+    prisma.branch.findMany({ select: { id: true, companyId: true } }),
+  ]);
+
+  let user = null, emp = null, via = '';
+  const pickEmp = (where) => prisma.employee.findFirst({ where, select: { id: true, name: true, employeeId: true, companyId: true, branchId: true, department: true } });
+
   for (const u of users) {
-    const away = (Array.isArray(u.accessibleCompanyIds) ? u.accessibleCompanyIds.map(Number) : [])
-      .filter((c) => Number.isFinite(c) && c !== u.companyId);
-    const e = away.length ? await pickEmp({ companyId: { in: away } }) : null;
-    if (e) { user = u; emp = e; break; }
-  }
-  if (!emp) {
-    for (const u of users) {
-      const e = await pickEmp({ companyId: u.companyId });
-      if (e) { user = u; emp = e; homeOnly = true; break; }
-    }
+    const raw = [u.companyId, ...(Array.isArray(u.accessibleCompanyIds) ? u.accessibleCompanyIds : [])];
+    const { branchIds, companyWideIds } = resolveAccess(raw, companies, branches);
+    // Prefer a BRANCH-scoped employee — that is the path that was broken, and it
+    // is invisible if the test only ever uses the user's own company.
+    const byBranch = branchIds.length ? await pickEmp({ branchId: { in: branchIds.map(Number) } }) : null;
+    if (byBranch) { user = u; emp = byBranch; via = `branch ${byBranch.branchId} of company ${byBranch.companyId}`; break; }
+    const byCompany = await pickEmp({ companyId: { in: companyWideIds.map(Number) } });
+    if (byCompany && !emp) { user = u; emp = byCompany; via = `company ${byCompany.companyId}`; }
   }
   if (!user || !emp) throw new Error('no user with a reachable employee to raise overtime for');
-  if (homeOnly) console.log('  NOTE  no accessible-but-not-home company in this database — the cross-company grant path is not exercised here.');
-  console.log(`as ${user.email}; employee ${emp.name} (${emp.employeeId}) in company ${emp.companyId}\n`);
+  if (!via.startsWith('branch')) console.log('  NOTE  no branch-scoped employee available — the branch-grant path is not exercised here.');
+  console.log(`as ${user.email}; employee ${emp.name} (${emp.employeeId}) reachable via ${via}\n`);
 
   const base = { date: '2026-07-22', otHours: 2, type: 'Normal Overtime', status: 'Pending', department: emp.department, branch: 'QA', shift: 'General Shift' };
 
@@ -90,9 +97,20 @@ const created = [];
   if (mBody && mBody.id) created.push(mBody.id);
 
   // ── it comes back in the list ───────────────────────────────────────────────
-  const list = await j(await fetch(`${BASE}/overtime?companyId=${emp.companyId}`, { headers: hdr(user) }));
+  // Unfiltered: the user's whole scope, company-wide grants plus branch grants.
+  const list = await j(await fetch(`${BASE}/overtime`, { headers: hdr(user) }));
   check('the entry appears in the overtime list',
-    Array.isArray(list) && list.some((o) => o.id === (lBody && lBody.id)));
+    Array.isArray(list) && list.some((o) => o.id === (lBody && lBody.id)),
+    Array.isArray(list) ? `${list.length} row(s) in scope` : 'not an array');
+
+  // Filtered by the workspace the entry belongs to. For a branch-scoped employee
+  // that workspace is the BRANCH, whose id never appears on the overtime row —
+  // the list has to resolve it through the employee.
+  const wsId = emp.branchId != null ? emp.branchId : emp.companyId;
+  const scoped = await j(await fetch(`${BASE}/overtime?companyId=${wsId}`, { headers: hdr(user) }));
+  check('and in the list filtered to its own workspace',
+    Array.isArray(scoped) && scoped.some((o) => o.id === (lBody && lBody.id)),
+    `workspace ${wsId}${Array.isArray(scoped) ? ` → ${scoped.length} row(s)` : ''}`);
 
   // ── an incomplete entry is a 400, not a 500 ─────────────────────────────────
   const bad = await fetch(`${BASE}/overtime`, {
