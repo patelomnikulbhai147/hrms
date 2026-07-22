@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { normalizeField } from '@/utils/fieldFormats';
 import { UserPlus, RefreshCw } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -144,7 +145,7 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({ open, onClose, compa
             <Input label="Employee ID" value={f.employeeId} onChange={e => set('employeeId', e.target.value)} placeholder="Optional / auto" />
             <Input label="Designation" value={f.designation} onChange={e => set('designation', e.target.value)} placeholder="e.g. HR Manager" />
             <Input label="Department" value={f.department} onChange={e => set('department', e.target.value)} placeholder="e.g. Human Resources" />
-            <Input label="Mobile Number *" value={f.mobile} error={errors.mobile} onChange={e => set('mobile', e.target.value)} placeholder="e.g. 9876543210" />
+            <Input label="Mobile Number *" value={f.mobile} error={errors.mobile} inputMode="tel" maxLength={10} onChange={e => set('mobile', normalizeField('mobile', e.target.value))} placeholder="e.g. 9876543210" />
             <Input label="Email Address *" type="email" value={f.email} error={errors.email} onChange={e => set('email', e.target.value)} placeholder="name@company.com" />
             <Input label="Username" value={f.username} onChange={e => set('username', e.target.value)} placeholder="Optional / auto from email" />
             <div />

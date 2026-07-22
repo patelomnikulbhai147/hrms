@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { lockRejection } = require('../utils/employeeStatus');
 
 // Real columns on the Document model. Any other key in the request body (e.g. a
 // frontend-only `link`, `branchLocation`, or a stale `id` from a spread) is
@@ -33,6 +34,20 @@ function pickDocumentData(body) {
 // Human-readable actor for the audit trail (never trust a client-supplied name).
 function actorName(req, fallback) {
   return (req.user && (req.user.name || req.user.email || req.user.username)) || fallback || 'System';
+}
+
+// A document filed against a PREVIOUS (offboarded) employee belongs to a locked
+// historical record: it stays readable and downloadable, but nothing may be
+// uploaded, edited or removed until the person is re-onboarded. Returns an error
+// body to send, or null when the write is allowed.
+async function employeeLockCheck(employeeId, user) {
+  if (!employeeId) return null;
+  const emp = await prisma.employee.findUnique({
+    where: { id: idParam(employeeId) },
+    select: { status: true, name: true },
+  });
+  if (!emp) return null;
+  return lockRejection(emp.status, user, emp.name || 'This employee');
 }
 
 exports.getAll = async (req, res) => {
@@ -83,6 +98,9 @@ exports.create = async (req, res) => {
       return res.status(400).json({ error: 'A document name is required.' });
     }
 
+    const locked = await employeeLockCheck(data.employeeId, req.user);
+    if (locked) return res.status(403).json(locked);
+
     // Audit + sensible defaults
     if (!data.uploadedBy) data.uploadedBy = actorName(req);
     if (!data.uploadedOn) data.uploadedOn = new Date().toISOString().split('T')[0];
@@ -105,6 +123,14 @@ exports.update = async (req, res) => {
 
     const current = await prisma.document.findUnique({ where: { id: idParam(id) } });
     if (!current) return res.status(404).json({ error: 'Document not found.' });
+
+    // Checked against BOTH the current owner and any employee the document is
+    // being re-pointed at, so a locked record can neither be edited nor become
+    // the new home of an edited document.
+    for (const owner of [current.employeeId, data.employeeId]) {
+      const locked = await employeeLockCheck(owner, req.user);
+      if (locked) return res.status(403).json(locked);
+    }
 
     const actor = actorName(req);
     const nowIso = new Date().toISOString();
@@ -136,6 +162,10 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await prisma.document.findUnique({ where: { id: idParam(id) } });
+    if (existing) {
+      const locked = await employeeLockCheck(existing.employeeId, req.user);
+      if (locked) return res.status(403).json(locked);
+    }
     await prisma.document.delete({ where: { id: idParam(id) } });
     // Deletion audit (hard delete keeps the existing workflow; we log the actor
     // for traceability — a persisted "deletedBy" would require soft-delete).

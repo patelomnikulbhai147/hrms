@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Sparkles, ChevronDown, CheckCircle2, ArrowRight, History as HistoryIcon } from 'lucide-react';
+import { Search, Sparkles, ChevronDown, ChevronRight, CheckCircle2, ArrowRight, History as HistoryIcon } from 'lucide-react';
 import {
   describeAudit, relativeTime, aiSummary, matchesSearch,
   type AuditEntry, type AuditView, type Tone,
@@ -11,8 +11,13 @@ interface Props {
   loading?: boolean;
   onViewAll?: () => void;
   title?: string;
-  /** How many cards to show before "Show more". */
-  pageSize?: number;
+  /**
+   * How many of the latest activities the card shows. The card is a PREVIEW of
+   * the audit log — the full record lives in Company Profile ▸ Audit Timeline,
+   * which is what "View All" opens. There is deliberately no in-card "Show more":
+   * two controls that do nearly the same thing only make the card harder to read.
+   */
+  limit?: number;
 }
 
 // tone → emoji-badge ring/background (colour families the dark theme retints).
@@ -36,10 +41,9 @@ type Row = AuditEntry & { view: AuditView };
  * after diffs, relative time, expandable details). No backend/API/schema change —
  * purely how activities are displayed. A Company Head understands each in seconds.
  */
-export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAll, title = 'Recent Activities', pageSize = 8 }) => {
+export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAll, title = 'Recent Activities', limit = 8 }) => {
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [visible, setVisible] = useState(pageSize);
 
   const rows: Row[] = useMemo(() => entries.map((e) => ({ ...e, view: describeAudit(e) })), [entries]);
   const digest = useMemo(() => aiSummary(entries), [entries]);
@@ -50,7 +54,7 @@ export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAl
     () => rows.filter((r) => matchesSearch(r, r.view, query)),
     [rows, query]
   );
-  const shown = filtered.slice(0, visible);
+  const shown = filtered.slice(0, limit);
   const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
@@ -58,7 +62,21 @@ export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAl
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-bold text-slate-800">{title}</h3>
-        {onViewAll && <button onClick={onViewAll} className="text-[11px] font-bold text-brand-600 hover:underline">View All</button>}
+        {/* A real <button>: keyboard-operable (Enter/Space) and focus-visible for
+            free. `cursor-pointer` is explicit — this project has no global
+            `button { cursor: pointer }`, so without it the browser default arrow
+            cursor makes the control read as plain, dead text. The padding gives
+            it a hit area you can actually aim at rather than 11px of glyph. */}
+        {onViewAll && (
+          <button
+            type="button"
+            onClick={onViewAll}
+            aria-label="View the full audit timeline in Company Profile"
+            className="inline-flex items-center gap-0.5 -mr-1.5 px-1.5 py-1 rounded-lg cursor-pointer text-[11px] font-bold text-brand-600 hover:text-brand-700 hover:bg-brand-50 hover:underline active:scale-[0.97] transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          >
+            View All <ChevronRight size={12} />
+          </button>
+        )}
       </div>
 
       {/* AI "Today's Summary" */}
@@ -83,7 +101,7 @@ export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAl
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         <input
           value={query}
-          onChange={(e) => { setQuery(e.target.value); setVisible(pageSize); }}
+          onChange={(e) => setQuery(e.target.value)}
           placeholder="Search activities…"
           className="w-full h-9 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-[12px] text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
         />
@@ -100,12 +118,9 @@ export const RecentActivityFeed: React.FC<Props> = ({ entries, loading, onViewAl
         </div>
       ) : (
         <div className="space-y-2.5">
+          {/* Preview only — no overflow footer. The single "View All" in the
+              header is the one way to reach the rest, on the dedicated page. */}
           {shown.map((r) => <ActivityCard key={r.id} row={r} open={expanded.has(r.id)} onToggle={() => toggle(r.id)} />)}
-          {visible < filtered.length && (
-            <button onClick={() => setVisible((v) => v + pageSize)} className="w-full py-2 text-[12px] font-semibold text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
-              Show more ({filtered.length - visible})
-            </button>
-          )}
         </div>
       )}
     </div>

@@ -16,6 +16,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
+const { normalizeField, validateField } = require('../utils/fieldValidators');
 const { generateTempCode, generateEmployeeCode } = require('../utils/employeeCode');
 
 // Who performed an action (for the audit trail).
@@ -219,6 +220,35 @@ exports.create = async (req, res) => {
     if (!idParam(b.branchId) && !String(b.branchLocation || '').trim()) {
       return res.status(400).json({ error: 'Branch is required.' });
     }
+
+    // Shape check against the SHARED rule the UI uses (utils/fieldValidators
+    // mirrors utils/fieldFormats.ts), so a client that skips the form — a script,
+    // a stale bundle, curl — cannot store a 15-digit or alphabetic "mobile".
+    // Normalising first means "+91 98765 43210" is accepted and stored as the
+    // bare 10 digits, which is also what the duplicate check compares on.
+    // The FORM trims an over-long paste as you type, which is fine — the user
+    // sees the result. The API must NOT do that silently: truncating a 14-digit
+    // value to 10 would store a different, plausible-looking number that nobody
+    // entered. So anything still too long after stripping a recognised +91/91/0
+    // prefix is refused outright.
+    const rawDigits = String(b.mobile).replace(/\D/g, '');
+    const withoutPrefix =
+      rawDigits.length === 12 && rawDigits.startsWith('91') ? rawDigits.slice(2)
+      : rawDigits.length === 11 && rawDigits.startsWith('0') ? rawDigits.slice(1)
+      : rawDigits;
+    if (withoutPrefix.length > 10) {
+      return res.status(400).json({ error: 'Mobile number must be exactly 10 digits.', field: 'mobile' });
+    }
+
+    const mobile = normalizeField('mobile', b.mobile);
+    // An all-letters value ("abcdefghij") normalises to empty, and the registry
+    // treats blank as "optional field left blank — passes". Mobile is REQUIRED
+    // here, so the emptiness has to be caught explicitly or a record would be
+    // created with no mobile at all.
+    if (!mobile) return res.status(400).json({ error: 'Mobile number must be exactly 10 digits.', field: 'mobile' });
+    const mobileCheck = validateField('mobile', mobile);
+    if (!mobileCheck.valid) return res.status(400).json({ error: mobileCheck.error, field: 'mobile' });
+    b.mobile = mobile;
 
     // One mobile = one employee identity. Reject before generating any Temp ID.
     const dup = await findMobileIdentity(b.mobile);

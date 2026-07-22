@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { normalizeField } from '@/utils/fieldFormats';
 import {
   Building2, Plus, Search, Lock, Trash2,
   CheckCircle2, Mail, Phone, ChevronRight, Shield, Cloud, Link, Users, Archive, ShieldAlert,
@@ -390,7 +391,11 @@ export const Companies: React.FC<CompaniesProps> = ({
   };
 
   const handlePhoneChange = (val: string) => {
-    const clean = val.replace(/[^\d]/g, '');
+    // Digits only, and capped so a paste can't grow the field without bound.
+    // NOT the 10-digit India mobile rule — this field carries a country code, so
+    // the length check belongs to the country-aware validatePhone below. 15 is
+    // the E.164 maximum for a subscriber number.
+    const clean = val.replace(/[^\d]/g, '').slice(0, 15);
     setNewCompany(prev => {
       const next = { ...prev, mobileNumber: clean };
       const err = validatePhone(clean, next.countryCode).error;
@@ -1606,7 +1611,7 @@ export const Companies: React.FC<CompaniesProps> = ({
                   <Input label="Full Name" placeholder="e.g. Vishy Patel" value={o.name} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, name: e.target.value } : r))} />
                   <Input label="Designation" placeholder="e.g. Managing Director" value={o.designation} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, designation: e.target.value } : r))} />
                   <Input label="Email" type="email" value={o.email} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, email: e.target.value } : r))} />
-                  <Input label="Mobile" value={o.mobile} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, mobile: e.target.value } : r))} />
+                  <Input label="Mobile" value={o.mobile} inputMode="tel" maxLength={10} onChange={e => setOwners(prev => prev.map((r, j) => j === i ? { ...r, mobile: normalizeField('mobile', e.target.value) } : r))} />
                 </div>
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-[11px] font-bold text-slate-600 cursor-pointer select-none">

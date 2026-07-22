@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { normalizeField } from '@/utils/fieldFormats';
 import { Upload, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
@@ -109,7 +110,7 @@ export const NomineeForm: React.FC<Props> = ({ open, initial, nomineeCount = 0, 
           <Select label="Relationship *" value={form.relationship} onChange={e => setForm({ ...form, relationship: e.target.value })} options={RELATIONSHIPS.map(r => ({ value: r, label: r }))} error={errors.relationship} />
         </div>
         <div className={`grid ${showPercentage ? 'grid-cols-3' : 'grid-cols-2'} gap-3`}>
-          <Input label="Mobile Number *" value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} error={errors.mobile} />
+          <Input label="Mobile Number *" value={form.mobile} inputMode="tel" maxLength={10} onChange={e => setForm({ ...form, mobile: normalizeField('mobile', e.target.value) })} error={errors.mobile} />
           <Input label="Date of Birth *" type="date" value={(form.dob || '').slice(0, 10)} onChange={e => setForm({ ...form, dob: e.target.value })} error={errors.dob} />
           {showPercentage && <Input label="Nomination % *" type="number" value={form.percentage} onChange={e => setForm({ ...form, percentage: e.target.value })} error={errors.percentage} />}
         </div>

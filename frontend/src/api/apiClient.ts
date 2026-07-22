@@ -365,6 +365,11 @@ export const api = {
     getAll: async (query: string = '') => {
       return await apiFetch(`${BASE_URL}/employees${query}`, { headers: getHeaders() });
     },
+    // Authoritative single-record read — use this before opening an employee for
+    // editing so the form is never seeded from a stale list row.
+    getById: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/employees/${id}`, { headers: getHeaders() });
+    },
     getPaginated: async (params: Record<string, any>) => {
       const query = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
@@ -384,6 +389,16 @@ export const api = {
     update: async (id: string, data: any) => {
       return await apiFetch(`${BASE_URL}/employees/${id}`, {
         method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    // Re-hire a PREVIOUS employee: creates a NEW active record from the reviewed
+    // copy and leaves the old, locked record untouched. Returns
+    // { employee, previous, message }.
+    reOnboard: async (previousId: string | number, data: any) => {
+      return await apiFetch(`${BASE_URL}/employees/${previousId}/re-onboard`, {
+        method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(data)
       });

@@ -206,9 +206,20 @@ export const FIELD_SPECS: Record<FieldType, FieldSpec> = {
   // ── Contact ───────────────────────────────────────────────────────────────
   mobile: {
     label: 'Mobile Number', example: '+91 9876543210', inputMode: 'tel',
-    // Strip a leading country/trunk code (+91, 91, 0…) by keeping the last 10 digits.
-    normalize: (v) => { const d = digits(v); return d.length > 10 ? d.slice(-10) : d; },
-    format: (r) => { const d = digits(r).slice(-10); return d ? `+91 ${d}` : ''; },
+    // Strip a RECOGNISED country/trunk prefix, then keep the first 10 digits.
+    //
+    // This used to keep the LAST 10 digits unconditionally, which quietly turned
+    // a typo into a different, perfectly valid number: "98765432100" (one digit
+    // too many) became "8765432100" and was accepted. Only +91/91 (12 digits) and
+    // a 0 trunk (11 digits) are stripped now — any other overlong input is
+    // truncated from the front, matching what typing into the capped field does.
+    normalize: (v) => {
+      let d = digits(v);
+      if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+      else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+      return d.slice(0, 10);
+    },
+    format: (r) => { const d = digits(r).slice(0, 10); return d ? `+91 ${d}` : ''; },
     validate: (r) => isBlank(r) ? OK : (/^[6-9][0-9]{9}$/.test(r) ? OK : err('Mobile must be 10 digits starting 6–9.')),
   },
   telephone: {

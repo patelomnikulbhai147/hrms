@@ -194,6 +194,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
     onNavigate('company-profile');
   };
 
+  // Recent Activities → the existing Company Profile ▸ Audit Timeline tab. The
+  // dashboard card is only a preview of that same log, so it deep-links there
+  // instead of owning a second copy of the timeline.
+  const canOpenAuditTimeline = role === 'Company Head' || role === 'Super Admin';
+  const goToAuditTimeline = () => {
+    localStorage.setItem('hrms_company_profile_tab', 'audit');
+    onNavigate('company-profile');
+  };
+
   // Drill into a branch dashboard from the Branches Overview card. Uses the
   // proper workspace switcher (validates access + reloads the dashboard for the
   // branch — the auto-switch requirement); falls back to masquerade if the
@@ -1159,7 +1168,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="flex justify-between items-end mt-4">
               <span className="text-[11px] font-medium text-gray-500">{pendingLeavesLive} Awaiting Approval</span>
-              <span onClick={() => onNavigate('leaves')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">Review</span>
+              <button type="button" onClick={() => onNavigate('leaves')} className="px-1.5 py-1 -mr-1.5 rounded-lg text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">Review</button>
             </div>
           </div>
 
@@ -1177,7 +1186,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
             <div className="flex justify-between items-end mt-4">
-              <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
+              <button type="button" onClick={() => onNavigate('payroll')} className="px-1.5 py-1 -mr-1.5 rounded-lg text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View Summary</button>
               <svg className="w-20 h-6 text-[#C77E52]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -1297,9 +1306,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Top Departments (Horizontal Bars) */}
               <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
-                <div className="flex justify-between items-center mb-5">
+                <div className="flex items-center mb-5">
                   <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
-                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
                 </div>
                 <div className="space-y-4">
                   {topDeptsLive.length === 0 ? (
@@ -1442,7 +1450,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 shrink-0">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
-                <span onClick={() => onNavigate('leaves')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                {/* A <span onClick> is invisible to the keyboard and to screen
+                    readers — a real button gets Enter/Space and focus for free. */}
+                <button type="button" onClick={() => onNavigate('leaves')} aria-label="View all pending approvals" className="-mr-1.5 px-1.5 py-1 rounded-lg text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View All</button>
               </div>
               <div className="space-y-4">
                 <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
@@ -1475,10 +1485,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="shrink-0">
               <RecentActivityFeed
                 entries={recentAuditLogs}
-                onViewAll={() => {
-                  localStorage.setItem('hrms_company_profile_tab', 'audit');
-                  onNavigate('company-profile');
-                }}
+                limit={8}
+                // "View All" deep-links into the EXISTING Audit Timeline rather
+                // than duplicating it: same table, same API, same filters. The
+                // tab id rides in localStorage because handleNavigate takes a
+                // page id only and drops query strings — CompanyProfile reads and
+                // clears it on mount (the same handoff the Branches card uses).
+                //
+                // Only offered when the destination is actually reachable.
+                // Company Profile is leadership-only (App.tsx LEADERSHIP_ONLY_PAGES),
+                // so for HR/Finance the old link led to an Access Denied screen —
+                // a control that cannot work should not be shown at all.
+                onViewAll={canOpenAuditTimeline ? goToAuditTimeline : undefined}
               />
             </div>
 
@@ -1487,7 +1505,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 flex-1 flex flex-col min-h-0">
               <div className="flex justify-between items-center mb-4 shrink-0">
                 <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
-                <span onClick={() => onNavigate('notifications')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <button type="button" onClick={() => onNavigate('notifications')} aria-label="View all notifications" className="-mr-1.5 px-1.5 py-1 rounded-lg text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View All</button>
               </div>
               <div className="space-y-3.5 flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
                 {(() => {

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { normalizeField } from '@/utils/fieldFormats';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Select } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -313,11 +314,11 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
       {step === 1 && (
         <Section title="Contact Information" icon={Phone}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Input label="Mobile Number *" value={draft.mobile || ''} onChange={e => set({ mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="10-digit mobile" error={draft.mobile && !mobileOk ? 'Enter a valid 10-digit mobile number.' : undefined} />
-            <Input label="Alternate Mobile" value={draft.alternateMobile || ''} onChange={e => set({ alternateMobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} placeholder="Optional" />
+            <Input label="Mobile Number *" value={draft.mobile || ''} onChange={e => set({ mobile: normalizeField('mobile', e.target.value) })} placeholder="10-digit mobile" error={draft.mobile && !mobileOk ? 'Enter a valid 10-digit mobile number.' : undefined} />
+            <Input label="Alternate Mobile" value={draft.alternateMobile || ''} onChange={e => set({ alternateMobile: normalizeField('mobile', e.target.value) })} placeholder="Optional" />
             <Input label="Personal Email *" type="email" value={draft.email || ''} onChange={e => set({ email: e.target.value })} placeholder="name@email.com" />
             <Input label="Emergency Contact Name *" value={draft.emergencyContactName || ''} onChange={e => set({ emergencyContactName: e.target.value })} />
-            <Input label="Emergency Contact Number *" value={draft.emergencyContactNumber || ''} onChange={e => set({ emergencyContactNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
+            <Input label="Emergency Contact Number *" value={draft.emergencyContactNumber || ''} onChange={e => set({ emergencyContactNumber: normalizeField('mobile', e.target.value) })} />
             <Input label="Relationship *" value={draft.relationship || ''} onChange={e => set({ relationship: e.target.value })} placeholder="e.g. Father / Spouse" />
           </div>
         </Section>
@@ -385,7 +386,7 @@ export const TempEmployeeOnboarding: React.FC<Props> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <Input label="Nominee Name" value={draft.nom_name || ''} onChange={e => set({ nom_name: e.target.value })} />
               <Input label="Relationship" value={draft.nom_relationship || ''} onChange={e => set({ nom_relationship: e.target.value })} />
-              <Input label="Mobile Number" value={draft.nom_mobile || ''} onChange={e => set({ nom_mobile: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
+              <Input label="Mobile Number" value={draft.nom_mobile || ''} onChange={e => set({ nom_mobile: normalizeField('mobile', e.target.value) })} />
               <Input label="Address" value={draft.nom_address || ''} onChange={e => set({ nom_address: e.target.value })} />
             </div>
           </Section>

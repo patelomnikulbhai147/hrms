@@ -4,8 +4,9 @@ const idParam = require('../utils/idParam');
 const { coerceEntityIds } = require('../utils/idParam');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
-const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { OFFBOARDED_STATUSES, lockRejection } = require('../utils/employeeStatus');
 const { prepareEmployeeWriteData, applyCreateDefaults, describePrismaWriteError } = require('../utils/employeeWriteData');
+const { validateEmployeePayload, validationErrorBody } = require('../utils/employeeRequiredFields');
 const locationMaster = require('./locationMasterController');
 
 // Remember any custom state/city on an employee payload for dropdown reuse
@@ -136,13 +137,18 @@ exports.createEmployee = async (req, res) => {
       name: 'Full name', companyId: 'Company', department: 'Department',
       designation: 'Designation', joinDate: 'Date of Joining',
     };
-    const requiredFields = ['name', 'companyId', 'department', 'designation', 'joinDate'];
-    for (const field of requiredFields) {
-      if (!data[field] || String(data[field]).trim() === '') {
-        return res.status(400).json({ error: `${FIELD_LABELS[field] || field} is required.`, code: 'REQUIRED_MISSING' });
-      }
+    // companyId is structural (scope), not a form field — checked separately.
+    if (!data.companyId || String(data.companyId).trim() === '') {
+      return res.status(400).json({ error: `${FIELD_LABELS.companyId} is required.`, code: 'REQUIRED_MISSING' });
     }
-    
+
+    // Every mandatory field re-checked server-side against the shared spec. A
+    // payload that skipped the UI gate (DevTools, curl, replay) is refused here
+    // with per-field errors — a partial employee record is never written.
+    const check = validateEmployeePayload(data, 'create');
+    if (!check.valid) return res.status(422).json(validationErrorBody(check.errors));
+
+
     // Sanitize Dates
     if (data.joinDate && typeof data.joinDate === 'string') {
       data.joinDate = new Date(data.joinDate);
@@ -561,23 +567,66 @@ exports.bulkCreate = async (req, res) => {
   }
 };
 
+// ── Single authoritative employee read ──────────────────────────────────────
+// There was no GET /employees/:id, so every screen could only ever seed itself
+// from a row it happened to be holding — which is how a saved edit could still
+// be displayed with its old values. The edit screen re-fetches through this
+// before it opens, so what you edit is always the committed database state.
+// Scope rules are identical to the update path: a non-Super-Admin may only read
+// an employee inside their own company/branch.
+exports.getEmployeeById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const employee = await prisma.employee.findUnique({ where: { id: idParam(id) } });
+    if (!employee) return res.status(404).json({ error: 'Employee not found.' });
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      // Mirror getEmployees' scope EXACTLY. It matches `companyId IN companyScope`
+      // OR `branchId IN (branchScope, or companyScope when the user has no branch
+      // grants)`. Diverging here would refuse a record the list is happy to show,
+      // which would silently push the edit screen back onto its stale fallback.
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
+      const branchMatch = branchScope.length ? branchScope : companyScope;
+      const inScope =
+        (employee.companyId != null && companyScope.includes(String(employee.companyId))) ||
+        (employee.branchId != null && branchMatch.includes(String(employee.branchId)));
+      if (!inScope) {
+        console.warn(`[employee:get] id=${id} by=${req.user.id} DENIED — outside company/branch scope`);
+        return res.status(403).json({ error: 'You do not have access to this employee.' });
+      }
+    }
+
+    res.json(employee);
+  } catch (error) {
+    console.error('[employee:get] failed:', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
 exports.updateEmployee = async (req, res) => {
+  // Update audit line: who edited which employee, and which fields they sent.
+  // Values are deliberately NOT logged — an employee row is full of PII.
+  const auditTag = `[employee:update] id=${req.params.id} by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'})`;
+  // Every refusal is logged before it is returned. A save that the server turned
+  // away used to leave no trace at all, so "it said it saved but didn't" was
+  // impossible to tell apart from "it was rejected and the client mishandled it".
+  const reject = (status, payload) => {
+    console.warn(`${auditTag} REJECTED ${status}: ${payload.code || payload.error}`);
+    return res.status(status).json(payload);
+  };
   try {
     const { id } = req.params;
     let data = coerceEntityIds({ ...req.body });
+    console.log(`${auditTag} fields=${Object.keys(data).length}`);
 
-    // Offboarding policy: an Archived (offboarded) employee is read-only —
-    // history is preserved and cannot be edited. The only permitted change is
-    // reactivation (status → Active).
-    const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true, companyId: true, branchId: true } });
-    // Archived / offboarded employees are HISTORICAL records: read-only for
-    // everyone except a Super Admin (who alone may edit or restore them).
-    if (existingEmp && OFFBOARDED_STATUSES.includes(existingEmp.status) && !(req.user && req.user.role === 'Super Admin')) {
-      return res.status(403).json({
-        code: 'EMPLOYEE_OFFBOARDED',
-        error: 'This employee is archived/offboarded and is read-only. Only a Super Admin can restore or modify it.',
-      });
-    }
+    // Locked-record policy: a PREVIOUS (offboarded) employee is a historical
+    // employment record — read-only for everyone but a Super Admin. There is no
+    // "reactivate by editing status" path: returning staff go through
+    // re-onboarding, which creates a new record and leaves this one intact.
+    const existingEmp = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { status: true, companyId: true, branchId: true, name: true } });
+    const locked = existingEmp && lockRejection(existingEmp.status, req.user, existingEmp.name || 'This employee');
+    if (locked) return reject(403, locked);
 
     // ── Write-ownership guard ────────────────────────────────────────────────
     // A non-Super-Admin may only edit an employee that is inside their company/
@@ -589,22 +638,29 @@ exports.updateEmployee = async (req, res) => {
       const inScope = (cid, bid) =>
         (cid != null && companyScope.includes(String(cid))) || (bid != null && branchScope.includes(String(bid)));
       if (!inScope(existingEmp.companyId, existingEmp.branchId)) {
-        return res.status(403).json({ error: 'You do not have access to this employee.' });
+        return reject(403, { error: 'You do not have access to this employee.' });
       }
       const targetCompany = data.companyId != null ? data.companyId : existingEmp.companyId;
       const targetBranch = data.branchId !== undefined ? data.branchId : existingEmp.branchId;
       if (!inScope(targetCompany, targetBranch)) {
-        return res.status(403).json({ error: 'You do not have access to the selected company or branch.' });
+        return reject(403, { error: 'You do not have access to the selected company or branch.' });
       }
     }
 
     // Validation for critical fields if they are provided
-    const criticalFields = ['name', 'email', 'employeeId', 'companyId', 'department', 'designation'];
+    const criticalFields = ['employeeId', 'companyId'];
     for (const field of criticalFields) {
       if (data.hasOwnProperty(field) && (!data[field] || String(data[field]).trim() === '')) {
-        return res.status(400).json({ error: `Critical field cannot be empty: ${field}` });
+        return reject(400, { error: `Critical field cannot be empty: ${field}` });
       }
     }
+
+    // Mandatory-field contract, update mode: only the fields actually sent are
+    // reviewed, so a partial save stays possible — but a required field that IS
+    // sent may not be blanked or malformed. Same rules as create, same shape of
+    // per-field errors.
+    const check = validateEmployeePayload(data, 'update');
+    if (!check.valid) return reject(422, validationErrorBody(check.errors));
     
     // Sanitize Dates
     if (data.joinDate && typeof data.joinDate === 'string') {
@@ -650,7 +706,7 @@ exports.updateEmployee = async (req, res) => {
           select: { id: true, name: true, employeeId: true },
         });
         if (clash) {
-          return res.status(409).json({
+          return reject(409, {
             code: 'BIOMETRIC_CODE_DUPLICATE',
             error: `Biometric Code "${data.biometricId}" is already assigned to ${clash.name || clash.employeeId} (${clash.employeeId}) in this company. Biometric Codes must be unique per company.`,
           });
@@ -665,7 +721,7 @@ exports.updateEmployee = async (req, res) => {
       const current = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { employeeId: true } });
       if (current && data.employeeId !== current.employeeId) {
         const v = await validateCustomCode(data.employeeId, id);
-        if (!v.ok) return res.status(400).json({ error: v.error });
+        if (!v.ok) return reject(400, { error: v.error });
         data.employeeId = v.code;
       }
     }
@@ -683,7 +739,7 @@ exports.updateEmployee = async (req, res) => {
       const merged = { ...current, ...data };
       const dup = await findDuplicate(prisma, merged, selfId);
       if (dup) {
-        return res.status(409).json({
+        return reject(409, {
           error: `Update rejected: would duplicate an existing employee (${dup.field} matches ` +
             `${dup.match.name || dup.match.employeeId}, code ${dup.match.employeeId}).`,
           duplicateOf: { id: dup.match.id, employeeId: dup.match.employeeId, name: dup.match.name, field: dup.field },
@@ -702,7 +758,8 @@ exports.updateEmployee = async (req, res) => {
     // has vanished, this is NOT a success and must not be reported as one.
     const employee = await prisma.employee.findUnique({ where: { id: idParam(id) } });
     if (!employee) {
-      return res.status(500).json({
+      console.error(`${auditTag} FAILED — row not found on read-back; update NOT confirmed`);
+      return reject(500, {
         code: 'UPDATE_NOT_CONFIRMED',
         error: 'The update could not be confirmed in the database. Please retry and check the record.',
       });
@@ -711,9 +768,10 @@ exports.updateEmployee = async (req, res) => {
     const HeadcountSyncService = require('../services/headcountSyncService');
     await HeadcountSyncService.handleEmployeeChange(existingEmp, employee);
 
+    console.log(`${auditTag} committed (updatedAt=${employee.updatedAt?.toISOString?.() || employee.updatedAt})`);
     res.json(employee);
   } catch (error) {
-    console.error('Error updating employee:', error);
+    console.error(`${auditTag} FAILED:`, error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
@@ -742,11 +800,154 @@ exports.validateCode = async (req, res) => {
   }
 };
 
+// ── POST /api/employees/:id/re-onboard ───────────────────────────────────────
+// Re-hire a PREVIOUS (offboarded) employee.
+//
+// Deliberately creates a SECOND, brand-new employment record instead of flipping
+// the old one back to Active: the previous record stays locked forever as the
+// historical employment, and the new one is a fresh, fully-editable record with
+// its own employee code. The two are linked only through the audit trail.
+//
+// `req.body` is the HR-reviewed copy of the old record (join date, department,
+// salary etc. may all have changed), so anything the client sends wins over the
+// inherited value; anything it omits is inherited from the source record.
+exports.reOnboardEmployee = async (req, res) => {
+  const auditTag = `[employee:re-onboard] source=${req.params.id} by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'})`;
+  try {
+    const sourceId = idParam(req.params.id);
+    const source = await prisma.employee.findUnique({ where: { id: sourceId } });
+    if (!source) return res.status(404).json({ error: 'Employee not found.' });
+
+    // Only a PREVIOUS employee can be re-onboarded. Re-hiring somebody who is
+    // still active would silently create a duplicate active person.
+    if (!OFFBOARDED_STATUSES.includes(source.status)) {
+      return res.status(400).json({
+        code: 'EMPLOYEE_NOT_OFFBOARDED',
+        error: `${source.name} is currently ${source.status} — only a previous (offboarded) employee can be re-onboarded.`,
+      });
+    }
+
+    // ── Write-ownership guard — same rule as create/update ───────────────────
+    if (req.user && req.user.role !== 'Super Admin') {
+      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean).map(String);
+      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean).map(String);
+      const inScope = (source.companyId != null && companyScope.includes(String(source.companyId)))
+        || (source.branchId != null && branchScope.includes(String(source.branchId)));
+      if (!inScope) return res.status(403).json({ error: 'You do not have access to this employee.' });
+    }
+
+    // Inherit the old record, then let the reviewed payload override it. Columns
+    // that define the *identity* of an employment record are never inherited:
+    // the new row gets its own id/code/timestamps and starts with a clean exit.
+    const body = coerceEntityIds({ ...req.body });
+    delete body.id;
+    delete body.employeeId;
+    delete body.codeMode;
+    const inherited = { ...source };
+    ['id', 'employeeId', 'createdAt', 'updatedAt', 'status', 'exitDate', 'exitReason'].forEach(k => delete inherited[k]);
+
+    let data = { ...inherited, ...body };
+    data.status = 'Active';
+    data.exitDate = null;
+    data.exitReason = null;
+
+    // A re-onboarded person joins on the re-onboarding date unless HR set one.
+    data.joinDate = data.joinDate ? new Date(data.joinDate) : new Date();
+
+    if (data.esic !== undefined) { data.esiNumber = data.esic; delete data.esic; }
+
+    // The biometric code is a physical device enrolment and is unique per
+    // company, so it cannot be inherited — the old record still holds it. HR
+    // re-enrols the returning employee on the device.
+    if (body.biometricId !== undefined) {
+      data.biometricId = body.biometricId ? String(body.biometricId).trim().slice(0, 50) : null;
+    } else {
+      data.biometricId = null;
+    }
+    if (data.biometricId) {
+      const clash = await prisma.employee.findFirst({
+        where: { companyId: data.companyId, biometricId: data.biometricId },
+        select: { id: true, name: true, employeeId: true },
+      });
+      if (clash) {
+        return res.status(409).json({
+          code: 'BIOMETRIC_CODE_DUPLICATE',
+          error: `Biometric Code "${data.biometricId}" is already assigned to ${clash.name || clash.employeeId} in this company.`,
+        });
+      }
+    }
+
+    // NOTE: findDuplicate() is intentionally NOT run here. It exists to stop HR
+    // from typing the same person in twice, and it matches on name/mobile/email —
+    // all of which the returning employee legitimately shares with their own
+    // locked historical record. Re-onboarding is the one sanctioned way to create
+    // that second record.
+
+    // The merged record must satisfy the same mandatory contract as a new hire —
+    // inheriting from an old row is not a way around it.
+    const check = validateEmployeePayload(data, 'create');
+    if (!check.valid) return res.status(422).json(validationErrorBody(check.errors));
+
+    data.employeeId = await generateEmployeeCode(data.branchId, data.companyId);
+
+    // The returning employee occupies a seat again, so the plan cap applies
+    // exactly as it does to a brand-new hire.
+    const cap = await require('../services/employeeLimitService').assertCapacity(data.companyId, 1);
+    if (!cap.ok) return res.status(cap.status).json(cap.body);
+
+    const createData = applyCreateDefaults(prepareEmployeeWriteData(data));
+    createData.employeeId = data.employeeId;
+    const employee = await prisma.employee.create({ data: createData });
+
+    const HeadcountSyncService = require('../services/headcountSyncService');
+    await HeadcountSyncService.handleEmployeeChange(null, employee);
+
+    // The only link between the two employment records. Written against the NEW
+    // record so the re-hire shows up on its timeline, with the old code in the
+    // details so the historical record is traceable from it.
+    if (req.user?.id) {
+      try {
+        await prisma.auditLog.create({
+          data: {
+            userId: req.user.id,
+            action: 'RE_ONBOARD_EMPLOYEE',
+            module: 'Employees',
+            targetId: String(employee.id),
+            details: JSON.stringify({
+              by: req.user.name || req.user.email || 'System',
+              role: req.user.role,
+              companyId: employee.companyId,
+              reOnboardedFrom: { id: source.id, employeeId: source.employeeId, status: source.status, exitDate: source.exitDate },
+              newEmployeeId: employee.employeeId,
+            }),
+          },
+        });
+      } catch (e) {
+        console.error(`${auditTag} audit write failed:`, e.message);
+      }
+    }
+
+    console.log(`${auditTag} OK new=${employee.employeeId} (id=${employee.id})`);
+    res.status(201).json({
+      employee,
+      previous: { id: source.id, employeeId: source.employeeId },
+      message: `${employee.name} re-onboarded as ${employee.employeeId}. The previous record (${source.employeeId}) remains locked.`,
+    });
+  } catch (error) {
+    return respondError(res, error, { action: 're-onboard employee', resource: 'employee' });
+  }
+};
+
 exports.deleteEmployee = async (req, res) => {
   try {
     const { id } = req.params;
-    const existing = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true, branchId: true, status: true } });
+    const existing = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { companyId: true, branchId: true, status: true, name: true } });
     if (!existing) return res.status(404).json({ error: 'Employee not found.' });
+
+    // A previous employee is already historical — archiving it again is a no-op
+    // that would only overwrite the real exit date with today's.
+    const locked = lockRejection(existing.status, req.user, existing.name || 'This employee');
+    if (locked) return res.status(403).json(locked);
 
     // ── Write-ownership guard ────────────────────────────────────────────────
     // A non-Super-Admin may only archive an employee inside their company/branch.

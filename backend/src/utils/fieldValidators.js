@@ -75,7 +75,19 @@ const RULES = {
   cheque: { normalize: (v) => digits(v).slice(0, 6), test: (r) => /^[0-9]{6}$/.test(r), error: 'Cheque number must be exactly 6 digits.' },
   creditCard: { normalize: (v) => digits(v).slice(0, 19), test: (r) => luhnValid(r), error: 'Invalid card number (failed Luhn check).' },
 
-  mobile: { normalize: (v) => { const d = digits(v); return d.length > 10 ? d.slice(-10) : d; }, test: (r) => /^[6-9][0-9]{9}$/.test(r), error: 'Mobile must be 10 digits starting 6-9.' },
+  // Mirrors utils/fieldFormats.ts exactly. Strips a RECOGNISED +91/91/0 prefix
+  // and then keeps the FIRST 10 digits — never the last 10, which used to turn a
+  // one-digit typo ("98765432100") into a different valid number ("8765432100").
+  mobile: {
+    normalize: (v) => {
+      let d = digits(v);
+      if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+      else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+      return d.slice(0, 10);
+    },
+    test: (r) => /^[6-9][0-9]{9}$/.test(r),
+    error: 'Mobile must be 10 digits starting 6-9.',
+  },
   telephone: { normalize: (v) => String(v == null ? '' : v).replace(/[^0-9-]/g, '').slice(0, 15), test: (r) => /^[0-9]{2,5}-?[0-9]{6,8}$/.test(r), error: 'Invalid telephone (e.g. 079-26543210).' },
   email: { normalize: (v) => String(v == null ? '' : v).toLowerCase().replace(/\s/g, ''), test: (r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r), error: 'Invalid email format.' },
   website: { normalize: (v) => String(v == null ? '' : v).trim().replace(/\s/g, ''), test: (r) => /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/\S*)?$/.test(r), error: 'Invalid website.' },

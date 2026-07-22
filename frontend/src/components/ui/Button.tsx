@@ -44,22 +44,44 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   size?: ButtonSize;
   icon?: React.ReactNode;
   loading?: boolean;
+  /**
+   * "Blocked" — the form-gating state for Save / Next / Submit buttons.
+   *
+   * Renders exactly like `disabled` (50% opacity, not-allowed cursor, no lift or
+   * tap animation) but stays clickable and focusable, marked `aria-disabled`.
+   * That is deliberate: a truly `disabled` button cannot be clicked, so it can
+   * never tell the user WHICH field is still blocking them, and screen readers
+   * skip it entirely. The click handler is still responsible for refusing the
+   * action — see `useFormGate().attemptSubmit`, which shows every outstanding
+   * error and focuses the first invalid field instead of submitting.
+   *
+   * `blockedReason` becomes the accessible description, e.g.
+   * "3 required fields still need attention".
+   */
+  blocked?: boolean;
+  blockedReason?: string;
 }
 
 export const Button: React.FC<ButtonProps> = ({
-  children, variant = 'primary', size = 'md', icon, loading, className, disabled, ...props
+  children, variant = 'primary', size = 'md', icon, loading, className, disabled, blocked, blockedReason, ...props
 }) => {
+  const inert = disabled || loading || blocked;
   return (
     <motion.button
       // A 1px lift rather than a scale — text stays pixel-crisp on hover.
-      whileHover={{ y: disabled || loading ? 0 : -1 }}
-      whileTap={{ scale: disabled || loading ? 1 : 0.985 }}
+      whileHover={{ y: inert ? 0 : -1 }}
+      whileTap={{ scale: inert ? 1 : 0.985 }}
       {...props as any}
       disabled={disabled || loading}
+      aria-disabled={blocked || undefined}
+      title={blocked && blockedReason ? blockedReason : (props as any).title}
       className={cn(
         'inline-flex items-center justify-center gap-1.5 font-semibold whitespace-nowrap',
         'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none select-none',
+        // Same visual language as :disabled, but the button still receives the
+        // click so it can explain itself.
+        blocked && 'opacity-50 cursor-not-allowed shadow-none',
         variantClasses[variant],
         sizeClasses[size],
         className
