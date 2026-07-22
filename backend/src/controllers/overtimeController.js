@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { grantedCompanyIds, canReachCompany } = require('../utils/companyScope');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The Overtime form and the Overtime table have never agreed on field names.
@@ -55,10 +56,9 @@ exports.getAll = async (req, res) => {
     let whereClause = {};
 
     if (req.user && req.user.role !== 'Super Admin') {
-      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      whereClause.companyId = { in: allowedIds };
+      whereClause.companyId = { in: grantedCompanyIds(req) };
       if (companyId) {
-        if (!allowedIds.includes(companyId)) {
+        if (!canReachCompany(req, companyId)) {
           return res.status(403).json({ error: 'Unauthorized' });
         }
         whereClause.companyId = companyId;
@@ -89,9 +89,8 @@ exports.create = async (req, res) => {
       });
     }
 
-    if (req.user && req.user.role !== 'Super Admin') {
-      const allowed = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      if (!allowed.includes(row.companyId)) return res.status(403).json({ error: 'Not your workspace.' });
+    if (!canReachCompany(req, row.companyId)) {
+      return res.status(403).json({ error: 'Not your workspace.' });
     }
 
     const data = await prisma.overtime.create({ data: row });

@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
 const idParam = require('../utils/idParam');
+const { canReachCompany } = require('../utils/companyScope');
 const { coerceEntityIds } = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const respondError = require('../utils/respondError');
@@ -682,13 +683,12 @@ exports.getCompanyAssets = async (req, res) => {
     if (!id) return res.status(400).json({ error: 'Company id required.' });
 
     if (req.user && req.user.role !== 'Super Admin') {
-      const allowed = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
       // A branch workspace inherits its parent company's artwork, so resolve the
       // branch to its parent before deciding whether this caller may read it.
       let effective = id;
-      if (!allowed.includes(id)) {
+      if (!canReachCompany(req, id)) {
         const branch = await prisma.branch.findUnique({ where: { id }, select: { companyId: true } });
-        if (!branch || !allowed.includes(branch.companyId)) {
+        if (!branch || !canReachCompany(req, branch.companyId)) {
           return res.status(403).json({ error: 'Not your company.' });
         }
         effective = branch.companyId;

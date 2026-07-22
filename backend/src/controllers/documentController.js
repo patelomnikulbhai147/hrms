@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { lockRejection } = require('../utils/employeeStatus');
+const { grantedCompanyIds, grantedBranchIds, canReachCompany } = require('../utils/companyScope');
 
 // Real columns on the Document model. Any other key in the request body (e.g. a
 // frontend-only `link`, `branchLocation`, or a stale `id` from a spread) is
@@ -65,15 +66,11 @@ exports.getFile = async (req, res) => {
     });
     if (!doc) return res.status(404).json({ error: 'Document not found.' });
 
-    if (req.user && req.user.role !== 'Super Admin') {
-      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
-      const allowed = [...companyScope, ...branchScope];
-      const reachable = allowed.includes(doc.companyId) || (doc.branchId != null && allowed.includes(doc.branchId));
-      // 404 rather than 403: existence of another tenant's document id is itself
-      // information not worth confirming.
-      if (!reachable) return res.status(404).json({ error: 'Document not found.' });
-    }
+    // 404 rather than 403: the existence of another tenant's document id is
+    // itself information not worth confirming.
+    const reachable = canReachCompany(req, doc.companyId)
+      || (doc.branchId != null && canReachCompany(req, doc.branchId));
+    if (!reachable) return res.status(404).json({ error: 'Document not found.' });
 
     if (!doc.fileData) return res.status(404).json({ error: 'This document has no attached file.' });
     res.json({ id: doc.id, fileData: doc.fileData, mimeType: doc.mimeType, name: doc.name });
@@ -91,8 +88,10 @@ exports.getAll = async (req, res) => {
     if (req.user && req.user.role !== 'Super Admin') {
       // Scope to the user's companies AND the branches under them, so a branch
       // sub-workspace resolves (branch ids no longer collide with company ids).
-      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
+      // Numbers — accessibleCompanyIds holds strings, and feeding those to a
+      // Prisma `in` against an Int column silently matched nothing.
+      const companyScope = grantedCompanyIds(req);
+      const branchScope = grantedBranchIds(req);
       const allowedIds = [...companyScope, ...branchScope];
       whereClause.OR = [
         { companyId: { in: companyScope } },

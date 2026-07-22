@@ -14,7 +14,12 @@ const canEdit = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user
 const canManage = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Numbers, not the raw mix of Int companyId + string accessibleCompanyIds — the
+// latter made `scope.includes(workspaceId)` false for every company a user can
+// access but does not call home, and put strings into Prisma `in` filters against
+// an Int column. See utils/companyScope.js.
+const { grantedCompanyIds } = require('./companyScope');
+const companyScopeFor = (req) => grantedCompanyIds(req);
 
 function readCompanyId(req, requested) {
   const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);

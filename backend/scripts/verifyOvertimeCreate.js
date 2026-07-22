@@ -37,13 +37,26 @@ const created = [];
     where: { role: { in: ['Company Head', 'HR'] }, companyId: { not: null } },
     select: { id: true, email: true, companyId: true, accessibleCompanyIds: true },
   });
-  let user = null, emp = null;
+  // Prefer an employee in a company the user can ACCESS but does not call home.
+  // That is the case the mixed-type grant list broke: accessibleCompanyIds holds
+  // strings, so `[companyId, ...accessible].includes(2)` was false and the write
+  // 403'd. Testing only against the user's own company (a real number) hides it.
+  let user = null, emp = null, homeOnly = false;
+  const pickEmp = (where) => prisma.employee.findFirst({ where, select: { id: true, name: true, employeeId: true, companyId: true, department: true } });
   for (const u of users) {
-    const grants = [u.companyId, ...(Array.isArray(u.accessibleCompanyIds) ? u.accessibleCompanyIds.map(Number) : [])];
-    const e = await prisma.employee.findFirst({ where: { companyId: { in: grants } }, select: { id: true, name: true, employeeId: true, companyId: true, department: true } });
+    const away = (Array.isArray(u.accessibleCompanyIds) ? u.accessibleCompanyIds.map(Number) : [])
+      .filter((c) => Number.isFinite(c) && c !== u.companyId);
+    const e = away.length ? await pickEmp({ companyId: { in: away } }) : null;
     if (e) { user = u; emp = e; break; }
   }
+  if (!emp) {
+    for (const u of users) {
+      const e = await pickEmp({ companyId: u.companyId });
+      if (e) { user = u; emp = e; homeOnly = true; break; }
+    }
+  }
   if (!user || !emp) throw new Error('no user with a reachable employee to raise overtime for');
+  if (homeOnly) console.log('  NOTE  no accessible-but-not-home company in this database — the cross-company grant path is not exercised here.');
   console.log(`as ${user.email}; employee ${emp.name} (${emp.employeeId}) in company ${emp.companyId}\n`);
 
   const base = { date: '2026-07-22', otHours: 2, type: 'Normal Overtime', status: 'Pending', department: emp.department, branch: 'QA', shift: 'General Shift' };

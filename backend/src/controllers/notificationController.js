@@ -12,8 +12,11 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
-const allowedIdsFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Numbers. accessibleCompanyIds holds STRINGS, so the old inline spread produced
+// [1, "1", "2", "11"]: `includes(2)` was false and Prisma `in` filters compared
+// strings to an Int column. See utils/companyScope.js.
+const { grantedCompanyIds, canReachCompany } = require('../utils/companyScope');
+const allowedIdsFor = (req) => grantedCompanyIds(req);
 
 function scopeWhere(req) {
   const role = req.user?.role;
@@ -133,7 +136,7 @@ exports.broadcast = async (req, res) => {
     // everyone else is confined to a workspace they already have access to.
     const companyId = idParam(b.companyId ?? req.headers['x-workspace-id'] ?? req.user.companyId);
     if (!companyId) return res.status(400).json({ error: 'Company context required.' });
-    if (!isSA && !allowed.includes(companyId)) {
+    if (!canReachCompany(req, companyId)) {
       console.warn(`${tag} REJECTED 403: company ${companyId} outside grants [${allowed}]`);
       return res.status(403).json({ error: 'Not your workspace.' });
     }
@@ -175,7 +178,7 @@ exports.broadcast = async (req, res) => {
     } else if (audience === 'branch') {
       branchId = idParam(b.branchId);
       if (!branchId) return res.status(400).json({ error: 'Select a branch.' });
-      if (!isSA && !allowed.includes(branchId)) return res.status(403).json({ error: 'Not your branch.' });
+      if (!canReachCompany(req, branchId)) return res.status(403).json({ error: 'Not your branch.' });
       const branch = await prisma.branch.findUnique({ where: { id: branchId } });
       // A branch member is either a user whose workspace IS the branch, or one
       // explicitly scoped to it via User.branchId.
@@ -208,7 +211,7 @@ exports.broadcast = async (req, res) => {
       if (!empId) return res.status(400).json({ error: 'Select an employee.' });
       const emp = await prisma.employee.findUnique({ where: { id: empId }, select: { id: true, companyId: true, name: true } });
       if (!emp) return res.status(404).json({ error: 'Employee not found.' });
-      if (!isSA && !allowed.includes(emp.companyId)) return res.status(403).json({ error: 'Not your employee.' });
+      if (!canReachCompany(req, emp.companyId)) return res.status(403).json({ error: 'Not your employee.' });
       userIds = await usersForEmployees([emp.id]);
       label = emp.name || `Employee ${empId}`;
     } else {
