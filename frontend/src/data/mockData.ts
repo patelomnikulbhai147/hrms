@@ -343,11 +343,17 @@ export interface Document {
 export interface Notification {
   id: string;
   companyId?: string; 
-  type: 'leave' | 'payroll' | 'attendance' | 'company' | 'system';
+  type: 'leave' | 'payroll' | 'attendance' | 'company' | 'system' | 'broadcast';
   message: string;
   timestamp: string;
   read: boolean;
   priority: 'high' | 'medium' | 'low';
+  title?: string;
+  // Broadcast provenance — set only on type 'broadcast', and absent on rows
+  // created before those columns existed, so every field is optional.
+  senderName?: string | null;
+  senderRole?: string | null;
+  targetBranchName?: string | null;
 }
 
 export const PLAN_LIMITS = {

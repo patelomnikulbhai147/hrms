@@ -1331,6 +1331,23 @@ model Notification {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // ── Broadcast provenance (all nullable; only set on type = "broadcast") ─────
+  // Who sent it — kept as a denormalised snapshot, not a relation, so the bell
+  // can render "Sent by Company Head" without a join, and so the record still
+  // reads correctly after the sender is renamed or offboarded.
+  senderId       Int?
+  senderName     String?
+  senderRole     String?
+  senderBranchId Int?
+  // What was targeted. This is the AUDIT of the dispatch, kept per delivered row
+  // so a cross-branch delivery would be provable after the fact rather than
+  // having to be inferred from who happens to hold the row.
+  targetType       String? // all | branch | role | department | employee
+  targetBranchId   Int?
+  targetBranchName String?
+  targetDepartment String?
+  targetRole       String?
+
   @@index([userId])
   @@index([companyId])
 }

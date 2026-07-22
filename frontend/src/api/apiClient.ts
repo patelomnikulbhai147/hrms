@@ -1135,6 +1135,16 @@ export const api = {
   notifications: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/notifications`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/notifications`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    /**
+     * The audiences/branches/departments/roles/employees the CALLER may target.
+     * The broadcast UI renders this verbatim and derives nothing itself, so a
+     * branch user is never offered a cross-branch option. The same server-side
+     * scope backs the send endpoint, so the menu and the rule cannot drift.
+     */
+    broadcastOptions: async (companyId?: any) => {
+      const qs = companyId ? `?companyId=${encodeURIComponent(String(companyId))}` : '';
+      return await apiFetch(`${BASE_URL}/notifications/broadcast-options${qs}`, { headers: getHeaders() });
+    },
     /** Send one message to a resolved audience. Resolves only after the rows are committed. */
     broadcast: async (data: {
       message: string; title?: string; priority?: string;

@@ -15,7 +15,8 @@ const idParam = require('../utils/idParam');
 // Numbers. accessibleCompanyIds holds STRINGS, so the old inline spread produced
 // [1, "1", "2", "11"]: `includes(2)` was false and Prisma `in` filters compared
 // strings to an Int column. See utils/companyScope.js.
-const { grantedCompanyIds, canReachCompany } = require('../utils/companyScope');
+const { grantedCompanyIds } = require('../utils/companyScope');
+const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const allowedIdsFor = (req) => grantedCompanyIds(req);
 
 function scopeWhere(req) {
@@ -110,17 +111,93 @@ exports.create = async (req, res) => {
 // audiences. Not every employee has a login, so the response always reports the
 // true `recipients` count and a dispatch that reached nobody is a 422, never a
 // success toast over an empty delivery.
-const BROADCASTERS = ['Super Admin', 'Company Head', 'HR', 'Admin'];
+const { resolveBroadcastScope, narrowToBranch, employeeWhere, userWhere } = require('../utils/broadcastScope');
 const MAX_MESSAGE = 2000;
+
+// Human labels for the audience values. "all" reads differently depending on who
+// is sending — for a branch user it genuinely is only their branch — so the label
+// is chosen from the scope rather than hardcoded next to the value.
+const audienceLabel = (value, scope) => {
+  if (value === 'all') return scope.branchId ? 'All Employees (Current Branch)' : 'All Branches';
+  if (value === 'branch') return 'Specific Branch';
+  if (value === 'role') return scope.branchId ? 'By Role (Current Branch)' : 'By Role';
+  if (value === 'department') return scope.branchId ? 'Specific Department (Current Branch)' : 'Specific Department';
+  return scope.branchId ? 'Individual Employee (Current Branch)' : 'Individual Employee';
+};
+
+/**
+ * GET /api/notifications/broadcast-options
+ *
+ * The audiences, branches, roles, departments and employees THIS caller may
+ * target. The UI renders exactly what comes back and invents nothing, so a
+ * branch user is never shown a branch selector in the first place — and because
+ * both this and the send endpoint resolve scope through the same helper, the
+ * menu can never offer something the send would reject.
+ */
+exports.broadcastOptions = async (req, res) => {
+  try {
+    const scope = await resolveBroadcastScope(req, req.query.companyId ?? req.headers['x-workspace-id']);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+
+    // Employees drive BOTH the employee picker and the department/role lists, so
+    // one query feeds all three and they can never disagree about who exists.
+    const employees = await prisma.employee.findMany({
+      // employeeWhere knows that employees record their branch in `branchId`
+      // while carrying the PARENT company in `companyId`; ACTIVE_EMPLOYEE_WHERE
+      // is the single source of truth for "still employed", so this picker can
+      // never drift from the roster the rest of the app shows.
+      where: { ...employeeWhere(scope), ...ACTIVE_EMPLOYEE_WHERE },
+      select: { id: true, name: true, employeeId: true, department: true, companyId: true, branchId: true },
+      orderBy: { name: 'asc' },
+    });
+
+    // Roles are the ones that ACTUALLY EXIST in reach — not a hardcoded list, so
+    // a workspace with no Finance user never offers "Finance".
+    const users = await prisma.user.findMany({
+      where: userWhere(scope),
+      select: { role: true },
+    });
+
+    const branchName = (id) => scope.branches.find((b) => String(b.id) === String(id))?.name || null;
+
+    res.json({
+      scope: {
+        isBranchUser: scope.isBranchUser,
+        companyId: scope.companyId,
+        branchId: scope.branchId,
+        branchName: scope.branchName,
+      },
+      audiences: scope.audiences.map((value) => ({ value, label: audienceLabel(value, scope) })),
+      branches: scope.branches,
+      roles: [...new Set(users.map((u) => u.role).filter(Boolean))].sort(),
+      // Tagged with the branch so the UI can cascade Branch → Department without
+      // another round trip.
+      departments: [...new Map(
+        employees
+          .filter((e) => e.department)
+          .map((e) => [`${e.branchId || e.companyId}::${e.department}`, {
+            name: e.department,
+            branchId: e.branchId || (scope.branches.some((b) => b.id === e.companyId) ? e.companyId : null),
+          }])
+      ).values()].sort((a, b) => a.name.localeCompare(b.name)),
+      employees: employees.map((e) => ({
+        id: e.id,
+        name: e.name,
+        code: e.employeeId || null,
+        department: e.department || null,
+        branchId: e.branchId || (scope.branches.some((b) => b.id === e.companyId) ? e.companyId : null),
+        branchName: branchName(e.branchId || e.companyId),
+      })),
+    });
+  } catch (error) {
+    console.error('notif.broadcastOptions', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
 
 exports.broadcast = async (req, res) => {
   const tag = `[notif:broadcast] by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'})`;
   try {
-    if (!BROADCASTERS.includes(req.user?.role)) {
-      console.warn(`${tag} REJECTED 403: role may not broadcast`);
-      return res.status(403).json({ error: 'You are not allowed to send broadcasts.' });
-    }
-
     const b = req.body || {};
     const message = String(b.message || '').trim();
     if (!message) return res.status(400).json({ error: 'Message is required.' });
@@ -128,17 +205,111 @@ exports.broadcast = async (req, res) => {
       return res.status(400).json({ error: `Message is too long (max ${MAX_MESSAGE} characters).` });
     }
 
-    const audience = String(b.audience || 'all');
-    const isSA = req.user.role === 'Super Admin';
-    const allowed = allowedIdsFor(req);
+    // Scope FIRST, from the database — see utils/broadcastScope.js. Everything
+    // below narrows this; nothing below can widen it.
+    const scope = await resolveBroadcastScope(req, b.companyId ?? req.headers['x-workspace-id']);
+    if (!scope.ok) {
+      console.warn(`${tag} REJECTED ${scope.status}: ${scope.body.error}`);
+      return res.status(scope.status).json(scope.body);
+    }
 
-    // The workspace being broadcast into. A Super Admin may name any company;
-    // everyone else is confined to a workspace they already have access to.
-    const companyId = idParam(b.companyId ?? req.headers['x-workspace-id'] ?? req.user.companyId);
-    if (!companyId) return res.status(400).json({ error: 'Company context required.' });
-    if (!canReachCompany(req, companyId)) {
-      console.warn(`${tag} REJECTED 403: company ${companyId} outside grants [${allowed}]`);
-      return res.status(403).json({ error: 'Not your workspace.' });
+    const audience = String(b.audience || 'all');
+    if (!scope.audiences.includes(audience)) {
+      // The branch user reaching for "branch" lands here — including via DevTools
+      // or curl, because this check does not consult the UI in any way.
+      console.warn(`${tag} REJECTED 403: audience "${audience}" not permitted in this scope`);
+      return res.status(403).json({
+        error: scope.branchId
+          ? 'Branch users can only broadcast within their own branch.'
+          : `Audience "${audience}" is not available for your workspace.`,
+      });
+    }
+
+    // Optional Branch → Department/Employee cascade for company senders. A branch
+    // sender's scope is already a single branch, so a posted branchId can only
+    // ever re-select that same branch (narrowToBranch rejects anything else).
+    let targetIds = scope.scopeIds;
+    let targetBranchId = scope.branchId;
+    let targetBranchName = scope.branchName;
+
+    if (audience === 'branch' || (b.branchId && audience !== 'all')) {
+      const narrowed = narrowToBranch(scope, b.branchId);
+      if (!narrowed.ok) {
+        console.warn(`${tag} REJECTED ${narrowed.status}: branch ${b.branchId} outside scope [${scope.scopeIds}]`);
+        return res.status(narrowed.status).json(narrowed.body);
+      }
+      targetIds = narrowed.scopeIds;
+      targetBranchId = narrowed.branchId;
+      targetBranchName = scope.branches.find((x) => x.id === narrowed.branchId)?.name || scope.branchName;
+    }
+
+    let userIds = [];
+    let label = audienceLabel(audience, scope);
+    let targetDepartment = null;
+    let targetRole = null;
+
+    // `narrowBranch` is the branch this dispatch is pinned to (null = the whole
+    // company). Both where-builders take it, so employees and users are selected
+    // by their own storage shape rather than one shared, wrong filter.
+    const narrowBranch = audience === 'branch' ? targetBranchId : (b.branchId ? targetBranchId : null);
+
+    if (audience === 'all') {
+      const users = await prisma.user.findMany({ where: userWhere(scope, narrowBranch), select: { id: true } });
+      userIds = users.map((u) => u.id);
+      label = scope.branchId ? `All Staff — ${scope.branchName}` : 'All Staff (all branches)';
+    } else if (audience === 'branch') {
+      const users = await prisma.user.findMany({ where: userWhere(scope, targetBranchId), select: { id: true } });
+      userIds = users.map((u) => u.id);
+      label = `Branch — ${targetBranchName || targetBranchId}`;
+    } else if (audience === 'role') {
+      targetRole = String(b.role || '').trim();
+      if (!targetRole) return res.status(400).json({ error: 'Select a role.' });
+      const users = await prisma.user.findMany({
+        where: { ...userWhere(scope, narrowBranch), role: targetRole },
+        select: { id: true },
+      });
+      userIds = users.map((u) => u.id);
+      label = `${targetRole} team${targetBranchName ? ` — ${targetBranchName}` : ''}`;
+    } else if (audience === 'department') {
+      targetDepartment = String(b.department || '').trim();
+      if (!targetDepartment) return res.status(400).json({ error: 'Select a department.' });
+      const emps = await prisma.employee.findMany({
+        where: { ...employeeWhere(scope, narrowBranch), ...ACTIVE_EMPLOYEE_WHERE, department: targetDepartment },
+        select: { id: true },
+      });
+      userIds = await usersForEmployees(emps.map((e) => e.id));
+      label = `Department — ${targetDepartment}${targetBranchName ? ` (${targetBranchName})` : ''}`;
+    } else if (audience === 'employee') {
+      const empId = idParam(b.employeeId);
+      if (!empId) return res.status(400).json({ error: 'Select an employee.' });
+      // Re-select the employee THROUGH the scope filter rather than fetching them
+      // and then comparing ids by hand: membership is decided by the same query
+      // that built the picker, so an employee who is not in scope is simply not
+      // found. (Comparing emp.companyId to the scope ids was wrong here — every
+      // employee carries the PARENT company id, so a sibling-branch employee
+      // would have passed that test.)
+      const emp = await prisma.employee.findFirst({
+        where: { ...employeeWhere(scope, narrowBranch), id: empId },
+        select: { id: true, name: true },
+      });
+      if (!emp) {
+        console.warn(`${tag} REJECTED 403: employee ${empId} outside scope`);
+        return res.status(403).json({ error: 'That employee is outside your workspace.' });
+      }
+      userIds = await usersForEmployees([emp.id]);
+      label = emp.name || `Employee ${empId}`;
+    }
+
+    userIds = [...new Set(userIds)];
+    if (!userIds.length) {
+      // Deliberately NOT a 201. Persisting rows nobody can see would show the
+      // dispatcher a success toast over a message that reached no one.
+      console.warn(`${tag} no recipients for audience=${audience} scope=[${targetIds}]`);
+      return res.status(422).json({
+        error: 'Nobody in that audience has a login yet, so the message was not sent.',
+        code: 'NO_RECIPIENTS',
+        recipients: 0,
+      });
     }
 
     const base = {
@@ -149,104 +320,42 @@ exports.broadcast = async (req, res) => {
       read: false,
       status: 'unread',
       timestamp: new Date().toISOString(),
+      // Provenance, denormalised onto every delivered row.
+      senderId: req.user.id,
+      senderName: req.user.name || req.user.email || null,
+      senderRole: req.user.role || null,
+      senderBranchId: scope.isBranchUser ? scope.branchId : null,
+      targetType: audience,
+      targetBranchId: targetBranchId ?? null,
+      targetBranchName: targetBranchName ?? null,
+      targetDepartment,
+      targetRole,
     };
 
-    // The workspaces this broadcast may reach: the SELECTED company plus its own
-    // branches — NOT everything the sender happens to have access to. A Company
-    // Head with grants over several companies broadcasting "All Staff" into one
-    // of them must not spray the others. Branch ids are read from the Branch
-    // table rather than inferred, because company and branch ids share a single
-    // sequence and cannot be told apart by value.
-    //
-    // Access to `companyId` was already established above; a branch that the
-    // Branch table says belongs to it is therefore in scope too, whether or not
-    // the sender's grant list happens to enumerate that branch separately (it
-    // usually does not — grants list companies, and branch staff carry the branch
-    // id as their companyId).
-    const ownBranches = (await prisma.branch.findMany({ where: { companyId }, select: { id: true } })).map((x) => x.id);
-    const scope = [companyId, ...ownBranches];
-    let userIds = [];
-    let label = 'All Staff';
-    let branchId = null;
-
-    if (audience === 'all') {
-      const users = await prisma.user.findMany({
-        where: { companyId: { in: scope }, status: 'Active' },
-        select: { id: true },
-      });
-      userIds = users.map((u) => u.id);
-    } else if (audience === 'branch') {
-      branchId = idParam(b.branchId);
-      if (!branchId) return res.status(400).json({ error: 'Select a branch.' });
-      if (!canReachCompany(req, branchId)) return res.status(403).json({ error: 'Not your branch.' });
-      const branch = await prisma.branch.findUnique({ where: { id: branchId } });
-      // A branch member is either a user whose workspace IS the branch, or one
-      // explicitly scoped to it via User.branchId.
-      const users = await prisma.user.findMany({
-        where: { status: 'Active', OR: [{ companyId: branchId }, { branchId }] },
-        select: { id: true },
-      });
-      userIds = users.map((u) => u.id);
-      label = `Branch — ${branch?.branchName || branchId}`;
-    } else if (audience === 'role') {
-      const target = String(b.role || '').trim();
-      if (!target) return res.status(400).json({ error: 'Select a role.' });
-      const users = await prisma.user.findMany({
-        where: { role: target, companyId: { in: scope }, status: 'Active' },
-        select: { id: true },
-      });
-      userIds = users.map((u) => u.id);
-      label = `${target} team`;
-    } else if (audience === 'department') {
-      const dept = String(b.department || '').trim();
-      if (!dept) return res.status(400).json({ error: 'Select a department.' });
-      const emps = await prisma.employee.findMany({
-        where: { department: dept, companyId: { in: scope } },
-        select: { id: true },
-      });
-      userIds = await usersForEmployees(emps.map((e) => e.id));
-      label = `Department — ${dept}`;
-    } else if (audience === 'employee') {
-      const empId = idParam(b.employeeId);
-      if (!empId) return res.status(400).json({ error: 'Select an employee.' });
-      const emp = await prisma.employee.findUnique({ where: { id: empId }, select: { id: true, companyId: true, name: true } });
-      if (!emp) return res.status(404).json({ error: 'Employee not found.' });
-      if (!canReachCompany(req, emp.companyId)) return res.status(403).json({ error: 'Not your employee.' });
-      userIds = await usersForEmployees([emp.id]);
-      label = emp.name || `Employee ${empId}`;
-    } else {
-      return res.status(400).json({ error: `Unknown audience "${audience}".` });
-    }
-
-    userIds = [...new Set(userIds)];
-    if (!userIds.length) {
-      // Deliberately NOT a 201. Persisting rows nobody can see would show the
-      // dispatcher a success toast over a message that reached no one.
-      console.warn(`${tag} no recipients for audience=${audience} company=${companyId}`);
-      return res.status(422).json({
-        error: 'Nobody in that audience has a login yet, so the message was not sent.',
-        code: 'NO_RECIPIENTS',
-        recipients: 0,
-      });
-    }
-
-    const rows = userIds.map((userId) => ({ ...base, companyId, branchId, userId }));
+    // companyId is the workspace the recipient reads it in: the branch when one
+    // was targeted, otherwise the parent company. The bell filters on this.
+    const rows = userIds.map((userId) => ({
+      ...base,
+      companyId: targetBranchId ?? scope.companyId,
+      branchId: targetBranchId ?? null,
+      userId,
+    }));
     const result = await prisma.notification.createMany({ data: rows });
 
     // Read back what was actually committed, so the caller gets real database ids
     // rather than an optimistic guess, and so a partial write cannot read as full.
     const saved = await prisma.notification.findMany({
-      where: { type: 'broadcast', companyId, timestamp: base.timestamp },
+      where: { type: 'broadcast', userId: req.user.id, timestamp: base.timestamp },
       orderBy: { id: 'desc' },
     });
 
-    console.log(`${tag} committed audience=${audience} recipients=${result.count} company=${companyId}`);
+    console.log(`${tag} committed audience=${audience} recipients=${result.count} scope=[${targetIds}]`);
     res.status(201).json({
       created: result.count,
       recipients: result.count,
       audience: label,
       // Only what THIS caller should see in their own bell.
-      notifications: saved.filter((n) => n.userId === req.user.id),
+      notifications: saved,
     });
   } catch (error) {
     console.error(`${tag} FAILED`, error);

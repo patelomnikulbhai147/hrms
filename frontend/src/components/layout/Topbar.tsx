@@ -580,9 +580,26 @@ export const Topbar: React.FC<TopbarProps> = ({
                               )}
                             </div>
                             <div className="min-w-0">
-                              {(n as any).title && <p className={cn('text-[11px] font-bold break-words', !n.read ? 'text-white' : 'text-slate-400')}>{(n as any).title}</p>}
+                              {/* A broadcast is labelled as one and carries its
+                                  provenance, so a recipient can see who sent it
+                                  and which branch it was addressed to. Every
+                                  field is optional — rows created before these
+                                  columns existed simply render as before. */}
+                              {n.type === 'broadcast' && (
+                                <p className="text-[9px] font-extrabold text-brand-400 uppercase tracking-wider mb-0.5">📢 Broadcast</p>
+                              )}
+                              {n.title && <p className={cn('text-[11px] font-bold break-words', !n.read ? 'text-white' : 'text-slate-400')}>{n.title}</p>}
                               <p className="text-[11px] text-slate-300 leading-relaxed font-medium break-words">{n.message}</p>
-                              <p className="text-[9px] text-slate-500 mt-1 font-semibold">{relativeTime(n.timestamp)}</p>
+                              {(n.senderName || n.senderRole) && (
+                                <p className="text-[9px] text-slate-400 mt-1 font-semibold">
+                                  Sent by {n.senderName || n.senderRole}
+                                  {n.targetBranchName ? ` · ${n.targetBranchName}` : ''}
+                                </p>
+                              )}
+                              <p className="text-[9px] text-slate-500 mt-1 font-semibold flex items-center gap-1.5">
+                                {relativeTime(n.timestamp)}
+                                {!n.read && <span className="text-brand-400 font-extrabold">· Unread</span>}
+                              </p>
                             </div>
                           </div>
                           <button
