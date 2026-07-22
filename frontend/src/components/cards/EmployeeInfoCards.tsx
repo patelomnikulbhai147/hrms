@@ -15,12 +15,13 @@
 // the page. Cards render incrementally so a thousand-employee company does not
 // paint a thousand nodes at once.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Search, Wallet, CalendarCheck, Palmtree, User, AlertTriangle, RefreshCw } from 'lucide-react';
 import type { Employee } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
+import { PaginationBar } from '@/components/ui/Paginated';
 import { api } from '@/api/apiClient';
 
 interface Props {
@@ -47,174 +48,144 @@ interface Metrics {
   leave: number | null;
 }
 
-const PAGE = 24;
+/**
+ * Default page size = 20 cards, which is exactly 5 rows on the desktop 4-up
+ * grid. The grid stays responsive, so the same 20 cards are 10 rows on a
+ * 2-up tablet and 20 on a phone — the SERVER cannot know the viewport, so the
+ * page size is a card count, not a literal row count.
+ */
+const DEFAULT_LIMIT = 20;
 
-interface Sources {
-  summaries: Map<string, any>;
-  balances: Map<string, any>;
-  latestPay: Map<string, any>;
+/** Filter/paging state that survives opening a profile and coming back. */
+interface ViewState {
+  page: number; limit: number; branch: string; department: string; query: string;
 }
-type Loaded = { sources: Sources; period: { month: string; year: number } };
+const DEFAULT_VIEW: ViewState = { page: 1, limit: DEFAULT_LIMIT, branch: '', department: '', query: '' };
 
-// One in-flight/settled fetch per workspace, held OUTSIDE the component. A ref
-// would be recreated whenever the component remounts (React.StrictMode does this
-// on purpose in dev, and switching sections could too), which is precisely when
-// the duplicate calls appear. `Refresh` evicts the entry.
-const CACHE = new Map<string, Promise<Loaded>>();
+// Session-scoped so returning from an employee profile restores the exact view.
+// Tiny by design — a handful of strings and two numbers, never records.
+const viewKey = (companyId: string) => `hrms_cards_view_${companyId || 'na'}`;
+const loadView = (companyId: string): ViewState => {
+  try {
+    const raw = sessionStorage.getItem(viewKey(companyId));
+    return raw ? { ...DEFAULT_VIEW, ...JSON.parse(raw) } : { ...DEFAULT_VIEW };
+  } catch { return { ...DEFAULT_VIEW }; }
+};
+const saveView = (companyId: string, v: ViewState) => {
+  try { sessionStorage.setItem(viewKey(companyId), JSON.stringify(v)); } catch { /* private mode */ }
+};
 
-async function fetchSources(): Promise<Loaded> {
-  // Attendance for "this month". If the current calendar month has no summaries
-  // yet (attendance for it has not been posted), fall back to the most recent
-  // month that DOES have data — and label it, so a card never shows a silent
-  // zero for a month that simply has not happened yet.
-  const now = new Date();
-  const curMonth = MONTHS[now.getMonth()];
-  const curYear = now.getFullYear();
-  let sums: any[] = (await api.attendanceSummary.getAll(curMonth, curYear)) || [];
-  let period = { month: curMonth, year: curYear };
-  if (!sums.length) {
-    const all: any[] = (await api.attendanceSummary.getAll()) || [];
-    if (all.length) {
-      const latest = all.reduce((a, b) =>
-        (b.year * 100 + monthIdx(b.month)) > (a.year * 100 + monthIdx(a.month)) ? b : a);
-      period = { month: latest.month, year: latest.year };
-      sums = all.filter(s => s.month === period.month && s.year === period.year);
-    }
-  }
+/** Build a card's metrics from the records the server joined onto the row. */
+function metricsFor(row: any): Metrics {
+  const p = row.latestPayroll;
+  // "From Payroll": the cycle's own gross (basic + allowances), annualised.
+  // No payroll yet → fall back to the master's monthly gross. Employee.salary
+  // is MONTHLY, which is also how the CTC Report annualises it.
+  const ctcAnnual = p ? (num(p.basicSalary) + num(p.allowances)) * 12
+    : (num(row.salary) ? num(row.salary) * 12 : null);
+  const ctcSource: Metrics['ctcSource'] = p ? 'payroll' : (num(row.salary) ? 'master' : null);
 
-  const [bals, pays] = await Promise.all([
-    api.leaveBalances.getAll().catch(() => []),
-    api.payroll.getAll().catch(() => []),
-  ]);
+  const s = row.attendanceSummary;
+  // Days the employee was scheduled for: everything the summary accounts for.
+  // payableDays already folds in half-days, paid leave, weekly offs and
+  // holidays; absent + LWP are the unpaid remainder.
+  const scheduled = s ? num(s.payableDays) + num(s.absentDays) + num(s.lwp) : null;
 
-  // Latest payroll cycle per employee → monthly gross → annual CTC.
-  const latestPay = new Map<string, any>();
-  for (const row of (pays as any[]) || []) {
-    const k = String(row.employeeId);
-    const rank = num(row.year) * 100 + monthIdx(row.month);
-    const cur = latestPay.get(k);
-    if (!cur || rank > cur._rank) latestPay.set(k, { ...row, _rank: rank });
-  }
-  const summaries = new Map<string, any>();
-  for (const s of sums) summaries.set(String(s.employeeId), s);
-  const balances = new Map<string, any>();
-  for (const b of (bals as any[]) || []) balances.set(String(b.employeeId), b);
+  const b = row.leaveBalance;
+  const leave = b ? num(b.clBalance) + num(b.plBalance) + num(b.slBalance) : null;
 
-  return { sources: { summaries, balances, latestPay }, period };
+  return { ctcAnnual, ctcSource, present: s ? num(s.presentDays) : null, scheduled, leave };
 }
 
 export const EmployeeInfoCards: React.FC<Props> = ({ employees, activeCompanyId, onOpenProfile }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<{ month: string; year: number } | null>(null);
-  const [sources, setSources] = useState<Sources | null>(null);
 
-  const [branch, setBranch] = useState('');
-  const [department, setDepartment] = useState('');
-  const [query, setQuery] = useState('');
-  const [visible, setVisible] = useState(PAGE);
+  // One restore on mount, so a return from a profile lands on the same page with
+  // the same filters rather than resetting to page 1.
+  const [view, setView] = useState<ViewState>(() => loadView(activeCompanyId));
+  const { page, limit, branch, department, query } = view;
+  const patch = (p: Partial<ViewState>) => setView(v => ({ ...v, ...p }));
+  // Any filter change restarts at page 1 — page 7 of the old result set is
+  // meaningless against a new one.
+  const setFilter = (p: Partial<ViewState>) => patch({ ...p, page: 1 });
 
-  // ── exactly one fetch per workspace ─────────────────────────────────────────
-  // The employee list is deliberately NOT a dependency: it churns as App refreshes
-  // it, which would re-hit three list endpoints for no new information.
+  const [rows, setRows] = useState<any[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => { saveView(activeCompanyId, view); }, [activeCompanyId, view]);
+
+  // Typing must not fire a request per keystroke; everything else is immediate.
+  const [debouncedQuery, setDebouncedQuery] = useState(query);
   useEffect(() => {
-    const key = activeCompanyId || '';
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // ── the only fetch: one page of cards, metrics already joined ───────────────
+  useEffect(() => {
     let stale = false;
     setLoading(true); setError(null);
-
-    let p = CACHE.get(key);
-    if (!p) { p = fetchSources(); CACHE.set(key, p); }
-
-    p.then(r => { if (stale) return; setSources(r.sources); setPeriod(r.period); setLoading(false); })
+    api.employees.getCards({
+      page, limit, companyId: activeCompanyId,
+      search: debouncedQuery, branch, department,
+    })
+      .then((res: any) => {
+        if (stale) return;
+        setRows(Array.isArray(res?.data) ? res.data : []);
+        setTotal(res?.total || 0);
+        setTotalPages(Math.max(1, res?.totalPages || 1));
+        setPeriod(res?.period || null);
+        setLoading(false);
+      })
       .catch(e => {
-        CACHE.delete(key);              // a failed fetch must not be cached
         if (stale) return;
         setError(e?.message || 'Could not load employee information.');
         setLoading(false);
       });
-
     return () => { stale = true; };
-  }, [activeCompanyId, reloadTick]);
+  }, [activeCompanyId, page, limit, debouncedQuery, branch, department, reloadTick]);
 
-  const refresh = () => { CACHE.delete(activeCompanyId || ''); setReloadTick(t => t + 1); };
+  // The server clamps nothing for us: deleting/filtering can leave the current
+  // page beyond the end, which would render an empty grid with rows available.
+  useEffect(() => {
+    if (!loading && page > totalPages) patch({ page: totalPages });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, page, totalPages]);
 
-  // Derived at render time, so employees arriving later are picked up without refetching.
-  const metrics = useMemo(() => {
-    const m = new Map<string, Metrics>();
-    if (!sources) return m;
-    for (const e of employees) {
-      const k = String(e.id);
-      const p = sources.latestPay.get(k);
-      // "From Payroll": the cycle's own gross (basic + allowances), annualised.
-      // No payroll yet → fall back to the master's monthly gross. Employee.salary
-      // is MONTHLY (verified against live payroll rows), which is also how the
-      // CTC Report annualises it.
-      const ctcAnnual = p ? (num(p.basicSalary) + num(p.allowances)) * 12
-        : (num((e as any).salary) ? num((e as any).salary) * 12 : null);
-      const ctcSource: Metrics['ctcSource'] = p ? 'payroll' : (num((e as any).salary) ? 'master' : null);
+  const refresh = () => setReloadTick(t => t + 1);
 
-      const s = sources.summaries.get(k);
-      // Days the employee was scheduled for: everything the summary accounts for.
-      // payableDays already folds in half-days, paid leave, weekly offs and
-      // holidays; absent + LWP are the unpaid remainder.
-      const scheduled = s ? num(s.payableDays) + num(s.absentDays) + num(s.lwp) : null;
-
-      const b = sources.balances.get(k);
-      const leave = b ? num(b.clBalance) + num(b.plBalance) + num(b.slBalance) : null;
-
-      m.set(k, { ctcAnnual, ctcSource, present: s ? num(s.presentDays) : null, scheduled, leave });
-    }
-    return m;
-  }, [employees, sources]);
-
+  // Filter dropdown options come from the roster the page already holds — no
+  // extra request, and the list of branches/departments does not paginate.
   const branches = useMemo(() => Array.from(new Set(employees.map(e => (e as any).branchLocation || (e as any).location).filter(Boolean))).sort(), [employees]);
   const departments = useMemo(() => Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort(), [employees]);
 
-  const filtered = useMemo(() => employees.filter(e => {
-    if (branch && (((e as any).branchLocation || (e as any).location) !== branch)) return false;
-    if (department && e.department !== department) return false;
-    if (!query) return true;
-    const q = query.toLowerCase();
-    return (e.name || '').toLowerCase().includes(q)
-      || (e.employeeId || '').toLowerCase().includes(q)
-      || (e.designation || '').toLowerCase().includes(q);
-  }), [employees, branch, department, query]);
+  const metrics = useMemo(() => {
+    const m = new Map<string, Metrics>();
+    for (const row of rows) m.set(String(row.id), metricsFor(row));
+    return m;
+  }, [rows]);
 
-  useEffect(() => { setVisible(PAGE); }, [branch, department, query]);
-
-  // Lazy render: reveal the next page when the sentinel scrolls into view.
-  // `loading` MUST be a dependency — while it is true the grid (and the sentinel)
-  // are not mounted, so the observer would attach to nothing and never re-attach.
-  const sentinel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = sentinel.current;
-    if (loading || !el || visible >= filtered.length) return;
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) setVisible(v => Math.min(v + PAGE, filtered.length));
-    }, { rootMargin: '240px' });
-    io.observe(el);
-    return () => io.disconnect();
-  }, [visible, filtered.length, loading]);
-
-  const shown = filtered.slice(0, visible);
 
   return (
     <div className="space-y-3">
       {/* Filters */}
       <Card>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-          <Select label="Branch" value={branch} onChange={e => setBranch(e.target.value)}
+          <Select label="Branch" value={branch} onChange={e => setFilter({ branch: e.target.value })}
             options={[{ value: '', label: 'All branches' }, ...branches.map(b => ({ value: b, label: b }))]} />
-          <Select label="Department" value={department} onChange={e => setDepartment(e.target.value)}
+          <Select label="Department" value={department} onChange={e => setFilter({ department: e.target.value })}
             options={[{ value: '', label: 'All departments' }, ...departments.map(d => ({ value: d, label: d }))]} />
           <div className="md:col-span-2">
             <Input label="Employee" icon={<Search size={14} />} placeholder="Search by name, employee ID or designation…"
-              value={query} onChange={e => setQuery(e.target.value)} />
+              value={query} onChange={e => setFilter({ query: e.target.value })} />
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-          <span>Showing <b className="text-slate-700">{shown.length}</b> of {filtered.length} employees</span>
+          <span>Showing <b className="text-slate-700">{rows.length}</b> of {total} employees</span>
           <div className="flex items-center gap-3">
             {period && (
               <span title="Attendance is shown for the most recent month that has attendance data.">
@@ -244,21 +215,26 @@ export const EmployeeInfoCards: React.FC<Props> = ({ employees, activeCompanyId,
             <Card key={i}><div className="h-[268px] animate-pulse rounded-xl bg-slate-100" /></Card>
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : total === 0 ? (
         <Card><div className="py-16 text-center text-sm text-slate-400">No employees match these filters.</div></Card>
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {shown.map(e => <InfoCard key={String(e.id)} employee={e} m={metrics.get(String(e.id))} onOpenProfile={onOpenProfile} />)}
+            {rows.map(e => <InfoCard key={String(e.id)} employee={e} m={metrics.get(String(e.id))} onOpenProfile={onOpenProfile} />)}
           </div>
-          <div ref={sentinel} />
-          {visible < filtered.length && (
-            <div className="flex justify-center pt-1">
-              <Button variant="outline" size="sm" onClick={() => setVisible(v => Math.min(v + PAGE, filtered.length))}>
-                Load {Math.min(PAGE, filtered.length - visible)} more ({filtered.length - visible} remaining)
-              </Button>
-            </div>
-          )}
+          {/* The shared bar, driven by the server's page metadata. Always shown
+              (even on a single page) so the rows-per-page control stays reachable. */}
+          <Card padding={false} className="overflow-hidden">
+            <PaginationBar
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={limit}
+              label="employees"
+              onChange={p => patch({ page: p })}
+              onPageSizeChange={size => patch({ limit: size, page: 1 })}
+            />
+          </Card>
         </>
       )}
     </div>

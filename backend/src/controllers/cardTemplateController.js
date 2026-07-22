@@ -6,7 +6,15 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { canView, canEdit, canManage, actorOf, readCompanyId, scopedWhere, isSuperAdmin } = require('../utils/cardScope');
 
-const MAX_SPEC = 400000; // guard against oversized specs (embedded images belong on the employee, not here)
+// Templates may now carry their own uploaded artwork (a company's own card
+// design), so the old 400 KB ceiling — written when images were assumed to live
+// on the employee record — would reject every custom upload with a 413.
+//
+// 4 MB comfortably fits a front and a back image after the client's downscale
+// (~1.2 MB each) plus the element list, while still refusing a template heavy
+// enough to bog down the gallery, which loads every spec to draw its thumbnails.
+// The database itself is not the constraint (max_allowed_packet is 512 MB here).
+const MAX_SPEC = 4_000_000;
 
 function shape(t) {
   return {

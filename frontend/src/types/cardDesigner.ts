@@ -50,6 +50,17 @@ export interface CardElement {
   z?: number;
   /** Static text for `text` elements, or a label prefix for dynamic fields. */
   text?: string;
+  /**
+   * Artwork carried BY THE TEMPLATE (data URL). Used by `backgroundImage` and
+   * `watermark` so a company can upload one design and have every employee's
+   * card render on it.
+   *
+   * It lives on the element rather than the template so front and back can carry
+   * different artwork with no extra model, and so the existing per-employee
+   * `cardBackground` remains the fallback — uploading a design never takes away
+   * a background an employee record already supplies.
+   */
+  src?: string;
   /** Optional label shown before a dynamic value, e.g. "Blood Group". */
   label?: boolean;
   style?: CardElementStyle;

@@ -36,8 +36,17 @@ export function bindField(el: CardElement, ctx: BindContext): BoundValue {
     case 'companyName': return text(b.companyName || 'Company Name');
     case 'tagline': return text(b.tagline || '');
     case 'companyLogo': return isDataImg(b.logo) ? { kind: 'image', src: b.logo } : { kind: 'none', initials: initialsOf(b.companyName) };
-    case 'watermark': return isDataImg(b.watermarkImage) ? { kind: 'image', src: b.watermarkImage } : (isDataImg(b.logo) ? { kind: 'image', src: b.logo } : { kind: 'none' });
-    case 'backgroundImage': { const bg = e.cardBackground; return isDataImg(bg) ? { kind: 'image', src: bg } : { kind: 'none' }; }
+    // Template artwork (el.src) wins over the per-employee/company image, so an
+    // uploaded company design renders identically for every employee. Falling
+    // back keeps every existing template working untouched.
+    case 'watermark': {
+      const wm = el.src || b.watermarkImage || b.logo;
+      return isDataImg(wm) ? { kind: 'image', src: wm } : { kind: 'none' };
+    }
+    case 'backgroundImage': {
+      const bg = el.src || e.cardBackground;
+      return isDataImg(bg) ? { kind: 'image', src: bg } : { kind: 'none' };
+    }
 
     case 'photo': {
       const src = e.photoUpload || (isDataImg(e.avatar) ? e.avatar : (isDataImg(e.photo) ? e.photo : ''));

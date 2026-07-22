@@ -115,7 +115,11 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'finance-compliance', label: 'Finance & Compliance', icon: <Landmark size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', anyPermission: ['loans', 'compliance'], inMatrix: false, beta: true },
   { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true, hideInSidebar: true },
   { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
-  { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
+  // Label only — the id, route and `documents` permission are unchanged, so the
+  // permission matrix, saved links and API calls are unaffected. "Employee
+  // Documents" distinguishes it from Finance & Compliance ▸ Documents, which is
+  // a separate statutory-document repository.
+  { id: 'documents', label: 'Employee Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
   // Custom Report Builder — drag & drop report designer. Shares the `reports`
   // permission (no separate matrix row — inMatrix:false), like Employee Cards

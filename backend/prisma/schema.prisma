@@ -2325,6 +2325,29 @@ model Invoice {
   billToGstin   String?
   billToAddress String?  @db.Text
   billToShipAddress String? @db.Text // ship-to snapshot (from client master; optional, default-hidden)
+
+  // ── Dispatch & Destination (GST invoice logistics) ────────────────────────
+  // Scalar columns rather than a JSON blob: vehicleNumber / lrNumber are exactly
+  // what gets reconciled against e-way bills, and JSON would make that
+  // unqueryable. All nullable — a service invoice simply leaves them blank and
+  // the sections then render nothing.
+  // The DELIVERY ADDRESS deliberately reuses billToShipAddress above instead of
+  // adding a second address column that could disagree with it.
+  dispatchFrom      String? @db.VarChar(160) // warehouse / branch the goods leave from
+  dispatchAddress   String? @db.Text
+  dispatchCity      String? @db.VarChar(100)
+  dispatchState     String? @db.VarChar(100)
+  dispatchPincode   String? @db.VarChar(12)
+  dispatchDate      String? @db.VarChar(10)  // yyyy-MM-dd, same convention as invoiceDate
+  dispatchThrough   String? @db.VarChar(160) // courier / transporter
+  vehicleNumber     String? @db.VarChar(40)
+  lrNumber          String? @db.VarChar(60)  // LR / AWB
+
+  shipToName        String? @db.VarChar(160)
+  shipToCity        String? @db.VarChar(100)
+  shipToState       String? @db.VarChar(100)
+  shipToPincode     String? @db.VarChar(12)
+  shipToCountry     String? @db.VarChar(100)
   billToEmail   String?
   billToPhone   String?
   billToState   String?

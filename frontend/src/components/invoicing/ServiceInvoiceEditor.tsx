@@ -408,6 +408,9 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, company
                   style={{ width: A4_W, height: docH, border: 0, background: '#fff' }} />
               : <ServiceInvoiceDocument doc={doc} onChange={patch} company={issuerCompany} settings={settings}
                   intraState={intraState} readOnly={!canEdit} override={override} onOverrideChange={setOverride}
+                  // Template switch: businesses whose invoice format has no
+                  // consignment (pure services) turn the section off in Settings.
+                  showLogistics={settings?.showLogistics !== false}
                   customers={customers} products={products}
                   onPickCustomer={canEdit ? pickCustomer : undefined}
                   onPickProduct={canEdit ? applyProduct : undefined}

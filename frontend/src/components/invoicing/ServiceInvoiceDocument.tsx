@@ -17,8 +17,30 @@ import { InvoicePicker, type PickerOption } from './InvoicePicker';
 import {
   SERVICE_INVOICE_CSS, computeInvoice, resolveIssuer, amountInWords, inr,
   outstandingOf, blankServiceItem, r2, NOT_CONFIGURED, NO_SIGNATURE,
-  BANK_FIELDS, parseBank, serialiseBank, type ServiceItem,
+  dispatchRows, destinationRows, hasLogistics, type ServiceItem,
 } from './serviceInvoice';
+
+// The editable Dispatch / Destination fields, in the order they appear.
+// [docKey, label, placeholder]
+const DISPATCH_FIELDS: [string, string, string][] = [
+  ['dispatchFrom', 'Dispatch From', 'Warehouse / branch'],
+  ['dispatchAddress', 'Address', 'Street address'],
+  ['dispatchCity', 'City', 'City'],
+  ['dispatchState', 'State', 'State'],
+  ['dispatchPincode', 'PIN Code', '380001'],
+  ['dispatchDate', 'Dispatch Date', 'yyyy-mm-dd'],
+  ['dispatchThrough', 'Dispatched Through', 'Courier / transporter'],
+  ['vehicleNumber', 'Vehicle No', 'Optional'],
+  ['lrNumber', 'LR / AWB No', 'Optional'],
+];
+const DESTINATION_FIELDS: [string, string, string][] = [
+  ['shipToName', 'Ship To', 'Consignee name'],
+  ['billToShipAddress', 'Delivery Address', 'Defaults to billing address'],
+  ['shipToCity', 'City', 'City'],
+  ['shipToState', 'State', 'State'],
+  ['shipToPincode', 'PIN Code', '400001'],
+  ['shipToCountry', 'Country', 'India'],
+];
 
 // Inject the shared stylesheet once — the same string the print document uses.
 let injected = false;
@@ -75,6 +97,13 @@ export interface ServiceInvoiceDoc {
   placeOfSupply?: string; paymentTerms?: string; paymentMode?: string;
   notes?: string; termsConditions?: string; bankDetails?: string; upiId?: string;
   amountPaid?: number;
+  // Dispatch & Destination. billToShipAddress doubles as the delivery address.
+  billToShipAddress?: string;
+  dispatchFrom?: string; dispatchAddress?: string; dispatchCity?: string;
+  dispatchState?: string; dispatchPincode?: string; dispatchDate?: string;
+  dispatchThrough?: string; vehicleNumber?: string; lrNumber?: string;
+  shipToName?: string; shipToCity?: string; shipToState?: string;
+  shipToPincode?: string; shipToCountry?: string;
   items: ServiceItem[];
 }
 
@@ -87,6 +116,8 @@ interface Props {
   intraState: boolean;
   readOnly?: boolean;
   qrDataUrl?: string;
+  /** Template switch for the Dispatch & Destination section. Defaults to on. */
+  showLogistics?: boolean;
   /** Per-invoice asset override {logo,signature,stamp,qr} — this invoice only. */
   override?: BrandingOverride;
   onOverrideChange?: (next: BrandingOverride) => void;
@@ -185,9 +216,15 @@ const AssetSlot: React.FC<{
 
 export const ServiceInvoiceDocument: React.FC<Props> = ({
   doc, onChange, company, settings, intraState, readOnly, qrDataUrl, override, onOverrideChange,
+  showLogistics = true,
   customers, products, onPickCustomer, onPickProduct, onCreateCustomer, onCreateProduct,
 }) => {
   useServiceInvoiceCss();
+
+  // Read-only rows come from the print renderer's own descriptions, so preview
+  // and PDF always show the same fields in the same order.
+  const logisticsDispatch = useMemo(() => dispatchRows(doc), [doc]);
+  const logisticsDestination = useMemo(() => destinationRows(doc), [doc]);
 
   // ── Picker options ─────────────────────────────────────────────────────────
   // `search` is pre-lowercased and pre-joined once per list change, so filtering
@@ -222,10 +259,6 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({
   // Bank details: edited as fields, stored as the labelled block the PDF prints.
   // Placeholders show the Company Profile values, so leaving a field blank means
   // "keep using the profile" rather than "blank it out".
-  const bank = useMemo(() => parseBank(doc.bankDetails), [doc.bankDetails]);
-  const bankDefaults = useMemo(() => parseBank(iss.bankDetails), [iss.bankDetails]);
-  const setBankField = (label: string, v: string) =>
-    set('bankDetails', serialiseBank({ ...bank, [label]: v }));
 
   const slot = (k: AssetKey, src: string, className?: string, boxStyle?: React.CSSProperties) => (
     <AssetSlot kind={k} src={src} className={className} boxStyle={boxStyle} readOnly={readOnly}
@@ -366,6 +399,44 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({
           </div>
         </div>
 
+        {/* ── DISPATCH & DESTINATION ──
+            Editable here, read-only in preview. In read-only mode the rows come
+            from the SAME dispatchRows/destinationRows the print document uses,
+            so the on-screen invoice and the PDF can never list different fields.
+            The whole block hides when the template switches it off, and in
+            read-only mode it also hides when there is nothing to show — a
+            services business that never ships sees no change. */}
+        {showLogistics && (readOnly ? hasLogistics(doc) : true) && (
+          <div className="si-bill">
+            <div className="si-bill-l">
+              <div className="si-lbl">Dispatch Details</div>
+              {readOnly
+                ? logisticsDispatch.map((r) => (
+                    <div className="si-kv" key={r.label}><span style={{ minWidth: 104 }}>{r.label}</span><span style={{ whiteSpace: 'pre-wrap' }}>{r.value}</span></div>
+                  ))
+                : DISPATCH_FIELDS.map(([key, label, ph]) => (
+                    <div className="si-kv" key={key}>
+                      <span style={{ minWidth: 104 }}>{label}</span>
+                      <Txt value={(doc as any)[key]} onChange={(v) => set(key as any, v)} placeholder={ph} />
+                    </div>
+                  ))}
+            </div>
+            <div className="si-bill-r">
+              <div className="si-lbl">Destination Details</div>
+              {readOnly
+                ? logisticsDestination.map((r) => (
+                    <div className="si-kv" key={r.label}><span style={{ minWidth: 104 }}>{r.label}</span><span style={{ whiteSpace: 'pre-wrap' }}>{r.value}</span></div>
+                  ))
+                : DESTINATION_FIELDS.map(([key, label, ph]) => (
+                    <div className="si-kv" key={key}>
+                      <span style={{ minWidth: 104 }}>{label}</span>
+                      <Txt value={(doc as any)[key]} onChange={(v) => set(key as any, v)} placeholder={ph} />
+                    </div>
+                  ))}
+            </div>
+          </div>
+        )}
+
         {/* ── ITEMS ── */}
         <table className="si-items">
           <thead><tr>
@@ -456,36 +527,11 @@ export const ServiceInvoiceDocument: React.FC<Props> = ({
         {/* ── AMOUNT IN WORDS (auto) ── */}
         <div className="si-words"><b>Amount in Words</b><br />{amountInWords(t.grandTotal)}</div>
 
-        {/* ── BANK / PAYMENT ── */}
-        <div className="si-bank">
-          <div className="si-bank-l">
-            <div className="si-lbl">Bank Details</div>
-            {/* Structured fields that serialise to the labelled block the PDF
-                prints. All blank → the live Company Profile bank block. */}
-            {readOnly
-              ? (doc.bankDetails || iss.bankDetails
-                  ? <div className="si-terms" style={{ whiteSpace: 'pre-wrap' }}>{doc.bankDetails || iss.bankDetails}</div>
-                  : <div className="si-terms si-missing">{NOT_CONFIGURED}</div>)
-              : BANK_FIELDS.map((label) => (
-                  <div className="si-kv" key={label}>
-                    <span style={{ minWidth: 84 }}>{label}</span>
-                    <Txt value={bank[label] || ''} onChange={(v) => setBankField(label, v)} placeholder={bankDefaults[label] || '—'} />
-                  </div>
-                ))}
-          </div>
-          <div className="si-bank-r">
-            <div style={{ flex: 1 }}>
-              <div className="si-lbl">Payment</div>
-              <div className="si-kv"><span>Mode</span><Txt value={doc.paymentMode} onChange={(v) => set('paymentMode', v)} placeholder="NEFT / UPI / Cheque" readOnly={readOnly} /></div>
-              <div className="si-kv"><span>UPI ID</span><Txt value={doc.upiId || iss.upiId} onChange={(v) => set('upiId', v)} placeholder="name@bank" readOnly={readOnly} /></div>
-            </div>
-            <div className="si-qr">
-              {(qrDataUrl || iss.qr)
-                ? slot('qr', qrDataUrl || iss.qr, undefined, { width: '100%', height: '100%' })
-                : (readOnly ? <span className="si-missing">Scan &amp;<br />Pay QR</span> : slot('qr', ''))}
-            </div>
-          </div>
-        </div>
+        {/* Payment Details (bank block, payment mode, UPI ID, QR panel) was
+            removed from the invoice layout — on screen, in print, in the PDF and
+            in the emailed copy. The editor and serviceInvoice.ts render the same
+            markup, so both had to drop it together or preview would stop
+            matching print. */}
 
         {/* ── TERMS + SIGNATORY ── */}
         <div className="si-end">

@@ -165,6 +165,9 @@ const editIdFromPath = (): string | null => {
   return m ? decodeURIComponent(m[1]) : null;
 };
 
+// Shown when a user clicks a registration step they have not yet earned.
+const LOCKED_STEP_MESSAGE = 'Please complete and save the current step before proceeding.';
+
 const statusOptions: EmployeeStatus[] = ['Active', 'Archived', 'On Leave'];
 const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
 const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
@@ -974,6 +977,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     setErrors({});
     setWizardNominees([]);
     setActiveTab('personal');
+    setAddStepsSaved([]);          // a fresh wizard starts locked at step 1
     setReOnboardSource(null);
     setAddOpen(true);
   };
@@ -983,6 +987,7 @@ export const Employees: React.FC<EmployeesProps> = ({
   const closeAddWizard = () => {
     setAddOpen(false);
     setReOnboardSource(null);
+    setAddStepsSaved([]);
   };
 
   // ── Re-onboard a PREVIOUS employee ───────────────────────────────────────────
@@ -1027,6 +1032,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     setErrors({});
     setWizardNominees([]);
     setActiveTab('personal');
+    setAddStepsSaved([]);          // re-onboarding walks the same gated steps
     setReOnboardSource(emp);
     setViewEmp(null);
     setAddOpen(true);
@@ -1159,6 +1165,43 @@ export const Employees: React.FC<EmployeesProps> = ({
     setTimeout(() => focusable?.focus(), 250);
   };
 
+  // ── Sequential step lock ────────────────────────────────────────────────
+  // Steps the user has confirmed with "Save & Continue". Confirmation alone is
+  // not completion: a step counts as complete only while it ALSO still passes
+  // its own validation, so going back and emptying a required field re-locks
+  // every later step by itself.
+  const [addStepsSaved, setAddStepsSaved] = useState<string[]>([]);
+
+  const isAddStepComplete = useCallback((step: string) => (
+    addStepsSaved.includes(step) && Object.keys(validateAddSection(step)).length === 0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [addStepsSaved, form, isBranchWorkspace]);
+
+  // Step 1 is always open. Every other step needs all of its predecessors done.
+  const isAddStepUnlocked = useCallback((step: string) => {
+    const idx = ADD_STEPS.indexOf(step as any);
+    if (idx <= 0) return true;
+    return ADD_STEPS.slice(0, idx).every(isAddStepComplete);
+  }, [isAddStepComplete]);
+
+  // Clicking a locked step must not navigate — it explains why and stays put.
+  const goToAddStep = (step: typeof ADD_STEPS[number]) => {
+    if (!isAddStepUnlocked(step)) { ui.toast.warning(LOCKED_STEP_MESSAGE); return; }
+    setActiveTab(step);
+    setErrors({});
+  };
+
+  // If the active step ever becomes unreachable (an earlier step was corrected
+  // into an invalid state), fall back to the first incomplete step rather than
+  // leaving the user on a screen they are no longer entitled to.
+  useEffect(() => {
+    if (!addOpen) return;
+    if (isAddStepUnlocked(activeTab)) return;
+    const firstIncomplete = ADD_STEPS.find(s => !isAddStepComplete(s)) || ADD_STEPS[0];
+    setActiveTab(firstIncomplete);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addOpen, activeTab, isAddStepUnlocked, isAddStepComplete]);
+
   // Advance a step. Routed through the gate, so a click on the blocked button
   // reveals what is missing and focuses it instead of silently doing nothing.
   const handleSaveContinue = () => {
@@ -1167,7 +1210,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     addGate.attemptSubmit(() => {
       setErrors({});
       addGate.reset();
-      setStepMsg(`${ADD_STEP_LABELS[activeTab]} saved — continuing to ${ADD_STEP_LABELS[ADD_STEPS[idx + 1]]}.`);
+      setAddStepsSaved(prev => (prev.includes(activeTab) ? prev : [...prev, activeTab]));
+      setStepMsg(`${ADD_STEP_LABELS[activeTab]} completed — continuing to ${ADD_STEP_LABELS[ADD_STEPS[idx + 1]]}.`);
       setTimeout(() => setStepMsg(''), 2500);
       setActiveTab(ADD_STEPS[idx + 1]);
     });
@@ -3863,8 +3907,12 @@ export const Employees: React.FC<EmployeesProps> = ({
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
+              {/* Back is routed through the same gate as the step tabs. It is
+                  normally allowed (the previous step must be complete to have
+                  got here), but if that step was since invalidated this refuses
+                  rather than dropping the user onto a locked screen. */}
               {activeTab !== 'personal' && (
-                <Button variant="outline" onClick={() => { const i = ADD_STEPS.indexOf(activeTab as any); if (i > 0) setActiveTab(ADD_STEPS[i - 1]); }}>← Back</Button>
+                <Button variant="outline" onClick={() => { const i = ADD_STEPS.indexOf(activeTab as any); if (i > 0) goToAddStep(ADD_STEPS[i - 1]); }}>← Back</Button>
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -3905,15 +3953,39 @@ export const Employees: React.FC<EmployeesProps> = ({
           {stepMsg && (
             <div className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ {stepMsg}</div>
           )}
-          {/* Tabs header in dialog */}
-          <div className="flex border-b border-gray-200 gap-3 text-xs">
-            <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
-            <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
-            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
-            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
-            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
-            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
+          {/* ── Step navigation ─────────────────────────────────────────────
+              Strictly sequential. A step is reachable only once EVERY earlier
+              step is complete; a completed step stays reachable so it can be
+              reviewed and corrected. Because completion is derived (saved AND
+              still valid), correcting an early step into an invalid state
+              re-locks everything after it automatically — there is no separate
+              invalidation cascade to keep in sync. */}
+          <div className="flex flex-wrap border-b border-gray-200 gap-x-3 gap-y-1 text-xs">
+            {ADD_STEPS.map((s, i) => {
+              const done = isAddStepComplete(s);
+              const unlocked = isAddStepUnlocked(s);
+              const current = activeTab === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => goToAddStep(s)}
+                  aria-current={current ? 'step' : undefined}
+                  aria-disabled={!unlocked}
+                  title={unlocked ? undefined : LOCKED_STEP_MESSAGE}
+                  className={`pb-1.5 font-bold transition inline-flex items-center gap-1 ${
+                    current ? 'border-b-2 border-brand-600 text-brand-600'
+                      : !unlocked ? 'text-slate-300 cursor-not-allowed'
+                      : done ? 'text-emerald-600 hover:text-emerald-700'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {!unlocked && <Lock size={11} className="shrink-0" />}
+                  {unlocked && done && !current && <CheckCircle2 size={11} className="shrink-0" />}
+                  {i + 1}. {ADD_STEP_LABELS[s]}
+                </button>
+              );
+            })}
           </div>
 
           {/* Validation summary — lists this step's missing/invalid fields; click to jump */}

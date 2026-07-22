@@ -42,7 +42,9 @@ export function renderInvoiceHtml(
       ? invoiceDocHtml(inv, company, canvasDesignFromLayout(layout), opts)
       : canvasDocHtml(inv, company, layout, opts);
   }
-  return serviceInvoiceHtml(inv, company, settings, opts);
+  // The Dispatch & Destination switch lives with the other template settings, so
+  // print / PDF / email honour it exactly as the on-screen document does.
+  return serviceInvoiceHtml(inv, company, settings, { ...opts, showLogistics: settings?.showLogistics !== false });
 }
 
 /**

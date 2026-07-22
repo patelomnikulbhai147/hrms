@@ -86,7 +86,7 @@ const pageTitles: Record<PageId, string> = {
   attendance: 'Attendance',
   'attendance-integration': 'Attendance API Integration',
   'attendance-sync': 'Attendance Synchronization',
-  documents: 'Documents',
+  documents: 'Employee Documents',
   reports: 'Reports',
   'custom-report-builder': 'Custom Report Builder',
   settings: 'Settings',
@@ -775,7 +775,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     };
     fetchNotifs();
     const t = setInterval(fetchNotifs, 20000);
-    return () => { alive = false; clearInterval(t); };
+    // Anything that creates notifications (e.g. dispatching a broadcast) fires
+    // this so the bell updates at once rather than up to 20s later.
+    window.addEventListener('hrms:notifications-changed', fetchNotifs);
+    return () => {
+      alive = false;
+      clearInterval(t);
+      window.removeEventListener('hrms:notifications-changed', fetchNotifs);
+    };
   }, [isAuthenticated, activeCompanyId]);
 
   // Real-time Super Admin KPI sync: whenever companies or employees change

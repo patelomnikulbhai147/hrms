@@ -131,9 +131,12 @@ export const FIELD_SPECS: Record<FieldType, FieldSpec> = {
     validate: (r) => isBlank(r) ? OK : (/^[0-9]{12}$/.test(r) ? OK : err('UAN must be exactly 12 digits.')),
   },
   esic: {
-    label: 'ESIC Number', example: '31000123450001234', inputMode: 'numeric',
-    normalize: (v) => digits(v).slice(0, 17), format: identity,
-    validate: (r) => isBlank(r) ? OK : (/^[0-9]{17}$/.test(r) ? OK : err('ESIC number must be exactly 17 digits.')),
+    // The ESIC **IP number** is 10 digits. 17 digits is the challan number — a
+    // different identifier — and requiring it made 827 of 828 production employee
+    // records unsaveable. Mirrored in backend/src/utils/fieldValidators.js.
+    label: 'ESIC IP Number', example: '3100012345', inputMode: 'numeric',
+    normalize: (v) => digits(v).slice(0, 10), format: identity,
+    validate: (r) => isBlank(r) ? OK : (/^[0-9]{10}$/.test(r) ? OK : err('ESIC IP number must be exactly 10 digits.')),
   },
   pf: {
     label: 'PF Number', example: 'GJAHM12345670000012345', inputMode: 'text',

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Search, UserX, ChevronRight, PartyPopper } from 'lucide-react';
 import type { Employee, AttendanceRecord, LeaveRequest } from '@/types';
 import { api } from '@/api/apiClient';
+import { isAtWork, isNonWorkingDay } from '@/utils/attendanceStatus';
 
 /**
  * TodaysAbsentEmployees — a single, live, actionable widget that lets a Company
@@ -36,20 +37,18 @@ interface Props {
   onNavigate: (page: any) => void;
 }
 
-type Category = 'Absent' | 'Leave' | 'Half Day' | 'Unknown';
+type Category = 'Present' | 'Absent' | 'Leave' | 'Half Day' | 'Unknown';
 
-const PRESENT_STATUSES = ['Present', 'Work From Home', 'On Duty'];
-// Shift-specific "at work" outcomes the attendance engine may assign once a
-// punch arrives (Late / Early Out / Late Present …). They are recognised, never
-// redefined — the engine remains the only thing that decides them.
-const AT_WORK = /\b(late|early\s*out|early\s*going|on\s*duty|overtime)\b/i;
 const CAT: Record<Category, { badge: string; dot: string; order: number }> = {
   'Absent':   { badge: 'bg-rose-50 text-rose-600 ring-rose-200',      dot: 'bg-rose-500',   order: 0 },
   'Leave':    { badge: 'bg-orange-50 text-orange-600 ring-orange-200', dot: 'bg-orange-500', order: 1 },
   'Half Day': { badge: 'bg-yellow-50 text-yellow-700 ring-yellow-200', dot: 'bg-yellow-500', order: 2 },
   'Unknown':  { badge: 'bg-slate-100 text-slate-600 ring-slate-200',  dot: 'bg-slate-400',  order: 3 },
+  // Sorted LAST on purpose: under "All" the people who need attention still come
+  // first, so adding Present did not bury the absentees this widget exists for.
+  'Present':  { badge: 'bg-emerald-50 text-emerald-600 ring-emerald-200', dot: 'bg-emerald-500', order: 4 },
 };
-const FILTERS = ['All', 'Absent', 'Leave', 'Half Day'] as const;
+const FILTERS = ['All', 'Present', 'Absent', 'Leave', 'Half Day'] as const;
 const PAGE = 8;
 
 interface Row {
@@ -123,9 +122,11 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
       let reason = '';
       if (rec) {
         const st = String(rec.status);
-        if (PRESENT_STATUSES.includes(st) || AT_WORK.test(st)) return; // at work → not absent
-        if (st === 'Weekly Off' || st === 'Holiday') return; // legitimate day off
-        if (st === 'Absent') { category = 'Absent'; reason = 'Marked absent'; }
+        // At work. The engine's own status is shown verbatim (Present / Late /
+        // On Duty / …) — recognised, never redefined.
+        if (isAtWork(st)) { category = 'Present'; reason = st; }
+        else if (isNonWorkingDay(st)) return; // legitimate day off — no attendance state today
+        else if (st === 'Absent') { category = 'Absent'; reason = 'Marked absent'; }
         else if (st === 'Leave') { category = 'Leave'; reason = rec.leaveType || approvedLeave?.leaveType ? `${rec.leaveType || approvedLeave?.leaveType} Leave` : 'On leave'; }
         else if (st === 'Half Day') { category = 'Half Day'; reason = 'Half day'; }
         else { category = 'Unknown'; reason = st; }
@@ -157,22 +158,39 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
     );
   }, [employees, todayRecords, leaves, todayStr]);
 
-  // Present = employees the attendance engine has actually marked as at work
-  // today (its own statuses, read as-is — nothing is reclassified).
-  const presentCount = useMemo(() => employees.filter(emp => {
-    if (emp.status !== 'Active' && emp.status !== 'On Leave') return false;
-    const rec = todayRecords.get(emp.id);
-    if (!rec) return false;
-    const st = String(rec.status);
-    return PRESENT_STATUSES.includes(st) || AT_WORK.test(st);
-  }).length, [employees, todayRecords]);
+  /**
+   * THE single count derivation. The summary cards, the filter chips and the
+   * list are all read from `rows`, so a chip can never disagree with the card
+   * above it — there is nothing to keep in sync because there is only one
+   * calculation. Nothing here is hardcoded; every number is a tally of the rows
+   * the attendance engine's own statuses produced.
+   *
+   * `total` is everyone with an attendance state today. Employees on Weekly Off
+   * or Holiday are excluded (they are not expected at work), so on those days
+   * `total` is legitimately smaller than the headcount.
+   */
+  const summary = useMemo(() => {
+    const by = (c: Category) => rows.filter(r => r.category === c).length;
+    return {
+      total: rows.length,
+      present: by('Present'),
+      absent: by('Absent'),
+      leave: by('Leave'),
+      halfDay: by('Half Day'),
+    };
+  }, [rows]);
 
-  const summary = useMemo(() => ({
-    present: presentCount,
-    absent: rows.filter(r => r.category === 'Absent').length,
-    leave: rows.filter(r => r.category === 'Leave').length,
-    halfDay: rows.filter(r => r.category === 'Half Day').length,
-  }), [rows, presentCount]);
+  /** Drives the "everyone is in" empty state — Present must not suppress it. */
+  const notAtWork = summary.absent + summary.leave + summary.halfDay;
+
+  // Count shown inside each chip.
+  const filterCounts: Record<(typeof FILTERS)[number], number> = {
+    'All': summary.total,
+    'Present': summary.present,
+    'Absent': summary.absent,
+    'Leave': summary.leave,
+    'Half Day': summary.halfDay,
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -217,7 +235,7 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
         </button>
       </div>
 
-      {rows.length === 0 ? (
+      {notAtWork === 0 ? (
         /* Empty state — everyone present */
         <div className="flex flex-col items-center justify-center text-center py-10">
           <PartyPopper size={30} className="text-emerald-500 mb-3" />
@@ -252,11 +270,17 @@ export const TodaysAbsentEmployees: React.FC<Props> = ({ employees, attendance, 
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`shrink-0 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                  aria-pressed={filter === f}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold cursor-pointer transition-colors ${
                     filter === f ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >
                   {f}
+                  {/* Live tally from the same `rows` the cards above are built
+                      from, so the two can never drift apart. */}
+                  <span className={`tabular-nums ${filter === f ? 'text-white/80' : 'text-slate-400'}`}>
+                    ({filterCounts[f]})
+                  </span>
                 </button>
               ))}
             </div>

@@ -367,25 +367,18 @@ export function invoiceDocHtml(inv: any, company: any, designIn?: any, opts: Ren
   const gridInner = [billTo, shipTo, payment].filter(Boolean).join('');
 
   // ── Footer blocks ──
-  // Payment Information (Mode + UPI) sits directly below Bank Details, matching
-  // the invoice layout convention. Fully data-gated: each row only appears when
-  // its value exists, and the whole block is omitted when both are blank.
-  const paymentInfoFooter = payRows.has ? `<h4 class="muted" style="margin-top:8px">Payment Information</h4>`
-    + (payRows.mode ? `<div class="muted">Payment Mode: ${esc(payRows.mode)}</div>` : '')
-    + (payRows.upi ? `<div class="muted">UPI ID: ${esc(payRows.upi)}</div>` : '') : '';
+  // Payment Details (Bank Details + Payment Mode/UPI + the pay QR) were removed
+  // from the invoice layout. Notes and Terms now start at the top of the footer
+  // and take the freed width, so nothing is left holding empty space.
   const footLeft = [
-    d.footer.showBank && inv.bankDetails ? `<h4 class="muted">Bank Details</h4><div class="muted">${esc(inv.bankDetails).replace(/\n/g, '<br>')}</div>` : '',
-    paymentInfoFooter,
-    d.footer.showNotes && inv.notes ? `<div class="muted" style="margin-top:8px"><b>Notes:</b> ${esc(inv.notes)}</div>` : '',
+    d.footer.showNotes && inv.notes ? `<div class="muted"><b>Notes:</b> ${esc(inv.notes)}</div>` : '',
     d.footer.showTerms && inv.termsConditions ? `<div class="muted" style="margin-top:6px"><b>Terms:</b> ${esc(inv.termsConditions)}</div>` : '',
     // Payment instructions are preview-only (data-gated; real invoices don't carry the field).
     d.footer.showPaymentInstructions && inv.paymentInstructions ? `<div class="muted" style="margin-top:6px"><b>Payment Instructions:</b> ${esc(inv.paymentInstructions)}</div>` : '',
   ].join('');
 
-  // QR is preview-only: rendered only when a data-URL is supplied via opts (the
-  // real print path never passes one), so actual invoices remain unchanged.
-  const qrBlock = d.footer.showQr && opts.qrDataUrl
-    ? `<div class="qr"><img src="${opts.qrDataUrl}" alt="QR"/><div class="muted" style="margin-top:2px">Scan to pay</div></div>` : '';
+  // The pay-QR went with the Payment Details section.
+  const qrBlock = '';
 
   const signBlock = d.footer.showSignature ? `<div class="sign">
       <div style="height:44px;position:relative">
@@ -807,14 +800,13 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
           innerHtml = `<table style="border:none"><tbody>${rows.join('')}</tbody></table>`;
         }
         break;
+      // Payment Details were removed from the invoice layout. A saved template
+      // may still contain these elements, so they are rendered as nothing rather
+      // than printing bank/UPI data. Any literal text the designer typed into the
+      // block is still honoured — that is the author's own copy, not payment data.
       case 'bankDetails':
-        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company)
-          : inv.bankDetails ? `<strong>Bank Details</strong><br/>${esc(inv.bankDetails).replace(/\n/g, '<br/>')}` : '';
-        break;
       case 'paymentInfo':
-        // Typed override wins; otherwise the data-driven Payment Mode + UPI ID
-        // (empty when neither is set → the block renders nothing).
-        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : paymentInfoHtml(inv);
+        innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company) : '';
         break;
       case 'terms':
         innerHtml = hasElementText(el) ? canvasTextHtml(el, inv, company)
@@ -829,18 +821,9 @@ function renderCanvasHtml(inv: any, company: any, design: InvoiceDesign, opts: R
     html += `<div class="el" style="${style}">${innerHtml}</div>`;
   }
 
-  // Auto-inject "Payment Information" below Bank Details when the layout has no
-  // dedicated paymentInfo block but the invoice carries Payment Mode / UPI ID.
-  // Data-gated: invoices without those fields render exactly as before.
-  const hasPaymentBlock = sorted.some((el) => el.type === 'paymentInfo' && el.visible !== false);
-  const autoPayHtml = paymentInfoHtml(inv);
-  if (!hasPaymentBlock && autoPayHtml) {
-    const bank = sorted.filter((el) => el.type === 'bankDetails' && el.visible !== false).pop();
-    const anchorX = bank ? bank.x : 40;
-    const anchorW = bank ? bank.w : 300;
-    const anchorY = bank ? Math.min(bank.y + bank.h + 8, 1123 - 60) : 900;
-    html += `<div class="el" style="left:${anchorX}px; top:${anchorY}px; width:${anchorW}px; font-size:12px;">${autoPayHtml}</div>`;
-  }
+  // The "Payment Information" auto-inject (which added a Mode/UPI block beneath
+  // Bank Details even when the designer had not placed one) went with the
+  // Payment Details section.
 
   html += `</div>${printScript}</body></html>`;
   return html;

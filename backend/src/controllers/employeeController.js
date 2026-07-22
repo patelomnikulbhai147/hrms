@@ -7,6 +7,7 @@ const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES, lockRejection } = require('../utils/employeeStatus');
 const { prepareEmployeeWriteData, applyCreateDefaults, describePrismaWriteError } = require('../utils/employeeWriteData');
 const { validateEmployeePayload, validationErrorBody } = require('../utils/employeeRequiredFields');
+const { buildEmployeeScope, NOT_OFFBOARDED, IS_OFFBOARDED } = require('../utils/employeeScope');
 const locationMaster = require('./locationMasterController');
 
 // Remember any custom state/city on an employee payload for dropdown reuse
@@ -18,55 +19,17 @@ const rememberLocations = (data) => {
 
 exports.getEmployees = async (req, res) => {
   try {
-    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-    const { page, limit, search, department, status, branch, sortField, sortOrder, tab } = req.query;
+    const { page, limit, status, sortField, sortOrder, tab } = req.query;
 
-    // ── Base scope (company/branch authorisation) ──────────────────────────────
-    // SINGLE SOURCE OF TRUTH: this scope + the structural filters below are shared
-    // by BOTH the table rows AND the summary counts, so the employee list and the
-    // count cards can never diverge (the bug this fixes: table 11 vs card 4).
-    const baseWhere = {};
-    if (req.user && req.user.role !== 'Super Admin') {
-      // A user is scoped to their companies AND the branches under those companies.
-      // accessibleBranchIds is derived in the protect middleware. Including branch
-      // ids here lets a Company Head / HR open a BRANCH sub-workspace (a branch id
-      // is no longer ambiguous with a company id — the namespaces no longer collide).
-      const companyScope = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      const branchScope = (req.user.accessibleBranchIds || []).filter(Boolean);
-      const allowedIds = [...companyScope, ...branchScope];
-      baseWhere.OR = [
-        { companyId: { in: companyScope } },
-        { branchId: { in: branchScope.length ? branchScope : companyScope } }
-      ];
-      if (companyId) {
-        if (!allowedIds.includes(companyId)) {
-          return res.status(403).json({ error: 'Unauthorized to view this workspace\'s employees' });
-        }
-        // The selected workspace id may be a company OR a branch — match either column.
-        baseWhere.OR = [{ companyId: companyId }, { branchId: companyId }];
-      }
-    } else if (companyId) {
-      baseWhere.OR = [{ companyId: companyId }, { branchId: companyId }];
-    }
-
-    // ── Structural filters (search / department / branch / explicit status) ──────
-    // Applied to the counts too, so changing a filter refreshes list AND cards.
-    const AND = [];
-    if (search) {
-      AND.push({ OR: [ { name: { contains: search } }, { employeeId: { contains: search } }, { designation: { contains: search } } ] });
-    }
-    if (department) {
-      AND.push({ OR: [ { department: department }, { designation: department } ] });
-    }
-    if (status) AND.push({ status });
-    if (branch) baseWhere.branchLocation = branch;
-    if (AND.length) baseWhere.AND = AND;
-
-    // Clone baseWhere and AND one extra status condition (never mutate baseWhere),
-    // so the three count buckets are derived from the exact same scope+filters.
-    const withStatus = (extra) => (extra ? { ...baseWhere, AND: [ ...(baseWhere.AND || []), extra ] } : { ...baseWhere });
-    const NOT_OFF = { status: { notIn: OFFBOARDED_STATUSES } };
-    const IS_OFF = { status: { in: OFFBOARDED_STATUSES } };
+    // ── Base scope + structural filters ────────────────────────────────────────
+    // SINGLE SOURCE OF TRUTH (utils/employeeScope.js): the same builder feeds the
+    // table rows, the reconciled counts AND the Employee Cards grid, so the list
+    // and the count cards can never diverge (the bug this fixed: table 11 vs card 4).
+    const scope = buildEmployeeScope(req);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+    const { withStatus } = scope;
+    const NOT_OFF = NOT_OFFBOARDED;
+    const IS_OFF = IS_OFFBOARDED;
 
     // ── Status axis (which subset the TABLE shows) ───────────────────────────────
     // An explicit tab from the Employee page wins. Otherwise keep the legacy
@@ -123,6 +86,122 @@ exports.getEmployees = async (req, res) => {
     res.json(employees);
   } catch (error) {
     return respondError(res, error);
+  }
+};
+
+// ── GET /api/employees/cards ─────────────────────────────────────────────────
+// The Employee Cards grid, one page at a time, WITH each card's metrics joined
+// server-side.
+//
+// Why this exists rather than reusing GET /employees: the card grid used to pull
+// three WHOLE-COMPANY datasets into the browser to compute its metrics — every
+// attendance summary for the month, every leave balance, and the entire payroll
+// history — then throw away all but the rows it could show. On a real tenant
+// that is the page's actual cost; the employee list is the small part. Here the
+// metric queries are constrained to the ~20 employees on the requested page.
+//
+// Query: page, limit, search, branch, department, status (+ companyId/workspace
+// header). Returns { data, page, limit, total, totalPages, period }.
+exports.employeeCards = async (req, res) => {
+  try {
+    const scope = buildEmployeeScope(req);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+
+    // Cards are a roster of people who currently work here.
+    const where = scope.withStatus(NOT_OFFBOARDED);
+
+    const pageNum = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
+    const [total, employees] = await Promise.all([
+      prisma.employee.count({ where }),
+      prisma.employee.findMany({
+        where,
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
+        orderBy: { employeeId: 'asc' },
+      }),
+    ]);
+
+    const ids = employees.map((e) => e.id);
+    let period = null;
+    let summaries = [], balances = [], payrolls = [];
+
+    if (ids.length) {
+      // Attendance period: the current month if it has been posted, otherwise the
+      // most recent month that actually has data — so a card never shows a silent
+      // zero for a month that simply has not happened yet.
+      const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+      const now = new Date();
+      period = { month: MONTHS[now.getMonth()], year: now.getFullYear() };
+
+      const currentCount = await prisma.attendanceSummary.count({
+        where: { employeeId: { in: ids }, month: period.month, year: period.year },
+      });
+      if (!currentCount) {
+        const latest = await prisma.attendanceSummary.findFirst({
+          where: { employeeId: { in: ids } },
+          orderBy: [{ year: 'desc' }, { id: 'desc' }],
+          select: { month: true, year: true },
+        });
+        if (latest) period = { month: latest.month, year: latest.year };
+      }
+
+      [summaries, balances, payrolls] = await Promise.all([
+        prisma.attendanceSummary.findMany({
+          where: { employeeId: { in: ids }, month: period.month, year: period.year },
+        }),
+        // One row per employee per YEAR. Ascending so the newest year is the last
+        // written into the map below and therefore the one the card shows.
+        prisma.leaveBalance.findMany({
+          where: { employeeId: { in: ids } },
+          orderBy: { year: 'asc' },
+        }).catch(() => []),
+        // Only this page's payroll rows; the newest per employee is picked below.
+        prisma.payroll.findMany({
+          where: { employeeId: { in: ids } },
+          orderBy: [{ year: 'desc' }, { id: 'desc' }],
+        }).catch(() => []),
+      ]);
+    }
+
+    const MONTH_IDX = (m) => ['January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December']
+      .indexOf(String(m || '')) + 1;
+
+    const summaryBy = new Map(summaries.map((s) => [String(s.employeeId), s]));
+    const balanceBy = new Map(balances.map((b) => [String(b.employeeId), b]));
+    const latestPayBy = new Map();
+    for (const row of payrolls) {
+      const k = String(row.employeeId);
+      const rank = Number(row.year || 0) * 100 + MONTH_IDX(row.month);
+      const cur = latestPayBy.get(k);
+      if (!cur || rank > cur._rank) latestPayBy.set(k, { ...row, _rank: rank });
+    }
+
+    // Each employee ships with the three records its card needs, so the client
+    // does no cross-referencing and no whole-company fetch.
+    const data = employees.map((e) => {
+      const k = String(e.id);
+      return {
+        ...e,
+        attendanceSummary: summaryBy.get(k) || null,
+        leaveBalance: balanceBy.get(k) || null,
+        latestPayroll: latestPayBy.get(k) || null,
+      };
+    });
+
+    res.json({
+      data,
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limitNum)),
+      period,
+    });
+  } catch (error) {
+    return respondError(res, error, { action: 'load employee cards', resource: 'employee' });
   }
 };
 

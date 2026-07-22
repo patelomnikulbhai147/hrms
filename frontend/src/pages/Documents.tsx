@@ -2108,7 +2108,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         onClose={() => { setUploadOpen(false); }}
         title="Upload Employee Document"
         variant="page"
-        breadcrumbs={[{ label: 'Documents', onClick: () => setUploadOpen(false) }, { label: 'Upload Document' }]}
+        breadcrumbs={[{ label: 'Employee Documents', onClick: () => setUploadOpen(false) }, { label: 'Upload Employee Document' }]}
         subtitle="Attach a document file or link and tag it to an employee."
         size="lg"
         footer={
@@ -2116,7 +2116,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           <>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
             <Button onClick={handleUploadDocument} disabled={uploadBusy || !selectedEmpId || (!uploadFile && !uploadUrl.trim())}>
-              {uploadBusy ? 'Uploading…' : 'Upload Document'}
+              {uploadBusy ? 'Uploading…' : 'Upload Employee Document'}
             </Button>
           </>
           )

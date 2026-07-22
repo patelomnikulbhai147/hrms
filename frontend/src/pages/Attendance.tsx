@@ -65,6 +65,11 @@ const WEEKLY_CELL_STATUSES: { value: string; label: string; dot: string }[] = [
   { value: 'Weekly Off', label: 'Weekly Off (WO)', dot: 'bg-slate-300' },
 ];
 
+/** Audiences the Broadcast panel can address. Mirrors the server's resolver. */
+type BroadcastAudience = 'all' | 'branch' | 'role' | 'department' | 'employee';
+/** Kept in step with MAX_MESSAGE in notificationController.broadcast. */
+const BROADCAST_MAX = 2000;
+
 const ATTENDANCE_FLAG_OPTIONS = [
   'Late Mark', 'Early Exit', 'Overtime', 'Night Shift', 'Missed Punch', 'Double Shift', 'Field Work'
 ];
@@ -294,6 +299,61 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const departments = Array.from(new Set(activeUniqueEmployees.map(e => e.department).filter(Boolean)));
   const branches = Array.from(new Set(activeUniqueEmployees.map(e => e.branchLocation).filter((b): b is string => Boolean(b))));
   const designations = Array.from(new Set(activeUniqueEmployees.map(e => (e as any).designation as string).filter((d): d is string => Boolean(d))));
+
+  // ── Broadcast & Notification ───────────────────────────────────────────────
+  // The audience choice drives which second selector appears; the server
+  // re-resolves the audience itself and re-checks the workspace, so nothing here
+  // is trusted for authorisation.
+  const [bcAudience, setBcAudience] = useState<BroadcastAudience>('all');
+  const [bcTarget, setBcTarget] = useState('');
+  const [bcMessage, setBcMessage] = useState('');
+  const [bcSending, setBcSending] = useState(false);
+
+  // Branches of the ACTIVE workspace. `companies` carries branches merged in
+  // (they are the entries with a parentCompanyId), so this needs no extra fetch.
+  const workspaceBranches = useMemo(
+    () => (companies as any[]).filter(c => c.parentCompanyId && String(c.parentCompanyId) === String(activeCompanyId)),
+    [companies, activeCompanyId],
+  );
+
+  const bcTargetOptions = useMemo(() => {
+    if (bcAudience === 'branch') return workspaceBranches.map(b => ({ value: String(b.id), label: b.branchName || b.name }));
+    if (bcAudience === 'role') return ['HR', 'Company Head', 'Employee'].map(r => ({ value: r, label: r }));
+    if (bcAudience === 'department') return departments.map(d => ({ value: d, label: d }));
+    if (bcAudience === 'employee') return activeUniqueEmployees.map(e => ({ value: String(e.id), label: `${e.name}${e.employeeId ? ` (${e.employeeId})` : ''}` }));
+    return [];
+  }, [bcAudience, workspaceBranches, departments, activeUniqueEmployees]);
+
+  const dispatchBroadcast = async () => {
+    const message = bcMessage.trim();
+    if (!message) { ui.toast.warning('Type a message to broadcast.'); return; }
+    if (bcAudience !== 'all' && !bcTarget) { ui.toast.warning('Choose who should receive this.'); return; }
+
+    setBcSending(true);
+    try {
+      const payload: any = { message, audience: bcAudience, companyId: activeCompanyId };
+      if (bcAudience === 'branch') payload.branchId = bcTarget;
+      if (bcAudience === 'role') payload.role = bcTarget;
+      if (bcAudience === 'department') payload.department = bcTarget;
+      if (bcAudience === 'employee') payload.employeeId = bcTarget;
+
+      const res: any = await api.notifications.broadcast(payload);
+
+      // Only clear the form once the server confirms the rows were committed —
+      // the success message must never run ahead of the database write.
+      setBcMessage('');
+      setBcTarget('');
+      ui.toast.success(
+        `Broadcast sent to ${res?.recipients ?? 0} recipient${res?.recipients === 1 ? '' : 's'}${res?.audience ? ` — ${res.audience}` : ''}.`,
+      );
+      // Refresh the bell now instead of waiting out the 20s poll.
+      window.dispatchEvent(new CustomEvent('hrms:notifications-changed'));
+    } catch (err: any) {
+      ui.toast.error(getApiErrorMessage(err, 'Could not send the broadcast.'));
+    } finally {
+      setBcSending(false);
+    }
+  };
 
   // Company options for the Company / Multiple-company filters and export scope.
   const companyOptions = useMemo(() => {
@@ -1217,18 +1277,64 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               </div>
               <div className="flex flex-col gap-3 flex-1">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Target Audience</label>
-                  <select className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all">
-                    <option>All Staff</option>
-                    <option>My Local Branch Staff Only</option>
+                  <label htmlFor="bc-audience" className="block text-[11px] font-bold text-gray-600 mb-1">Target Audience</label>
+                  <select
+                    id="bc-audience"
+                    value={bcAudience}
+                    onChange={e => { setBcAudience(e.target.value as BroadcastAudience); setBcTarget(''); }}
+                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                  >
+                    <option value="all">All Staff</option>
+                    <option value="branch">Specific Branch</option>
+                    <option value="role">By Role</option>
+                    <option value="department">Specific Department</option>
+                    <option value="employee">Individual Employee</option>
                   </select>
                 </div>
+
+                {/* The second selector only exists for audiences that need one. */}
+                {bcAudience !== 'all' && (
+                  <div>
+                    <label htmlFor="bc-target" className="block text-[11px] font-bold text-gray-600 mb-1">
+                      {bcAudience === 'branch' ? 'Branch' : bcAudience === 'role' ? 'Role' : bcAudience === 'department' ? 'Department' : 'Employee'}
+                    </label>
+                    <select
+                      id="bc-target"
+                      value={bcTarget}
+                      onChange={e => setBcTarget(e.target.value)}
+                      className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    >
+                      <option value="">Select…</option>
+                      {bcTargetOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Message</label>
-                  <textarea className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all" placeholder="Type your message here..."></textarea>
+                  <label htmlFor="bc-message" className="block text-[11px] font-bold text-gray-600 mb-1">Message</label>
+                  <textarea
+                    id="bc-message"
+                    value={bcMessage}
+                    maxLength={BROADCAST_MAX}
+                    onChange={e => setBcMessage(e.target.value)}
+                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    placeholder="Type your message here..."
+                  />
+                  <div className="flex justify-end mt-1">
+                    <span className={`text-[10px] font-semibold ${bcMessage.length >= BROADCAST_MAX ? 'text-rose-500' : 'text-gray-400'}`}>
+                      {bcMessage.length}/{BROADCAST_MAX}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <Button className="w-full text-xs mt-4 bg-brand-600 hover:bg-brand-700 font-bold shadow-md shadow-brand-600/20 flex items-center justify-center gap-2"><Send size={14} /> Dispatch Broadcast</Button>
+              <Button
+                onClick={dispatchBroadcast}
+                loading={bcSending}
+                disabled={!bcMessage.trim() || (bcAudience !== 'all' && !bcTarget)}
+                className="w-full text-xs mt-4 bg-brand-600 hover:bg-brand-700 font-bold shadow-md shadow-brand-600/20 flex items-center justify-center gap-2"
+              >
+                <Send size={14} /> {bcSending ? 'Dispatching…' : 'Dispatch Broadcast'}
+              </Button>
             </div>
           </div>
 

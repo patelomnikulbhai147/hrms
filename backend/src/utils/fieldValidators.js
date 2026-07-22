@@ -61,7 +61,13 @@ const RULES = {
   cin: { normalize: (v) => alnumUpper(v).slice(0, 21), test: (r) => /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(r), error: 'Invalid CIN (21 chars).' },
   tan: { normalize: (v) => alnumUpper(v).slice(0, 10), test: (r) => /^[A-Z]{4}[0-9]{5}[A-Z]$/.test(r), error: 'Invalid TAN (e.g. ABCD12345E).' },
   uan: { normalize: (v) => digits(v).slice(0, 12), test: (r) => /^[0-9]{12}$/.test(r), error: 'UAN must be exactly 12 digits.' },
-  esic: { normalize: (v) => digits(v).slice(0, 17), test: (r) => /^[0-9]{17}$/.test(r), error: 'ESIC number must be exactly 17 digits.' },
+  // ESIC **IP number** — 10 digits. NOT 17: that is the ESIC challan number, a
+  // different identifier. This rule was 17 and rejected 827 of the 828 production
+  // employees that carry an ESIC value (821 of them are exactly 10 digits). Since
+  // the employee edit form echoes the whole record back on save, that made every
+  // one of those records uneditable — a phone-number change was refused over an
+  // ESIC value nobody had touched. Keep in step with fieldFormats.ts.
+  esic: { normalize: (v) => digits(v).slice(0, 10), test: (r) => /^[0-9]{10}$/.test(r), error: 'ESIC IP number must be exactly 10 digits.' },
   pf: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 30), test: (r) => /^[A-Z0-9/-]{5,30}$/.test(r), error: 'Invalid PF code.' },
   professionalTax: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 20), test: (r) => /^[A-Z0-9/-]{5,20}$/.test(r), error: 'Invalid Professional Tax number.' },
   shopEstablishment: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 25), test: (r) => /^[A-Z0-9/-]{4,25}$/.test(r), error: 'Invalid Shop & Establishment number.' },

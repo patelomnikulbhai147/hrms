@@ -379,6 +379,19 @@ export const api = {
       });
       return await apiFetch(`${BASE_URL}/employees?${query.toString()}`, { headers: getHeaders() });
     },
+    /**
+     * Employee Cards grid, one page at a time, with each card's attendance /
+     * leave / payroll records already joined server-side. Replaces the old
+     * whole-company fetch of three datasets.
+     * Returns { data, page, limit, total, totalPages, period }.
+     */
+    getCards: async (params: Record<string, any>) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') query.append(key, String(value));
+      });
+      return await apiFetch(`${BASE_URL}/employees/cards?${query.toString()}`, { headers: getHeaders() });
+    },
     create: async (data: any) => {
       return await apiFetch(`${BASE_URL}/employees`, {
         method: 'POST',
@@ -1107,6 +1120,12 @@ export const api = {
   notifications: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/notifications`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/notifications`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    /** Send one message to a resolved audience. Resolves only after the rows are committed. */
+    broadcast: async (data: {
+      message: string; title?: string; priority?: string;
+      audience: 'all' | 'branch' | 'role' | 'department' | 'employee';
+      role?: string; department?: string; branchId?: any; employeeId?: any; companyId?: any;
+    }) => { return await apiFetch(`${BASE_URL}/notifications/broadcast`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     markRead: async (id: any) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ read: true }) }); },

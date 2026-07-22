@@ -18,6 +18,7 @@ import {
   resolveActiveWorkspace
 } from '@/types';
 import { deriveCompanyPayrollStatus } from '@/utils/payroll';
+import { isAtWork } from '@/utils/attendanceStatus';
 import { RemoveSampleDataButton } from '@/components/subscription/RemoveSampleDataButton';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import {
@@ -968,9 +969,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // 1. Total Employees = COUNT(employee_records) assigned to this scope.
     const totalEmployeesLive = rawScopedEmployees.length;
 
-    // 2. Present Today = COUNT(attendance WHERE date = today AND status = Present).
+    // 2. Present Today = COUNT(attendance WHERE date = today AND the employee is
+    // at work). Classification comes from utils/attendanceStatus so this card and
+    // the Present chip in Today's Attendance apply the SAME rule — the old
+    // /present/i test here silently excluded Work From Home and On Duty, which
+    // the widget counted, so the two tiles could disagree on the same day.
     const presentTodayLive = attendance.filter(a =>
-      a.date === todayStr && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+      a.date === todayStr && isAtWork(a.status) && scopedEmpIds.has(a.employeeId)
     ).length;
 
     // 3. Pending Leaves (scoped to this branch/company).
@@ -1018,7 +1023,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
         const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const present = attendance.filter(a =>
-          a.date === ds && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+          a.date === ds && isAtWork(a.status) && scopedEmpIds.has(a.employeeId)
         ).length;
         rows.push({ name: `${String(d.getDate()).padStart(2, '0')} ${d.toLocaleString('en-US', { month: 'short' })}`, present });
       }
@@ -1047,7 +1052,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const activeEmps = emps.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
         const branchDepts = new Set<string>();
         emps.forEach(e => { const d = e.department || 'Other'; branchDepts.add(d); globalDepts.add(d); });
-        const present = attendance.filter(a => a.date === todayStr && /present/i.test(String(a.status)) && empIds.has(a.employeeId)).length;
+        const present = attendance.filter(a => a.date === todayStr && isAtWork(a.status) && empIds.has(a.employeeId)).length;
         const pendingLeaves = leaves.filter(l =>
           (empIds.has(l.employeeId) || isCompanyIdMatch(l.companyId, b.id, companies as any[])) && String(l.status) === 'Pending'
         ).length;

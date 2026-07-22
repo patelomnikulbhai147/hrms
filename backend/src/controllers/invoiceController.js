@@ -146,9 +146,58 @@ async function buildInvoiceData(companyId, b, items) {
     paymentTerms: b.paymentTerms || null, placeOfSupply: supply,
     notes: b.notes || null, termsConditions: b.termsConditions || null, paymentMode: b.paymentMode || null,
     bankDetails: b.bankDetails || null, upiId: b.upiId || null,
+    ...(await dispatchDestinationData(b, companyId, supply)),
     ...totals,
   };
   return { data, lines };
+}
+
+// ── Dispatch & Destination ───────────────────────────────────────────────────
+// Whatever the client sent wins; anything it left blank is derived, so an
+// invoice created through the API without these fields still carries sensible
+// logistics rather than empty labels.
+//
+//   Dispatch  → the issuing company/branch (where the goods leave from)
+//   Destination → the customer's shipping address, falling back to billing
+//                 ("If no shipping address exists, use the billing address")
+//
+// Every value is nullable: a service invoice leaves them blank and the sections
+// render nothing at all.
+async function dispatchDestinationData(b, companyId, supply) {
+  const t = (v, n) => { const s = String(v ?? '').trim(); return s ? s.slice(0, n) : null; };
+
+  // Only pay for the company read when something is actually missing.
+  const needsCompany = !b.dispatchFrom || !b.dispatchAddress || !b.dispatchCity || !b.dispatchState || !b.dispatchPincode;
+  let co = null;
+  if (needsCompany) {
+    co = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true, address: true, city: true, state: true, pincode: true },
+    }).catch(() => null);
+  }
+
+  return {
+    dispatchFrom:    t(b.dispatchFrom    ?? co?.name,    160),
+    dispatchAddress: t(b.dispatchAddress ?? co?.address, 65535),
+    dispatchCity:    t(b.dispatchCity    ?? co?.city,    100),
+    dispatchState:   t(b.dispatchState   ?? co?.state,   100),
+    dispatchPincode: t(b.dispatchPincode ?? co?.pincode, 12),
+    // Not derivable — these are per-consignment facts the user supplies.
+    dispatchDate:    t(b.dispatchDate, 10),
+    dispatchThrough: t(b.dispatchThrough, 160),
+    vehicleNumber:   t(b.vehicleNumber, 40),
+    lrNumber:        t(b.lrNumber, 60),
+
+    // Consignee fields are stored ONLY when supplied. Defaulting shipToName to
+    // billToName here would look harmless but would mark every invoice as having
+    // destination data, so the section could never hide on a services invoice —
+    // the renderer already falls back to the billing name for display.
+    shipToName:    t(b.shipToName, 160),
+    shipToCity:    t(b.shipToCity, 100),
+    shipToState:   t(b.shipToState, 100),
+    shipToPincode: t(b.shipToPincode, 12),
+    shipToCountry: t(b.shipToCountry, 100),
+  };
 }
 
 // Persist line items (delete + recreate — simplest correct approach for edits).
@@ -329,13 +378,21 @@ exports.dashboard = async (req, res) => {
     const monthPrefix = today.slice(0, 7);
     const byStatus = {};
     let totalRevenue = 0, outstanding = 0, thisMonthRevenue = 0, overdue = 0;
+    // Billed value and the unpaid count, for the All Invoices summary cards.
+    // Cancelled invoices are excluded from every money figure — they were never
+    // owed — but they still appear in byStatus so the status breakdown is honest.
+    let totalInvoiced = 0, unpaid = 0, live = 0;
     for (const inv of invoices) {
       byStatus[inv.status] = (byStatus[inv.status] || 0) + 1;
       if (inv.status !== 'Cancelled') {
+        live++;
+        totalInvoiced += inv.grandTotal;
         totalRevenue += inv.amountPaid;
         outstanding += inv.balanceDue;
         if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
         if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
+        // Unpaid = raised, still owed in full. "Partially Paid" has its own bucket.
+        if (inv.amountPaid <= 0 && inv.balanceDue > 0) unpaid++;
       }
     }
     // Monthly revenue (last 6 months, from recorded payments).
@@ -349,7 +406,11 @@ exports.dashboard = async (req, res) => {
         total: invoices.length,
         draft: byStatus['Draft'] || 0, generated: byStatus['Generated'] || 0, sent: byStatus['Sent'] || 0,
         paid: byStatus['Paid'] || 0, partiallyPaid: byStatus['Partially Paid'] || 0, cancelled: byStatus['Cancelled'] || 0,
-        overdue,
+        overdue, unpaid, live,
+        // totalInvoiced − totalRevenue === outstanding, by construction: all three
+        // are accumulated in the same pass over the same rows, so the summary
+        // cards can never fail to reconcile.
+        totalInvoiced: calc.r2(totalInvoiced),
         totalRevenue: calc.r2(totalRevenue), outstanding: calc.r2(outstanding), thisMonthRevenue: calc.r2(thisMonthRevenue),
       },
       byStatus, monthly, recent, upcoming,
