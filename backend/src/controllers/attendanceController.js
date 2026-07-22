@@ -729,3 +729,60 @@ exports.delete = async (req, res) => {
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTENDANCE REPORTS — the "View Full Report" destinations.
+//
+// Both are projections of ONE aggregate (services/attendanceReportService.js), so
+// the Department report's numbers can never disagree with the Workforce report's,
+// and both reconcile with the dashboard cards because they share the frontend's
+// status classifier via utils/attendanceStatus.js.
+//
+// Scope, branch confinement and the date range are all resolved server-side; a
+// hand-crafted request cannot widen them. Failures are logged with the actor and
+// the query, and returned as real status codes — never a silent empty report.
+// ─────────────────────────────────────────────────────────────────────────────
+const { buildReport } = require('../services/attendanceReportService');
+
+const reportHandler = (name, project) => async (req, res) => {
+  const tag = `[attendance:${name}] by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'}) q=${JSON.stringify(req.query)}`;
+  const startedAt = Date.now();
+  try {
+    const built = await buildReport(req, req.query || {});
+    if (!built.ok) {
+      console.warn(`${tag} REJECTED ${built.status}: ${built.body.error}`);
+      return res.status(built.status).json(built.body);
+    }
+    const body = project(built.report);
+    console.log(`${tag} ok in ${Date.now() - startedAt}ms employees=${built.report.totals.employees} records=${built.report.totals.records}`);
+    res.json(body);
+  } catch (error) {
+    // Never fail silently: the actor, the query, the message and the stack all go
+    // to the log, and the caller gets a 500 they can surface.
+    console.error(`${tag} FAILED after ${Date.now() - startedAt}ms`, error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// GET /api/attendance/workforce-report
+// Everything: totals, the three trend series, department split and the
+// per-employee breakdown.
+exports.workforceReport = reportHandler('workforce-report', (r) => r);
+
+// GET /api/attendance/department-report
+// Department-first projection. The employee list is retained for the drill-down
+// but carries only the fields the department view renders.
+exports.departmentReport = reportHandler('department-report', (r) => ({
+  range: r.range,
+  scope: r.scope,
+  totals: r.totals,
+  byDepartment: r.byDepartment,
+  daily: r.daily,
+  employees: r.byEmployee.map((e) => ({
+    employeeId: e.employeeId, code: e.code, name: e.name, department: e.department,
+    designation: e.designation, branch: e.branch,
+    present: e.present, absent: e.absent, leave: e.leave, halfDay: e.halfDay, wfh: e.wfh,
+    late: e.late, earlyExit: e.earlyExit, overtimeHours: e.overtimeHours,
+    attendancePercent: e.attendancePercent,
+  })),
+}));

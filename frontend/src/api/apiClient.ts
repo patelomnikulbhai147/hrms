@@ -1225,6 +1225,22 @@ export const api = {
       if (date) params.append('date', date);
       return await apiFetch(`${BASE_URL}/attendance/analytics?${params.toString()}`, { headers: getHeaders() });
     },
+    /**
+     * Full attendance reports — the "View Full Report" destinations.
+     * Both are projections of ONE server-side aggregate, so their totals always
+     * agree with each other and with the dashboard cards. Scope, branch
+     * confinement and the range are all enforced server-side.
+     */
+    workforceReport: async (params: { companyId: any; from?: string; to?: string; branchId?: any; department?: string }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/attendance/workforce-report?${qs.toString()}`, { headers: getHeaders() });
+    },
+    departmentReport: async (params: { companyId: any; from?: string; to?: string; branchId?: any; department?: string }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/attendance/department-report?${qs.toString()}`, { headers: getHeaders() });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
