@@ -27,6 +27,7 @@ import {
 } from '@/utils/attendancePeriods';
 import { AnimatedCounter } from '@/components/common/AnimatedCounter';
 import { ui } from '@/components/ui/feedback';
+import { titleCase, uniqueTitled, sameValue } from '@/utils/titleCase';
 import { AttendanceSheetImport } from '@/components/attendance/AttendanceSheetImport';
 interface AttendanceCenterProps {
   role: Role;
@@ -67,6 +68,21 @@ const WEEKLY_CELL_STATUSES: { value: string; label: string; dot: string }[] = [
 
 /** Audiences the Broadcast panel can address. Mirrors the server's resolver. */
 type BroadcastAudience = 'all' | 'branch' | 'role' | 'department' | 'employee';
+
+/**
+ * What GET /notifications/broadcast-options returns — the audiences and targets
+ * the SERVER says this user may address. The panel renders this and derives
+ * nothing of its own, so the options shown always match what the send endpoint
+ * will accept. A branch user simply receives no `branch` audience.
+ */
+interface BroadcastOptions {
+  scope: { isBranchUser: boolean; companyId: number; branchId: number | null; branchName: string | null };
+  audiences: { value: BroadcastAudience; label: string }[];
+  branches: { id: number; name: string }[];
+  roles: string[];
+  departments: { name: string; branchId: number | null }[];
+  employees: { id: number; name: string; code: string | null; department: string | null; branchId: number | null; branchName: string | null }[];
+}
 /** Kept in step with MAX_MESSAGE in notificationController.broadcast. */
 const BROADCAST_MAX = 2000;
 
@@ -296,9 +312,30 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     (e.department && e.department.toLowerCase().includes(empSearch.toLowerCase()))
   );
 
-  const departments = Array.from(new Set(activeUniqueEmployees.map(e => e.department).filter(Boolean)));
-  const branches = Array.from(new Set(activeUniqueEmployees.map(e => e.branchLocation).filter((b): b is string => Boolean(b))));
-  const designations = Array.from(new Set(activeUniqueEmployees.map(e => (e as any).designation as string).filter((d): d is string => Boolean(d))));
+  // Filter options go through uniqueTitled, so a branch stored as both
+  // "AHMEDABAD" and "Ahmedabad" is ONE option reading "Ahmedabad" instead of two
+  // that look like different places. Values are compared with sameValue below,
+  // so selecting the tidied label still matches rows holding either spelling.
+  const departments = uniqueTitled(activeUniqueEmployees.map(e => e.department));
+  const branches = uniqueTitled(activeUniqueEmployees.map(e => e.branchLocation));
+  const designations = uniqueTitled(activeUniqueEmployees.map(e => (e as any).designation));
+
+  // ── Branch scope ───────────────────────────────────────────────────────────
+  // When the active workspace IS a branch, the user can only ever see that one
+  // branch, so offering a branch selector is noise — and "All Branches" is a
+  // lie. The filter is hidden and the branch is implied, exactly as the Company
+  // filter above already hides itself when there is only one company.
+  // The backend enforces the same scope independently; this is only the UI.
+  const activeWorkspace = useMemo(
+    () => (companies as any[]).find(c => String(c.id) === String(activeCompanyId)),
+    [companies, activeCompanyId],
+  );
+  const isBranchWorkspace = !!activeWorkspace?.parentCompanyId;
+  const implicitBranchName = isBranchWorkspace
+    ? titleCase(activeWorkspace?.branchName || activeWorkspace?.name || '')
+    : '';
+  // Show the selector only to users who genuinely span more than one branch.
+  const showBranchFilter = !isBranchWorkspace && branches.length > 1;
 
   // ── Broadcast & Notification ───────────────────────────────────────────────
   // The audience choice drives which second selector appears; the server
@@ -306,23 +343,53 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   // is trusted for authorisation.
   const [bcAudience, setBcAudience] = useState<BroadcastAudience>('all');
   const [bcTarget, setBcTarget] = useState('');
+  const [bcBranch, setBcBranch] = useState('');   // Branch → Department/Employee cascade
   const [bcMessage, setBcMessage] = useState('');
   const [bcSending, setBcSending] = useState(false);
+  const [bcOptions, setBcOptions] = useState<BroadcastOptions | null>(null);
 
-  // Branches of the ACTIVE workspace. `companies` carries branches merged in
-  // (they are the entries with a parentCompanyId), so this needs no extra fetch.
-  const workspaceBranches = useMemo(
-    () => (companies as any[]).filter(c => c.parentCompanyId && String(c.parentCompanyId) === String(activeCompanyId)),
-    [companies, activeCompanyId],
-  );
+  // WHAT THIS USER MAY TARGET comes from the server, not from this page.
+  // Deriving it here would mean the menu and the security rule were two separate
+  // implementations that could disagree — and the one that matters (the server)
+  // is the one the user cannot see. A branch user gets no branch selector because
+  // the server does not return that audience for them.
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    let alive = true;
+    api.notifications.broadcastOptions(activeCompanyId)
+      .then((res: any) => {
+        if (!alive || !res) return;
+        setBcOptions(res);
+        // Reset any selection that the new workspace does not permit.
+        setBcAudience(prev => (res.audiences?.some((a: any) => a.value === prev) ? prev : 'all'));
+        setBcTarget('');
+        setBcBranch('');
+      })
+      .catch(() => { if (alive) setBcOptions(null); });
+    return () => { alive = false; };
+  }, [activeCompanyId]);
+
+  // A branch selector only appears for senders the server says have branches.
+  const bcShowBranchCascade = !!bcOptions?.branches?.length && bcAudience !== 'all' && bcAudience !== 'branch';
 
   const bcTargetOptions = useMemo(() => {
-    if (bcAudience === 'branch') return workspaceBranches.map(b => ({ value: String(b.id), label: b.branchName || b.name }));
-    if (bcAudience === 'role') return ['HR', 'Company Head', 'Employee'].map(r => ({ value: r, label: r }));
-    if (bcAudience === 'department') return departments.map(d => ({ value: d, label: d }));
-    if (bcAudience === 'employee') return activeUniqueEmployees.map(e => ({ value: String(e.id), label: `${e.name}${e.employeeId ? ` (${e.employeeId})` : ''}` }));
+    if (!bcOptions) return [];
+    const inBranch = (b: any) => !bcBranch || String(b ?? '') === String(bcBranch);
+    if (bcAudience === 'branch') return bcOptions.branches.map(b => ({ value: String(b.id), label: b.name }));
+    if (bcAudience === 'role') return bcOptions.roles.map(r => ({ value: r, label: r }));
+    if (bcAudience === 'department') {
+      // De-duplicated by name: the same department can exist in several branches,
+      // and once narrowed to one branch it must appear exactly once.
+      const names = bcOptions.departments.filter(d => inBranch(d.branchId)).map(d => d.name);
+      return [...new Set(names)].map(d => ({ value: d, label: d }));
+    }
+    if (bcAudience === 'employee') {
+      return bcOptions.employees
+        .filter(e => inBranch(e.branchId))
+        .map(e => ({ value: String(e.id), label: `${e.name}${e.code ? ` (${e.code})` : ''}` }));
+    }
     return [];
-  }, [bcAudience, workspaceBranches, departments, activeUniqueEmployees]);
+  }, [bcAudience, bcBranch, bcOptions]);
 
   const dispatchBroadcast = async () => {
     const message = bcMessage.trim();
@@ -333,6 +400,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     try {
       const payload: any = { message, audience: bcAudience, companyId: activeCompanyId };
       if (bcAudience === 'branch') payload.branchId = bcTarget;
+      else if (bcBranch) payload.branchId = bcBranch;   // cascade narrowing
       if (bcAudience === 'role') payload.role = bcTarget;
       if (bcAudience === 'department') payload.department = bcTarget;
       if (bcAudience === 'employee') payload.employeeId = bcTarget;
@@ -343,6 +411,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       // the success message must never run ahead of the database write.
       setBcMessage('');
       setBcTarget('');
+      setBcBranch('');
       ui.toast.success(
         `Broadcast sent to ${res?.recipients ?? 0} recipient${res?.recipients === 1 ? '' : 's'}${res?.audience ? ` — ${res.audience}` : ''}.`,
       );
@@ -365,9 +434,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const periodEmployees = useMemo(() => {
     let list = activeUniqueEmployees;
     if (filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany || isCompanyIdMatch(e.companyId, filterCompany, companies, e.branchLocation, e.branchId));
-    if (filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
-    if (filterDept) list = list.filter(e => e.department === filterDept);
-    if (filterDesignation) list = list.filter(e => (e as any).designation === filterDesignation);
+    // sameValue, not ===: the dropdown now offers the tidied "Ahmedabad" while
+    // rows still hold "AHMEDABAD", so a strict compare would match nothing.
+    if (filterBranch) list = list.filter(e => sameValue(e.branchLocation || 'Head Office', filterBranch));
+    if (filterDept) list = list.filter(e => sameValue(e.department, filterDept));
+    if (filterDesignation) list = list.filter(e => sameValue((e as any).designation, filterDesignation));
     if (filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
     return list;
   }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, filterEmployee, companies]);
@@ -1087,8 +1158,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     let list = activeUniqueEmployees;
     if (exportScope === 'company' && filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany);
     else if (exportScope === 'multiple') list = list.filter(e => exportCompanyIds.includes(e.companyId) || exportCompanyIds.includes(e.branchId || ''));
-    else if (exportScope === 'branch' && filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
-    else if (exportScope === 'department' && filterDept) list = list.filter(e => e.department === filterDept);
+    else if (exportScope === 'branch' && filterBranch) list = list.filter(e => sameValue(e.branchLocation || 'Head Office', filterBranch));
+    else if (exportScope === 'department' && filterDept) list = list.filter(e => sameValue(e.department, filterDept));
     else if (exportScope === 'individual' && filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
     return list;
   };
@@ -1214,7 +1285,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <h3 className="text-[14px] font-bold text-gray-800">Workforce Analytics</h3>
                 <p className="text-[11px] text-gray-500 mb-4">Real-time insights and statistics.</p>
               </div>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-6 flex-1">
                 <div className="relative w-24 h-24 rounded-full border-[6px] border-emerald-500 flex items-center justify-center flex-shrink-0 shadow-inner">
                   <div className="text-center">
                     <span className="block text-xl font-black text-gray-800">{statTotal > 0 ? Math.round((statPresent / statTotal)*100) : 0}%</span>
@@ -1239,7 +1310,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </div>
                 </div>
               </div>
-              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Department Distribution */}
@@ -1267,13 +1337,19 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                    <div className="text-xs text-gray-400 text-center py-4">No department data available.</div>
                 )}
               </div>
-              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Broadcast & Notification */}
             <div className="bg-white rounded-[20px] border border-[#E6E0FE] shadow-sm p-5 flex flex-col justify-between">
               <div>
-                <h3 className="text-[14px] font-bold text-gray-800 mb-4">Broadcast & Notification</h3>
+                <h3 className="text-[14px] font-bold text-gray-800 mb-1">Broadcast & Notification</h3>
+                {/* A branch sender is told plainly that their reach is limited —
+                    the restriction is a rule, not a missing feature. */}
+                {bcOptions?.scope.branchId && (
+                  <p className="text-[10px] font-semibold text-gray-500 mb-3">
+                    Sending to <span className="text-brand-600">{bcOptions.scope.branchName}</span> only
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-3 flex-1">
                 <div>
@@ -1281,16 +1357,32 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <select
                     id="bc-audience"
                     value={bcAudience}
-                    onChange={e => { setBcAudience(e.target.value as BroadcastAudience); setBcTarget(''); }}
-                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    onChange={e => { setBcAudience(e.target.value as BroadcastAudience); setBcTarget(''); setBcBranch(''); }}
+                    disabled={!bcOptions}
+                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all disabled:opacity-60"
                   >
-                    <option value="all">All Staff</option>
-                    <option value="branch">Specific Branch</option>
-                    <option value="role">By Role</option>
-                    <option value="department">Specific Department</option>
-                    <option value="employee">Individual Employee</option>
+                    {(bcOptions?.audiences ?? [{ value: 'all', label: 'Loading…' }]).map(a => (
+                      <option key={a.value} value={a.value}>{a.label}</option>
+                    ))}
                   </select>
                 </div>
+
+                {/* Branch → Department/Employee cascade. Only for senders who
+                    actually have branches to choose between. */}
+                {bcShowBranchCascade && (
+                  <div>
+                    <label htmlFor="bc-branch" className="block text-[11px] font-bold text-gray-600 mb-1">Branch</label>
+                    <select
+                      id="bc-branch"
+                      value={bcBranch}
+                      onChange={e => { setBcBranch(e.target.value); setBcTarget(''); }}
+                      className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    >
+                      <option value="">All branches</option>
+                      {bcOptions!.branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 {/* The second selector only exists for audiences that need one. */}
                 {bcAudience !== 'all' && (
@@ -1304,7 +1396,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       onChange={e => setBcTarget(e.target.value)}
                       className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
                     >
-                      <option value="">Select…</option>
+                      <option value="">{bcTargetOptions.length ? 'Select…' : 'None available'}</option>
                       {bcTargetOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                   </div>
@@ -1421,7 +1513,15 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           {companyOptions.length > 1 && (
             <div className="w-40"><Select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} options={[{ value: '', label: 'All Companies' }, ...companyOptions]} className="text-xs h-8" /></div>
           )}
-          <div className="w-36"><Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-8" /></div>
+          {showBranchFilter ? (
+            <div className="w-36"><Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-8" /></div>
+          ) : isBranchWorkspace && implicitBranchName ? (
+            // Not a control — the branch is fixed by the workspace. Shown as a
+            // read-only chip so it is obvious WHY there is nothing to choose.
+            <div className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600" title="Attendance is scoped to your branch">
+              <Building2 size={12} className="text-slate-400" />{implicitBranchName}
+            </div>
+          ) : null}
           <div className="w-36"><Select value={filterDept} onChange={e => setFilterDept(e.target.value)} options={[{ value: '', label: 'All Departments' }, ...departments.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
           <div className="w-36"><Select value={filterDesignation} onChange={e => setFilterDesignation(e.target.value)} options={[{ value: '', label: 'All Designations' }, ...designations.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
           <div className="w-44"><Select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...periodEmployees.map(e => ({ value: e.id, label: e.name }))]} className="text-xs h-8" /></div>
