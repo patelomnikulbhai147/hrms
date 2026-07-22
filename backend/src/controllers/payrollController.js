@@ -1,4 +1,23 @@
 const prisma = require('../config/prisma');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The employee fields the payroll LIST needs to embed.
+//
+// This used to be `include: { employee: true }` — the whole employee record, all
+// ~60 columns including both addresses, on every payroll row. Measured against
+// production that was 5.9 MB of a 6.5 MB response (89%): 2,484 payroll rows
+// embedding 829 employees, each repeated once per pay period, while the client
+// had already loaded the full employee list separately from /employees.
+//
+// Only four of these are read by the UI (employeeId, name, branchLocation,
+// branchId); companyId/department/designation/status are kept because they are
+// cheap and are what scoping and grouping key off.
+const PAYROLL_EMPLOYEE_FIELDS = {
+  id: true, employeeId: true, name: true, companyId: true,
+  branchId: true, branchLocation: true, department: true,
+  designation: true, status: true,
+};
+
 // Coerces a string/number id to an integer PK. Used by update/delete/emailSlip
 // below; previously only require()'d inline in one spot, leaving `idParam` undefined
 // in the rest of the file (payroll edit/delete 500'd with "idParam is not defined").
@@ -468,9 +487,9 @@ exports.getAll = async (req, res) => {
       const skip = (pageNum - 1) * limitNum;
 
       const [data, total] = await Promise.all([
-        prisma.payroll.findMany({ 
+        prisma.payroll.findMany({
           where: whereClause,
-          include: { employee: true },
+          include: { employee: { select: PAYROLL_EMPLOYEE_FIELDS } },
           skip,
           take: limitNum,
           orderBy: { employeeId: 'asc' }
@@ -487,9 +506,9 @@ exports.getAll = async (req, res) => {
       });
     }
 
-    const data = await prisma.payroll.findMany({ 
+    const data = await prisma.payroll.findMany({
       where: whereClause,
-      include: { employee: true },
+      include: { employee: { select: PAYROLL_EMPLOYEE_FIELDS } },
       orderBy: { employeeId: 'asc' }
     });
     res.json(data);
