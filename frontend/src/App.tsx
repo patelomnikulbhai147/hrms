@@ -618,21 +618,6 @@ export default function App() {
         }
         setCompanies(allEntities);
 
-        // Heavy branding artwork (seal / letterhead / signature) is no longer part
-        // of the companies payload — it was 95% of it. Pull it for the ACTIVE
-        // workspace only, and deliberately WITHOUT awaiting: the app renders as
-        // soon as the light payload lands, and the artwork merges itself in a
-        // moment later so every screen that reads company.stampImage &c. keeps
-        // working unchanged.
-        const activeId = activeCompanyId || allEntities[0]?.id;
-        if (activeId) {
-          ensureCompanyAssets(activeId)
-            .then((assets) => {
-              if (!assets || !Object.values(assets).some(Boolean)) return;
-              setCompanies((prev) => mergeAssetsInto(prev as any[], activeId, assets) as any);
-            })
-            .catch(() => { /* ensureCompanyAssets already degrades to {} */ });
-        }
       }
       if (fetchedEmployees) setEmployees(fetchedEmployees);
       if (fetchedUsers) setUserAccounts(fetchedUsers);
@@ -775,6 +760,40 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
   useEffect(() => {
     if (isAuthenticated) hydrateAll();
   }, [isAuthenticated, activeCompanyId, isMasquerading]);
+
+  // ── Lazy branding artwork ───────────────────────────────────────────────────
+  // Seal / letterhead / signature are ~5.4 MB on this tenant and are only ever
+  // read while RENDERING a document. They were previously part of GET /companies
+  // and so were downloaded by everyone, on every login and every workspace
+  // switch. They now load the first time the user opens a screen that can print
+  // something — a session that never prints never pays for them at all.
+  //
+  // Fetching here rather than inside each screen keeps the ~30 existing call
+  // sites untouched: they keep reading company.stampImage &c. off the company
+  // object, which this merges into.
+  // Ids must match PAGE_IDS exactly — a typo here silently means "never load the
+  // artwork", which shows up as a seal missing from a printed document.
+  const PRINTING_PAGES = React.useMemo(() => new Set([
+    'documents', 'reports', 'custom-report-builder', 'invoice-management',
+    'company-profile', 'payroll', 'employee-cards', 'finance-compliance',
+    'compliance-management', 'communication', 'subscription-invoice',
+  ]), []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !activeCompanyId) return;
+    if (!PRINTING_PAGES.has(currentPage)) return;
+    let alive = true;
+    ensureCompanyAssets(activeCompanyId).then((assets) => {
+      if (!alive || !assets || !Object.values(assets).some(Boolean)) return;
+      setCompanies((prev) => {
+        // Skip the state write when the artwork is already merged, so this cannot
+        // loop or churn renders on every navigation within the printing pages.
+        const already = (prev as any[]).some((c) => String(c.id) === String(activeCompanyId) && c.stampImage != null);
+        return already ? prev : (mergeAssetsInto(prev as any[], activeCompanyId, assets) as any);
+      });
+    });
+    return () => { alive = false; };
+  }, [isAuthenticated, activeCompanyId, currentPage, PRINTING_PAGES]);
 
   // Real-time notification bell: poll the server every 20s (and immediately on
   // login / workspace change) so newly created notifications appear without a
