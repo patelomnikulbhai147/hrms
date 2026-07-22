@@ -28,7 +28,9 @@ import {
 import { AnimatedCounter } from '@/components/common/AnimatedCounter';
 import { ui } from '@/components/ui/feedback';
 import { titleCase, uniqueTitled, sameValue } from '@/utils/titleCase';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { AttendanceSheetImport } from '@/components/attendance/AttendanceSheetImport';
+import { AttendanceFullReport, type ReportVariant } from '@/components/attendance/AttendanceFullReport';
 interface AttendanceCenterProps {
   role: Role;
   activeCompanyId: string;
@@ -287,6 +289,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     empId: '', empName: '', empCode: '', department: '', branch: '', shift: '', date: today, in: '', out: '', otHours: 0, type: 'Normal Overtime', status: 'Pending', reason: ''
   });
 
+  // Per-field OT validation messages, and the in-flight guard that stops a double
+  // submit creating two identical overtime rows.
+  const [otErrors, setOtErrors] = useState<Record<string, string>>({});
+  const [savingOT, setSavingOT] = useState(false);
+
   const [empSearch, setEmpSearch] = useState('');
   const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
 
@@ -336,6 +343,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     : '';
   // Show the selector only to users who genuinely span more than one branch.
   const showBranchFilter = !isBranchWorkspace && branches.length > 1;
+
+  // Which "View Full Report" is open (null = none). Both dashboard cards open the
+  // same report component with a different lead section — see AttendanceFullReport.
+  const [fullReport, setFullReport] = useState<ReportVariant | null>(null);
 
   // ── Broadcast & Notification ───────────────────────────────────────────────
   // The audience choice drives which second selector appears; the server
@@ -431,7 +442,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   }, [activeUniqueEmployees, companies]);
 
   // Employees after applying the enterprise filter bar (shared by all period views).
-  const periodEmployees = useMemo(() => {
+  // Everything EXCEPT the employee filter. This is what the Employee dropdown is
+  // populated from: sourcing it from the fully-filtered list made it collapse to
+  // the single chosen person, so you could never switch to a different employee
+  // without clearing first.
+  const employeeChoices = useMemo(() => {
     let list = activeUniqueEmployees;
     if (filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany || isCompanyIdMatch(e.companyId, filterCompany, companies, e.branchLocation, e.branchId));
     // sameValue, not ===: the dropdown now offers the tidied "Ahmedabad" while
@@ -439,9 +454,13 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     if (filterBranch) list = list.filter(e => sameValue(e.branchLocation || 'Head Office', filterBranch));
     if (filterDept) list = list.filter(e => sameValue(e.department, filterDept));
     if (filterDesignation) list = list.filter(e => sameValue((e as any).designation, filterDesignation));
-    if (filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
     return list;
-  }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, filterEmployee, companies]);
+  }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, companies]);
+
+  const periodEmployees = useMemo(
+    () => (filterEmployee ? employeeChoices.filter(e => String(e.id) === String(filterEmployee)) : employeeChoices),
+    [employeeChoices, filterEmployee],
+  );
 
   // Active period range + the dates it spans.
   const period = useMemo(() => getPeriodRange(periodMode, selectedDate, customStart, customEnd), [periodMode, selectedDate, customStart, customEnd]);
@@ -561,11 +580,40 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   });
 
   const empCodeById = (eid: any) => activeUniqueEmployees.find(e => String(e.id) === String(eid))?.employeeId || '';
-  const filteredRecords = dailyRecords.filter(a => {
-    const matchSearch = !search || a.employeeName.toLowerCase().includes(search.toLowerCase()) || a.department.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !statusFilter || a.status === statusFilter;
-    return matchSearch && matchStatus;
-  }).sort(byEmployeeCode((a: any) => empCodeById(a.employeeId)));
+  // ── The Attendance Entry table's rows ──────────────────────────────────────
+  //
+  // ROOT CAUSE of "the filters do nothing": this used to apply ONLY search and
+  // status. Branch, Department, Designation, Employee and Company were ignored
+  // entirely, so the table never moved — while the filter bar's own counter,
+  // which reads periodEmployees.length, updated correctly. The two lists were
+  // never connected, which is exactly why the count changed (829 → 461 for
+  // Nursing) while the same Clinical employees stayed on screen.
+  //
+  // periodEmployees is the ONE place the employee-level filters are applied, so
+  // the table now derives from it rather than re-implementing them. That also
+  // means a filter added there is automatically honoured here.
+  //
+  // As a side effect this drops OFFBOARDED staff from the entry table:
+  // dailyRecords is projected from `uniqueEmployees` (everyone ever), whereas
+  // periodEmployees descends from `activeUniqueEmployees`.
+  const periodEmployeeIds = useMemo(
+    () => new Set(periodEmployees.map(e => String(e.id))),
+    [periodEmployees],
+  );
+
+  const filteredRecords = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return dailyRecords.filter(a => {
+      if (!periodEmployeeIds.has(String(a.employeeId))) return false;
+      if (statusFilter && a.status !== statusFilter) return false;
+      if (!q) return true;
+      // Search covers what the row actually shows — name, employee code,
+      // department — plus designation, so typing a role finds its people.
+      const emp: any = activeUniqueEmployees.find(e => String(e.id) === String(a.employeeId));
+      return [a.employeeName, a.department, emp?.employeeId, emp?.designation]
+        .some(v => String(v || '').toLowerCase().includes(q));
+    }).sort(byEmployeeCode((a: any) => empCodeById(a.employeeId)));
+  }, [dailyRecords, periodEmployeeIds, statusFilter, search, activeUniqueEmployees]);
 
   // Dashboard Stats — scope attendance rows by employee membership (records
   // carry an employeeId but no branchId, so branch workspaces need this).
@@ -946,22 +994,90 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setEditingOTId(null);
       setOTForm({ empId: '', empName: '', empCode: '', department: '', branch: '', shift: '', date: selectedDate, in: '18:00', out: '20:00', otHours: 2, type: 'Normal Overtime', status: 'Pending', reason: '' });
     }
+    setOtErrors({});   // a reopened form must never show the last attempt's errors
     setShowOTModal(true);
   };
 
+  /**
+   * Validate the OT form BEFORE calling the API.
+   *
+   * The backend already rejects an incomplete entry with a field-specific 400 —
+   * verified end-to-end. The bug was on this side: there was no client-side
+   * check, and the catch block reported every failure as "Database error", so a
+   * user who clicked Save without picking an employee got a misleading message
+   * about the database and no indication of which field was wrong. That is what
+   * "the Save button does nothing" actually was.
+   *
+   * Returns a map of field → message; empty means valid.
+   */
+  const validateOT = (form: typeof otForm): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!form.empId) errs.empId = 'Select an employee.';
+    if (!form.date) errs.date = 'Choose the overtime date.';
+    else if (form.date > today) errs.date = 'Overtime cannot be recorded for a future date.';
+    if (!form.in) errs.in = 'Enter the in time.';
+    if (!form.out) errs.out = 'Enter the out time.';
+    // otHours is derived from in/out, so a non-positive value means the times are
+    // the wrong way round (or identical) rather than a bad number.
+    if (form.in && form.out && !(Number(form.otHours) > 0)) {
+      errs.out = 'Out time must be after in time.';
+    }
+    if (!form.type) errs.type = 'Choose an overtime type.';
+    if (!String(form.reason || '').trim()) errs.reason = 'Give a reason for the overtime.';
+    return errs;
+  };
+
   const handleSaveOT = async () => {
+    const errs = validateOT(otForm);
+    setOtErrors(errs);
+    if (Object.keys(errs).length) {
+      // Say what is wrong, in the form, next to the field — and name the first
+      // problem in the toast so the reason is never a mystery.
+      ui.toast.warning(Object.values(errs)[0]);
+      return;
+    }
+
+    setSavingOT(true);
     try {
       if (editingOTId) {
         const res = await api.overtime.update(editingOTId, { ...otForm, companyId: activeCompanyId });
         setOvertimeData(overtimeData.map(o => o.id === editingOTId ? res : o));
+        ui.toast.success('Overtime record updated.');
       } else {
         const res = await api.overtime.create({ ...otForm, companyId: activeCompanyId });
         setOvertimeData([...overtimeData, res]);
+        ui.toast.success(`Overtime saved for ${otForm.empName} — ${otForm.otHours}h.`);
       }
+      setOtErrors({});
       setShowOTModal(false);
-    } catch (e) {
-      console.error(e);
-      ui.toast.error('Database error: failed to save overtime');
+      // Re-read the list from the server rather than trusting the optimistic
+      // local append: the grid, the OT stat cards and the total-hours figures all
+      // derive from `overtimeData`, so this is what makes them agree with the
+      // database without a manual refresh.
+      api.overtime.getAll()
+        .then(res => setOvertimeData(res))
+        .catch(e => console.error('[overtime] refresh after save failed', e));
+    } catch (e: any) {
+      console.error('[overtime] save failed', e);
+      // Surface the SERVER's own field list rather than a blanket "Database
+      // error" that misattributes a validation problem. The overtime endpoint
+      // reports `fields: ['employeeId', …]` using MODEL names, so they are
+      // translated back to this form's field names before being displayed.
+      // (getApiFieldErrors is not used here: it reads an `errors` MAP, which is
+      // a different contract this endpoint does not implement.)
+      const serverFields: string[] = e?.data?.fields || e?.response?.data?.fields || [];
+      if (Array.isArray(serverFields) && serverFields.length) {
+        const toFormField: Record<string, string> = {
+          employeeId: 'empId', employeeName: 'empId', employeeCode: 'empId',
+          inTime: 'in', outTime: 'out', date: 'date',
+        };
+        const mapped: Record<string, string> = {};
+        serverFields.forEach((f) => { mapped[toFormField[f] || f] = 'This field is required.'; });
+        setOtErrors(mapped);
+      }
+      ui.toast.error(getApiErrorMessage(e, 'Could not save the overtime record.'));
+    } finally {
+      setSavingOT(false);
     }
   };
 
@@ -1285,7 +1401,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <h3 className="text-[14px] font-bold text-gray-800">Workforce Analytics</h3>
                 <p className="text-[11px] text-gray-500 mb-4">Real-time insights and statistics.</p>
               </div>
-              <div className="flex items-center gap-6 flex-1">
+              <div className="flex items-center gap-6">
                 <div className="relative w-24 h-24 rounded-full border-[6px] border-emerald-500 flex items-center justify-center flex-shrink-0 shadow-inner">
                   <div className="text-center">
                     <span className="block text-xl font-black text-gray-800">{statTotal > 0 ? Math.round((statPresent / statTotal)*100) : 0}%</span>
@@ -1310,6 +1426,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </div>
                 </div>
               </div>
+              <button
+                onClick={() => setFullReport('workforce')}
+                className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/30 rounded py-1"
+              >
+                View Full Report
+              </button>
             </div>
 
             {/* Department Distribution */}
@@ -1337,6 +1459,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                    <div className="text-xs text-gray-400 text-center py-4">No department data available.</div>
                 )}
               </div>
+              <button
+                onClick={() => setFullReport('department')}
+                className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/30 rounded py-1"
+              >
+                View Full Report
+              </button>
             </div>
 
             {/* Broadcast & Notification */}
@@ -1514,7 +1642,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <div className="w-40"><Select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} options={[{ value: '', label: 'All Companies' }, ...companyOptions]} className="text-xs h-8" /></div>
           )}
           {showBranchFilter ? (
-            <div className="w-36"><Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-8" /></div>
+            <SearchableSelect className="w-36" value={filterBranch} onChange={setFilterBranch} placeholder="All Branches" ariaLabel="Filter by branch"
+              options={branches.map(b => ({ value: b, label: b }))} />
           ) : isBranchWorkspace && implicitBranchName ? (
             // Not a control — the branch is fixed by the workspace. Shown as a
             // read-only chip so it is obvious WHY there is nothing to choose.
@@ -1522,9 +1651,13 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               <Building2 size={12} className="text-slate-400" />{implicitBranchName}
             </div>
           ) : null}
-          <div className="w-36"><Select value={filterDept} onChange={e => setFilterDept(e.target.value)} options={[{ value: '', label: 'All Departments' }, ...departments.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
-          <div className="w-36"><Select value={filterDesignation} onChange={e => setFilterDesignation(e.target.value)} options={[{ value: '', label: 'All Designations' }, ...designations.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
-          <div className="w-44"><Select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...periodEmployees.map(e => ({ value: e.id, label: e.name }))]} className="text-xs h-8" /></div>
+          {/* Long lists get type-ahead; Status/period keep the native control. */}
+          <SearchableSelect className="w-36" value={filterDept} onChange={setFilterDept} placeholder="All Departments" ariaLabel="Filter by department"
+            options={departments.map(d => ({ value: d, label: d }))} />
+          <SearchableSelect className="w-40" value={filterDesignation} onChange={setFilterDesignation} placeholder="All Designations" ariaLabel="Filter by designation"
+            options={designations.map(d => ({ value: d, label: d }))} />
+          <SearchableSelect className="w-48" value={filterEmployee} onChange={setFilterEmployee} placeholder="All Employees" ariaLabel="Filter by employee"
+            options={employeeChoices.map(e => ({ value: String(e.id), label: titleCase(e.name), hint: [e.employeeId, titleCase(e.department)].filter(Boolean).join(' · ') }))} />
           {(filterCompany || filterBranch || filterDept || filterDesignation || filterEmployee) && (
             <button onClick={() => { setFilterCompany(''); setFilterBranch(''); setFilterDept(''); setFilterDesignation(''); setFilterEmployee(''); }} className="h-8 px-2 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-md flex items-center gap-1"><X size={12} /> Clear</button>
           )}
@@ -1930,20 +2063,27 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         open={showOTModal}
         onClose={() => setShowOTModal(false)}
         title={editingOTId ? "Edit Overtime Record" : "Add New Overtime"}
-        footer={<><Button variant="outline" onClick={() => setShowOTModal(false)}>Cancel</Button><Button onClick={handleSaveOT}>Save Record</Button></>}
+        footer={<>
+          <Button variant="outline" onClick={() => setShowOTModal(false)} disabled={savingOT}>Cancel</Button>
+          {/* Stays clickable while invalid on purpose: clicking runs validateOT,
+              which puts a message on every offending field. A hard-disabled
+              button would leave the user with no way to find out WHY. */}
+          <Button onClick={handleSaveOT} loading={savingOT}>{savingOT ? 'Saving…' : 'Save Record'}</Button>
+        </>}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="relative">
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Employee</label>
-              <div 
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white flex justify-between items-center cursor-pointer"
+              <div
+                className={`w-full text-sm border rounded-lg px-3 py-2 bg-white flex justify-between items-center cursor-pointer ${otErrors.empId ? 'border-rose-400' : 'border-slate-200'}`}
                 onClick={() => setIsEmpDropdownOpen(!isEmpDropdownOpen)}
               >
                 {otForm.empName ? `${otForm.empName} (${otForm.empCode || 'N/A'})` : <span className="text-slate-400">Select Employee</span>}
                 <ChevronDown size={14} className="text-slate-400" />
               </div>
-              
+              {otErrors.empId && <p className="text-[10px] font-semibold text-rose-600 mt-1">{otErrors.empId}</p>}
+
               {isEmpDropdownOpen && (
                 <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
                   <div className="p-2 border-b border-slate-100">
@@ -1988,11 +2128,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </div>
               )}
             </div>
-            <Input type="date" label="Date" max={today} value={otForm.date} onChange={e => setOTForm({...otForm, date: clampPast(e.target.value)})} />
+            <Input type="date" label="Date" max={today} value={otForm.date} error={otErrors.date}
+              onChange={e => setOTForm({...otForm, date: clampPast(e.target.value)})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input type="time" label="In Time" value={otForm.in} onChange={e => setOTForm({...otForm, in: e.target.value})} />
-            <Input type="time" label="Out Time" value={otForm.out} onChange={e => setOTForm({...otForm, out: e.target.value})} />
+            <Input type="time" label="In Time" value={otForm.in} error={otErrors.in} onChange={e => setOTForm({...otForm, in: e.target.value})} />
+            <Input type="time" label="Out Time" value={otForm.out} error={otErrors.out} onChange={e => setOTForm({...otForm, out: e.target.value})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Calculated OT Hours" value={otForm.otHours.toString()} disabled className="bg-slate-50 font-bold" />
@@ -2009,7 +2150,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Reason / Remarks</label>
-            <textarea className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 h-20" placeholder="E.g., Server maintenance, urgent client delivery..." value={otForm.reason} onChange={e => setOTForm({...otForm, reason: e.target.value})}></textarea>
+            <textarea
+              className={`w-full text-sm border rounded-lg px-3 py-2 h-20 ${otErrors.reason ? 'border-rose-400' : 'border-slate-200'}`}
+              placeholder="E.g., Server maintenance, urgent client delivery..."
+              value={otForm.reason} onChange={e => setOTForm({...otForm, reason: e.target.value})}></textarea>
+            {otErrors.reason && <p className="text-[10px] font-semibold text-rose-600 mt-1">{otErrors.reason}</p>}
           </div>
         </div>
       </Modal>
@@ -2480,6 +2625,21 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
         )}
       </Modal>
+
+      {/* "View Full Report" destination for both dashboard cards. The dashboard's
+          selected date seeds the range, so the report opens on the same period
+          the user was already looking at. */}
+      {fullReport && (
+        <AttendanceFullReport
+          open
+          variant={fullReport}
+          onClose={() => setFullReport(null)}
+          companyId={activeCompanyId}
+          from={(selectedDate || today).slice(0, 8) + '01'}
+          to={selectedDate || today}
+          companyLabel={companies.find(c => String(c.id) === String(activeCompanyId))?.name}
+        />
+      )}
 
     </div>
   );
