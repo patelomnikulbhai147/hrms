@@ -8,10 +8,20 @@
 // existing convention into one component so the two styles converge instead of
 // becoming three.
 //
-// Responsive by design — one markup, three presentations:
-//   < sm   icon only        (label collapses; the tooltip/aria-label carries it)
-//   sm–lg  icon only, wider tap target
-//   ≥ lg   icon + label
+// Responsive by CONTAINER, not viewport. The label appears only when the table
+// actually has room for it:
+//
+//   container < 1100px   icon only  (tooltip + aria-label carry the meaning)
+//   container ≥ 1100px   icon + label
+//
+// Keying this to the viewport was the bug: with a 256px sidebar a 1366px screen
+// leaves the table ~1058px, so a `lg:` (1024px viewport) rule rendered four
+// labelled buttons — a 346px Actions column — into a space that could not hold
+// them, pushing the table into horizontal scroll and clipping the last button.
+// `@[1100px]/table:` asks the only question that matters. The `2xl:` clause is a
+// fallback for any RowAction rendered outside a <Table> (no /table container to
+// query); worst case it stays icon-only, which is still fully usable.
+//
 // The label is hidden with CSS rather than unmounted, so it is always present
 // for screen readers and the button never changes identity across breakpoints.
 //
@@ -70,8 +80,8 @@ export const RowAction: React.FC<RowActionProps> = ({
     aria-label={label}
     className={[
       'inline-flex items-center justify-center gap-1.5 shrink-0',
-      // Equal height everywhere; width grows only when a label is shown.
-      iconOnly ? 'h-7 w-7' : 'h-7 w-7 lg:w-auto lg:px-2.5',
+      // Equal height everywhere; width grows only when a label is actually shown.
+      iconOnly ? 'h-7 w-7' : 'h-7 w-7 @[1100px]/table:w-auto @[1100px]/table:px-2.5 2xl:w-auto 2xl:px-2.5',
       'rounded-lg border bg-white',
       'text-[11px] font-semibold leading-none',
       'cursor-pointer transition-all duration-150 ease-out',
@@ -82,7 +92,7 @@ export const RowAction: React.FC<RowActionProps> = ({
     ].join(' ')}
   >
     <Icon size={13} className="shrink-0" aria-hidden="true" />
-    {!iconOnly && <span className="hidden lg:inline whitespace-nowrap">{label}</span>}
+    {!iconOnly && <span className="hidden @[1100px]/table:inline 2xl:inline whitespace-nowrap">{label}</span>}
   </button>
 );
 

@@ -2222,10 +2222,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               {shiftError}
             </div>
           )}
+          {/* 10 columns — `dense` trims the per-cell padding that otherwise costs
+              320px of pure whitespace and forces horizontal scroll at 1366px. */}
           <Paginated items={shifts} resetKey={activeCompanyId} label="shifts">
           {(rows) => (
-          <Table>
-            <Thead><tr><Th>Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
+          <Table dense>
+            {/* Shift Name and Actions pin to the edges. At 100% zoom on any
+                desktop width nothing scrolls, so these never engage; at 125/150%
+                zoom (or on a phone) the row identity and its actions stay put
+                while the middle columns scroll. */}
+            <Thead><tr><Th className="sticky left-0 z-20 bg-surface-muted">Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th className="sticky right-0 z-20 bg-surface-muted text-right">Actions</Th>}</tr></Thead>
             <Tbody>
               {shifts.length === 0 && !shiftError && (
                 <Tr><Td colSpan={isAdmin ? 10 : 9}><span className="text-slate-400 text-xs py-3 block text-center">No shifts defined yet. Click “Create New Shift” to add one.</span></Td></Tr>
@@ -2234,7 +2240,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 const assignedCount = (employees || []).filter((e: any) => String(e.shiftId) === String(s.id)).length;
                 return (
                 <Tr key={s.id} className={s.status === 'Archived' ? 'opacity-50' : ''}>
-                  <Td><span className="font-bold text-xs">{s.name}</span></Td>
+                  <Td className="sticky left-0 z-10 bg-inherit"><span className="font-bold text-xs">{s.name}</span></Td>
                   <Td><span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded">{s.code || 'N/A'}</span></Td>
                   <Td><span className="text-xs font-mono">{s.start}</span></Td>
                   <Td><span className="text-xs font-mono">{s.end}</span></Td>
@@ -2244,8 +2250,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <Td><Badge variant={s.otEnabled ? 'green' : 'gray'}>{s.otEnabled ? 'Eligible' : 'N/A'}</Badge></Td>
                   <Td><Badge variant={s.status === 'Active' ? 'blue' : 'gray'}>{s.status}</Badge></Td>
                   {isAdmin && (
-                    <Td>
-                      <RowActions>
+                    // Right-aligned and non-shrinking: the actions are the last
+                    // column, so any slack belongs to the data columns, not here.
+                    <Td className="sticky right-0 z-10 bg-inherit w-px text-right">
+                      <RowActions className="justify-end">
                         <RowAction icon={Users} label="Assign" tone="info" tooltip="Assign employees to this shift" onClick={() => openAssignShift(s)} />
                         <RowAction icon={Pencil} label="Edit" tone="edit" tooltip="Edit shift timings" onClick={() => handleOpenShiftModal(s)} />
                         {s.status !== 'Archived' && (
