@@ -1,6 +1,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const otPay = require('../utils/overtimePay');
+const { deriveOvertimeHours } = require('../utils/overtimeDerivation');
 const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -255,6 +256,81 @@ exports.getAnalytics = async (req, res) => {
 // payrollController.syncPayrollForEmployees.
 // ---------------------------------------------------------------------------
 const pad2 = (n) => String(n).padStart(2, '0');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-raise overtime from a day's punches.
+//
+// Only the Excel-import path used to do this, so a day typed into the Attendance
+// screen produced no overtime however long it was: 09:00–21:00 against a 9-hour
+// shift generated nothing. Both paths now measure the day with the SAME rule
+// (utils/overtimeDerivation).
+//
+// The record is created PENDING — deriving hours is not approving them, and only
+// approval moves money. Idempotent: the auto-raised row for an employee+date is
+// replaced, never stacked, so correcting a punch cannot leave two claims behind.
+// A MANUALLY raised overtime record for that date is left completely alone; a
+// person's judgement outranks a derivation.
+// ─────────────────────────────────────────────────────────────────────────────
+const AUTO_OT_MARKER = 'auto-derived';
+
+async function deriveOvertimeForAttendance(record) {
+  if (!record || !record.employeeId || !record.date) return null;
+  try {
+    const emp = await prisma.employee.findUnique({
+      where: { id: Number(record.employeeId) },
+      select: { id: true, name: true, employeeId: true, companyId: true, department: true, branchLocation: true, shiftId: true },
+    });
+    if (!emp) return null;
+
+    // A manual claim for this date wins — never overwrite or duplicate it.
+    const manual = await prisma.overtime.findFirst({
+      where: { employeeId: emp.id, date: record.date, NOT: { remarks: AUTO_OT_MARKER } },
+      select: { id: true },
+    });
+    if (manual) return { skipped: 'a manually raised overtime entry already exists for this date' };
+
+    const shift = emp.shiftId
+      ? await prisma.shift.findUnique({ where: { id: Number(emp.shiftId) }, select: { name: true, start: true, end: true, breakTime: true, otEnabled: true } })
+      : null;
+
+    const status = String(record.status || '').toLowerCase();
+    const { otHours, reason } = deriveOvertimeHours({
+      clockIn: record.clockIn, clockOut: record.clockOut, shift,
+      isHoliday: /holiday/.test(status),
+      isWeeklyOff: /weekly off|week off/.test(status),
+    });
+
+    // Clear any previous auto-raised row for the date, so an edited punch
+    // re-derives instead of accumulating.
+    await prisma.overtime.deleteMany({ where: { employeeId: emp.id, date: record.date, remarks: AUTO_OT_MARKER } });
+    if (!(otHours > 0)) return { otHours: 0, reason };
+
+    const created = await prisma.overtime.create({
+      data: {
+        companyId: emp.companyId, employeeId: emp.id, employeeName: emp.name,
+        employeeCode: emp.employeeId, department: emp.department || null,
+        branch: emp.branchLocation || null, shift: shift?.name || null,
+        date: record.date, inTime: record.clockIn || '', outTime: record.clockOut || '',
+        otHours, type: 'Auto', reason: 'Derived from attendance punches',
+        remarks: AUTO_OT_MARKER, status: 'Pending',
+      },
+    });
+    console.log('[attendance→overtime]', JSON.stringify({
+      employeeId: emp.id, date: record.date, clockIn: record.clockIn, clockOut: record.clockOut,
+      shift: shift?.name || null, otHours, overtimeId: created.id, status: 'Pending', reason,
+    }));
+    return { otHours, overtimeId: created.id, reason };
+  } catch (err) {
+    // Never fail an attendance write because the derivation had a problem — but
+    // never hide it either.
+    console.error('[attendance→overtime] DERIVATION FAILED', JSON.stringify({
+      employeeId: record?.employeeId, date: record?.date,
+      message: err?.message, code: err?.code, timestamp: new Date().toISOString(),
+    }));
+    console.error(err?.stack || err);
+    return { error: err?.message || 'derivation failed' };
+  }
+}
 
 exports.syncPayroll = async (req, res) => {
   // ROOT-CAUSE FIX: Employee.companyId / branchId are Int columns, but the client
@@ -740,9 +816,11 @@ exports.create = async (req, res) => {
       const dup = await prisma.attendance.findFirst({ where: { employeeId: Number(body.employeeId), date: body.date } });
       if (dup) {
         const updated = await prisma.attendance.update({ where: { id: dup.id }, data: body });
+        // Re-derive overtime: a corrected punch must not leave the old claim behind.
+        const overtime = await deriveOvertimeForAttendance(updated);
         const flagged = await flagPayrollOutdated(updated.employeeId, updated.date);
         await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', updated, dup.status, source, undefined, flagged > 0);
-        return res.status(200).json(updated);
+        return res.status(200).json({ ...updated, overtime });
       }
     }
 
@@ -762,10 +840,12 @@ exports.create = async (req, res) => {
       } else throw err;
     }
     console.log('[attendance.create] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status, action });
+    // Punches in ⇒ overtime derived (Pending, awaiting approval).
+    const overtime = await deriveOvertimeForAttendance(data);
     // A new attendance record changes the month's totals → payroll is now stale.
     const flagged = await flagPayrollOutdated(data.employeeId, data.date);
     await writeAttendanceAudit(req, action, data, undefined, source, undefined, flagged > 0);
-    res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json(data);
+    res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json({ ...data, overtime });
   } catch (error) {
     console.error('[attendance.create] FAILED', error);
     res.status(500).json({ error: error.message || 'Server error', code: error.code });
