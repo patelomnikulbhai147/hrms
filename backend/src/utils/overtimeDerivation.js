@@ -42,6 +42,32 @@ function workedHours(clockIn, clockOut, breakMinutes = 0) {
   return round2(Math.max(0, gross - (Number(breakMinutes) || 0)) / 60);
 }
 
+/**
+ * Break length in MINUTES from whatever the Shift row holds.
+ *
+ * `breakTime` is free text in practice — "1 hr", "60", "0:45", "30 min", "1.5h".
+ * Stripping non-digits and calling the result minutes turned "1 hr" into ONE
+ * MINUTE, which shortened a 9h shift to 8.983h and made three 12/11/13-hour days
+ * derive 9.06 hours of overtime instead of 9. Caught on production, where the
+ * real shift carries a human-typed break; a locally created shift with "0" hid it.
+ * Units are now read explicitly, and a bare number is minutes only when it is
+ * plausibly minutes.
+ */
+function breakMinutesOf(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  // "H:MM" → minutes
+  const hhmm = /^(\d{1,2}):(\d{2})$/.exec(raw);
+  if (hhmm) return Number(hhmm[1]) * 60 + Number(hhmm[2]);
+  const num = parseFloat(raw.replace(/[^0-9.]/g, ''));
+  if (!Number.isFinite(num)) return 0;
+  if (/h/i.test(raw)) return Math.round(num * 60);            // "1 hr", "1.5h"
+  if (/m/i.test(raw)) return Math.round(num);                 // "30 min"
+  // Bare number: a break is conventionally minutes, but a small value is far
+  // more likely to mean hours ("1" = one hour, not one minute).
+  return num <= 4 ? Math.round(num * 60) : Math.round(num);
+}
+
 /** The shift's paid working span in hours (start→end minus break). */
 function shiftWorkHours(shift) {
   if (!shift) return null;
@@ -49,10 +75,7 @@ function shiftWorkHours(shift) {
   if (a == null || b == null) return null;
   let end = b;
   if (end < a) end += 24 * 60;
-  const brk = toMinutes(shift.breakTime) != null
-    ? toMinutes(shift.breakTime)
-    : (Number(String(shift.breakTime || '').replace(/[^0-9.]/g, '')) || 0);
-  return round2(Math.max(0, (end - a) - brk) / 60);
+  return round2(Math.max(0, (end - a) - breakMinutesOf(shift.breakTime)) / 60);
 }
 
 /**
@@ -76,4 +99,4 @@ function deriveOvertimeHours({ clockIn, clockOut, shift, isHoliday = false, isWe
   return { otHours: 0, reason: `worked ${worked}h, within the ${span}h shift (+0.25h cushion)` };
 }
 
-module.exports = { deriveOvertimeHours, workedHours, shiftWorkHours, toMinutes };
+module.exports = { deriveOvertimeHours, workedHours, shiftWorkHours, breakMinutesOf, toMinutes };
