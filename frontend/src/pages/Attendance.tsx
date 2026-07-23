@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check, Pencil, Archive, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '@/types';
 import { Badge } from '@/components/ui/Badge';
@@ -9,6 +9,7 @@ import { Card, StatCard } from '@/components/ui/Card';
 import { Paginated } from '@/components/ui/Paginated';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
+import { RowActions, RowAction } from '@/components/ui/RowActions';
 import { Modal } from '@/components/ui/Modal';
 import { getUniqueEmployees } from '@/utils/deduplication';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
@@ -941,7 +942,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   };
 
   const handleDeleteShift = async (id: string) => {
-    if (await ui.confirm({ message: "Permanently delete this shift? Employees assigned to it will be unassigned. Use Archive instead to keep history.", variant: 'danger', confirmText: 'Delete Shift' })) {
+    if (await ui.confirm({
+      title: 'Delete Shift?',
+      message: 'This action cannot be undone. Employees assigned to this shift will be unassigned — use Archive instead if you need to keep the history.',
+      variant: 'danger', confirmText: 'Delete', cancelText: 'Cancel',
+    })) {
       try {
         await api.shifts.delete(id);
         setShifts(shifts.filter(s => s.id !== id));
@@ -953,9 +958,20 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   };
 
   const handleArchiveShift = async (id: string) => {
+    // Archiving changes what the roster offers and is not obviously reversible
+    // from the row itself, so it confirms — but as a normal (not danger) dialog,
+    // because unlike Delete it preserves history.
+    const confirmed = await ui.confirm({
+      title: 'Archive Shift?',
+      message: 'Employees currently assigned will not lose historical records. The shift stops being offered for new assignments.',
+      confirmText: 'Archive',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
     try {
       const res = await api.shifts.archive(id);
       setShifts(shifts.map(s => s.id === id ? res : s));
+      ui.toast.success('Shift archived.');
     } catch (e: any) {
       console.error(e);
       ui.toast.error(`Failed to archive shift: ${e?.message || 'database error'}`);
@@ -2068,16 +2084,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     <Td><Badge variant={ot.status === 'Approved' ? 'green' : ot.status === 'Rejected' ? 'red' : 'warning'}>{ot.status}</Badge></Td>
                     {isAdmin && (
                       <Td>
-                        <div className="flex gap-2 items-center">
+                        <RowActions>
                           {ot.status === 'Pending' && (
                             <>
-                              <button className="text-[10px] text-emerald-600 font-bold hover:underline" onClick={() => handleStatusOT(ot.id, 'Approved')}>Approve</button>
-                              <button className="text-[10px] text-rose-600 font-bold hover:underline" onClick={() => handleStatusOT(ot.id, 'Rejected')}>Reject</button>
+                              <RowAction icon={CheckCircle2} label="Approve" tone="success" tooltip="Approve this overtime — it will be paid" onClick={() => handleStatusOT(ot.id, 'Approved')} />
+                              <RowAction icon={XCircle} label="Reject" tone="warning" tooltip="Reject this overtime — it will not be paid" onClick={() => handleStatusOT(ot.id, 'Rejected')} />
                             </>
                           )}
-                          <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenOTModal(ot)}>Edit</button>
-                          <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteOT(ot.id)}>Delete</button>
-                        </div>
+                          <RowAction icon={Pencil} label="Edit" tone="edit" tooltip="Edit overtime entry" onClick={() => handleOpenOTModal(ot)} />
+                          <RowAction icon={Trash2} label="Delete" tone="danger" tooltip="Delete overtime entry" onClick={() => handleDeleteOT(ot.id)} />
+                        </RowActions>
                       </Td>
                     )}
                   </Tr>
@@ -2229,12 +2245,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <Td><Badge variant={s.status === 'Active' ? 'blue' : 'gray'}>{s.status}</Badge></Td>
                   {isAdmin && (
                     <Td>
-                      <div className="flex items-center gap-2">
-                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => openAssignShift(s)}>Assign</button>
-                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenShiftModal(s)}>Edit</button>
-                        {s.status !== 'Archived' && <button className="text-[10px] text-amber-600 hover:underline font-bold" onClick={() => handleArchiveShift(s.id)}>Archive</button>}
-                        <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteShift(s.id)}>Delete</button>
-                      </div>
+                      <RowActions>
+                        <RowAction icon={Users} label="Assign" tone="info" tooltip="Assign employees to this shift" onClick={() => openAssignShift(s)} />
+                        <RowAction icon={Pencil} label="Edit" tone="edit" tooltip="Edit shift timings" onClick={() => handleOpenShiftModal(s)} />
+                        {s.status !== 'Archived' && (
+                          <RowAction icon={Archive} label="Archive" tone="warning" tooltip="Archive this shift (keeps history)" onClick={() => handleArchiveShift(s.id)} />
+                        )}
+                        <RowAction icon={Trash2} label="Delete" tone="danger" tooltip="Permanently delete this shift" onClick={() => handleDeleteShift(s.id)} />
+                      </RowActions>
                     </Td>
                   )}
                 </Tr>
