@@ -521,6 +521,18 @@ export const api = {
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/leaves/${id}`, { method: 'DELETE', headers: getHeaders() }); }
   },
 
+  // Leave-type master + gender-based eligibility. The apply form renders
+  // `eligible(employeeId)` rather than a hardcoded list, and the same rule is
+  // enforced server-side on POST /leaves — this is presentation of a policy, not
+  // the policy itself.
+  leaveTypes: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/leave-types`, { headers: getHeaders() }); },
+    eligible: async (employeeId: any) => { return await apiFetch(`${BASE_URL}/leave-types/eligible?employeeId=${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() }); },
+    update: async (code: string, data: { eligibleGender?: string; enabled?: boolean; label?: string; companyId?: any }) => {
+      return await apiFetch(`${BASE_URL}/leave-types/${encodeURIComponent(code)}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) });
+    },
+  },
+
   leaveBalances: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/leave-balances`, { headers: getHeaders() }); },
     accrue: async (data: { throughMonth?: number; year?: number; companyId?: any }) => { return await apiFetch(`${BASE_URL}/leave-balances/accrue`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },

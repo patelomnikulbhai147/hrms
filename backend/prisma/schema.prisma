@@ -2812,3 +2812,32 @@ model ComplianceDocument {
   @@index([companyId, status])
   @@map("compliance_documents")
 }
+
+// Leave-type master — WHICH leave types a company offers, and WHO is eligible.
+//
+// Gender-based eligibility is a business rule, not a UI preference: a male
+// employee must not be able to apply for Maternity Leave through the form OR by
+// posting to the API directly. Storing it here (rather than hardcoding a list in
+// the page) means HR configures it, branches inherit it, and the backend can
+// enforce the same rule the form displays.
+//
+// eligibleGender: 'All' | 'Male' | 'Female'. Anything else is treated as 'All'.
+// A company row overrides the seeded default for that code; codes not present in
+// the table fall back to LEAVE_TYPE_DEFAULTS in leaveEligibilityService.
+model LeaveTypePolicy {
+  id             Int      @id @default(autoincrement())
+  companyId      Int // parent company id (branch ids resolve to the parent)
+  code           String // stable key: annual, casual, sick, maternity, paternity…
+  label          String // what HR sees and what the request stores
+  eligibleGender String   @default("All")
+  enabled        Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  isSystem       Boolean  @default(true) // seeded default vs HR-created
+  updatedBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@map("leave_type_policy")
+}

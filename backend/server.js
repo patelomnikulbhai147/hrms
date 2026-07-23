@@ -129,6 +129,8 @@ app.use('/api/leaves', pii('Leave'), leaveRoutes);
 app.use('/api/leave-credit', pii('Leave'), leaveCreditRoutes);
 app.use('/api/leave-balances', pii('Leave'), leaveBalanceRoutes);
 app.use('/api/leave-admin', pii('Leave'), leaveAdminRoutes);
+// Leave-type master + per-employee eligibility (gender-based leave rules).
+app.use('/api/leave-types', pii('Leave'), require('./src/routes/leaveTypeRoutes'));
 app.use('/api/tasks', _protect, plan('tasks'), taskRoutes);
 app.use('/api/tenders', pii('Tenders'), plan('tenders'), tenderRoutes);
 app.use('/api/contracts', pii('Contracts'), plan('contracts'), require('./src/routes/contractRoutes'));

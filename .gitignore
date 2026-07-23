@@ -32,3 +32,4 @@ backend/.env.bak-*
 # temporary login to take them — same reason as qa-proof/ above: local only.
 screenshots/
 backend/scripts/shotOvertimeScreen.js
+backend/scripts/shotLeaveEligibility.js

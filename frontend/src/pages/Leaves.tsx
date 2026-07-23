@@ -28,6 +28,7 @@ import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { useLeavePolicy } from '@/hooks/useLeavePolicy';
+import { useEligibleLeaveTypes } from '@/hooks/useEligibleLeaveTypes';
 import { LEAVE_FIELDS } from '@/utils/payrollSettings';
 import { buildLeaveWallet, walletTotalRemaining, walletTotalUsed, WALLET_TONE, walletPalette } from '@/utils/leaveWallet';
 
@@ -52,6 +53,11 @@ interface LeavesProps {
   authProfile?: UserAccount | null;
 }
 
+// The full catalogue, used ONLY where every historical value must remain
+// selectable — the list filter. It is deliberately NOT what the apply form
+// renders: a male employee was being offered Maternity Leave from exactly this
+// array. Eligibility now comes per employee from the server
+// (GET /leave-types/eligible), which is the same rule POST /leaves enforces.
 const leaveTypes: LeaveType[] = ['Annual', 'Sick', 'Casual', 'Maternity', 'Paternity', 'Unpaid'];
 const leaveStatuses: LeaveStatus[] = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
@@ -146,6 +152,52 @@ export const Leaves: React.FC<LeavesProps> = ({
     reason: '',
   });
 
+  // ── Gender-based leave eligibility ────────────────────────────────────────
+  // Which types the SELECTED employee may apply for. Refetched per employee,
+  // because the answer depends on who the leave is for. The server enforces the
+  // same rule on POST/PUT, so this is presentation of a policy — not the policy.
+  const applyEligibility = useEligibleLeaveTypes(selectedEmp?.id);
+  const editEligibility = useEligibleLeaveTypes((editLeave as any)?.employeeId);
+
+  /**
+   * Options for a Leave Category dropdown.
+   *
+   * If the lookup failed we fall back to the full catalogue rather than showing
+   * an empty dropdown: the backend still refuses an ineligible type, so the
+   * worst case is a clear server-side rejection instead of a user who cannot
+   * file any leave at all.
+   */
+  const categoryOptions = (
+    e: { types: Array<{ code: string; label: string }>; loading: boolean; error: string | null },
+    current: string,
+    keepCurrent = false,
+  ) => {
+    const source = e.error || (!e.types.length && e.loading)
+      ? leaveTypes.map((t) => ({ code: t, label: t }))
+      : e.types;
+    const opts = source.map((t) => ({ value: t.label, label: t.label }));
+    // On the EDIT form a historical record may hold a type the employee is no
+    // longer eligible for. Keep it selectable so opening the record does not
+    // silently rewrite its category to whatever happens to be first in the list.
+    // The NEW-leave form does not do this — it would show the blank form opening
+    // on "Annual (not currently eligible)", which is just the stale default.
+    if (keepCurrent && current && !opts.some((o) => o.value === current)) {
+      opts.unshift({ value: current, label: `${current} (not currently eligible)` });
+    }
+    return opts;
+  };
+
+  // Keep the new-leave form on a type the selected employee can actually take.
+  // Without this the form keeps its 'Annual' default, which is not one of the
+  // master's labels, and the first submit would be refused by the server.
+  useEffect(() => {
+    const opts = applyEligibility.types;
+    if (!opts.length) return;
+    setForm((prev) => (opts.some((t) => t.label === prev.leaveType)
+      ? prev
+      : { ...prev, leaveType: opts[0].label as LeaveType }));
+  }, [applyEligibility.types]);
+
   const [editForm, setEditForm] = useState({
     leaveType: 'Annual' as LeaveType,
     fromDate: todayStr,
@@ -208,6 +260,12 @@ export const Leaves: React.FC<LeavesProps> = ({
     }
     return isCompany;
   }, [uniqueLeaves, activeCompanyId, role, authProfile, uniqueEmployees]);
+
+  /** Every leave-type spelling actually present in this company's records. */
+  const presentLeaveTypes = useMemo(
+    () => [...new Set(companyLeaves.map(l => String(l.leaveType || '').trim()).filter(Boolean))].sort(),
+    [companyLeaves],
+  );
 
   const filtered = useMemo(() => {
     return companyLeaves.filter(l => {
@@ -571,8 +629,13 @@ export const Leaves: React.FC<LeavesProps> = ({
             ]}
           />
           
+          {/* Options come from the values actually present, not from a fixed
+              array. The array listed 6 names while the data holds 10 spellings
+              ('CL', 'PL', 'SL', 'LWP', 'Comp Off', 'Optional Holiday'), so most
+              records could not be filtered at all. Historical types stay listed
+              on purpose — audit visibility does not depend on eligibility. */}
           <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            options={[{ value: '', label: 'All Types' }, ...leaveTypes.map(t => ({ value: t, label: t }))]}
+            options={[{ value: '', label: 'All Types' }, ...presentLeaveTypes.map(t => ({ value: t, label: t }))]}
           />
           
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
@@ -853,7 +916,14 @@ export const Leaves: React.FC<LeavesProps> = ({
             const empLeaves = uniqueLeaves.filter(l =>
               (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && l.status === 'Approved'
             );
-            const wallet = buildLeaveWallet(leavePolicy, empLeaves);
+            // Only balances this employee can actually draw on. The wallet keys
+            // (annual/casual/sick/paid/earned/compOff/optional/lop) come from the
+            // company Leave Policy and are gender-neutral today, so nothing is
+            // hidden until HR restricts one — at which point the wallet follows
+            // the same master the dropdown does, rather than drifting from it.
+            const eligibleCodes = new Set(applyEligibility.types.map(t => t.code));
+            const wallet = buildLeaveWallet(leavePolicy, empLeaves)
+              .filter(w => !eligibleCodes.size || eligibleCodes.has(w.key));
             return (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
@@ -882,13 +952,28 @@ export const Leaves: React.FC<LeavesProps> = ({
             );
           })()}
 
+          {/* Only the types THIS employee is eligible for. A male employee is not
+              offered Maternity Leave, and the same rule refuses it server-side. */}
           <Select label="Leave Category *" disabled={!canEdit} value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
-            options={leaveTypes.map(type => {
-              const cat = categoryOfType(type);
-              const bal = selectedEmp ? balanceForType(selectedEmp.id, type) : Infinity;
+            options={categoryOptions(applyEligibility, form.leaveType).map(opt => {
+              const cat = categoryOfType(opt.value);
+              const bal = selectedEmp ? balanceForType(selectedEmp.id, opt.value) : Infinity;
               const blocked = !!cat && cat !== 'LWP' && bal <= 0;
-              return { value: type, label: blocked ? `${type} (0 balance)` : type, disabled: blocked };
+              return { value: opt.value, label: blocked ? `${opt.label} (0 balance)` : opt.label, disabled: blocked };
             })} />
+          {selectedEmp && !applyEligibility.loading && !applyEligibility.error && !applyEligibility.genderRecorded && (
+            // Say why the list is short rather than leaving HR to wonder. A
+            // gender-restricted type is never granted off a blank field.
+            <p className="text-[11px] font-semibold text-amber-600">
+              Gender is not recorded for {selectedEmp.name}, so gender-specific leave types are not offered.
+              Set it on the employee record to enable them.
+            </p>
+          )}
+          {applyEligibility.error && (
+            <p className="text-[11px] font-semibold text-amber-600">
+              Could not load this employee's eligible leave types — showing all. The server will still refuse an ineligible type.
+            </p>
+          )}
           {selectedEmp && (() => {
             const cat = categoryOfType(form.leaveType);
             const bal = balanceForType(selectedEmp.id, form.leaveType);
@@ -944,8 +1029,11 @@ export const Leaves: React.FC<LeavesProps> = ({
               <p className="font-bold text-gray-900 mt-0.5">{editLeave.employeeName} ({editLeave.department})</p>
             </div>
             
+            {/* The record's existing category stays selectable even if the
+                employee is no longer eligible for it — historical records must
+                remain readable. Saving one forward is what the server refuses. */}
             <Select label="Leave Category *" disabled={!canEdit} value={editForm.leaveType} onChange={e => setEditForm({ ...editForm, leaveType: e.target.value as LeaveType })}
-              options={leaveTypes.map(type => ({ value: type, label: type }))} />
+              options={categoryOptions(editEligibility, editForm.leaveType, true)} />
 
             <div className="grid grid-cols-2 gap-3">
               <Input label="From Date *" type="date" disabled={!canEdit} value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} />
