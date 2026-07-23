@@ -28,3 +28,7 @@ dist.zip
 
 # Local backup of backend/.env taken during the email de-branding change (holds SMTP creds)
 backend/.env.bak-*
+# Browser QA screenshots (real employee names) + the capture script that creates a
+# temporary login to take them — same reason as qa-proof/ above: local only.
+screenshots/
+backend/scripts/shotOvertimeScreen.js

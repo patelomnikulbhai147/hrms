@@ -31,7 +31,6 @@ import { ui } from '@/components/ui/feedback';
 import { titleCase, uniqueTitled, sameValue } from '@/utils/titleCase';
 import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { AttendanceSheetImport } from '@/components/attendance/AttendanceSheetImport';
-import { AttendanceFullReport, type ReportVariant } from '@/components/attendance/AttendanceFullReport';
 interface AttendanceCenterProps {
   role: Role;
   activeCompanyId: string;
@@ -203,6 +202,40 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   // OT DB State
   const [overtimeData, setOvertimeData] = useState<any[]>([]);
 
+  // ── Overtime, grouped one row per employee ────────────────────────────────
+  // The grouping is computed by the SERVER (GET /overtime/summary) from the same
+  // Overtime rows, so the per-employee totals HR approves against are the whole
+  // database — not whichever page of a paginated table is in memory — and the
+  // Payroll Status column reflects payroll.otHours vs the approved hours rather
+  // than an assumption. Individual records are never merged: each employee's
+  // `entries` carries every one of them for the expanded view.
+  const [otSummary, setOtSummary] = useState<{ employees: any[]; totals: any } | null>(null);
+  const [otSummaryError, setOtSummaryError] = useState<string | null>(null);
+  const [expandedOT, setExpandedOT] = useState<Set<string>>(new Set());
+  const [pushingOT, setPushingOT] = useState<string | null>(null);
+  const [otSearch, setOtSearch] = useState('');
+
+  const loadOvertime = React.useCallback(() => {
+    api.overtime.getAll()
+      .then(res => setOvertimeData(Array.isArray(res) ? res : []))
+      .catch(e => console.error('Failed to load overtime', e));
+    api.overtime.summary()
+      .then(res => { setOtSummary(res); setOtSummaryError(null); })
+      .catch(e => {
+        console.error('Failed to load overtime summary', e);
+        setOtSummaryError(getApiErrorMessage(e, 'Could not load the overtime summary.'));
+      });
+  }, []);
+
+  const toggleOTRow = (employeeId: any) => {
+    setExpandedOT(prev => {
+      const next = new Set(prev);
+      const k = String(employeeId);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+
   const [attendanceAnalytics, setAttendanceAnalytics] = useState<any>(null);
 
   // DB-backed monthly attendance summaries (the materialized roll-up payroll reads).
@@ -229,7 +262,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       api.shifts.getAll()
         .then(res => { setShifts(Array.isArray(res) ? res : []); setShiftError(null); })
         .catch(e => { console.error("Failed to load shifts", e); setShiftError(e?.message || 'Failed to load shifts.'); });
-      api.overtime.getAll().then(res => setOvertimeData(res)).catch(e => console.error("Failed to load overtime", e));
+      loadOvertime();
       api.attendance.getAnalytics(activeCompanyId, today).then(res => setAttendanceAnalytics(res)).catch(console.error);
       loadSummaries();
     }
@@ -344,10 +377,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     : '';
   // Show the selector only to users who genuinely span more than one branch.
   const showBranchFilter = !isBranchWorkspace && branches.length > 1;
-
-  // Which "View Full Report" is open (null = none). Both dashboard cards open the
-  // same report component with a different lead section — see AttendanceFullReport.
-  const [fullReport, setFullReport] = useState<ReportVariant | null>(null);
 
   // ── Broadcast & Notification ───────────────────────────────────────────────
   // The audience choice drives which second selector appears; the server
@@ -1066,13 +1095,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       }
       setOtErrors({});
       setShowOTModal(false);
-      // Re-read the list from the server rather than trusting the optimistic
-      // local append: the grid, the OT stat cards and the total-hours figures all
-      // derive from `overtimeData`, so this is what makes them agree with the
-      // database without a manual refresh.
-      api.overtime.getAll()
-        .then(res => setOvertimeData(res))
-        .catch(e => console.error('[overtime] refresh after save failed', e));
+      // Re-read from the server rather than trusting the optimistic local append:
+      // the grid, the OT stat cards, the per-employee totals and the Payroll
+      // Status column all derive from the server, so this is what makes them
+      // agree with the database — including the payroll sync the save triggered —
+      // without a manual refresh.
+      loadOvertime();
     } catch (e: any) {
       console.error('[overtime] save failed', e);
       // Surface the SERVER's own field list rather than a blanket "Database
@@ -1102,6 +1130,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       try {
         await api.overtime.delete(id);
         setOvertimeData(overtimeData.filter(o => o.id !== id));
+        // Deleting APPROVED overtime removes paid hours; the server re-runs the
+        // payroll sync, so re-read the grouped totals and Payroll Status.
+        loadOvertime();
       } catch (e) {
         console.error(e);
         ui.toast.error('Database error: failed to delete overtime');
@@ -1148,15 +1179,104 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       // Persist the approve/reject to the database. Previously this only wrote
       // to local state + localStorage, so the overtime status reverted on
       // refresh and payroll never saw the approval.
-      await api.overtime.update(id, { ...target, status: newStatus });
+      const res = await api.overtime.update(id, { ...target, status: newStatus });
       const updatedOT = overtimeData.map(o => o.id === id ? { ...o, status: newStatus } : o);
       setOvertimeData(updatedOT);
       localStorage.setItem(`hrms_overtime_${activeCompanyId}`, JSON.stringify(updatedOT));
+      // The server recomputed the attendance snapshot and re-ran the payroll
+      // engine for this employee-month as part of the approval. Re-read so the
+      // Approved/Pending totals, OT amount and Payroll Status show the result.
+      loadOvertime();
+      const pushed = (res?.payrollSync || []).filter((p: any) => p?.ok);
+      if (newStatus === 'Approved') {
+        ui.toast.success(pushed.length
+          ? `Approved — ${pushed.map((p: any) => `${p.month} ${p.year}: ${p.otHours}h`).join(', ')} now in payroll.`
+          : 'Overtime approved.');
+      } else {
+        ui.toast.success(`Overtime ${String(newStatus).toLowerCase()}.`);
+      }
     } catch (e) {
       console.error(e);
       ui.toast.error(getApiErrorMessage(e, 'Could not update the overtime status.'));
     }
   };
+
+  /**
+   * Push one employee's overtime into payroll.
+   *
+   * This does NOT compute anything here and does not send a figure: the server
+   * re-runs the same sync the approval hook runs (recompute the attendance
+   * snapshot from APPROVED Overtime rows, then re-run the payroll engine). It
+   * exists for employees whose payroll predates the approval hook. Idempotent —
+   * pushing twice cannot double-count, because the snapshot is rebuilt from the
+   * records rather than added to.
+   */
+  const handlePushOTToPayroll = async (emp: any) => {
+    if (!(Number(emp.approvedHours) > 0)) {
+      await ui.alert({ message: `${emp.name} has no approved overtime. Approve the entries first — pending and rejected hours are never paid.` });
+      return;
+    }
+    const ok = await ui.confirm({
+      title: 'Push overtime to payroll',
+      message: `Recalculate payroll for ${emp.name} using ${emp.approvedHours} approved overtime hour(s)?\n\nOnly approved entries are paid. Locked payroll months are skipped.`,
+      confirmText: 'Push to Payroll',
+    });
+    if (!ok) return;
+    setPushingOT(String(emp.employeeId));
+    try {
+      const res = await api.overtime.pushToPayroll(emp.employeeId);
+      const done = (res?.periods || []).filter((p: any) => p.ok);
+      const failed = (res?.periods || []).filter((p: any) => !p.ok);
+      if (done.length) {
+        ui.toast.success(`${emp.name}: ${done.map((p: any) => `${p.month} ${p.year} → ${p.otHours}h`).join(', ')}` +
+          (failed.length ? ` (${failed.length} period(s) failed)` : ''));
+      }
+      if (failed.length && !done.length) {
+        ui.toast.error(`Could not push ${emp.name}: ${failed[0].error}`);
+      }
+      // A closed pay period is skipped by the engine on purpose. Reporting that
+      // as a plain success would claim money moved when it did not.
+      const locked = res?.lockedPeriods || [];
+      if (locked.length) {
+        await ui.alert({
+          title: 'Some pay periods are locked',
+          variant: 'warning',
+          message: `${locked.map((p: any) => `${p.month} ${p.year}: approved ${p.approvedHours}h, payroll still holds ${p.payrollOtHours}h`).join('\n')}\n\n`
+            + 'Locked payroll is never changed automatically. Unlock the month in Payroll if this needs correcting.',
+        });
+      }
+      loadOvertime();
+    } catch (e) {
+      console.error('[overtime] push to payroll failed', e);
+      ui.toast.error(getApiErrorMessage(e, 'Could not push overtime to payroll.'));
+    } finally {
+      setPushingOT(null);
+    }
+  };
+
+  /** Open the OT form pre-filled for one employee (from a grouped row). */
+  const handleAddOTFor = (emp: any) => {
+    setEditingOTId(null);
+    setOTForm({
+      empId: emp.employeeId, empName: emp.name, empCode: emp.employeeCode || '',
+      department: emp.department || '', branch: emp.branch || '', shift: '',
+      date: selectedDate, in: '18:00', out: '20:00', otHours: 2,
+      type: 'Normal Overtime', status: 'Pending', reason: '',
+    });
+    setOtErrors({});
+    setShowOTModal(true);
+  };
+
+  /** Employee groups after the search box, sorted by the largest approved total. */
+  const otGroups = useMemo(() => {
+    const list = otSummary?.employees || [];
+    const q = otSearch.trim().toLowerCase();
+    const filtered = q
+      ? list.filter((g: any) => [g.name, g.employeeCode, g.department, g.branch]
+          .some(v => String(v || '').toLowerCase().includes(q)))
+      : list;
+    return [...filtered].sort((a: any, b: any) => (b.approvedHours - a.approvedHours) || String(a.name).localeCompare(String(b.name)));
+  }, [otSummary, otSearch]);
 
   const downloadGuide = () => {
     downloadImportGuidePDF();
@@ -1474,12 +1594,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => setFullReport('workforce')}
-                className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/30 rounded py-1"
-              >
-                View Full Report
-              </button>
             </div>
 
             {/* Department Distribution */}
@@ -1507,12 +1621,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                    <div className="text-xs text-gray-400 text-center py-4">No department data available.</div>
                 )}
               </div>
-              <button
-                onClick={() => setFullReport('department')}
-                className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500/30 rounded py-1"
-              >
-                View Full Report
-              </button>
             </div>
 
             {/* Broadcast & Notification */}
@@ -2051,53 +2159,203 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       {/* TAB: OVERTIME */}
       {activeTab === 'overtime' && (
         <div className="space-y-4 animate-in fade-in">
-          {/* OT Analytics Dashboard */}
+          {/* OT Analytics Dashboard — server totals across the whole database,
+              not just the page of records currently rendered. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Total OT Hours" value={overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
-            <StatCard label="Approved OT" value={overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
-            <StatCard label="Pending OT" value={overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
-            <StatCard label="OT Cost (Est.)" value={`₹ ${otCostEstimate.toLocaleString('en-IN')}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
+            <StatCard label="Total OT Hours" value={(otSummary?.totals?.totalHours ?? overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
+            <StatCard label="Approved OT" value={(otSummary?.totals?.approvedHours ?? overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
+            <StatCard label="Pending OT" value={(otSummary?.totals?.pendingHours ?? overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
+            <StatCard label="OT Cost (Approved)" value={`₹ ${(otSummary?.totals?.otAmount ?? otCostEstimate).toLocaleString('en-IN')}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
           </div>
 
+          {/* ── Overtime, one row per employee ───────────────────────────────
+              Grouping is a VIEW of the records, computed on the server. Nothing
+              is merged: expanding a row lists every original entry, and payroll
+              reads the Overtime table directly — never these totals. */}
           <Card padding={false} className="overflow-hidden border-slate-200">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap justify-between items-center gap-3">
               <div>
-                <h4 className="font-bold text-sm text-slate-800">Overtime Tracking & Approvals</h4>
-                <p className="text-[10px] text-slate-500 mt-0.5">Approved OT automatically calculates via Payroll Multipliers.</p>
+                <h4 className="font-bold text-sm text-slate-800">Overtime Tracking &amp; Approvals</h4>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  One row per employee — expand to see every record. Only <strong>approved</strong> hours are paid;
+                  payroll recalculates automatically on approval.
+                </p>
               </div>
-              {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenOTModal()}>Add OT Record</Button>}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-2 h-8 border border-slate-200 rounded-lg bg-white">
+                  <Search size={12} className="text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search employee, code, department…"
+                    className="w-56 text-xs bg-transparent focus:outline-none"
+                    value={otSearch}
+                    onChange={e => setOtSearch(e.target.value)}
+                  />
+                </div>
+                {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenOTModal()}>Add OT Record</Button>}
+              </div>
             </div>
-            <Paginated items={overtimeData} resetKey={activeCompanyId} label="records">
-            {(rows) => (
-            <Table>
-              <Thead><tr><Th>Employee</Th><Th>Date</Th><Th>In/Out Time</Th><Th>OT Hours</Th><Th>Type</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
+
+            {otSummaryError && (
+              <div className="px-4 py-2 bg-rose-50 border-b border-rose-100 text-[11px] text-rose-700 flex items-center gap-2">
+                <AlertCircle size={12} /> {otSummaryError}
+              </div>
+            )}
+
+            <Paginated items={otGroups} resetKey={`${activeCompanyId}|${otSearch}`} label="employees">
+            {(groups) => (
+            <Table dense>
+              <Thead><tr>
+                <Th>Employee</Th><Th>Department</Th><Th>Branch</Th>
+                <Th>Total OT</Th><Th>Approved</Th><Th>Pending</Th>
+                <Th>OT Amount</Th><Th>Records</Th><Th>Payroll Status</Th><Th>Last OT</Th>
+                {isAdmin && <Th>Actions</Th>}
+              </tr></Thead>
               <Tbody>
-                {overtimeData.length === 0 ? (
-                  <Tr><Td colSpan={7} className="text-center text-xs text-slate-500 py-8">No Overtime Records Found.</Td></Tr>
-                ) : rows.map(ot => (
-                  <Tr key={ot.id}>
-                    <Td><span className="font-bold text-xs">{ot.empName}</span></Td>
-                    <Td><span className="text-xs">{ot.date}</span></Td>
-                    <Td><span className="text-xs font-mono">{ot.in} - {ot.out}</span></Td>
-                    <Td><span className="text-xs font-bold text-fuchsia-600">{ot.otHours} hrs</span></Td>
-                    <Td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded">{ot.type}</span></Td>
-                    <Td><Badge variant={ot.status === 'Approved' ? 'green' : ot.status === 'Rejected' ? 'red' : 'warning'}>{ot.status}</Badge></Td>
-                    {isAdmin && (
+                {!otSummary ? (
+                  <Tr><Td colSpan={11} className="text-center text-xs text-slate-500 py-8">Loading overtime…</Td></Tr>
+                ) : otGroups.length === 0 ? (
+                  <Tr><Td colSpan={11} className="text-center text-xs text-slate-500 py-8">
+                    {otSearch ? `No employee matches “${otSearch}”.` : 'No Overtime Records Found.'}
+                  </Td></Tr>
+                ) : groups.map((g: any) => {
+                  const open = expandedOT.has(String(g.employeeId));
+                  return (
+                  <React.Fragment key={g.employeeId}>
+                    <Tr className={open ? 'bg-brand-50/40' : ''}>
                       <Td>
-                        <RowActions>
-                          {ot.status === 'Pending' && (
-                            <>
-                              <RowAction icon={CheckCircle2} label="Approve" tone="success" tooltip="Approve this overtime — it will be paid" onClick={() => handleStatusOT(ot.id, 'Approved')} />
-                              <RowAction icon={XCircle} label="Reject" tone="warning" tooltip="Reject this overtime — it will not be paid" onClick={() => handleStatusOT(ot.id, 'Rejected')} />
-                            </>
-                          )}
-                          <RowAction icon={Pencil} label="Edit" tone="edit" tooltip="Edit overtime entry" onClick={() => handleOpenOTModal(ot)} />
-                          <RowAction icon={Trash2} label="Delete" tone="danger" tooltip="Delete overtime entry" onClick={() => handleDeleteOT(ot.id)} />
-                        </RowActions>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 text-left group"
+                          onClick={() => toggleOTRow(g.employeeId)}
+                          aria-expanded={open}
+                          title={open ? 'Hide overtime records' : 'Show all overtime records'}
+                        >
+                          <ChevronRight size={13} className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+                          <span>
+                            <span className="font-bold text-xs block group-hover:text-brand-700">{titleCase(g.name)}</span>
+                            <span className="text-[10px] text-slate-500 font-mono">{g.employeeCode || '—'}</span>
+                          </span>
+                        </button>
                       </Td>
+                      <Td><span className="text-xs">{g.department || '—'}</span></Td>
+                      <Td><span className="text-xs">{g.branch || '—'}</span></Td>
+                      <Td><span className="text-xs font-bold">{g.totalHours} h</span></Td>
+                      <Td><span className="text-xs font-bold text-emerald-600">{g.approvedHours} h</span></Td>
+                      <Td><span className={`text-xs font-bold ${g.pendingHours > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{g.pendingHours} h</span></Td>
+                      <Td><span className="text-xs font-bold text-fuchsia-600">₹ {Number(g.otAmount || 0).toLocaleString('en-IN')}</span></Td>
+                      <Td><span className="text-xs">{g.records}</span></Td>
+                      <Td>
+                        <Badge
+                          variant={g.payrollStatus === 'Synced' ? 'green' : g.payrollStatus === 'Outdated' ? 'warning' : g.payrollStatus === 'Not in payroll' ? 'red' : g.payrollStatus === 'Locked' ? 'blue' : 'gray'}
+                          className={g.payrollStatus === 'Locked' ? 'cursor-help' : undefined}
+                        >
+                          {g.payrollStatus === 'Locked'
+                            // Locked ≠ wrong: the pay period is closed, so the engine
+                            // will not move it. Pushing would do nothing, and saying
+                            // "Outdated" would send HR after a button that cannot help.
+                            ? <span title={`${g.lockedMonths} closed pay period(s) disagree with the approved hours. Unlock the month in Payroll to correct it.`}>Locked</span>
+                            : g.payrollStatus}
+                        </Badge>
+                      </Td>
+                      <Td><span className="text-xs whitespace-nowrap">{g.lastDate ? formatDate(g.lastDate) : '—'}</span></Td>
+                      {isAdmin && (
+                        <Td>
+                          <RowActions>
+                            <RowAction iconOnly icon={FileText} label="View Details" tone="info" tooltip="Show every overtime record for this employee" onClick={() => toggleOTRow(g.employeeId)} />
+                            <RowAction iconOnly icon={Clock} label="Add OT" tone="primary" tooltip={`Raise a new overtime entry for ${titleCase(g.name)}`} onClick={() => handleAddOTFor(g)} />
+                            <RowAction
+                              icon={pushingOT === String(g.employeeId) ? Loader2 : Send}
+                              iconOnly
+                              label="Push to Payroll"
+                              tone={g.payrollStatus === 'Synced' ? 'neutral' : 'warning'}
+                              tooltip="Recalculate payroll from this employee's approved overtime"
+                              disabled={pushingOT === String(g.employeeId)}
+                              onClick={() => handlePushOTToPayroll(g)}
+                            />
+                          </RowActions>
+                        </Td>
+                      )}
+                    </Tr>
+
+                    {open && (
+                      <Tr className="bg-slate-50/70">
+                        <Td colSpan={isAdmin ? 11 : 10} className="p-0">
+                          <div className="px-4 py-3 border-l-2 border-brand-400">
+                            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+                              {g.records} overtime record{g.records === 1 ? '' : 's'} — {titleCase(g.name)}
+                            </p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-[10px] uppercase text-slate-500 border-b border-slate-200">
+                                    <th className="text-left py-1.5 pr-3 font-bold">Date</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">In / Out</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Hours</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Type</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Reason</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Status</th>
+                                    {isAdmin && <th className="text-left py-1.5 font-bold">Actions</th>}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {g.entries.map((ot: any) => (
+                                    <tr key={ot.id} className="border-b border-slate-100 last:border-0">
+                                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatDate(ot.date)}</td>
+                                      <td className="py-1.5 pr-3 font-mono text-[11px]">{ot.in || '—'} - {ot.out || '—'}</td>
+                                      <td className="py-1.5 pr-3 font-bold text-fuchsia-600">{ot.otHours} h</td>
+                                      <td className="py-1.5 pr-3"><span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded">{ot.type}</span></td>
+                                      <td className="py-1.5 pr-3 text-slate-500 max-w-[220px] truncate" title={ot.reason || ''}>{ot.reason || '—'}</td>
+                                      <td className="py-1.5 pr-3">
+                                        <Badge variant={ot.status === 'Approved' ? 'green' : ot.status === 'Rejected' ? 'red' : 'warning'}>{ot.status}</Badge>
+                                      </td>
+                                      {isAdmin && (
+                                        <td className="py-1.5">
+                                          <RowActions>
+                                            {ot.status === 'Pending' && (
+                                              <>
+                                                <RowAction iconOnly icon={CheckCircle2} label="Approve" tone="success" tooltip="Approve this overtime — it will be paid" onClick={() => handleStatusOT(ot.id, 'Approved')} />
+                                                <RowAction iconOnly icon={XCircle} label="Reject" tone="warning" tooltip="Reject this overtime — it will not be paid" onClick={() => handleStatusOT(ot.id, 'Rejected')} />
+                                              </>
+                                            )}
+                                            <RowAction iconOnly icon={Pencil} label="Edit" tone="edit" tooltip="Edit overtime entry" onClick={() => handleOpenOTModal(ot)} />
+                                            <RowAction iconOnly icon={Trash2} label="Delete" tone="danger" tooltip="Delete overtime entry" onClick={() => handleDeleteOT(ot.id)} />
+                                          </RowActions>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Per-month reconciliation: approved hours vs what payroll
+                                actually holds. This is what "Synced" is measured on. */}
+                            {g.months?.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-slate-200">
+                                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Payroll reconciliation (approved hours only)</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {g.months.map((m: any) => (
+                                    <div key={`${m.month}-${m.year}`} className="text-[10px] bg-white border border-slate-200 rounded px-2 py-1.5">
+                                      <span className="font-bold">{m.month} {m.year}</span>
+                                      <span className="text-slate-500"> · approved </span><span className="font-bold">{m.approvedHours}h</span>
+                                      <span className="text-slate-500"> · payroll </span>
+                                      <span className="font-bold">{m.payrollOtHours == null ? '—' : `${m.payrollOtHours}h`}</span>
+                                      {m.payrollOtAmount != null && <span className="text-slate-500"> · ₹{Number(m.payrollOtAmount).toLocaleString('en-IN')}</span>}
+                                      <span className={`ml-1.5 font-bold ${m.status === 'Synced' ? 'text-emerald-600' : m.status === 'Outdated' ? 'text-amber-600' : m.status === 'Locked' ? 'text-blue-600' : 'text-rose-600'}`}>{m.status}</span>
+                                      {m.payrollLocked && <span className="ml-1 text-slate-400">(pay period closed)</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
                     )}
-                  </Tr>
-                ))}
+                  </React.Fragment>
+                  );
+                })}
               </Tbody>
             </Table>
             )}
@@ -2683,21 +2941,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
         )}
       </Modal>
-
-      {/* "View Full Report" destination for both dashboard cards. The dashboard's
-          selected date seeds the range, so the report opens on the same period
-          the user was already looking at. */}
-      {fullReport && (
-        <AttendanceFullReport
-          open
-          variant={fullReport}
-          onClose={() => setFullReport(null)}
-          companyId={activeCompanyId}
-          from={(selectedDate || today).slice(0, 8) + '01'}
-          to={selectedDate || today}
-          companyLabel={companies.find(c => String(c.id) === String(activeCompanyId))?.name}
-        />
-      )}
 
     </div>
   );

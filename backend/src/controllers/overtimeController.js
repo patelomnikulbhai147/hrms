@@ -149,42 +149,355 @@ const shapeOvertime = (row) => ({
   out: row.outTime,
 });
 
+/**
+ * The tenant scope for a request, as a Prisma `where`.
+ *
+ * Shared by the flat list and the grouped summary so the two can never disagree
+ * about which records a user may see — a grouped view that scoped differently
+ * would show totals built from rows the flat list hides.
+ *
+ * @returns {{ where: object } | { forbidden: true }}
+ */
+function scopeWhere(req) {
+  const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
+  const whereClause = {};
+
+  if (req.user && req.user.role !== 'Super Admin') {
+    // Mirror the create check: a user granted only certain BRANCHES of a
+    // company must still see the overtime raised for employees in them, even
+    // though the row itself is stamped with the parent company id.
+    const branchIds = grantedBranchIds(req);
+    whereClause.OR = [
+      { companyId: { in: grantedCompanyIds(req) } },
+      ...(branchIds.length ? [{ employee: { branchId: { in: branchIds } } }] : []),
+    ];
+    if (companyId) {
+      if (!canReachCompany(req, companyId)) return { forbidden: true };
+      delete whereClause.OR;
+      // The requested workspace may be a BRANCH. Overtime rows are stamped with
+      // the PARENT company id (the model has no branchId), so filtering by the
+      // branch id directly would match nothing — a branch user would see an
+      // empty overtime list. Match on the employee's branch instead.
+      // branchCompanyMap is built by authMiddleware: branch id → parent company.
+      const isBranch = !!(req.user.branchCompanyMap || {})[companyId];
+      if (isBranch) whereClause.employee = { branchId: companyId };
+      else whereClause.companyId = companyId;
+    }
+  } else if (companyId) {
+    whereClause.companyId = companyId;
+  }
+  return { where: whereClause };
+}
+
 exports.getAll = async (req, res) => {
   try {
-    const companyId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-    let whereClause = {};
+    const scope = scopeWhere(req);
+    if (scope.forbidden) return res.status(403).json({ error: 'Unauthorized' });
 
-    if (req.user && req.user.role !== 'Super Admin') {
-      // Mirror the create check: a user granted only certain BRANCHES of a
-      // company must still see the overtime raised for employees in them, even
-      // though the row itself is stamped with the parent company id.
-      const branchIds = grantedBranchIds(req);
-      whereClause.OR = [
-        { companyId: { in: grantedCompanyIds(req) } },
-        ...(branchIds.length ? [{ employee: { branchId: { in: branchIds } } }] : []),
-      ];
-      if (companyId) {
-        if (!canReachCompany(req, companyId)) {
-          return res.status(403).json({ error: 'Unauthorized' });
-        }
-        delete whereClause.OR;
-        // The requested workspace may be a BRANCH. Overtime rows are stamped with
-        // the PARENT company id (the model has no branchId), so filtering by the
-        // branch id directly would match nothing — a branch user would see an
-        // empty overtime list. Match on the employee's branch instead.
-        // branchCompanyMap is built by authMiddleware: branch id → parent company.
-        const isBranch = !!(req.user.branchCompanyMap || {})[companyId];
-        if (isBranch) whereClause.employee = { branchId: companyId };
-        else whereClause.companyId = companyId;
-      }
-    } else if (companyId) {
-      whereClause.companyId = companyId;
-    }
-
-    const data = await prisma.overtime.findMany({ where: whereClause });
+    const data = await prisma.overtime.findMany({ where: scope.where });
     res.json(data.map(shapeOvertime));
   } catch (error) {
     console.error('Error fetching overtimes', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/overtime/summary — ONE ROW PER EMPLOYEE.
+//
+// The grouping is a presentation of the same rows, computed on the server so the
+// figures HR approves against come from the database rather than from whatever
+// subset a paginated table happened to have in memory. The individual Overtime
+// records are never merged, rewritten or deleted; every entry is returned inside
+// its employee's `entries` so the expanded row shows them all.
+//
+// Payroll is NOT fed from this endpoint. It reads the Overtime table directly
+// (attendanceSummaryService.recompute → recalcOne). What this reports is whether
+// those two agree, per employee-month:
+//
+//   Synced        payroll.otHours == approved hours for every month
+//   Outdated      a payroll row exists but its hours differ (approval after sync)
+//   Not in payroll approved hours exist with no payroll row for that month yet
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Working days when no attendance snapshot exists yet: calendar days − Sundays. */
+function fallbackWorkingDays(year, monthIndex) {
+  const days = new Date(year, monthIndex + 1, 0).getDate();
+  let sundays = 0;
+  for (let d = 1; d <= days; d++) if (new Date(year, monthIndex, d).getDay() === 0) sundays++;
+  return Math.max(1, days - sundays);
+}
+
+const isApproved = (s) => String(s || '').trim().toLowerCase() === 'approved';
+const isRejected = (s) => String(s || '').trim().toLowerCase() === 'rejected';
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+exports.summary = async (req, res) => {
+  try {
+    const scope = scopeWhere(req);
+    if (scope.forbidden) return res.status(403).json({ error: 'Unauthorized' });
+
+    const rows = await prisma.overtime.findMany({
+      where: scope.where,
+      orderBy: { date: 'desc' },
+      include: {
+        employee: {
+          select: {
+            id: true, name: true, employeeId: true, department: true,
+            branchLocation: true, salary: true, companyId: true, branchId: true,
+          },
+        },
+      },
+    });
+    if (!rows.length) return res.json({ employees: [], totals: emptyTotals() });
+
+    // ── Group. Every record keeps its own identity inside its employee. ────────
+    const groups = new Map();
+    for (const r of rows) {
+      let g = groups.get(r.employeeId);
+      if (!g) {
+        g = {
+          employeeId: r.employeeId,
+          name: r.employee?.name || r.employeeName,
+          employeeCode: r.employee?.employeeId || r.employeeCode || null,
+          department: r.employee?.department || r.department || null,
+          branch: r.employee?.branchLocation || r.branch || null,
+          companyId: r.companyId,
+          branchId: r.employee?.branchId ?? null,
+          salary: Number(r.employee?.salary) || 0,
+          totalHours: 0, approvedHours: 0, pendingHours: 0, rejectedHours: 0,
+          records: 0, lastDate: null, firstDate: null,
+          entries: [],
+          months: [],
+        };
+        groups.set(r.employeeId, g);
+      }
+      const h = Number(r.otHours) || 0;
+      g.totalHours += h;
+      if (isApproved(r.status)) g.approvedHours += h;
+      else if (isRejected(r.status)) g.rejectedHours += h;
+      else g.pendingHours += h;
+      g.records++;
+      if (!g.lastDate || r.date > g.lastDate) g.lastDate = r.date;
+      if (!g.firstDate || r.date < g.firstDate) g.firstDate = r.date;
+      g.entries.push(shapeOvertime({ ...r, employee: undefined }));
+    }
+
+    // ── Approved hours per employee-month — the figure payroll must match. ────
+    const perMonth = new Map(); // `${employeeId}|${month}|${year}` → hours
+    for (const r of rows) {
+      if (!isApproved(r.status)) continue;
+      const p = periodOf(r.date);
+      if (!p) continue;
+      const k = `${r.employeeId}|${p.month}|${p.year}`;
+      perMonth.set(k, (perMonth.get(k) || 0) + (Number(r.otHours) || 0));
+    }
+
+    const empIds = [...groups.keys()];
+    const [payrolls, summaries, companies] = await Promise.all([
+      prisma.payroll.findMany({
+        where: { employeeId: { in: empIds } },
+        select: { employeeId: true, month: true, year: true, otHours: true, overtime: true, payrollStatus: true },
+      }),
+      prisma.attendanceSummary.findMany({
+        where: { employeeId: { in: empIds } },
+        select: { employeeId: true, month: true, year: true, otHours: true, workingDays: true },
+      }),
+      prisma.company.findMany({
+        where: { id: { in: [...new Set([...groups.values()].map((g) => g.companyId))] } },
+        select: { id: true, overtimeRate: true },
+      }),
+    ]);
+
+    const payrollBy = new Map();
+    for (const p of payrolls) {
+      const k = `${p.employeeId}|${p.month}|${p.year}`;
+      const c = payrollBy.get(k) || { otHours: 0, overtime: 0, locked: false, rows: 0 };
+      c.otHours += Number(p.otHours) || 0;
+      c.overtime += Number(p.overtime) || 0;
+      c.locked = c.locked || p.payrollStatus === 'locked';
+      c.rows++;
+      payrollBy.set(k, c);
+    }
+    const summaryBy = new Map(summaries.map((s) => [`${s.employeeId}|${s.month}|${s.year}`, s]));
+    const companyBy = new Map(companies.map((c) => [c.id, c]));
+
+    // The OT multiplier lives on the Deduction Policy — resolved once per
+    // company|branch scope, not once per employee.
+    const policySvc = require('../services/deductionPolicyService');
+    const policyCache = new Map();
+    for (const key of new Set([...groups.values()].map((g) => `${g.companyId}|${g.branchId ?? ''}`))) {
+      const [cid, bid] = key.split('|');
+      policyCache.set(key, await policySvc
+        .resolveEffectivePolicy({ companyId: Number(cid), branchId: bid === '' ? null : Number(bid) })
+        .catch(() => null));
+    }
+
+    const otPay = require('../utils/overtimePay');
+
+    for (const g of groups.values()) {
+      const multiplier = otPay.resolveOvertimeMultiplier(
+        policyCache.get(`${g.companyId}|${g.branchId ?? ''}`),
+        companyBy.get(g.companyId),
+      );
+      let amount = 0;
+      let synced = 0, outdated = 0, missing = 0, locked = 0;
+
+      for (const [k, approvedHours] of perMonth) {
+        const [eid, month, year] = k.split('|');
+        if (Number(eid) !== g.employeeId) continue;
+        const yr = Number(year);
+        const snap = summaryBy.get(k);
+        const pay = payrollBy.get(k);
+        const workingDays = Number(snap?.workingDays) > 0
+          ? Number(snap.workingDays)
+          : fallbackWorkingDays(yr, MONTH_NAMES.indexOf(month));
+
+        // What the engine WOULD pay for these hours, by the shared formula.
+        const expected = otPay.computeOvertimeAmount({
+          otHours: approvedHours, monthlyGross: g.salary, workingDays, multiplier,
+        });
+
+        // A LOCKED payroll month that disagrees is reported as its own state, not
+        // as "Outdated". Pushing cannot repair it — the engine deliberately skips
+        // locked rows so a closed pay period only moves through an explicit,
+        // audited correction — so telling HR to push would be telling them to do
+        // something that does nothing. Measured on real data: an employee with
+        // 13 approved hours across four months had three of them locked.
+        let status;
+        if (!pay) { status = 'Not in payroll'; missing++; }
+        else if (Math.abs((pay.otHours || 0) - approvedHours) < 0.01) { status = 'Synced'; synced++; }
+        else if (pay.locked) { status = 'Locked'; locked++; }
+        else { status = 'Outdated'; outdated++; }
+
+        // Where payroll has already paid these hours its own figure is the truth;
+        // elsewhere the engine formula shows what a push would produce. A locked
+        // month keeps its paid figure — that is the money that actually left.
+        amount += (status === 'Synced' || status === 'Locked') ? (pay.overtime || 0) : expected;
+
+        g.months.push({
+          month, year: yr,
+          approvedHours: round2(approvedHours),
+          summaryOtHours: snap ? round2(snap.otHours) : null,
+          payrollOtHours: pay ? round2(pay.otHours) : null,
+          payrollOtAmount: pay ? Math.round(pay.overtime || 0) : null,
+          expectedOtAmount: expected,
+          payrollLocked: !!pay?.locked,
+          status,
+        });
+      }
+
+      g.months.sort((a, b) => (b.year - a.year) || (MONTH_NAMES.indexOf(b.month) - MONTH_NAMES.indexOf(a.month)));
+      g.otAmount = Math.round(amount);
+      g.multiplier = multiplier;
+      // Worst state wins, and the two states HR can act on are named first.
+      g.payrollStatus = g.approvedHours <= 0
+        ? 'No approved OT'
+        : outdated ? 'Outdated'
+        : missing ? 'Not in payroll'
+        : locked ? 'Locked'
+        : synced ? 'Synced' : 'No approved OT';
+      g.lockedMonths = locked;
+      g.totalHours = round2(g.totalHours);
+      g.approvedHours = round2(g.approvedHours);
+      g.pendingHours = round2(g.pendingHours);
+      g.rejectedHours = round2(g.rejectedHours);
+      delete g.branchId;
+    }
+
+    const employees = [...groups.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const totals = employees.reduce((t, g) => ({
+      employees: t.employees + 1,
+      records: t.records + g.records,
+      totalHours: round2(t.totalHours + g.totalHours),
+      approvedHours: round2(t.approvedHours + g.approvedHours),
+      pendingHours: round2(t.pendingHours + g.pendingHours),
+      rejectedHours: round2(t.rejectedHours + g.rejectedHours),
+      otAmount: t.otAmount + g.otAmount,
+      synced: t.synced + (g.payrollStatus === 'Synced' ? 1 : 0),
+      needsPush: t.needsPush + (g.payrollStatus === 'Outdated' || g.payrollStatus === 'Not in payroll' ? 1 : 0),
+    }), emptyTotals());
+
+    res.json({ employees, totals });
+  } catch (error) {
+    console.error('Error building overtime summary', error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+function emptyTotals() {
+  return { employees: 0, records: 0, totalHours: 0, approvedHours: 0, pendingHours: 0, rejectedHours: 0, otAmount: 0, synced: 0, needsPush: 0 };
+}
+
+/**
+ * POST /api/overtime/push-to-payroll  { employeeId, month?, year? }
+ *
+ * Runs the SAME sync the approval hook runs — recompute the attendance snapshot
+ * from APPROVED overtime rows, then re-run the payroll engine. It exists so HR
+ * can repair an employee whose payroll predates the approval hook; it introduces
+ * no second formula and sets no value by hand, so pushing twice cannot
+ * double-count and pushing an employee with nothing approved simply writes zero.
+ */
+exports.pushToPayroll = async (req, res) => {
+  try {
+    const employeeId = idParam(req.body?.employeeId);
+    if (!employeeId) return res.status(400).json({ error: 'employeeId is required.' });
+
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, name: true, companyId: true, branchId: true },
+    });
+    if (!employee) return res.status(404).json({ error: 'Employee not found.' });
+    if (req.user && req.user.role !== 'Super Admin') {
+      const reachable = canReachCompany(req, employee.companyId)
+        || (employee.branchId != null && canReachCompany(req, employee.branchId));
+      if (!reachable) return res.status(403).json({ error: 'Not your workspace.' });
+    }
+
+    // Every month this employee has ANY overtime in — not just approved ones, so
+    // a month whose approval was revoked also stops being paid.
+    const rows = await prisma.overtime.findMany({
+      where: { employeeId }, select: { date: true, otHours: true, status: true },
+    });
+    if (!rows.length) return res.status(400).json({ error: 'This employee has no overtime records.' });
+
+    let dates = rows.map((r) => r.date);
+    const month = req.body?.month, year = req.body?.year ? Number(req.body.year) : null;
+    if (month && year) {
+      dates = dates.filter((d) => { const p = periodOf(d); return p && p.month === month && p.year === year; });
+      if (!dates.length) return res.status(400).json({ error: `No overtime records in ${month} ${year}.` });
+    }
+
+    const started = Date.now();
+    const results = await syncOvertimeToPayroll(employeeId, dates, { trigger: 'manual-push' });
+    const approvedHours = rows.filter((r) => isApproved(r.status)).reduce((s, r) => s + (Number(r.otHours) || 0), 0);
+    const failed = results.filter((r) => !r.ok);
+
+    // A locked payroll month is skipped by the engine, so the snapshot moves and
+    // the money does not. Say so explicitly — a silent "pushed" on a locked month
+    // would read as success when nothing was paid.
+    const lockedPeriods = [];
+    for (const r of results.filter((x) => x.ok)) {
+      const pay = await prisma.payroll.findFirst({
+        where: { employeeId, month: r.month, year: r.year },
+        select: { otHours: true, payrollStatus: true },
+      });
+      if (pay?.payrollStatus === 'locked' && Math.abs((pay.otHours || 0) - (r.otHours || 0)) >= 0.01) {
+        lockedPeriods.push({ month: r.month, year: r.year, approvedHours: r.otHours, payrollOtHours: pay.otHours });
+      }
+    }
+
+    res.status(failed.length ? 207 : 200).json({
+      employeeId, employeeName: employee.name,
+      approvedHours: round2(approvedHours),
+      periods: results,
+      periodsPushed: results.filter((r) => r.ok).length,
+      failed: failed.length,
+      lockedPeriods,
+      ms: Date.now() - started,
+    });
+  } catch (error) {
+    console.error('Error pushing overtime to payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };

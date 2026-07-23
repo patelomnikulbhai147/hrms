@@ -1256,6 +1256,16 @@ export const api = {
 
   overtime: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/overtime`, { headers: getHeaders() }); },
+    // One row per employee. Grouped server-side from the same records getAll
+    // returns, so the totals HR approves against come from the database rather
+    // than from whichever page the table happens to be showing.
+    summary: async () => { return await apiFetch(`${BASE_URL}/overtime/summary`, { headers: getHeaders() }); },
+    pushToPayroll: async (employeeId: number | string, period?: { month: string; year: number }) => {
+      return await apiFetch(`${BASE_URL}/overtime/push-to-payroll`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ employeeId, ...(period || {}) }),
+      });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/overtime`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'DELETE', headers: getHeaders() }); }
