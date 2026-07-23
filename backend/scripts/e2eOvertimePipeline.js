@@ -81,21 +81,24 @@ const hoursBetween = (i, o) => {
   console.log(`OT multiplier  : ${company?.overtimeRate ?? 1.5}x`);
   console.log(`Expected OT    : ${EXPECTED_OT} hours\n`);
 
-  // A 09:00–18:00 shift with no break = a 9h working span, so the brief's days
-  // (12h, 11h, 13h worked) yield exactly 3 + 2 + 4 = 9 hours of overtime.
-  let shift = await prisma.shift.findFirst({
-    where: { companyId: COMPANY, start: '09:00', end: '18:00', otEnabled: true },
+  // ALWAYS create a dedicated shift — never reuse whatever the company happens to
+  // have. An earlier run adopted an existing 09:00–18:00 shift that carried a
+  // 1-hour break (an 8h span, not 9h), so the same code derived 9h locally and 12h
+  // on production and the suite reported a product failure that was really a
+  // non-deterministic fixture. 09:00–18:00 with a zero break = exactly 9h, so the
+  // brief's days (12h, 11h, 13h worked) yield 3 + 2 + 4 = 9 hours of overtime
+  // on every environment.
+  const shift = await prisma.shift.create({
+    data: {
+      companyId: COMPANY, name: `E2E QA Shift ${Date.now().toString().slice(-6)}`,
+      code: `E2E${Date.now().toString().slice(-4)}`,
+      start: '09:00', end: '18:00', grace: '15', breakTime: '0', otEnabled: true, status: 'Active',
+    },
     select: { id: true, name: true, start: true, end: true, breakTime: true, otEnabled: true },
   });
-  let shiftCreated = false;
-  if (!shift) {
-    shift = await prisma.shift.create({
-      data: { companyId: COMPANY, name: 'E2E QA Shift', code: 'E2EQA', start: '09:00', end: '18:00', grace: '15', breakTime: '0', otEnabled: true, status: 'Active' },
-      select: { id: true, name: true, start: true, end: true, breakTime: true, otEnabled: true },
-    });
-    shiftCreated = true;
-  }
-  console.log(`Shift          : ${shift.name} ${shift.start}–${shift.end} (OT eligible)\n`);
+  const shiftCreated = true;
+  const { shiftWorkHours } = require('../src/utils/overtimeDerivation');
+  console.log(`Shift          : ${shift.start}–${shift.end}, break "${shift.breakTime}" ⇒ ${shiftWorkHours(shift)}h working span\n`);
 
   let emp = null;
   const cleanup = async () => {
