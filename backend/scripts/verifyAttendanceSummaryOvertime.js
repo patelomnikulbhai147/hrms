@@ -24,7 +24,20 @@ const REPO = path.resolve(__dirname, '..', '..');
 const SRC = path.join(REPO, 'frontend', 'src', 'utils', 'attendancePeriods.ts');
 // esbuild's JS API, not bin/esbuild — that shim is not directly executable on
 // Windows (the real binary lives in @esbuild/<platform>).
-const esbuild = require(path.join(REPO, 'node_modules', 'esbuild'));
+//
+// It comes from the ROOT node_modules, which a backend-only host (the API EC2
+// box) deliberately does not install. There the suite SKIPS rather than crashes:
+// a missing build tool is not a failing assertion, and reporting it as one would
+// be a false alarm on every deploy.
+let esbuild = null;
+try {
+  esbuild = require(path.join(REPO, 'node_modules', 'esbuild'));
+} catch {
+  console.log('SKIPPED — esbuild not installed here (root node_modules absent).');
+  console.log('This suite bundles the frontend summarizer, so it runs where the');
+  console.log('frontend deps exist: a dev machine or the frontend host.');
+  process.exit(0);
+}
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
