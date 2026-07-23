@@ -2,6 +2,105 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { grantedCompanyIds, grantedBranchIds, canReachCompany } = require('../utils/companyScope');
 
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Overtime → AttendanceSummary → Payroll: the link that was missing.
+//
+// The payroll worksheet resolves its Attendance Summary as `summary || computed`
+// — the STORED AttendanceSummary wins over the live figures. Nothing recomputed
+// that stored row when an overtime record was approved, so newly-approved hours
+// stayed invisible to Payroll until somebody happened to re-run Attendance
+// Synchronization. Measured on real data: 5 employee-months had approved
+// overtime with `summary.otHours = 0` and therefore `payroll.overtime = 0`.
+//
+// Approving overtime is the event that changes the payable hours, so approving
+// it is what must refresh the snapshot. This runs on every write that can move
+// the APPROVED total for an employee-month — create, edit, approve/reject and
+// delete — and it is idempotent: recompute derives the total from the Overtime
+// table rather than adding a delta, so running it twice cannot double-count.
+//
+// A locked month is left alone (attendanceSummaryService.recompute refuses to
+// overwrite one) and locked payroll is skipped by the engine, so a closed pay
+// period never moves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 'YYYY-MM-DD' → { month: 'July', year: 2026 } | null */
+function periodOf(date) {
+  const m = /^(\d{4})-(\d{2})/.exec(String(date || ''));
+  if (!m) return null;
+  const year = Number(m[1]);
+  const name = MONTH_NAMES[Number(m[2]) - 1];
+  return name && year ? { month: name, year } : null;
+}
+
+/**
+ * Refresh the attendance snapshot + payroll for every period the given dates
+ * touch. An edit that MOVES an entry between months passes both dates, so the
+ * month it left is corrected as well as the one it joined.
+ *
+ * Never throws: an overtime record that saved correctly must not report failure
+ * because a downstream recompute had a problem. The outcome is returned so the
+ * caller can put it in the response, and any failure is logged in full — the
+ * one thing this must never do is fail silently.
+ */
+async function syncOvertimeToPayroll(employeeId, dates, context = {}) {
+  const eid = idParam(employeeId);
+  const results = [];
+  if (!eid) return results;
+
+  const periods = new Map();
+  for (const d of dates.filter(Boolean)) {
+    const p = periodOf(d);
+    if (p) periods.set(`${p.month}|${p.year}`, p);
+  }
+
+  const attSvc = require('../services/attendanceSummaryService');
+  const payrollCtrl = require('./payrollController'); // lazy — avoids a require cycle
+
+  for (const { month, year } of periods.values()) {
+    const started = Date.now();
+    try {
+      // 1) Canonical snapshot — otHours is re-derived from APPROVED rows only.
+      const summary = await attSvc.recompute(eid, month, year);
+      // 2) One engine: OT amount, gross split, PF/ESI/PT, net. Skips locked rows.
+      const recalculated = await payrollCtrl.recalcForEmployeeMonth(eid, month, year);
+      results.push({
+        month, year, ok: true,
+        otHours: summary?.otHours ?? 0,
+        payrollRowsRecalculated: recalculated,
+        ms: Date.now() - started,
+      });
+    } catch (err) {
+      // Everything needed to diagnose it, per incident-response requirements.
+      const approved = await prisma.overtime
+        .aggregate({ where: { employeeId: eid, status: 'Approved' }, _sum: { otHours: true } })
+        .catch(() => null);
+      const payroll = await prisma.payroll
+        .findFirst({ where: { employeeId: eid, month, year }, select: { id: true, otHours: true, overtime: true } })
+        .catch(() => null);
+      console.error('[overtime→payroll] SYNC FAILED', JSON.stringify({
+        employeeId: eid,
+        overtimeRecordId: context.overtimeId ?? null,
+        trigger: context.trigger || 'unknown',
+        payrollMonth: `${month} ${year}`,
+        approvedHoursOnRecord: approved?._sum?.otHours ?? null,
+        payrollId: payroll?.id ?? null,
+        hoursImported: payroll?.otHours ?? null,
+        otAmount: payroll?.overtime ?? null,
+        sqlErrorCode: err?.code ?? null,
+        meta: err?.meta ?? null,
+        message: err?.message,
+        timestamp: new Date().toISOString(),
+      }));
+      console.error(err?.stack || err);
+      results.push({ month, year, ok: false, error: err?.message || 'sync failed' });
+    }
+  }
+  return results;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // The Overtime form and the Overtime table have never agreed on field names.
 // The client posts { empId, empName, empCode, in, out }; the model requires
@@ -128,7 +227,12 @@ exports.create = async (req, res) => {
     row.companyId = employee.companyId;
 
     const data = await prisma.overtime.create({ data: row });
-    res.status(201).json(shapeOvertime(data));
+    // A record created already-Approved (bulk import, or an admin approving at
+    // entry) must reach payroll immediately, not wait for a later sync.
+    const payrollSync = await syncOvertimeToPayroll(data.employeeId, [data.date], {
+      overtimeId: data.id, trigger: 'create',
+    });
+    res.status(201).json({ ...shapeOvertime(data), payrollSync });
   } catch (error) {
     console.error('Error creating overtime', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -206,7 +310,7 @@ exports.update = async (req, res) => {
     // another tenant cannot be edited by guessing it.
     const current = await prisma.overtime.findUnique({
       where: { id: idParam(id) },
-      select: { id: true, companyId: true, employee: { select: { branchId: true } } },
+      select: { id: true, companyId: true, employeeId: true, date: true, status: true, otHours: true, employee: { select: { branchId: true } } },
     });
     if (!current) return res.status(404).json({ error: 'Overtime entry not found.' });
     if (req.user && req.user.role !== 'Super Admin') {
@@ -216,7 +320,21 @@ exports.update = async (req, res) => {
     }
 
     const updated = await prisma.overtime.update({ where: { id: idParam(id) }, data });
-    res.json(shapeOvertime(updated));
+
+    // THE approval hook. Approving (or un-approving, re-dating, re-hosting to a
+    // different employee, or changing the hours) all move an employee-month's
+    // approved total, so every one of them refreshes the snapshot and payroll.
+    // Both the OLD and NEW date/employee are passed, so an entry moved between
+    // months or people corrects the period it left as well as the one it joined.
+    const payrollSync = await syncOvertimeToPayroll(updated.employeeId, [current.date, updated.date], {
+      overtimeId: updated.id, trigger: `update:${current.status}->${updated.status}`,
+    });
+    if (current.employeeId !== updated.employeeId) {
+      payrollSync.push(...await syncOvertimeToPayroll(current.employeeId, [current.date], {
+        overtimeId: updated.id, trigger: 'update:reassigned-from',
+      }));
+    }
+    res.json({ ...shapeOvertime(updated), payrollSync });
   } catch (error) {
     console.error('Error updating overtime', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -230,7 +348,7 @@ exports.delete = async (req, res) => {
     // another tenant's overtime.
     const current = await prisma.overtime.findUnique({
       where: { id: idParam(id) },
-      select: { id: true, companyId: true, employee: { select: { branchId: true } } },
+      select: { id: true, companyId: true, employeeId: true, date: true, status: true, employee: { select: { branchId: true } } },
     });
     if (!current) return res.status(404).json({ error: 'Overtime entry not found.' });
     if (req.user && req.user.role !== 'Super Admin') {
@@ -239,7 +357,12 @@ exports.delete = async (req, res) => {
       if (!reachable) return res.status(403).json({ error: 'Not your workspace.' });
     }
     await prisma.overtime.delete({ where: { id: idParam(id) } });
-    res.json({ message: 'Deleted successfully' });
+    // Deleting APPROVED overtime removes paid hours — payroll must stop paying
+    // them, so the snapshot is rebuilt the same way as on approval.
+    const payrollSync = await syncOvertimeToPayroll(current.employeeId, [current.date], {
+      overtimeId: current.id, trigger: 'delete',
+    });
+    res.json({ message: 'Deleted successfully', payrollSync });
   } catch (error) {
     console.error('Error deleting overtime', error);
     res.status(500).json({ error: error.message || 'Server error' });
