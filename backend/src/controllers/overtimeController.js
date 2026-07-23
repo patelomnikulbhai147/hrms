@@ -135,19 +135,88 @@ exports.create = async (req, res) => {
   }
 };
 
+// Which request-body keys (including legacy aliases) map onto which column.
+// Used so an update writes ONLY what the caller actually sent.
+const UPDATE_FIELDS = {
+  employeeId: ['employeeId', 'empId'],
+  employeeName: ['employeeName', 'empName'],
+  employeeCode: ['employeeCode', 'empCode'],
+  department: ['department'],
+  branch: ['branch'],
+  shift: ['shift'],
+  date: ['date'],
+  inTime: ['inTime', 'in'],
+  outTime: ['outTime', 'out'],
+  otHours: ['otHours'],
+  type: ['type'],
+  reason: ['reason'],
+  remarks: ['remarks'],
+  status: ['status'],
+};
+
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    // Same alias problem as create: only send through the keys the caller
-    // actually supplied, so a status-only PATCH cannot blank employeeName.
-    const full = toOvertimeRow({ ...req.body, companyId: req.body.companyId ?? undefined }, req.user);
-    const supplied = {};
-    for (const [k, v] of Object.entries(full)) {
-      if (v !== null && v !== undefined && v !== '') supplied[k] = v;
+    const b = req.body || {};
+
+    // Build the patch from the keys PRESENT in the request — never from a
+    // normalised full row.
+    //
+    // This used to call toOvertimeRow(), which fills in defaults for everything
+    // the caller omitted (otHours → 0, type → 'Normal Overtime'), then dropped
+    // only null/undefined/''. Zero survives that filter, so approving an entry —
+    // a status-only PUT { status: 'Approved' } — silently rewrote otHours to 0
+    // and reset the OT type. The hours vanished at the exact moment the record
+    // became eligible for pay, so approved overtime was always worth ₹0.
+    const data = {};
+    for (const [column, aliases] of Object.entries(UPDATE_FIELDS)) {
+      const key = aliases.find((a) => Object.prototype.hasOwnProperty.call(b, a));
+      if (key === undefined) continue;             // not supplied → leave untouched
+      const raw = b[key];
+      if (raw === undefined) continue;
+
+      if (column === 'employeeId') {
+        const v = idParam(raw);
+        if (v !== undefined && v !== null) data[column] = v;
+      } else if (column === 'otHours') {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0) {
+          return res.status(400).json({ error: 'Overtime hours must be a non-negative number.', fields: ['otHours'] });
+        }
+        data[column] = n;
+      } else if (['employeeName', 'date', 'inTime', 'outTime', 'type', 'status'].includes(column)) {
+        // Required columns — reject a blank rather than writing one.
+        const v = String(raw ?? '').trim();
+        if (v === '') {
+          return res.status(400).json({ error: `${column} cannot be blank.`, fields: [column] });
+        }
+        data[column] = v;
+      } else {
+        data[column] = raw === '' ? null : raw;     // optional text columns
+      }
     }
-    delete supplied.companyId; // never re-home an entry to another company
-    const data = await prisma.overtime.update({ where: { id: idParam(id) }, data: supplied });
-    res.json(shapeOvertime(data));
+    // companyId is deliberately absent from UPDATE_FIELDS — an entry is never
+    // re-homed to another company by an edit.
+
+    if (!Object.keys(data).length) {
+      return res.status(400).json({ error: 'No fields to update.' });
+    }
+
+    // Authorise against the EXISTING row before touching it, so an id from
+    // another tenant cannot be edited by guessing it.
+    const current = await prisma.overtime.findUnique({
+      where: { id: idParam(id) },
+      select: { id: true, companyId: true, employee: { select: { branchId: true } } },
+    });
+    if (!current) return res.status(404).json({ error: 'Overtime entry not found.' });
+    if (req.user && req.user.role !== 'Super Admin') {
+      const reachable = canReachCompany(req, current.companyId)
+        || (current.employee?.branchId != null && canReachCompany(req, current.employee.branchId));
+      if (!reachable) return res.status(403).json({ error: 'Not your workspace.' });
+    }
+
+    const updated = await prisma.overtime.update({ where: { id: idParam(id) }, data });
+    res.json(shapeOvertime(updated));
   } catch (error) {
     console.error('Error updating overtime', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -157,6 +226,18 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
+    // Same ownership check as update — deleting by a guessed id must not reach
+    // another tenant's overtime.
+    const current = await prisma.overtime.findUnique({
+      where: { id: idParam(id) },
+      select: { id: true, companyId: true, employee: { select: { branchId: true } } },
+    });
+    if (!current) return res.status(404).json({ error: 'Overtime entry not found.' });
+    if (req.user && req.user.role !== 'Super Admin') {
+      const reachable = canReachCompany(req, current.companyId)
+        || (current.employee?.branchId != null && canReachCompany(req, current.employee.branchId));
+      if (!reachable) return res.status(403).json({ error: 'Not your workspace.' });
+    }
     await prisma.overtime.delete({ where: { id: idParam(id) } });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {

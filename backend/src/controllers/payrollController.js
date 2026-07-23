@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const otPay = require('../utils/overtimePay');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The employee fields the payroll LIST needs to embed.
@@ -226,11 +227,13 @@ async function recalcOne(payroll, summary, emp, company) {
   // multiplier comes from the deduction policy WHEN a policy has been saved
   // (single source of truth); otherwise we keep the company field so a company
   // that set a custom OT rate pre-policy is never silently reset to the default.
-  const overtimeRate =
-    (effectivePolicy && effectivePolicy.exists ? Number(policyCfg.overtimeMultiplier) : 0) ||
-    company?.overtimeRate || 1.5;
-  const hourlyRate = workingDays > 0 ? monthlyGross / (workingDays * 8) : 0;
-  const otAmount = Math.round(ot * hourlyRate * overtimeRate);
+  // Shared with the Attendance-Sync preview (utils/overtimePay) so the OT amount
+  // the user reviews before pushing is exactly the amount that reaches the payslip.
+  const overtimeRate = otPay.resolveOvertimeMultiplier(effectivePolicy, company);
+  const hourlyRate = otPay.hourlyRateFor(monthlyGross, workingDays);
+  const otAmount = otPay.computeOvertimeAmount({
+    otHours: ot, monthlyGross, workingDays, multiplier: overtimeRate,
+  });
   const allowances = hra + special + otAmount;
 
   // ── Deductions applied AFTER gross pay ──

@@ -654,11 +654,25 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="text-[15px] font-bold text-emerald-800">Payroll generated successfully.</h3>
+              {/* Report what the payroll ENGINE produced, not the pre-engine
+                  estimate. `netTotal` / `overtimeTotal` come back from the push
+                  after PF/ESI/PT and overtime have been applied; `totalAmount` is
+                  only the attendance-derived figure reviewed above. */}
               <ul className="mt-2 space-y-1 text-[13px] text-emerald-700 font-medium">
                 <li>• {Number(done.employees) || 0} Employee(s)</li>
-                <li>• Estimated Payroll {inr(Number(done.totalAmount) || 0)}</li>
+                {done.netTotal != null ? (
+                  <li>• Net Payroll {inr(Number(done.netTotal) || 0)} <span className="text-emerald-600/80">(estimate before deductions {inr(Number(done.totalAmount) || 0)})</span></li>
+                ) : (
+                  <li>• Estimated Payroll {inr(Number(done.totalAmount) || 0)}</li>
+                )}
+                {Number(done.overtimeTotal) > 0 && (
+                  <li>• Overtime {inr(Number(done.overtimeTotal))} across {Number(done.otHoursTotal) || 0} hr(s) — included in net pay.</li>
+                )}
                 <li>• {done.replaced ? 'Existing payroll replaced' : 'Payroll batch created'} for {monthLabel}.</li>
-                <li>• Values transferred exactly from Attendance — Payroll did not recalculate.</li>
+                <li>• Salary calculated by the payroll engine from the synced attendance (overtime, PF, ESIC & PT applied).</li>
+                {Number(done.failed) > 0 && (
+                  <li className="text-amber-700">• {Number(done.failed)} employee(s) could not be calculated and are flagged for recalculation.</li>
+                )}
               </ul>
               <div className="flex flex-wrap gap-2 mt-3">
                 <Button size="sm" onClick={() => onNavigate?.('payroll')}>

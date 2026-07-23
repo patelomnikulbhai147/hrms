@@ -46,8 +46,15 @@ export const generateDynamicComponents = (record: any, employee: any, company: a
     { name: 'Medical Allowance', amount: 1250 }
   ];
   
-  if (record.overtimeAmount && record.overtimeAmount > 0) {
-    earnings.push({ name: 'Overtime Amount', amount: record.overtimeAmount });
+  // The stored column is `overtime` — `overtimeAmount` is a client-side alias that
+  // payrollController explicitly DELETES before saving, so a record loaded from the
+  // API never carries it. Reading only the alias meant the Overtime line never
+  // appeared on a payslip: the amount silently vanished into Special Allowance
+  // below (which absorbs whatever is left of `allowances`). Read the real column
+  // first, keep the alias for records built client-side by payrollAutomation.
+  const overtimeAmount = Number(record.overtime ?? record.overtimeAmount ?? 0);
+  if (overtimeAmount > 0) {
+    earnings.push({ name: 'Overtime', amount: overtimeAmount });
   }
 
   // Fill remaining allowances into Special Allowance

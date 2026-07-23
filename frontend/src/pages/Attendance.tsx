@@ -1093,6 +1093,38 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     }
   };
 
+  // Estimated cost of APPROVED overtime, priced per employee from their own
+  // salary — mirrors the backend formula in utils/overtimePay.js:
+  //   otAmount = hours × (monthlySalary / (workingDays × 8)) × multiplier
+  // This card used to multiply hours by a flat ₹200/hr for everyone, which had no
+  // relationship to anybody's actual pay. It is still labelled "(Est.)": the
+  // authoritative figure is the payroll row's `overtime`, computed by the engine
+  // against the synced attendance (this cannot see per-branch policy multipliers).
+  const otCostEstimate = useMemo(() => {
+    const company: any = companies.find(c => String(c.id) === String(activeCompanyId));
+    const multiplier = Number(company?.overtimeRate) || 1.5;
+    let total = 0;
+    for (const o of overtimeData) {
+      if (o.status !== 'Approved') continue;
+      const hours = Number(o.otHours) || 0;
+      if (hours <= 0) continue;
+      const emp: any = activeUniqueEmployees.find(e => String(e.id) === String((o as any).employeeId ?? (o as any).empId));
+      const salary = Number(emp?.salary) || 0;
+      if (!salary) continue; // unknown salary contributes nothing rather than a fake rate
+      // Working days for the OT date's month = days − Sundays (the same default
+      // the backend falls back to when no attendance snapshot exists).
+      const d = new Date(String(o.date));
+      const y = d.getFullYear(), m = d.getMonth();
+      if (Number.isNaN(y)) continue;
+      const dim = new Date(y, m + 1, 0).getDate();
+      let sundays = 0;
+      for (let day = 1; day <= dim; day++) if (new Date(y, m, day).getDay() === 0) sundays++;
+      const workingDays = Math.max(1, dim - sundays);
+      total += hours * (salary / (workingDays * 8)) * multiplier;
+    }
+    return Math.round(total);
+  }, [overtimeData, activeUniqueEmployees, companies, activeCompanyId]);
+
   const handleStatusOT = async (id: string, newStatus: string) => {
     const target = overtimeData.find(o => o.id === id);
     if (!target) return;
@@ -2008,7 +2040,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             <StatCard label="Total OT Hours" value={overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
             <StatCard label="Approved OT" value={overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
             <StatCard label="Pending OT" value={overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
-            <StatCard label="OT Cost (Est.)" value={`₹ ${(overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0) * 200).toLocaleString()}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
+            <StatCard label="OT Cost (Est.)" value={`₹ ${otCostEstimate.toLocaleString('en-IN')}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
           </div>
 
           <Card padding={false} className="overflow-hidden border-slate-200">

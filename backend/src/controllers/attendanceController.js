@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const otPay = require('../utils/overtimePay');
 const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -336,6 +337,20 @@ exports.syncPayroll = async (req, res) => {
       return 'absent';
     };
 
+    // Resolve the Deduction Policy ONCE per company|branch scope (not per
+    // employee) — the OT multiplier lives there, and a per-employee await inside
+    // the loop would be hundreds of round-trips for a large company.
+    const policySvc = require('../services/deductionPolicyService');
+    const policyCache = new Map();
+    for (const scope of new Set(employees.map((e) => `${e.companyId}|${e.branchId ?? ''}`))) {
+      const [cid, bid] = scope.split('|');
+      const resolved = await policySvc
+        .resolveEffectivePolicy({ companyId: Number(cid), branchId: bid === '' ? null : Number(bid) })
+        .catch(() => null);
+      policyCache.set(scope, resolved);
+    }
+    const policyFor = (e) => policyCache.get(`${e.companyId}|${e.branchId ?? ''}`) || null;
+
     const rows = [];
     for (const emp of employees) {
       const counts = { present: 0, absent: 0, leave: 0, half: 0, wfh: 0, holiday: 0, weeklyOff: 0 };
@@ -360,9 +375,16 @@ exports.syncPayroll = async (req, res) => {
       const payableDays = counts.present + counts.half * 0.5 + counts.leave + counts.weeklyOff + counts.holiday + counts.wfh;
       const perDay = (emp.salary || 0) / daysInMonth;
       const lopDeduction = Math.round(perDay * lopDays);
-      const overtimeRate = company?.overtimeRate || 1.5;
-      const hourlyRate = (emp.salary || 0) / (daysInMonth * 8);
-      const otAmount = Math.round(otHours * hourlyRate * overtimeRate);
+
+      // OT priced by the SHARED formula (utils/overtimePay) — the same one the
+      // payroll engine uses. Previously this divided by calendar days and ignored
+      // the Deduction Policy multiplier, so the amount reviewed here did not match
+      // the amount that reached the payslip.
+      const workingDays = Math.max(0, daysInMonth - counts.weeklyOff - counts.holiday) || daysInMonth;
+      const overtimeRate = otPay.resolveOvertimeMultiplier(policyFor(emp), company);
+      const otAmount = otPay.computeOvertimeAmount({
+        otHours, monthlyGross: emp.salary || 0, workingDays, multiplier: overtimeRate,
+      });
 
       rows.push({
         employeeId: emp.id,
@@ -482,17 +504,28 @@ exports.syncPayroll = async (req, res) => {
   }
 };
 
-// ── PUSH TO PAYROLL ENGINE — transfer the finalized attendance calculation ──────
-// Takes the EXACT per-employee values the user reviewed on the Attendance
-// Synchronization page and writes them into the Payroll module (the `payroll`
-// table the Payroll UI reads) as one draft batch (company + month + year).
+// ── PUSH TO PAYROLL ENGINE — transfer the finalized attendance AND compute pay ──
+// Takes the per-employee attendance the user reviewed on the Attendance
+// Synchronization page, writes it into the Payroll module (the `payroll` table the
+// Payroll UI reads) as one draft batch (company + month + year), and then runs the
+// SINGLE payroll engine over it.
 //
-// CRITICAL: Payroll does NOT recalculate here — the reviewed values (payable days,
-// estimated/gross/net salary) are stored VERBATIM so the Payroll screen shows the
-// exact same numbers. Gross = Net = Estimated (no PF/ESIC/PT/deductions in this
-// phase). Idempotent per employee/month/year/company (unique key → no duplicates),
-// runs inside ONE transaction (any failure rolls back the whole batch), and is
-// blocked (409) if payroll already exists for the period unless `replace` is set.
+// It used to stop after the transfer: `overtime: 0, allowances: 0, deductions: 0,
+// netSalary = payableSalary` were written verbatim and no engine ran. That is why
+// approved overtime showed HOURS on the payroll row but never an AMOUNT — gross and
+// net were unchanged and the payslip had no OT line. The hours were transferred,
+// the money never was.
+//
+// Now the batch write is followed by, per employee:
+//   1. attendanceSummaryService.recompute — persists the canonical snapshot,
+//      including otHours summed from APPROVED overtime only;
+//   2. payrollController.recalcForEmployeeMonth → recalcOne — the one engine that
+//      computes OT amount, splits gross into Basic/HRA/Special, applies PF/ESI/PT
+//      and produces net. No salary formula is duplicated here.
+//
+// Idempotent per employee/month/year/company (unique key → no duplicates; the
+// engine is itself idempotent), and blocked (409) if payroll already exists for the
+// period unless `replace` is set. Locked payroll rows are never touched.
 exports.pushToPayroll = async (req, res) => {
   const toIntId = (v) => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
   const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -562,6 +595,8 @@ exports.pushToPayroll = async (req, res) => {
         companyId: e.companyId,
         employeeName: r.employeeName || e.name || 'Unknown',
         department: r.department || e.department || 'General',
+        // Seed values only — the engine pass below overwrites every money field
+        // from the synced AttendanceSummary. They are NOT the final figures.
         basicSalary: payable, allowances: 0, deductions: 0, netSalary: payable,
         overtime: 0, bonus: 0, loanDeduction: 0, tax: 0,
         presentDays: round2(r.present),
@@ -576,7 +611,7 @@ exports.pushToPayroll = async (req, res) => {
         attendanceSyncedAt: now, attendanceSource: 'Attendance Synchronization',
         isOutdated: false, summarySyncedAt: now,
         payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false,
-        notes: `Transferred from Attendance Synchronization — ${round2(r.payableDays)}/${round2(r.workingDays)} payable day(s); gross = net = ₹${payable} (no recalculation).`,
+        notes: `Transferred from Attendance Synchronization — ${round2(r.payableDays)}/${round2(r.workingDays)} payable day(s).`,
       };
       return prisma.payroll.upsert({
         where: { employeeId_month_year_companyId: { employeeId: e.id, month, year, companyId: e.companyId } },
@@ -587,6 +622,56 @@ exports.pushToPayroll = async (req, res) => {
 
     // ── STEP: ONE transaction — all-or-nothing (no partial payroll) ─────────
     await prisma.$transaction(ops);
+
+    // ── STEP: run the SINGLE payroll engine over the batch ──────────────────
+    // Without this the rows above are attendance-only: OT hours present, OT amount
+    // zero, no PF/ESI/PT, net = gross. The engine computes the money from the
+    // canonical AttendanceSummary, so Payroll, the Salary Worksheet, the payslip
+    // and every report read one identical calculation.
+    //
+    // Deliberately NOT inside the transaction above: a batch can be several
+    // hundred employees and each recompute issues many queries, which would blow
+    // Prisma's interactive-transaction timeout and hold locks across the whole
+    // run. Instead each employee is independent — one failure cannot corrupt or
+    // roll back the others, and every failure is reported back to the caller
+    // rather than being swallowed.
+    const attSvc = require('../services/attendanceSummaryService');
+    const payrollCtrl = require('./payrollController'); // lazy require — no top-level cycle
+    let computed = 0;
+    const engineFailures = [];
+    for (const r of rows) {
+      const eid = toIntId(r.employeeId);
+      const e = empById.get(eid);
+      try {
+        // 1) Canonical attendance snapshot (otHours = APPROVED overtime only).
+        await attSvc.recompute(eid, month, year, { markSynced: true });
+        // 2) One engine: OT amount, Basic/HRA/Special split, PF/ESI/PT, net.
+        await payrollCtrl.recalcForEmployeeMonth(eid, month, year);
+        computed++;
+      } catch (err) {
+        console.error('[pushToPayroll] engine failed for employee', eid, err && err.message);
+        engineFailures.push({
+          employeeId: eid,
+          employeeName: r.employeeName || e?.name || `#${eid}`,
+          reason: (err && err.message) || 'Unknown error',
+        });
+        // Leave the row visibly unfinished so it cannot be mistaken for final pay.
+        await prisma.payroll.updateMany({
+          where: { employeeId: eid, month, year, companyId: e?.companyId },
+          data: { isOutdated: true },
+        }).catch(() => {});
+      }
+    }
+
+    // The reviewed estimate is NOT the payable total once deductions apply — report
+    // what the engine actually produced so the UI never shows a stale figure.
+    const computedAgg = await prisma.payroll.aggregate({
+      where: { month, year, companyId: batchCompanyId, employeeId: { in: empIds.length ? empIds : [-1] } },
+      _sum: { netSalary: true, overtime: true, otHours: true },
+    });
+    const netTotal = round2(computedAgg._sum.netSalary || 0);
+    const overtimeTotal = round2(computedAgg._sum.overtime || 0);
+    const otHoursTotal = round2(computedAgg._sum.otHours || 0);
 
     const batchId = `PB-${batchCompanyId}-${year}-${String(MONTH_NAMES.indexOf(month) + 1).padStart(2, '0')}`;
 
@@ -599,6 +684,8 @@ exports.pushToPayroll = async (req, res) => {
           details: JSON.stringify({
             batchId, companyId: batchCompanyId, month, year,
             employeeCount: rows.length, totalPayrollAmount: totalAmount,
+            computed, netTotal, overtimeTotal, otHoursTotal,
+            engineFailed: engineFailures.length,
             generatedBy, generatedAt: now.toISOString(), replaced: existing.length > 0,
           }).slice(0, 1000),
         },
@@ -608,6 +695,9 @@ exports.pushToPayroll = async (req, res) => {
     return res.json({
       batchId, month, year, companyId: batchCompanyId,
       employees: rows.length, totalAmount, replaced: existing.length > 0,
+      // Post-engine figures — what payroll actually holds now.
+      computed, netTotal, overtimeTotal, otHoursTotal,
+      failed: engineFailures.length, engineFailures,
       generatedBy, generatedAt: now.toISOString(),
     });
   } catch (error) {
