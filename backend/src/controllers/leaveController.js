@@ -266,9 +266,11 @@ exports.update = async (req, res) => {
     const { id } = req.params;
     const patch = { ...req.body };
     // A non-numeric id reached Prisma as the string "undefined" and came back as
-    // a 500. It is a bad request, and it should say so.
+    // a 500. It is a bad request, and it should say so. Number.isFinite, not
+    // truthiness: idParam passes a non-numeric value through UNCHANGED, so
+    // "undefined" is a truthy string that sails past a !leaveId check.
     const leaveId = idParam(id);
-    if (!leaveId) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
+    if (!Number.isFinite(leaveId)) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
     const existing = await prisma.leaveRequest.findUnique({ where: { id: leaveId } });
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
 
@@ -358,7 +360,7 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     const leaveId = idParam(id);
-    if (!leaveId) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
+    if (!Number.isFinite(leaveId)) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
     const existing = await prisma.leaveRequest.findUnique({ where: { id: leaveId } });
     // Restore balance if a still-approved leave is deleted.
     if (existing && existing.status === 'Approved' && existing.paidDays > 0) {

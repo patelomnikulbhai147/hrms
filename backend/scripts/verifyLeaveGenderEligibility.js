@@ -251,6 +251,11 @@ const has = (types, label) => types.some((t) => t.label === label);
 
     // ── Access control ──────────────────────────────────────────────────────
     console.log('\n── Access control ──');
+    const badId = await fetch(`${BASE}/leaves/undefined`, {
+      method: 'PUT', headers: H, body: JSON.stringify({ status: 'Approved' }),
+    });
+    check('a non-numeric leave id is a 400, not a 500', badId.status === 400, `HTTP ${badId.status}`);
+
     const anon = await fetch(`${BASE}/leave-types/eligible?employeeId=${male.id}`);
     check('unauthenticated eligibility lookup → 401', anon.status === 401, `HTTP ${anon.status}`);
     const anonCfg = await fetch(`${BASE}/leave-types/paternity`, {
