@@ -31,7 +31,6 @@ const LEAVE_TYPE_DEFAULTS = [
   { code: 'compOff',    label: 'Comp Off',         eligibleGender: 'All',    aliases: ['comp off', 'compoff', 'compensatory off', 'compensatory'] },
   { code: 'optional',   label: 'Optional Leave',   eligibleGender: 'All',    aliases: ['optional', 'floater', 'floating'] },
   { code: 'lop',        label: 'LOP',              eligibleGender: 'All',    aliases: ['lop', 'unpaid', 'lwp', 'loss of pay', 'without pay'] },
-  { code: 'bereavement',label: 'Bereavement Leave',eligibleGender: 'All',    aliases: ['bereavement', 'compassionate'] },
 
   // Gender-specific. These are the reason this module exists.
   { code: 'maternity',  label: 'Maternity Leave',  eligibleGender: 'Female', aliases: ['maternity'] },

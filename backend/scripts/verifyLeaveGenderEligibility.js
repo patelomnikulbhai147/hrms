@@ -115,6 +115,9 @@ const has = (types, label) => types.some((t) => t.label === label);
     check('male: no female-only type is offered',
       !['Pregnancy Leave', 'Miscarriage Leave', 'Nursing Leave', 'Adoption Leave'].some((l) => has(m.body.types, l)));
     check('male: Paternity Leave IS offered', has(m.body.types, 'Paternity Leave'));
+    check('no leave type outside the agreed catalogue is offered',
+      m.body.types.length === 9,
+      `${m.body.types.length} types (8 universal + Paternity)`);
     check('male: every universal type is offered',
       ['Annual Leave', 'Casual Leave', 'Sick Leave', 'Paid Leave', 'Earned Leave', 'Comp Off', 'Optional Leave', 'LOP']
         .every((l) => has(m.body.types, l)),
