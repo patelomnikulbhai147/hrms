@@ -18,6 +18,7 @@ import { ServiceInvoiceEditor } from '@/components/invoicing/ServiceInvoiceEdito
 import { useIssuerCompany } from '@/components/invoicing/invoiceIdentity';
 // One definition of each master form, shared with the Create-Invoice pickers.
 import { CustomerModal, ProductModal } from '@/components/invoicing/MasterModals';
+import { CustomerProfile } from '@/components/invoicing/CustomerProfile';
 
 // The renderer decision now lives in invoiceRender.ts so the Template Gallery
 // preview, the Create-Invoice preview and the print/PDF path are provably ONE
@@ -92,6 +93,7 @@ const OPERATION_TABS = [
   { id: 'create', label: 'Create Invoice', icon: FilePlus2 },
   { id: 'invoices', label: 'All Invoices', icon: ReceiptText },
   { id: 'customers', label: 'Customers', icon: Users },
+  { id: 'vendors', label: 'Vendors', icon: Users },
   { id: 'products', label: 'Products & Services', icon: Package },
 ] as const;
 // One-time company CONFIGURATION — an administrative setup area, opened once by
@@ -114,8 +116,38 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   // unaffected: generated invoices always pick up the saved template automatically.
   const canBranding = ['Company Head', 'Super Admin'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
+  const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
+  const [preselectCustomerId, setPreselectCustomerId] = useState<string | null>(null); // when creating for a specific customer
   const propCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
+
+  // Sync profile view with URL
+  useEffect(() => {
+    const checkUrl = () => {
+      const parts = window.location.pathname.replace(/^\/+/, '').split('/');
+      if (parts[0] === 'invoice-management' && parts[1] === 'customer' && parts[2]) {
+        setProfileCustomerId(parts[2]);
+      } else {
+        setProfileCustomerId(null);
+      }
+    };
+    checkUrl();
+    window.addEventListener('popstate', checkUrl);
+    return () => window.removeEventListener('popstate', checkUrl);
+  }, []);
+
+  const openCustomerProfile = (id: string | number) => {
+    const path = `/invoice-management/customer/${id}`;
+    window.history.pushState({ page: 'invoice-management' }, '', path);
+    setProfileCustomerId(String(id));
+  };
+
+  const closeCustomerProfile = () => {
+    const path = `/invoice-management`;
+    window.history.pushState({ page: 'invoice-management' }, '', path);
+    setProfileCustomerId(null);
+  };
+
   // COMPANY PROFILE IS THE BRANDING SOURCE, and the LEGAL ENTITY is always the
   // parent company — a branch workspace bills under its parent and appears only
   // as `branchLabel`. useIssuerCompany re-reads the profile on every workspace
@@ -124,7 +156,11 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   const activeCompany = useIssuerCompany(propCompany);
   const companyState: string = activeCompany?.state || '';
 
-  const goCreate = (id: number | null = null) => { setEditInvoiceId(id); setTab('create'); };
+  const goCreate = (id: number | null = null) => { 
+    setEditInvoiceId(id); 
+    if (id !== null) setPreselectCustomerId(null); // Clear preselect if editing existing
+    setTab('create'); 
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -144,11 +180,24 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
         message="Invoice Management is under active development. Advanced invoice templates, branding, recurring invoices, payment gateway integrations, PDF enhancements, and automation are still being completed. Current invoice generation remains safe to use."
       />
 
-      {/* Sub navigation — daily OPERATIONS on the left, a divider, then the
-          one-time SETUP group (Templates & Branding + Settings) on the right so
-          users immediately see that branding is administrative config, not a step
-          in creating an invoice. The branding tab is hidden from users who cannot
-          manage it (Accounts/HR) — they only ever create invoices. */}
+      {profileCustomerId ? (
+        <CustomerProfile 
+          customerId={profileCustomerId}
+          onBack={closeCustomerProfile}
+          onEdit={(id) => { /* Could open CustomerModal if needed, for now just close */ closeCustomerProfile(); }}
+          onGenerateInvoice={(id) => {
+            closeCustomerProfile();
+            setPreselectCustomerId(String(id));
+            goCreate(null);
+          }}
+        />
+      ) : (
+        <>
+          {/* Sub navigation — daily OPERATIONS on the left, a divider, then the
+              one-time SETUP group (Templates & Branding + Settings) on the right so
+              users immediately see that branding is administrative config, not a step
+              in creating an invoice. The branding tab is hidden from users who cannot
+              manage it (Accounts/HR) — they only ever create invoices. */}
       {(() => {
         const renderTab = (t: typeof TABS[number]) => {
           const Icon = t.icon;
@@ -174,15 +223,18 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
         );
       })()}
 
-      {tab === 'dashboard' && <DashboardTab onOpen={(id) => { setEditInvoiceId(id); setTab('invoices'); }} onNew={() => goCreate(null)} />}
-      {tab === 'create' && <ServiceInvoiceEditor editId={editInvoiceId} canEdit={canEdit} companyState={companyState} company={activeCompany} onDone={() => { setEditInvoiceId(null); setTab('invoices'); }} />}
+      {tab === 'dashboard' && <DashboardTab onOpen={(id) => { setEditInvoiceId(id); setTab('invoices'); }} onNew={() => { setPreselectCustomerId(null); goCreate(null); }} />}
+      {tab === 'create' && <ServiceInvoiceEditor editId={editInvoiceId} preselectCustomerId={preselectCustomerId} canEdit={canEdit} companyState={companyState} company={activeCompany} onDone={() => { setEditInvoiceId(null); setPreselectCustomerId(null); setTab('invoices'); }} />}
       {tab === 'invoices' && <InvoicesTab canEdit={canEdit} canManage={canManage} company={activeCompany} onEdit={(id) => goCreate(id)} focusId={editInvoiceId} />}
-      {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} />}
+      {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Customer" />}
+      {tab === 'vendors' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Vendor" />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
       {tab === 'designer' && (canBranding
         ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
         : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} company={activeCompany} />}
+        </>
+      )}
     </div>
   );
 };
@@ -206,12 +258,11 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
   const maxM = Math.max(1, ...months.map(([, v]) => Number(v)));
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Total Invoices" value={loading ? '—' : k.total ?? 0} icon={<ReceiptText size={16} />} />
-        <Kpi label="Total Revenue" value={loading ? '—' : inr(k.totalRevenue)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
-        <Kpi label="Outstanding" value={loading ? '—' : inr(k.outstanding)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
-        <Kpi label="This Month" value={loading ? '—' : inr(k.thisMonthRevenue)} icon={<IndianRupee size={16} />} tone="bg-brand-50 text-brand-600" />
-        <Kpi label="Overdue" value={loading ? '—' : k.overdue ?? 0} icon={<Clock size={16} />} tone="bg-rose-50 text-rose-600" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <Kpi label="Total Sales (Billed)" value={loading ? '—' : inr(k.salesTotal)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
+        <Kpi label="Accounts Receivable" value={loading ? '—' : inr(k.accountsReceivable)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
+        <Kpi label="Total Purchases" value={loading ? '—' : inr(k.purchaseTotal)} icon={<ReceiptText size={16} />} tone="bg-rose-50 text-rose-600" />
+        <Kpi label="Accounts Payable" value={loading ? '—' : inr(k.accountsPayable)} icon={<Clock size={16} />} tone="bg-slate-100 text-slate-600" />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label="Draft" value={loading ? '—' : k.draft ?? 0} icon={<FileText size={16} />} tone="bg-slate-100 text-slate-500" />
@@ -291,6 +342,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(''); const [status, setStatus] = useState('All');
+  const [transactionType, setTransactionType] = useState('Collect Payment');
   const [view, setView] = useState<any>(null); // invoice detail (with items/payments)
   const [payFor, setPayFor] = useState<any>(null); // record-payment target
   const [design, setDesign] = useState<InvoiceDesign>(() => resolveDesign(null));
@@ -318,13 +370,13 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setRows(await api.invoicing.listInvoices({ q, status })); }
+    try { setRows(await api.invoicing.listInvoices({ q, status, transactionType })); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); }
     // Refreshed alongside every list load, so creating, editing, cancelling or
     // deleting an invoice — and recording a payment — updates the cards with no
     // page reload and nothing to remember to call.
     loadKpis();
-  }, [q, status, loadKpis]);
+  }, [q, status, transactionType, loadKpis]);
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => { if (focusId) openView(focusId); }, [focusId]);
 
@@ -397,7 +449,13 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / party…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+        <select value={transactionType} onChange={(e) => setTransactionType(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-brand-700 font-semibold">
+          <option value="">All Transactions</option>
+          <option value="Collect Payment">Sales (Collect Payment)</option>
+          <option value="Pay Vendor">Purchases (Pay Vendor)</option>
+          <option value="Investment">Investment</option>
+        </select>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
           {['All', 'Draft', 'Generated', 'Sent', 'Partially Paid', 'Paid', 'Cancelled'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
         </select>
@@ -537,18 +595,18 @@ const RecordPaymentModal: React.FC<{ invoice: any; onClose: () => void; onDone: 
 // ══════════════════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ══════════════════════════════════════════════════════════════════════════════
-const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean; onViewProfile: (id: string | number) => void; partyType: string }> = ({ canEdit, canManage, onViewProfile, partyType }) => {
   const [rows, setRows] = useState<any[]>([]); const [loading, setLoading] = useState(true); const [q, setQ] = useState('');
   const [modal, setModal] = useState<any>(null);
-  const load = useCallback(async () => { setLoading(true); try { setRows(await api.invoicing.listCustomers({ q })); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } }, [q]);
+  const load = useCallback(async () => { setLoading(true); try { setRows(await api.invoicing.listCustomers({ q, partyType })); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } }, [q, partyType]);
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
   const save = async (data: any) => { try { await api.invoicing.saveCustomer(data.id, data); ui.toast.success('Customer saved.'); setModal(null); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
   const del = (c: any) => ui.confirm({ message: `Delete customer "${c.companyName}"?`, variant: 'danger', confirmText: 'Delete' }).then(async (ok) => { if (!ok) return; try { await api.invoicing.deleteCustomer(c.id); ui.toast.success('Deleted.'); load(); } catch (e: any) { ui.toast.error(e?.message || getApiErrorMessage(e)); } });
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
-        {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true })}>Add Customer</Button>}
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${partyType.toLowerCase()}s…`} className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+        {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true, partyType })}>Add {partyType}</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto"><table className="w-full text-left text-xs min-w-[760px]">
@@ -559,7 +617,7 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
             {rows.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50/60">
                 <td className="p-3 font-mono text-[11px] font-bold text-[#C77E52]">{c.customerCode || '—'}</td>
-                <td className="p-3"><p className="font-bold text-slate-800">{c.companyName}</p><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
+                <td className="p-3"><button onClick={() => onViewProfile(c.id)} className="font-bold text-[#C77E52] hover:underline text-left">{c.companyName}</button><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
                 <td className="p-3 text-slate-600 font-mono text-[11px]">{c.gstin || '—'}</td>
                 <td className="p-3 text-slate-600">{c.contactPerson || '—'}<span className="block text-[10px] text-slate-400">{[c.city, c.state].filter(Boolean).join(', ')}</span></td>
                 <td className="p-3 text-center">{c.history?.count ?? 0}</td>

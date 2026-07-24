@@ -8,29 +8,29 @@
 // existing convention into one component so the two styles converge instead of
 // becoming three.
 //
-// Responsive by CONTAINER, not viewport. The label appears only when the table
-// actually has room for it:
+// CURRENT SHAPE: `<RowActions>` renders ONE three-dot overflow menu (see
+// RowActionMenu at the foot of this file). Call sites still nest `<RowAction>`
+// children; those are read for their props rather than rendered as buttons.
 //
-//   container < 1100px   icon only  (tooltip + aria-label carry the meaning)
-//   container ≥ 1100px   icon + label
+// An earlier revision rendered the children as an inline strip of icon buttons,
+// sized by container query (`@[1100px]/table:`) so labels appeared only when the
+// table had room. That narrowed the problem but could not solve it: even
+// icon-only, four buttons are ~150px of Actions column, and a wide table (the
+// 11-column Overtime grid) has no room to give — so the column stayed squeezed
+// and the last buttons stayed clipped. One 28px control removes the demand
+// entirely, which is why the strip was retired rather than tuned again.
 //
-// Keying this to the viewport was the bug: with a 256px sidebar a 1366px screen
-// leaves the table ~1058px, so a `lg:` (1024px viewport) rule rendered four
-// labelled buttons — a 346px Actions column — into a space that could not hold
-// them, pushing the table into horizontal scroll and clipping the last button.
-// `@[1100px]/table:` asks the only question that matters. The `2xl:` clause is a
-// fallback for any RowAction rendered outside a <Table> (no /table container to
-// query); worst case it stays icon-only, which is still fully usable.
+// `RowAction` is still exported and still renders a standalone button, for the
+// toolbar/inline uses that are not inside a `<RowActions>` group.
 //
-// The label is hidden with CSS rather than unmounted, so it is always present
-// for screen readers and the button never changes identity across breakpoints.
-//
-// Accessibility: every button carries an aria-label even when the visible text
-// is hidden, is reachable by Tab, shows a focus-visible ring, and is a real
-// <button type="button"> so Enter/Space activate it for free.
+// Accessibility: every control carries an aria-label, is reachable by Tab, shows
+// a focus-visible ring, and is a real <button type="button"> so Enter/Space
+// activate it for free. The menu adds ↑/↓/Home/End/Escape.
 // ─────────────────────────────────────────────────────────────────────────────
-import React from 'react';
-import type { LucideIcon } from 'lucide-react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { MoreVertical, type LucideIcon } from 'lucide-react';
+import { useDismissable } from '@/hooks/useDismissable';
 
 /** Semantic intent, not a colour name — the palette can change centrally. */
 export type RowActionTone = 'info' | 'primary' | 'edit' | 'warning' | 'danger' | 'success' | 'neutral';
@@ -96,12 +96,236 @@ export const RowAction: React.FC<RowActionProps> = ({
   </button>
 );
 
+// ─────────────────────────────────────────────────────────────────────────────
+// THE OVERFLOW MENU — one three-dot control per row, SAP/Workday/Zoho style.
+//
+// WHY THIS REPLACED THE INLINE BUTTON STRIP
+// A row of 3-5 bordered icon buttons is 110-190px of Actions column. On a 1366px
+// screen with a 256px sidebar, a wide table (the Overtime grid has 11 columns)
+// simply has nowhere to put that, so the column was squeezed and the last
+// buttons were clipped — worse on the final rows, where a downward menu would
+// also fall outside the scroll container. Collapsing to ONE 28px button removes
+// ~150px of demand per row, which is what actually fixes the clipping; pinning
+// or widening only moved the problem around.
+//
+// THREE THINGS MAKE IT SAFE INSIDE A SCROLLING TABLE
+//   1. It renders in a PORTAL to <body>, so the table's `overflow-x-auto`
+//      wrapper (and the Card's `overflow-hidden`) cannot clip it.
+//   2. It FLIPS ABOVE the button when there is not enough room below, and is
+//      clamped to the viewport on both axes — the last-row case.
+//   3. The panel is only mounted while open, so a 200-row table renders 200
+//      buttons and ZERO menus.
+//
+// Keyboard: Enter/Space open; ↑/↓ move; Home/End jump; Escape closes and returns
+// focus to the button; Tab closes. Disabled items are skipped by the arrows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolved action, extracted from a <RowAction> child or supplied directly. */
+export interface RowActionItem {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  tone?: RowActionTone;
+  disabled?: boolean;
+  tooltip?: string;
+}
+
+/** Menu-item text colour per tone (the buttons' border/bg styling doesn't apply). */
+const MENU_TONES: Record<RowActionTone, string> = {
+  info:    'text-blue-600 hover:bg-blue-50',
+  primary: 'text-brand-600 hover:bg-brand-50',
+  edit:    'text-orange-600 hover:bg-orange-50',
+  warning: 'text-amber-600 hover:bg-amber-50',
+  danger:  'text-rose-600 hover:bg-rose-50',
+  success: 'text-emerald-600 hover:bg-emerald-50',
+  neutral: 'text-slate-600 hover:bg-slate-100',
+};
+
+const MENU_W = 208;      // w-52
+const ITEM_H = 34;       // used only to pick a side before the first measure
+const GAP = 6;
+
+export const RowActionMenu: React.FC<{
+  items: RowActionItem[];
+  className?: string;
+  /** Overrides the button tooltip / accessible name. */
+  label?: string;
+}> = ({ items, className = '', label = 'More actions' }) => {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const close = useCallback(() => setOpen(false), []);
+  useDismissable(open, close, [wrapRef, menuRef]);
+
+  const enabledIdx = items.map((it, i) => (it.disabled ? -1 : i)).filter(i => i >= 0);
+
+  /** Choose a side and clamp to the viewport. */
+  const place = useCallback((measuredH?: number) => {
+    const b = btnRef.current?.getBoundingClientRect();
+    if (!b) return;
+    const h = measuredH ?? items.length * ITEM_H + 8;
+    const below = window.innerHeight - b.bottom - GAP;
+    const above = b.top - GAP;
+    // Flip up only when below genuinely cannot hold it AND above is roomier.
+    const flip = below < h && above > below;
+    const top = flip ? Math.max(8, b.top - GAP - h) : Math.min(b.bottom + GAP, window.innerHeight - h - 8);
+    const left = Math.min(Math.max(8, b.right - MENU_W), window.innerWidth - MENU_W - 8);
+    setPos({ top: Math.max(8, top), left });
+  }, [items.length]);
+
+  // Re-place once the real height is known, so a menu whose estimate was wrong
+  // still lands fully on screen.
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return;
+    place(menuRef.current.offsetHeight);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // A fixed panel would be stranded by any scroll/resize → close instead.
+  useEffect(() => {
+    if (!open) return;
+    const dismiss = () => setOpen(false);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
+    return () => {
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
+    };
+  }, [open]);
+
+  // Focus the first enabled item when the menu opens (keyboard entry point).
+  useEffect(() => {
+    if (open && pos) itemRefs.current[enabledIdx[0] ?? 0]?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pos]);
+
+  const toggle = () => {
+    if (!open) place();
+    setOpen(o => !o);
+  };
+
+  const run = (it: RowActionItem) => {
+    if (it.disabled) return;
+    setOpen(false);
+    it.onClick();
+  };
+
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    const cur = itemRefs.current.findIndex(el => el === document.activeElement);
+    const posInEnabled = enabledIdx.indexOf(cur);
+    const focusAt = (i: number) => itemRefs.current[enabledIdx[i]]?.focus();
+
+    if (e.key === 'ArrowDown') { e.preventDefault(); focusAt((posInEnabled + 1) % enabledIdx.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); focusAt((posInEnabled - 1 + enabledIdx.length) % enabledIdx.length); }
+    else if (e.key === 'Home') { e.preventDefault(); focusAt(0); }
+    else if (e.key === 'End') { e.preventDefault(); focusAt(enabledIdx.length - 1); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { setOpen(false); btnRef.current?.focus(); }
+  };
+
+  if (!items.length) return <span className="text-slate-300">—</span>;
+
+  return (
+    <div ref={wrapRef} className={`flex items-center justify-end ${className}`}>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        title={label}
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={[
+          'inline-flex items-center justify-center h-7 w-7 shrink-0 rounded-lg border bg-white',
+          'border-slate-200 text-slate-500 cursor-pointer',
+          'transition-all duration-150 ease-out',
+          'hover:text-brand-600 hover:bg-brand-50 hover:border-brand-200 hover:shadow-sm active:scale-[0.97]',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-brand-500/30',
+          open ? 'text-brand-600 bg-brand-50 border-brand-200' : '',
+        ].join(' ')}
+      >
+        <MoreVertical size={15} aria-hidden="true" />
+      </button>
+
+      {/* Mounted ONLY while open — no menu markup for closed rows. */}
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={label}
+          tabIndex={-1}
+          onKeyDown={onMenuKey}
+          style={{ top: pos.top, left: pos.left, width: MENU_W }}
+          className="fixed z-[60] rounded-xl border border-slate-200 bg-white shadow-xl py-1 outline-none"
+        >
+          {items.map((it, i) => {
+            const Icon = it.icon;
+            return (
+              <button
+                key={`${it.label}-${i}`}
+                ref={el => { itemRefs.current[i] = el; }}
+                type="button"
+                role="menuitem"
+                disabled={it.disabled}
+                title={it.tooltip || it.label}
+                onClick={() => run(it)}
+                className={[
+                  'w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-left',
+                  'transition-colors focus:outline-none focus-visible:bg-slate-100',
+                  'disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent',
+                  MENU_TONES[it.tone || 'neutral'],
+                ].join(' ')}
+              >
+                <Icon size={14} className="shrink-0" aria-hidden="true" />
+                <span className="truncate">{it.label}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+};
+
 /**
- * Container for a row's actions. Keeps spacing identical across every table and
- * stops the group from wrapping mid-row on narrow screens.
+ * Flatten `<RowActions>` children into plain action descriptors.
+ *
+ * Call sites write conditional actions as `{cond && <RowAction/>}` and grouped
+ * ones inside a fragment, so this walks fragments and drops falsy nodes —
+ * otherwise a `<>Approve Reject</>` pair would arrive as one unusable child.
  */
-export const RowActions: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`flex items-center gap-1.5 ${className}`}>{children}</div>
-);
+function collectActions(children: React.ReactNode, out: RowActionItem[] = []): RowActionItem[] {
+  React.Children.forEach(children, (child) => {
+    if (!React.isValidElement(child)) return;
+    if (child.type === React.Fragment) {
+      collectActions((child.props as any).children, out);
+      return;
+    }
+    if (child.type === RowAction) {
+      const p = child.props as RowActionProps;
+      out.push({ icon: p.icon, label: p.label, onClick: p.onClick, tone: p.tone, disabled: p.disabled, tooltip: p.tooltip });
+    }
+  });
+  return out;
+}
+
+/**
+ * Container for a row's actions — now ONE three-dot menu rather than a strip of
+ * buttons.
+ *
+ * Every existing call site keeps working unchanged: it still nests `<RowAction>`
+ * children, which are read for their props instead of being rendered as buttons.
+ * That is deliberate — it converges every table on a single row-action pattern
+ * without touching (or risking) the handlers, permissions and conditional logic
+ * at each site.
+ */
+export const RowActions: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => {
+  const items = collectActions(children);
+  return <RowActionMenu items={items} className={className} />;
+};
 
 export default RowActions;

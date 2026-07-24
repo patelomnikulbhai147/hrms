@@ -74,9 +74,10 @@ exports.list = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
     const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized workspace.' });
     const where = { ...base };
-    const { q, status, customerId, from, to } = req.query;
+    const { q, status, customerId, from, to, transactionType } = req.query;
     if (status && status !== 'All') where.status = status;
     if (customerId) where.customerId = idParam(customerId);
+    if (transactionType) where.transactionType = transactionType;
     if (q) where.OR = [{ invoiceNumber: { contains: String(q) } }, { billToName: { contains: String(q) } }];
     if (from || to) where.invoiceDate = { ...(from ? { gte: String(from) } : {}), ...(to ? { lte: String(to) } : {}) };
     const invoices = await prisma.invoice.findMany({ where, orderBy: { id: 'desc' }, take: 1000 });
@@ -133,6 +134,7 @@ async function buildInvoiceData(companyId, b, items) {
   const { lines, totals } = calc.computeInvoice(items, { intraState });
   const data = {
     companyId,
+    transactionType: b.transactionType || 'Collect Payment',
     customerId: b.customerId ? idParam(b.customerId) : null,
     billToName: String(b.billToName || '').trim() || 'Customer',
     billToGstin: b.billToGstin || null, billToAddress: b.billToAddress || null, billToShipAddress: b.billToShipAddress || null,
@@ -378,6 +380,10 @@ exports.dashboard = async (req, res) => {
     const monthPrefix = today.slice(0, 7);
     const byStatus = {};
     let totalRevenue = 0, outstanding = 0, thisMonthRevenue = 0, overdue = 0;
+    // Transaction type buckets
+    let accountsReceivable = 0, accountsPayable = 0;
+    let salesTotal = 0, purchaseTotal = 0;
+
     // Billed value and the unpaid count, for the All Invoices summary cards.
     // Cancelled invoices are excluded from every money figure — they were never
     // owed — but they still appear in byStatus so the status breakdown is honest.
@@ -386,13 +392,21 @@ exports.dashboard = async (req, res) => {
       byStatus[inv.status] = (byStatus[inv.status] || 0) + 1;
       if (inv.status !== 'Cancelled') {
         live++;
-        totalInvoiced += inv.grandTotal;
-        totalRevenue += inv.amountPaid;
-        outstanding += inv.balanceDue;
-        if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
-        if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
-        // Unpaid = raised, still owed in full. "Partially Paid" has its own bucket.
-        if (inv.amountPaid <= 0 && inv.balanceDue > 0) unpaid++;
+        // Maintain legacy fields for "Collect Payment" & default fallback
+        if (!inv.transactionType || inv.transactionType === 'Collect Payment') {
+          totalInvoiced += inv.grandTotal;
+          totalRevenue += inv.amountPaid;
+          outstanding += inv.balanceDue;
+          if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
+          if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
+          if (inv.amountPaid <= 0 && inv.balanceDue > 0) unpaid++;
+          
+          salesTotal += inv.grandTotal;
+          accountsReceivable += inv.balanceDue;
+        } else if (inv.transactionType === 'Pay Vendor') {
+          purchaseTotal += inv.grandTotal;
+          accountsPayable += inv.balanceDue;
+        }
       }
     }
     // Monthly revenue (last 6 months, from recorded payments).
@@ -412,6 +426,8 @@ exports.dashboard = async (req, res) => {
         // cards can never fail to reconcile.
         totalInvoiced: calc.r2(totalInvoiced),
         totalRevenue: calc.r2(totalRevenue), outstanding: calc.r2(outstanding), thisMonthRevenue: calc.r2(thisMonthRevenue),
+        accountsReceivable: calc.r2(accountsReceivable), accountsPayable: calc.r2(accountsPayable),
+        salesTotal: calc.r2(salesTotal), purchaseTotal: calc.r2(purchaseTotal)
       },
       byStatus, monthly, recent, upcoming,
     });

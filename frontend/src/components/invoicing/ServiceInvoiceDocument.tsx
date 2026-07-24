@@ -89,6 +89,7 @@ const useServiceInvoiceCss = () => {
 };
 
 export interface ServiceInvoiceDoc {
+  transactionType?: string;
   invoiceNumber?: string; invoiceDate?: string; dueDate?: string;
   contractNo?: string; referenceNo?: string; poNumber?: string; billingPeriod?: string;
   billToName?: string; billToAddress?: string; billToCity?: string; billToState?: string;

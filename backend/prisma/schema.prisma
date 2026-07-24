@@ -2286,6 +2286,7 @@ model PayrollComponentAudit {
 model InvoiceCustomer {
   id            Int      @id @default(autoincrement())
   companyId     Int
+  partyType     String   @default("Customer")
   customerCode  String?  // Client Master code e.g. CLI-000001 (assigned once, per company)
   companyName   String
   contactPerson String?
@@ -2335,6 +2336,7 @@ model InvoiceProduct {
 model Invoice {
   id            Int      @id @default(autoincrement())
   companyId     Int
+  transactionType String @default("Collect Payment")
   invoiceNumber String
   customerId    Int?
   // Customer snapshot (invoice stays immutable if the customer record changes).

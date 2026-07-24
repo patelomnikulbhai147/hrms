@@ -597,12 +597,54 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   </div>
 
-                  <div className="mb-[clamp(12px,2.2vh,20px)]">
-                    <h3 className="text-[28px] font-extrabold text-slate-900 mb-1 font-heading tracking-tight flex items-center gap-2">
-                      Welcome back! <span className="inline-block" aria-hidden="true">👋</span>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="mb-[clamp(12px,2.2vh,20px)]"
+                  >
+                    <h3 className="text-[28px] mb-1 flex items-center gap-2">
+                      <span 
+                        className="font-[900] tracking-[0.02em] text-slate-900"
+                        style={{ 
+                          fontFamily: "'Inter', 'Manrope', 'Poppins', sans-serif",
+                          filter: "drop-shadow(0px 1px 1px rgba(0,0,0,0.1)) drop-shadow(0px 0px 12px rgba(199,126,82,0.25))"
+                        }}
+                      >
+                        Welcome back!
+                      </span>
+                      <motion.span 
+                        className="inline-block text-[24px]" 
+                        aria-hidden="true"
+                        animate={{ y: [0, -4, 0] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        👋
+                      </motion.span>
                     </h3>
-                    <p className="text-slate-500 text-[14px] font-medium">Sign in to your super admin account</p>
-                  </div>
+                    <p className="text-slate-500 text-[14px] font-medium">
+                      Sign in to continue to{" "}
+                      <span className="relative inline-block group cursor-default">
+                        <span 
+                          className="relative z-10 font-[800] transition-all duration-200 ease-in-out group-hover:brightness-110"
+                          style={{
+                            background: "linear-gradient(135deg, #99552F 0%, #C77E52 50%, #E0996A 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            backgroundClip: "text",
+                            color: "transparent",
+                            filter: "drop-shadow(0px 1px 1px rgba(0,0,0,0.15))"
+                          }}
+                        >
+                          ZeniaHR
+                        </span>
+                        <span 
+                          className="absolute inset-0 z-0 bg-[#C77E52] blur-[8px] opacity-10 transition-opacity duration-200 ease-in-out group-hover:opacity-30"
+                          aria-hidden="true"
+                        ></span>
+                      </span>.
+                    </p>
+                  </motion.div>
 
                   <form onSubmit={handleLoginSubmit} className="space-y-[clamp(10px,1.6vh,14px)]">
                     {sessionMessage && !error && (

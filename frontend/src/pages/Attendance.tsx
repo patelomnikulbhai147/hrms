@@ -1569,7 +1569,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <h3 className="text-[14px] font-bold text-gray-800">Workforce Analytics</h3>
                 <p className="text-[11px] text-gray-500 mb-4">Real-time insights and statistics.</p>
               </div>
-              <div className="flex items-center gap-6">
+              {/* flex-1 makes this row absorb the card's spare height instead of
+                  `justify-between` collecting it all into one gap under the
+                  heading. The card still stretches to match its taller siblings —
+                  the chart just centres in the space rather than sinking to the
+                  bottom. Same technique as the Department card's flex-1 bars. */}
+              <div className="flex items-center gap-6 flex-1">
                 <div className="relative w-24 h-24 rounded-full border-[6px] border-emerald-500 flex items-center justify-center flex-shrink-0 shadow-inner">
                   <div className="text-center">
                     <span className="block text-xl font-black text-gray-800">{statTotal > 0 ? Math.round((statPresent / statTotal)*100) : 0}%</span>
@@ -2206,10 +2211,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
             {(groups) => (
             <Table dense>
               <Thead><tr>
-                <Th>Employee</Th><Th>Department</Th><Th>Branch</Th>
+                {/* Employee is PINNED. With 11 columns this table is wider than
+                    the page on a normal screen, so scrolling right used to carry
+                    the name out of view and leave rows unidentifiable — the
+                    "cut off" symptom. z-30 keeps it above the body's sticky
+                    cells (z-20) where the two sticky axes cross. */}
+                <Th className="sticky left-0 z-30 bg-surface-muted border-r border-hairline">Employee</Th>
+                <Th>Department</Th><Th>Branch</Th>
                 <Th>Total OT</Th><Th>Approved</Th><Th>Pending</Th>
                 <Th>OT Amount</Th><Th>Records</Th><Th>Payroll Status</Th><Th>Last OT</Th>
-                {isAdmin && <Th>Actions</Th>}
+                {isAdmin && <Th className="sticky right-0 z-30 bg-surface-muted border-l border-hairline">Actions</Th>}
               </tr></Thead>
               <Tbody>
                 {!otSummary ? (
@@ -2223,7 +2234,10 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   return (
                   <React.Fragment key={g.employeeId}>
                     <Tr className={open ? 'bg-brand-50/40' : ''}>
-                      <Td>
+                      {/* bg-inherit takes the row's own background (Tr sets it
+                          explicitly for exactly this reason), so the pinned cell
+                          stays opaque while the rest of the row scrolls under it. */}
+                      <Td className="sticky left-0 z-20 bg-inherit border-r border-hairline">
                         <button
                           type="button"
                           className="flex items-center gap-1.5 text-left group"
@@ -2260,7 +2274,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       </Td>
                       <Td><span className="text-xs whitespace-nowrap">{g.lastDate ? formatDate(g.lastDate) : '—'}</span></Td>
                       {isAdmin && (
-                        <Td>
+                        // Pinned right for the same reason Employee is pinned
+                        // left: the table is wider than the page, so the controls
+                        // sat off the right edge and were unreachable without
+                        // scrolling. Identity stays left, actions stay right, the
+                        // 9 data columns scroll between them.
+                        <Td className="sticky right-0 z-20 bg-inherit border-l border-hairline">
                           <RowActions>
                             <RowAction iconOnly icon={FileText} label="View Details" tone="info" tooltip="Show every overtime record for this employee" onClick={() => toggleOTRow(g.employeeId)} />
                             <RowAction iconOnly icon={Clock} label="Add OT" tone="primary" tooltip={`Raise a new overtime entry for ${titleCase(g.name)}`} onClick={() => handleAddOTFor(g)} />
@@ -2281,7 +2300,14 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                     {open && (
                       <Tr className="bg-slate-50/70">
                         <Td colSpan={isAdmin ? 11 : 10} className="p-0">
-                          <div className="px-4 py-3 border-l-2 border-brand-400">
+                          {/* This cell spans all 11 columns, so it is as wide as
+                              the SCROLLED table — its content used to slide out
+                              of view to the left along with everything else.
+                              Pinning it and sizing it to the container's VISIBLE
+                              width (100cqw — the Table root is @container/table)
+                              keeps the record list and reconciliation readable at
+                              any scroll position, without a nested scrollbar. */}
+                          <div className="sticky left-0 w-[100cqw] px-4 py-3 border-l-2 border-brand-400">
                             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">
                               {g.records} overtime record{g.records === 1 ? '' : 's'} — {titleCase(g.name)}
                             </p>

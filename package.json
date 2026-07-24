@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "start:all": "concurrently \"npm run dev\" \"npm run dev --prefix backend\"",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"
@@ -23,9 +24,13 @@
     "qrcode": "^1.5.4",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "react-is": "^19.2.8",
     "recharts": "^3.8.1",
     "tailwind-merge": "3.4.0",
     "xlsx": "^0.18.5"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.17",
@@ -33,6 +38,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "concurrently": "^10.0.3",
     "puppeteer": "^25.0.4",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",

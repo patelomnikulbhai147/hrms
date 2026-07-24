@@ -27,6 +27,7 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const addDaysIso = (iso: string, days: number) => { const d = new Date(iso); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
 
 const emptyDoc = (): ServiceInvoiceDoc => ({
+  transactionType: 'Collect Payment',
   invoiceNumber: '', invoiceDate: todayIso(), dueDate: '',
   contractNo: '', referenceNo: '', poNumber: '', billingPeriod: '',
   billToName: '', billToAddress: '', billToCity: '', billToState: '', billToCountry: 'India',
@@ -38,13 +39,14 @@ const emptyDoc = (): ServiceInvoiceDoc => ({
 
 interface Props {
   editId: number | null;
+  preselectCustomerId?: string | null;
   canEdit: boolean;
   companyState: string;
   company: any;
   onDone: () => void;
 }
 
-export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, companyState, company, onDone }) => {
+export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustomerId, canEdit, companyState, company, onDone }) => {
   const [doc, setDoc] = useState<ServiceInvoiceDoc>(emptyDoc());
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
   const [customers, setCustomers] = useState<any[]>([]);
@@ -206,24 +208,47 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, company
           api.invoicing.listProducts({ active: 'true' }),
           api.invoicing.getSettings(),
         ]);
-        setCustomers(Array.isArray(cs) ? cs : []);
+        const csArr = Array.isArray(cs) ? cs : [];
+        setCustomers(csArr);
         setProducts(Array.isArray(ps) ? ps : []);
         setSettings(st);
         if (!editId) {
-          setDoc((d) => ({
-            ...d,
-            paymentTerms: d.paymentTerms || st?.defaultPaymentTerms || 'Net 30',
-            notes: d.notes || st?.defaultNotes || '',
-            termsConditions: d.termsConditions || st?.defaultTerms || '',
-            // Bank + UPI are deliberately NOT copied into the document: both the
-            // editor and the printed page fall back to the live Company Profile
-            // block, so updating the profile updates every invoice. Typing over
-            // them here still overrides, per-invoice.
-          }));
+          setDoc((d) => {
+            let nextD = {
+              ...d,
+              paymentTerms: d.paymentTerms || st?.defaultPaymentTerms || 'Net 30',
+              notes: d.notes || st?.defaultNotes || '',
+              termsConditions: d.termsConditions || st?.defaultTerms || '',
+            };
+            if (preselectCustomerId) {
+              const c = csArr.find((x: any) => String(x.id) === String(preselectCustomerId));
+              if (c) {
+                setCustomerId(String(c.id));
+                nextD = {
+                  ...nextD,
+                  transactionType: c.partyType === 'Vendor' ? 'Pay Vendor' : 'Collect Payment',
+                  billToName: c.companyName || nextD.billToName,
+                  billToAddress: c.addressLine || nextD.billToAddress,
+                  billToCity: c.city || nextD.billToCity,
+                  billToState: c.state || nextD.billToState,
+                  billToCountry: c.country || nextD.billToCountry,
+                  billToGstin: c.gstin || nextD.billToGstin,
+                  billToPan: c.pan || nextD.billToPan,
+                  billToEmail: c.email || nextD.billToEmail,
+                  billToPhone: c.phone || nextD.billToPhone,
+                  billToContact: c.contactPerson || nextD.billToContact,
+                  placeOfSupply: c.state || nextD.placeOfSupply,
+                  paymentTerms: c.paymentTerms || nextD.paymentTerms,
+                  dueDate: (c.creditDays != null && c.creditDays !== '' && nextD.invoiceDate) ? addDaysIso(nextD.invoiceDate, Number(c.creditDays)) : nextD.dueDate,
+                };
+              }
+            }
+            return nextD;
+          });
         }
       } catch (e) { ui.toast.error(getApiErrorMessage(e)); }
     })();
-  }, [editId]);
+  }, [editId, preselectCustomerId]);
 
   // Load an existing invoice into the document.
   useEffect(() => {
@@ -235,6 +260,7 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, company
         setCustomerId(inv.customerId ? String(inv.customerId) : '');
         setOverride(parseOverride(inv.brandingOverride));
         setDoc({
+          transactionType: inv.transactionType || 'Collect Payment',
           invoiceNumber: inv.invoiceNumber || '', invoiceDate: inv.invoiceDate || todayIso(), dueDate: inv.dueDate || '',
           contractNo: inv.contractNo || '', referenceNo: inv.referenceNo || '', poNumber: inv.poNumber || '', billingPeriod: inv.billingPeriod || '',
           billToName: inv.billToName || '', billToAddress: inv.billToAddress || '', billToCity: '', billToState: inv.billToState || '',
@@ -287,6 +313,7 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, company
   };
 
   const payload = () => ({
+    transactionType: doc.transactionType,
     customerId: customerId || undefined,
     invoiceNumber: doc.invoiceNumber || undefined,
     billToName: doc.billToName, billToGstin: doc.billToGstin,
@@ -363,13 +390,24 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, canEdit, company
       {/* Action bar — the ONLY chrome; the invoice below is the editor. */}
       <div className="sticky top-0 z-20 mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur">
         <span className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-          <Users size={13} className="text-brand-500" />
-          <select value={customerId} onChange={(e) => pickCustomer(e.target.value)}
-            className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700">
-            <option value="">— New / one-off customer —</option>
-            {customers.map((c) => <option key={c.id} value={String(c.id)}>{c.companyName}</option>)}
+          <span className="text-[10px] uppercase text-slate-400">Type</span>
+          <select value={doc.transactionType || 'Collect Payment'} onChange={(e) => patch({ transactionType: e.target.value })}
+            className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-brand-600 bg-brand-50/50 outline-none">
+            <option value="Collect Payment">Collect Payment (Sales)</option>
+            <option value="Pay Vendor">Pay Vendor (Purchase)</option>
+            <option value="Investment">Investment / Capital</option>
           </select>
         </span>
+        {doc.transactionType !== 'Investment' && (
+          <span className="flex items-center gap-1.5 text-xs font-bold text-slate-600 border-l border-slate-200 pl-2 ml-1">
+            <Users size={13} className="text-brand-500" />
+            <select value={customerId} onChange={(e) => pickCustomer(e.target.value)}
+              className="rounded-lg border border-slate-200 px-2 py-1 text-xs font-semibold text-slate-700">
+              <option value="">— New / one-off {doc.transactionType === 'Pay Vendor' ? 'vendor' : 'customer'} —</option>
+              {customers.filter(c => (c.partyType || 'Customer') === (doc.transactionType === 'Pay Vendor' ? 'Vendor' : 'Customer')).map((c) => <option key={c.id} value={String(c.id)}>{c.companyName}</option>)}
+            </select>
+          </span>
+        )}
         <span className="ml-auto flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
           <button type="button" title="Zoom out" onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)))} className="rounded-md p-1 text-slate-500 hover:bg-white"><ZoomOut size={13} /></button>
           <span className="w-9 text-center text-[10px] font-bold text-slate-500">{Math.round(scale * 100)}%</span>

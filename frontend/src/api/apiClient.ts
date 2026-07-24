@@ -516,6 +516,28 @@ export const api = {
 
   leaves: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/leaves`, { headers: getHeaders() }); },
+    /**
+     * SERVER-SIDE paginated leave requests → { data, page, limit, total, totalPages }.
+     * Search, status, type, branch, department and date range are all applied in
+     * the database BEFORE paging, so page N of a filtered list is still one page
+     * over the wire. Sorting is whitelisted server-side.
+     *
+     * `export: 'all'` is the one sanctioned way to receive more than a page — it
+     * returns every row matching the CURRENT filters, for the export menu.
+     */
+    paginated: async (params: {
+      companyId: any; page?: number; limit?: number; sort?: string; search?: string;
+      status?: string; leaveType?: string; branch?: string; department?: string;
+      from?: string; to?: string; export?: 'all';
+    }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/leaves/paginated?${qs.toString()}`, { headers: getHeaders() });
+    },
+    /** Distinct leave types / statuses / departments / branches in scope. */
+    filterOptions: async (companyId: any) => {
+      return await apiFetch(`${BASE_URL}/leaves/filter-options?companyId=${encodeURIComponent(String(companyId))}`, { headers: getHeaders() });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/leaves`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/leaves/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/leaves/${id}`, { method: 'DELETE', headers: getHeaders() }); }
@@ -547,11 +569,31 @@ export const api = {
   // Manual leave administration (grant / deduct / reset / transfer / carry-forward + audit)
   leaveAdmin: {
     grant: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/grant`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    grantBulk: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/grant-bulk`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     deduct: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/deduct`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     reset: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/reset`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     transfer: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/transfer`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     carryForward: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/carry-forward`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     audit: async () => { return await apiFetch(`${BASE_URL}/leave-admin/audit`, { headers: getHeaders() }); },
+    // (roster/filterOptions below serve the Leave Administration table.)
+    /**
+     * SERVER-SIDE paginated Leave Administration roster.
+     * Returns { data, page, limit, total, totalPages }. Search, branch,
+     * department, status and leave-type filtering all happen in the database, so
+     * page N of a filtered list costs the same as page 1 of an unfiltered one.
+     */
+    roster: async (params: {
+      companyId: any; page?: number; limit?: number; search?: string;
+      branch?: string; department?: string; status?: string; leaveType?: string;
+    }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/leave-admin/roster?${qs.toString()}`, { headers: getHeaders() });
+    },
+    /** Distinct branch / department / leave-type values in scope, for the filters. */
+    filterOptions: async (companyId: any) => {
+      return await apiFetch(`${BASE_URL}/leave-admin/filter-options?companyId=${encodeURIComponent(String(companyId))}`, { headers: getHeaders() });
+    },
   },
 
   // Attendance vendor registry — configurable catalog (E-TimeOffice, eSSL, …).
@@ -597,6 +639,7 @@ export const api = {
     dashboard: async () => apiFetch(`${BASE_URL}/invoicing/dashboard`, { headers: getHeaders() }),
     // Customers
     listCustomers: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/customers${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    getCustomerProfile: async (id: string | number) => { return await apiFetch(`${BASE_URL}/invoicing/customers/${encodeURIComponent(String(id))}/profile`, { headers: getHeaders() }); },
     saveCustomer: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/customers${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteCustomer: async (id: any) => apiFetch(`${BASE_URL}/invoicing/customers/${id}`, { method: 'DELETE', headers: getHeaders() }),
     // Products

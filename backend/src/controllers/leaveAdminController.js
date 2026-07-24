@@ -11,7 +11,8 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const leaveService = require('../services/leaveService');
 const AuditService = require('../services/auditService');
-const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { OFFBOARDED_STATUSES, ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
+const { scopeWhere } = require('./leaveAdministrationController');
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const DEFAULT_YEAR = leaveService.DEFAULT_YEAR;
@@ -61,6 +62,126 @@ exports.grant = async (req, res) => {
   }
 };
 
+// ── Grant leave globally (bulk) ──────────────────────────────────────────────
+// body: { category|leaveType, days, reason?, year?, effectiveDate?, companyId?, branch?, department?, search?, status?, allowDuplicate? }
+exports.grantBulk = async (req, res) => {
+  try {
+    const cat = normCategory(req.body.category || req.body.leaveType);
+    const days = round(req.body.days);
+    const year = Number(req.body.year) || DEFAULT_YEAR;
+    if (!cat || days <= 0) {
+      return res.status(400).json({ error: 'A valid category (CL/PL/SL) and positive days are required.' });
+    }
+
+    const scoped = await scopeWhere(req);
+    if (!scoped.ok) {
+      return res.status(scoped.status).json(scoped.body);
+    }
+
+    const search = String(req.body.search || '').trim();
+    const department = String(req.body.department || '').trim();
+    const branchFilter = String(req.body.branch || '').trim();
+    
+    // Only target active employees
+    const where = { ...scoped.where, ...ACTIVE_EMPLOYEE_WHERE };
+    if (department) where.department = department;
+    if (branchFilter) where.branchLocation = branchFilter;
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { employeeId: { contains: search } },
+        { department: { contains: search } },
+      ];
+    }
+
+    const emps = await prisma.employee.findMany({ where, select: { id: true, name: true, employeeId: true } });
+    if (!emps.length) {
+      return res.status(400).json({ error: 'No eligible employees found matching these filters.' });
+    }
+
+    const effectiveDate = req.body.effectiveDate || todayStr();
+
+    // Check for duplicate bulk grant unless override is provided
+    if (!req.body.allowDuplicate) {
+      // Look for a recent audit log for GRANT_BULK_LEAVE with same details today
+      // Or just look for any audit log where target is this company and details match.
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const recentAudit = await prisma.auditLog.findFirst({
+        where: {
+          action: 'GRANT_BULK_LEAVE',
+          createdAt: { gte: startOfDay }
+        }
+      });
+
+      if (recentAudit) {
+        let parsed = {};
+        try { parsed = JSON.parse(recentAudit.details); } catch(e){}
+        if (parsed.category === cat && parsed.days === days) {
+           return res.status(409).json({ 
+             error: 'A similar bulk leave credit was already applied today. Allow duplicate to proceed.',
+             isDuplicate: true 
+           });
+        }
+      }
+    }
+
+    // Execute updates in a transaction for data consistency
+    let processed = 0;
+    const f = leaveService.FIELDS[cat];
+    
+    // We cannot easily do bulk getOrCreateBalance inside a single Prisma updateMany,
+    // so we iterate. 
+    // To ensure a proper transaction, we use Prisma interactive transaction.
+    await prisma.$transaction(async (tx) => {
+      for (const emp of emps) {
+        // We can't use leaveService directly if it doesn't take `tx`, 
+        // so we manually do getOrCreateBalance logic here to use tx.
+        let bal = await tx.leaveBalance.findUnique({
+          where: { employeeId_year: { employeeId: emp.id, year } }
+        });
+        if (!bal) {
+          bal = await tx.leaveBalance.create({
+            data: { companyId: scoped.companyId || req.user.companyId, employeeId: emp.id, year }
+          });
+        }
+        await tx.leaveBalance.update({
+          where: { id: bal.id },
+          data: { [f.bal]: round(bal[f.bal] + days) },
+        });
+        processed++;
+      }
+      
+      // Log the bulk action
+      if (req.user?.id) {
+        await tx.auditLog.create({
+          data: {
+            userId: req.user.id,
+            action: 'GRANT_BULK_LEAVE',
+            module: 'Leaves',
+            targetId: 'Bulk',
+            details: JSON.stringify({
+              by: req.user.name || req.user.email,
+              category: cat,
+              days,
+              reason: req.body.reason || '',
+              effectiveDate,
+              year,
+              affectedEmployees: processed,
+              filters: { department, branchFilter, search }
+            })
+          }
+        });
+      }
+    });
+
+    res.json({ success: true, processed });
+  } catch (e) {
+    console.error('grantBulk', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+};
+
 // ── Deduct leave (debit a wallet) ────────────────────────────────────────────
 // body: { employeeId, category|leaveType, days, reason?, year? }
 exports.deduct = async (req, res) => {
@@ -77,7 +198,7 @@ exports.deduct = async (req, res) => {
     const previousBalance = round(bal[f.bal]);
     const updated = await prisma.leaveBalance.update({
       where: { id: bal.id },
-      data: { [f.bal]: round(Math.max(0, bal[f.bal] - days)), [f.used]: round(bal[f.used] + days) },
+      data: { [f.bal]: round(Math.max(0, bal[f.bal] - days)) },
     });
     await audit(req, 'DEDUCT_LEAVE', employeeId, {
       category: cat, days, reason: req.body.reason || '',

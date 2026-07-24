@@ -11,11 +11,14 @@ const layout = require('../controllers/invoiceLayoutController');
 router.use(protect);
 router.use(require('../middleware/readOnlyMiddleware'));
 
+const profile = require('../controllers/invoiceCustomerProfileController');
+
 // Dashboard
 router.get('/dashboard', inv.dashboard);
 
 // Customers
 router.get('/customers', master.listCustomers);
+router.get('/customers/:id/profile', profile.getCustomerProfile);
 router.post('/customers', master.saveCustomer);
 router.put('/customers/:id', master.saveCustomer);
 router.delete('/customers/:id', master.deleteCustomer);
