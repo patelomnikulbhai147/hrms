@@ -196,8 +196,20 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onOpenInvoice }) => {
                   ) : rows.length === 0 ? (
                     <Tr><Td colSpan={14}><div className="py-12 text-center text-ink-muted text-sm flex flex-col items-center gap-2"><Wallet size={22} className="opacity-40" />No invoices yet. Click <b>Generate Invoice</b> to create the first one.</div></Td></Tr>
                   ) : rows.map((r) => (
-                    <Tr key={r.id}>
-                      <Td><button onClick={() => openInvoice(r.id)} className="font-bold text-brand-700 hover:underline">{r.invoiceNo}</button></Td>
+                    <Tr
+                      key={r.id}
+                      onClick={() => openInvoice(r.id)}
+                      onKeyDown={(e: React.KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+                          e.preventDefault();
+                          openInvoice(r.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      aria-label={`View invoice ${r.invoiceNo}`}
+                      className="cursor-pointer transition-all duration-200 hover:bg-surface-muted/80 hover:shadow-sm hover:border-l-4 hover:border-l-brand-600 border-l-4 border-l-transparent focus:outline-none focus:bg-surface-muted/80 focus:shadow-sm focus:border-l-brand-600"
+                    >
+                      <Td><span className="font-bold text-brand-700">{r.invoiceNo}</span></Td>
                       <Td><div className="font-semibold text-ink whitespace-nowrap">{r.companyName}</div><div className="text-[11px] text-ink-muted">{r.companyHead}</div></Td>
                       <Td>{r.plan}</Td>
                       <Td className="text-[13px] text-ink-secondary">{r.billingCycle}</Td>
@@ -212,7 +224,7 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onOpenInvoice }) => {
                       <Td><Badge variant={RENEWAL_VARIANT[r.renewalStatus] || 'gray'}>{r.renewalStatus}</Badge></Td>
                       <Td>
                         <div className="flex items-center gap-1 relative">
-                          <button onClick={() => openInvoice(r.id)} title="View" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><Eye size={14} /></button>
+                          <button onClick={(e) => { e.stopPropagation(); openInvoice(r.id); }} title="View" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><Eye size={14} /></button>
                           <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === r.id ? null : r.id); }} title="More" className="h-7 w-7 inline-flex items-center justify-center rounded-lg border border-hairline text-ink-secondary hover:bg-surface-muted"><MoreVertical size={14} /></button>
                           {menuId === r.id && (
                             <div onClick={(e) => e.stopPropagation()} className="absolute right-0 top-8 z-30 w-48 rounded-xl border border-hairline bg-surface shadow-lg py-1 text-[13px]">

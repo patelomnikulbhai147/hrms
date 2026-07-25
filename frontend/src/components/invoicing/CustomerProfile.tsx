@@ -26,9 +26,10 @@ interface Props {
   onBack: () => void;
   onEdit: (id: string | number) => void;
   onGenerateInvoice: (customerId: string | number) => void;
+  onSelectInvoice?: (invoiceId: string | number) => void;
 }
 
-export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, onGenerateInvoice }) => {
+export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, onGenerateInvoice, onSelectInvoice }) => {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -187,9 +188,9 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
             >
               <t.icon size={16} />
               {t.label}
-              {t.count !== undefined && (
+              {(t as any).count !== undefined && (
                 <span className={`px-2 py-0.5 rounded-full text-xs ${activeTab === t.id ? 'bg-[#FDF8F5] text-[#C77E52]' : 'bg-slate-100 text-slate-500'}`}>
-                  {t.count}
+                  {(t as any).count}
                 </span>
               )}
             </button>
@@ -239,7 +240,7 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                     <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} dy={10} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(val) => `₹${val/1000}k`} />
-                    <Tooltip cursor={{ stroke: '#cbd5e1' }} formatter={(val: number) => inr(val)} />
+                    <Tooltip cursor={{ stroke: '#cbd5e1' }} formatter={(val: any) => inr(val || 0)} />
                     <Legend iconType="circle" wrapperStyle={{ fontSize: 12, paddingTop: '10px' }} />
                     <Line type="monotone" name="Invoiced Amount" dataKey="invoiceAmount" stroke="#C77E52" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
                     <Line type="monotone" name="Collections (Paid)" dataKey="payments" stroke="#22c55e" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
@@ -286,7 +287,19 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
                       </Thead>
                       <Tbody>
                         {pageItems.map((inv: any, i: number) => (
-                          <tr key={inv.id || i} className="hover:bg-slate-50/60 transition-colors">
+                          <tr
+                            key={inv.id || i}
+                            onClick={() => { if (onSelectInvoice && inv.id) onSelectInvoice(inv.id); }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+                                e.preventDefault();
+                                if (onSelectInvoice && inv.id) onSelectInvoice(inv.id);
+                              }
+                            }}
+                            tabIndex={0}
+                            aria-label={`View invoice ${inv.invoiceNumber || ''}`}
+                            className="cursor-pointer transition-all duration-200 hover:bg-slate-50 hover:shadow-sm hover:border-l-4 hover:border-l-[#C77E52] border-l-4 border-l-transparent focus:outline-none focus:bg-slate-50 focus:shadow-sm focus:border-l-[#C77E52]"
+                          >
                             <Td className="text-center text-slate-400">{startIndex + i + 1}</Td>
                             <Td><span className="font-semibold text-slate-700">{inv.invoiceNumber}</span></Td>
                             <Td>{formatDate(inv.invoiceDate)}</Td>

@@ -1332,7 +1332,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       overtimeHours: ot ? ot.toFixed(2) : '',
       status,
       leaveType: record?.leaveType || '',
-      remarks: record?.remarks || '',
+      remarks: (record as any)?.remarks || '',
     };
   };
 

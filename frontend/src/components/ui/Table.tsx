@@ -51,7 +51,13 @@ export const Td: React.FC<{ children: React.ReactNode; className?: string; onCli
   <td colSpan={colSpan} className={cn('px-[var(--cell-px,1rem)] py-3 text-ink whitespace-nowrap text-[13px] font-medium', className)} onClick={onClick}>{children}</td>
 );
 
-export const Tr: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className, onClick }) => (
+interface TrProps extends React.HTMLAttributes<HTMLTableRowElement> {
+  children?: React.ReactNode;
+  className?: string;
+  onClick?: (e?: any) => void;
+}
+
+export const Tr: React.FC<TrProps> = ({ children, className, onClick, ...props }) => (
   // `bg-surface` on odd rows is visually identical to the previous transparent
   // background (the table sits on --surface), but it makes the row background
   // EXPLICIT — which is what lets a sticky cell use `bg-inherit` and stay opaque
@@ -60,6 +66,7 @@ export const Tr: React.FC<{ children: React.ReactNode; className?: string; onCli
   <tr
     className={cn('transition-colors duration-150 bg-surface even:bg-[color-mix(in_srgb,var(--surface-muted)_45%,transparent)]', onClick && 'cursor-pointer', className)}
     onClick={onClick}
+    {...props}
   >
     {children}
   </tr>

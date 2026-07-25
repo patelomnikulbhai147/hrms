@@ -49,6 +49,7 @@ export interface CanvasElement {
   /** none | uppercase | lowercase | capitalize */
   textTransform?: string;
   textAlign?: 'left' | 'center' | 'right' | 'justify';
+  align?: 'left' | 'center' | 'right' | 'justify';
   color?: string;
   letterSpacing?: number;
   lineHeight?: number;

@@ -190,6 +190,11 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
             setPreselectCustomerId(String(id));
             goCreate(null);
           }}
+          onSelectInvoice={(id) => {
+            closeCustomerProfile();
+            setEditInvoiceId(Number(id));
+            setTab('invoices');
+          }}
         />
       ) : (
         <>
@@ -380,7 +385,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => { if (focusId) openView(focusId); }, [focusId]);
 
-  const openView = async (id: number) => { try { setView(await api.invoicing.getInvoice(id)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
+  async function openView(id: number) { try { setView(await api.invoicing.getInvoice(id)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }
 
   const doAction = async (fn: () => Promise<any>, msg: string) => { try { await fn(); ui.toast.success(msg); await load(); } catch (e: any) { if (e?.code) ui.toast.error(e.message); else ui.toast.error(getApiErrorMessage(e)); } };
   const cancel = (i: any) => ui.confirm({ message: `Cancel invoice ${i.invoiceNumber}? It stays on record but is marked Cancelled.`, variant: 'danger', confirmText: 'Cancel Invoice' }).then((ok) => { if (ok) doAction(() => api.invoicing.setInvoiceStatus(i.id, 'Cancelled'), 'Invoice cancelled.'); });
@@ -472,7 +477,19 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
               {loading && <tr><td colSpan={9} className="p-8 text-center text-slate-400">Loading…</td></tr>}
               {!loading && rows.length === 0 && <tr><td colSpan={9}><Empty icon={<ReceiptText size={26} />} title="No invoices yet" sub="Use “New Invoice” to create your first." /></td></tr>}
               {rows.map((i) => (
-                <tr key={i.id} className="hover:bg-slate-50/60">
+                <tr
+                  key={i.id}
+                  onClick={() => openView(i.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+                      e.preventDefault();
+                      openView(i.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-label={`View invoice ${i.invoiceNumber}`}
+                  className="cursor-pointer transition-all duration-200 hover:bg-slate-50 hover:shadow-sm hover:border-l-4 hover:border-l-[#C77E52] border-l-4 border-l-transparent focus:outline-none focus:bg-slate-50 focus:shadow-sm focus:border-l-[#C77E52]"
+                >
                   <td className="p-3 font-bold text-slate-800">{i.invoiceNumber}</td>
                   <td className="p-3 text-slate-600 truncate max-w-[160px]" title={i.billToName}>{i.billToName}</td>
                   <td className="p-3 text-slate-500 whitespace-nowrap">{formatDate(i.invoiceDate)}</td>
@@ -506,9 +523,9 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   );
 };
 
-const IconBtn: React.FC<{ title: string; tone?: string; onClick: () => void; children: React.ReactNode }> = ({ title, tone, onClick, children }) => {
+const IconBtn: React.FC<{ title: string; tone?: string; onClick: (e?: any) => void; children: React.ReactNode }> = ({ title, tone, onClick, children }) => {
   const tones: Record<string, string> = { indigo: 'hover:text-brand-600 hover:bg-brand-50', violet: 'hover:text-brand-600 hover:bg-brand-50', emerald: 'hover:text-emerald-600 hover:bg-emerald-50', amber: 'hover:text-amber-600 hover:bg-amber-50', rose: 'hover:text-rose-600 hover:bg-rose-50' };
-  return <button title={title} onClick={onClick} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-brand-600 hover:bg-brand-50'}`}>{children}</button>;
+  return <button title={title} onClick={(e) => { e.stopPropagation(); onClick(e); }} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-brand-600 hover:bg-brand-50'}`}>{children}</button>;
 };
 
 // ── Invoice detail modal ──────────────────────────────────────────────────────

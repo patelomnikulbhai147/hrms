@@ -399,7 +399,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     if (!action) return;
     const eid = action.row.id || action.row.employeeId || form.employeeId;
     const empName = action.row.employeeName
-      || adminRows.find(r => String(r.id) === String(eid))?.employeeName
+      || adminRows.find(r => String((r as any).id) === String(eid))?.employeeName
       || 'employee';
     setBusy(true);
     try {
@@ -443,7 +443,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       closeAction();
     } catch (e: any) {
       if (e?.data?.isDuplicate) {
-        setForm(f => ({ ...f, showDuplicateOverride: true, duplicateMessage: e.data.error }));
+        setForm((f: any) => ({ ...f, showDuplicateOverride: true, duplicateMessage: e.data.error }));
       } else {
         flash('err', e?.message || e?.data?.error || 'Action failed.');
       }

@@ -1775,7 +1775,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       // Structured fields joined into the same master-schema string columns, so the
       // DB mapping is unchanged (Quick Add onboarding assembles addresses identically).
       presentAddress: buildAddressString(form, 'p_'),
-      permanentAddress: form.sameAsPresent ? buildAddressString(form, 'p_') : buildAddressString(form, 'q_'),
+      permanentAddress: (form as any).sameAsPresent ? buildAddressString(form, 'p_') : buildAddressString(form, 'q_'),
       shiftId: form.shiftId ? Number(form.shiftId) : null,
 
       // Bonus configuration
