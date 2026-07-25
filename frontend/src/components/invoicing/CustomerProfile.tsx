@@ -130,7 +130,7 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
   return (
     <div className="bg-slate-50 min-h-full pb-12">
       {/* HEADER SECTION */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <div className="bg-white border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <Button variant="ghost" size="sm" onClick={onBack} className="mb-4 -ml-2 text-slate-500">
             <ArrowLeft size={16} className="mr-2" /> Back to Customers
