@@ -56,9 +56,22 @@ export const VerificationCreditsCard: React.FC<Props> = ({ onViewWallet }) => {
     };
     window.addEventListener('hrms:wallet-updated', onUpdate);
     window.addEventListener('storage', onUpdate);
+
+    // The in-app events above only fire for changes THIS browser made. A wallet
+    // can also change from outside this session entirely — a Super Admin
+    // allocating credits from the Credit Management portal is the common case —
+    // and the card would then keep showing a stale balance (often a stale zero)
+    // until the page was reloaded by hand. Re-reading when the tab regains focus
+    // or becomes visible covers that without polling the server continuously.
+    const refreshIfVisible = () => { if (document.visibilityState === 'visible') load(); };
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+
     return () => {
       window.removeEventListener('hrms:wallet-updated', onUpdate);
       window.removeEventListener('storage', onUpdate);
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
     };
   }, [load]);
 

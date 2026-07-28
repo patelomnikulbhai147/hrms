@@ -745,21 +745,6 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
                 <p className="text-[12px] font-medium text-red-800 mt-1.5 leading-relaxed">
                   You can still save this employee — switch to <strong>"Add Manually"</strong> to enter the bank details yourself.
                 </p>
-                <div className="mt-2.5">
-                  {canOpenSettings ? (
-                    <button
-                      type="button"
-                      onClick={openBankVerificationSettings}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-red-300 text-[12px] font-bold text-red-800 hover:bg-red-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-1"
-                    >
-                      View Wallet <ExternalLink className="w-3 h-3" />
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-red-200 text-[12px] font-semibold text-red-700">
-                      <Info className="w-3.5 h-3.5" /> Contact your administrator to add credits
-                    </span>
-                  )}
-                </div>
               </div>
             </div>
           </div>

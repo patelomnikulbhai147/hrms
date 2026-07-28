@@ -33,6 +33,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { Card, StatCard } from '@/components/ui/Card';
 import { VerificationCreditsCard } from '@/components/verification/VerificationCreditsCard';
+import { WalletModal } from '@/components/verification/WalletModal';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
 import { RecentActivityFeed } from '@/components/activity/RecentActivityFeed';
@@ -146,6 +147,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Loose (String) compare: activeCompanyId may arrive as a number (fresh click)
   // or a string (rehydrated from localStorage) — both must resolve the same
   // workspace, otherwise a branch loses its context after a reload.
+  // Verification wallet dialog — opened in place by "View Wallet" so the action
+  // never navigates or opens a second tab.
+  const [walletOpen, setWalletOpen] = useState(false);
+
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId) || companies.find(c => String(c.id) === String(activeCompanyId));
   // Branch context: the active workspace is a branch when it has a parent
   // company. Used to scope the dashboard and render the "Company → Branch"
@@ -886,7 +891,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // ─── Company Head Dashboard (Corporate Operations Control) ───
   if (role === 'Company Head') {
     const totalEmployees = scopedEmployees.length;
-    const activeEmployeesCount = currentCompany?.employeeCount || 0;
+    // Counted from the SAME live roster the rest of the dashboard reads, not from
+    // Company.employeeCount. That column is denormalised and is only recomputed by
+    // the headcount sync (which runs at backend boot / on branch update), so on a
+    // long-running production server it kept reporting the figure from whenever the
+    // process last started — adding, archiving or restoring an employee never moved
+    // it, while every other card updated immediately. Deriving it here means one
+    // source of truth and no refresh required.
+    const activeEmployeesCount = scopedEmployees.filter(
+      (e: any) => String(e.status || '').toLowerCase() === 'active'
+    ).length;
 
     const branches = companies.filter(b => b.parentCompanyId === activeCompanyId);
 
@@ -1201,8 +1215,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
 
         {/* Remaining API-verification credits. Hides itself when the wallet can't
-            be read, so a lookup failure never shows a false zero. */}
-        <VerificationCreditsCard onViewWallet={() => onNavigate?.('settings')} />
+            be read, so a lookup failure never shows a false zero.
+            View Wallet opens a dialog IN PLACE. It used to navigate to Settings —
+            which is not a wallet, and the only wallet page in this app is
+            registered platformOnly/Super Admin, so a Company Head or HR had
+            nowhere legitimate to be sent. Employees get no wallet at all. */}
+        <VerificationCreditsCard onViewWallet={() => setWalletOpen(true)} />
+        <WalletModal
+          open={walletOpen}
+          onClose={() => setWalletOpen(false)}
+          role={role}
+          companyName={currentCompany?.name || null}
+        />
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
         {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}
