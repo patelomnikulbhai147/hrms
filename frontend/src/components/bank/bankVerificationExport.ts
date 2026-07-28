@@ -35,7 +35,7 @@ export function buildReportSections(view: VerificationView): Array<{ title: stri
         line('Verification ID', view.verificationId),
         line('Environment', view.environment),
         line('API Response Time', view.responseTimeMs != null ? `${view.responseTimeMs} ms` : null),
-        line('Verification Cost', view.verificationCost != null ? `INR ${view.verificationCost}` : null),
+        line('Verification Credits Used', view.verificationCost != null ? String(view.verificationCost) : null),
         line('Verified By', view.verifiedBy),
         line('Company', view.companyName),
         line('Branch', view.branchName),
@@ -108,9 +108,11 @@ export function buildReportSections(view: VerificationView): Array<{ title: stri
         line('Reference ID', view.referenceId),
         line('Verification ID', view.verificationId),
         line('Retry Count', view.retryCount),
-        line('Wallet Debit', view.verificationCost != null ? `INR ${view.verificationCost}` : null),
-        line('Wallet Balance Before', view.walletBalanceBefore != null ? `INR ${view.walletBalanceBefore}` : null),
-        line('Wallet Balance After', view.walletBalanceAfter != null ? `INR ${view.walletBalanceAfter}` : null),
+        // Verification credits are a quota of API requests, never a currency —
+        // the exported document must not imply an amount of money either.
+        line('Verification Credits Used', view.verificationCost != null ? String(view.verificationCost) : null),
+        line('Verification Credits Before', view.walletBalanceBefore != null ? String(view.walletBalanceBefore) : null),
+        line('Verification Credits After', view.walletBalanceAfter != null ? String(view.walletBalanceAfter) : null),
       ],
     });
   }

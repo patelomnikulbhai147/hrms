@@ -3,9 +3,10 @@ import { Input } from '@/components/ui/Input';
 import { SmartInput } from '@/components/ui/SmartInput';
 import { api } from '@/api/apiClient';
 import { usePermissions } from '@/context/PermissionContext';
-import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Unlock, Building2, ShieldCheck, CreditCard, Globe, Database, Activity, Info, ExternalLink, Clock } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, RefreshCw, Unlock, Building2, ShieldCheck, Ticket, Globe, Database, Activity, Info, ExternalLink, Clock } from 'lucide-react';
 import { BankVerificationReport } from '@/components/bank/BankVerificationReport';
 import { VerificationView, EnteredDetails, fromVerifyResponse, fromRecord } from '@/components/bank/bankVerification';
+import { CREDIT_TOOLTIP, creditValue, creditUnit, creditsMeaning } from '@/components/verification/creditTerminology';
 
 export interface BankData {
   accountHolderName?: string;
@@ -55,15 +56,14 @@ interface Props {
  * GET /api/verification-credits/wallet returns it. `isAvailable` is the server's
  * verdict on whether a verification can run right now, and `unavailableCode`
  * says which condition blocks it — the screen renders that verdict rather than
- * inferring one from the balance.
+ * inferring one from the credit figure.
  */
 interface WalletStatus {
   companyId: number;
+  /** 1 credit = 1 successful verification, so this is also the verifications left. */
   remainingCredits: number;
   totalCredits: number;
   usedCredits: number;
-  costPerVerification: number;
-  remainingVerifications: number;
   walletStatus: string;
   status: string;
   provider?: string;
@@ -197,12 +197,11 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
     };
   }, [fetchWallet]);
 
-  // Every figure below comes from the wallet API — the price per verification is
-  // the tenant's configured price, never a constant written into this screen.
+  // Every figure below comes from the credits API. 1 credit = 1 successful
+  // verification, so `remainingCredits` is also the number of verifications
+  // left — there is no second figure to derive.
   const walletReady = walletState === 'ready' && !!wallet;
   const remainingCredits = wallet?.remainingCredits ?? 0;
-  const costPerVerification = wallet?.costPerVerification ?? 0;
-  const remainingVerifications = wallet?.remainingVerifications ?? 0;
   const apiAvailable = walletReady && !!wallet?.isAvailable;
 
   const ifscTimer = useRef<any>(null);
@@ -679,9 +678,9 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <CreditCard className="w-4 h-4 text-brand-600" />
-            <span className="text-slate-600 font-semibold">Available Balance:</span>
+          <div className="flex items-center gap-2 text-xs" title={CREDIT_TOOLTIP}>
+            <Ticket className="w-4 h-4 text-brand-600" />
+            <span className="text-slate-600 font-semibold">Available Verification Credits:</span>
             {walletState === 'loading' && (
               <span className="font-bold px-2.5 py-1 rounded-md shadow-sm bg-slate-100 text-slate-500 border border-slate-200 inline-flex items-center gap-1.5">
                 <RefreshCw className="w-3 h-3 animate-spin" /> Checking…
@@ -695,27 +694,27 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
             {walletReady && (
               <>
                 <span className={`font-bold px-2.5 py-1 rounded-md shadow-sm ${
-                  remainingVerifications >= 2 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                  remainingVerifications >= 1 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                  remainingCredits >= 2 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                  remainingCredits >= 1 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
                   'bg-red-50 text-red-700 border border-red-200'
                 }`}>
-                  ₹{remainingCredits}
+                  {creditValue(remainingCredits)} {creditUnit(remainingCredits)}
                 </span>
                 <span className="text-slate-500 font-medium">
-                  = {remainingVerifications} verification{remainingVerifications === 1 ? '' : 's'} @ ₹{costPerVerification}
+                  = {creditsMeaning(remainingCredits)}
                 </span>
               </>
             )}
           </div>
         </div>
 
-        {/* A balance that could not be read is reported as exactly that — never as
-            an exhausted wallet. */}
+        {/* Credits that could not be read are reported as exactly that — never as
+            credits exhausted. */}
         {!manual && walletState === 'error' && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2 text-xs text-amber-900 font-semibold shadow-sm">
             <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
             <span className="leading-relaxed flex-1">
-              {walletError || 'Could not load the verification balance.'} Your balance has not been charged.
+              {walletError || 'Could not load your verification credits.'} No verification credits have been used.
             </span>
             <button
               type="button"
@@ -738,9 +737,8 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
               <div className="min-w-0 flex-1">
                 <h5 className="text-[13px] font-bold text-red-900">Verification Credits Exhausted</h5>
                 <p className="text-[12px] font-medium text-red-800 mt-1 leading-relaxed">
-                  Your organization has no API verification credits remaining
-                  {costPerVerification > 0 && <> — the balance of ₹{remainingCredits} is below the ₹{costPerVerification} charged per verification</>}.
-                  {' '}Please contact your administrator or purchase additional verification credits.
+                  Your organization has no API verification credits remaining.
+                  {' '}Please ask your administrator to add more verification credits — each credit allows one verification.
                 </p>
                 <p className="text-[12px] font-medium text-red-800 mt-1.5 leading-relaxed">
                   You can still save this employee — switch to <strong>"Add Manually"</strong> to enter the bank details yourself.
@@ -753,7 +751,7 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
         {/* Automated verification is switched off (or suspended) for this
             workspace. A single compact line: it is a state to be aware of, not a
             failure, so it must not occupy a banner's worth of the form. The
-            balance is read from the wallet — it is never a literal. */}
+            credit figure is read from the server — it is never a literal. */}
         {!manual && walletReady && (wallet?.unavailableCode === 'MANUAL_MODE' || wallet?.unavailableCode === 'SUSPENDED') && (
           <div className="min-h-[36px] px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-lg flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[11.5px] text-amber-900">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -767,8 +765,8 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
                 ? 'Contact your administrator to restore it.'
                 : 'Enable it in Settings → Bank Verification.'}
             </span>
-            <span className="font-medium text-amber-800">
-              Your ₹{remainingCredits} balance remains available.
+            <span className="font-medium text-amber-800" title={CREDIT_TOOLTIP}>
+              Your {creditValue(remainingCredits)} verification {creditUnit(remainingCredits)} remain available.
             </span>
             {wallet?.unavailableCode === 'MANUAL_MODE' && canOpenSettings && (
               <button
@@ -784,8 +782,8 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
 
         {!manual && apiAvailable && (
           <div className="flex flex-col gap-4 mt-2">
-            <p className="text-[12px] text-slate-500 font-medium">
-              Using <strong className="text-brand-600">{wallet?.provider}</strong>. A valid IFSC with matching account numbers verifies the account and consumes <strong className="text-slate-700">₹{costPerVerification}</strong>, charged only when verification succeeds. You have <strong className="text-slate-700">{remainingVerifications}</strong> verification{remainingVerifications === 1 ? '' : 's'} remaining.
+            <p className="text-[12px] text-slate-500 font-medium" title={CREDIT_TOOLTIP}>
+              Using <strong className="text-brand-600">{wallet?.provider}</strong>. A valid IFSC with matching account numbers verifies the account and consumes <strong className="text-slate-700">1 verification credit</strong>, deducted only when verification succeeds. You have <strong className="text-slate-700">{creditValue(remainingCredits)}</strong> verification {creditUnit(remainingCredits)} remaining.
             </p>
             <div className="flex flex-wrap items-center gap-4 text-[12px] font-semibold bg-white border border-slate-200 px-4 py-3 rounded-lg shadow-sm w-fit">
               {wallet?.environment && (
@@ -926,7 +924,7 @@ export const BankDetails: React.FC<Props> = ({ data, onChange, errors = {}, disa
               <span className="text-[12px] text-slate-500 font-medium">{blockedReason}</span>
             ) : canVerifyNow && !changedSinceVerified ? (
               <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-amber-700">
-                <Clock className="w-3.5 h-3.5" /> Verification pending — nothing is charged until you click Verify.
+                <Clock className="w-3.5 h-3.5" /> Verification pending — no verification credits are used until you click Verify.
               </span>
             ) : null
           )}

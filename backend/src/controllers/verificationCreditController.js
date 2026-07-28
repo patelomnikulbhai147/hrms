@@ -7,6 +7,8 @@
 const VerificationCreditService = require('../services/verificationCreditService');
 const { resolveWalletCompany } = require('../utils/verificationScope');
 const prisma = require('../config/prisma');
+// Shared page-window + metadata contract (utils/pagination.js).
+const { pageWindow, pageMeta } = require('../utils/pagination');
 
 // Resolve the tenant whose wallet this request targets, or answer with the
 // reason it cannot be resolved. Every handler below routes through this, and so
@@ -115,10 +117,12 @@ exports.getTransactions = async (req, res) => {
       companyId: cid,
       serviceType: req.query.serviceType,
       transactionType: req.query.transactionType,
+      createdBy: req.query.createdBy,
+      search: req.query.search,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       page: req.query.page || 1,
-      limit: req.query.limit || 20
+      limit: req.query.pageSize || req.query.limit || 20
     });
     res.json(ledger);
   } catch (err) {
@@ -214,16 +218,25 @@ exports.suspendResumeCompany = async (req, res) => {
   }
 };
 
+/**
+ * GET /super-admin/verification-credits/transactions
+ *
+ * Server-side paginated by getLedger(); the ledger is append-only, so only the
+ * requested page is read. `pageSize` is the preferred spelling, `limit` is kept
+ * for existing callers — both mean the same thing.
+ */
 exports.getGlobalLedger = async (req, res) => {
   try {
     const ledger = await VerificationCreditService.getLedger({
       companyId: req.query.companyId,
       serviceType: req.query.serviceType,
       transactionType: req.query.transactionType,
+      createdBy: req.query.createdBy,
+      search: req.query.search,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       page: req.query.page || 1,
-      limit: req.query.limit || 50
+      limit: req.query.pageSize || req.query.limit || 20
     });
     res.json(ledger);
   } catch (err) {
@@ -232,19 +245,60 @@ exports.getGlobalLedger = async (req, res) => {
   }
 };
 
+/**
+ * GET /super-admin/verification-credits/audit-logs
+ *
+ * Server-side paginated. This table is append-only and grows with every
+ * verification attempt on the platform, so only the requested page is read —
+ * the count and the rows come from two indexed queries, never from loading the
+ * table and slicing it.
+ *
+ * Ordering is `id desc` (newest first) and is not client-controllable: a stable
+ * order is what makes page boundaries meaningful.
+ */
 exports.getGlobalAuditLogs = async (req, res) => {
   try {
     const where = {};
     if (req.query.companyId) where.companyId = parseInt(req.query.companyId, 10);
     if (req.query.status && req.query.status !== 'All') where.status = req.query.status;
+    // "Verification Type" — API Verification / Manual on the audit row.
+    if (req.query.verificationMode && req.query.verificationMode !== 'All') {
+      where.verificationMode = req.query.verificationMode;
+    }
+    if (req.query.provider && req.query.provider !== 'All') where.provider = req.query.provider;
+    // "User" — who triggered the verification.
+    if (req.query.verifiedByName) where.verifiedByName = req.query.verifiedByName;
+    if (req.query.startDate || req.query.endDate) {
+      where.requestTime = {};
+      if (req.query.startDate) where.requestTime.gte = new Date(req.query.startDate);
+      if (req.query.endDate) where.requestTime.lte = new Date(req.query.endDate);
+    }
+    const term = String(req.query.search || '').trim();
+    if (term) {
+      where.OR = [
+        { employeeName: { contains: term } },
+        { employeeCode: { contains: term } },
+        { referenceId: { contains: term } },
+        { ifsc: { contains: term } },
+        { accountNumberMasked: { contains: term } },
+        { verifiedByName: { contains: term } },
+        { branchName: { contains: term } }
+      ];
+    }
 
-    const logs = await prisma.bankVerificationAuditLog.findMany({
-      where,
-      orderBy: { id: 'desc' },
-      take: parseInt(req.query.limit || 100, 10)
-    });
+    const { page, take, skip } = pageWindow(req.query.page, req.query.pageSize || req.query.limit, 20);
 
-    // Enrich with company names
+    const [total, logs] = await Promise.all([
+      prisma.bankVerificationAuditLog.count({ where }),
+      prisma.bankVerificationAuditLog.findMany({
+        where,
+        orderBy: { id: 'desc' },
+        skip,
+        take
+      })
+    ]);
+
+    // Enrich with company names — only for the companies on THIS page.
     const companyIds = [...new Set(logs.map(l => l.companyId))];
     const companies = await prisma.company.findMany({
       where: { id: { in: companyIds } },
@@ -257,7 +311,7 @@ exports.getGlobalAuditLogs = async (req, res) => {
       companyName: compMap.get(l.companyId) || `Company #${l.companyId}`
     }));
 
-    res.json(enriched);
+    res.json({ ...pageMeta(total, page, take), records: enriched });
   } catch (err) {
     console.error('getGlobalAuditLogs error:', err);
     res.status(500).json({ error: err.message || 'Failed to retrieve global audit logs.' });

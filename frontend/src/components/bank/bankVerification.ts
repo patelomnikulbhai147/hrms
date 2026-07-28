@@ -325,7 +325,7 @@ export function statusLabel(status?: string | null): string {
     case 'MANUAL_OVERRIDE': return 'Manual Override';
     case 'RATE_LIMITED': return 'Rate Limited';
     case 'INSUFFICIENT_CREDITS': return 'Insufficient Credits';
-    case 'DEBIT_FAILED': return 'Debit Failed';
+    case 'DEBIT_FAILED': return 'Credit Deduction Failed';
     case 'PENDING': return 'Pending';
     case 'UNVERIFIED': return 'Not Verified';
     default: return status ? String(status).replace(/_/g, ' ') : 'Unknown';

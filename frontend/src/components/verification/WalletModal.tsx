@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Wallet, RefreshCw, AlertTriangle, ShieldCheck, XCircle, Clock } from 'lucide-react';
+import { RefreshCw, AlertTriangle, ShieldCheck, XCircle, Clock } from 'lucide-react';
 import { api } from '@/api/apiClient';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { formatDateTime } from '@/utils/formatDate';
+import { CREDIT_TOOLTIP, creditValue, creditsMeaning, creditUnit } from './creditTerminology';
 
 interface Props {
   open: boolean;
@@ -15,11 +16,10 @@ interface Props {
 }
 
 interface WalletState {
+  /** 1 credit = 1 successful verification, so this is also the verifications left. */
   remainingCredits: number;
   totalCredits: number;
   usedCredits: number;
-  costPerVerification: number;
-  remainingVerifications: number;
   walletStatus: string;
   status: string;
   provider?: string;
@@ -39,16 +39,21 @@ interface Stats {
 const LABEL = 'text-[11px] font-semibold uppercase tracking-wide text-ink-muted';
 
 /**
- * The verification wallet, as a modal.
+ * The workspace's verification credits, as a modal.
  *
- * Deliberately a modal and not a route: the only wallet PAGE in this app
+ * One credit = one successful verification. Every figure here is a QUOTA of API
+ * verification requests, never money — no currency symbol appears anywhere in
+ * this dialog, and the underlying API field names (`walletStatus`,
+ * `remainingCredits`) are left untouched so no contract changes.
+ *
+ * Deliberately a modal and not a route: the only credit PAGE in this app
  * (`verification-credits`) is registered `platformOnly` / Super Admin, so for a
- * Company Head or HR "View Wallet" had nowhere legitimate to navigate — it went
- * to Settings, or opened a second tab. Opening a dialog in place removes the
+ * Company Head or HR this had nowhere legitimate to navigate — it went to
+ * Settings, or opened a second tab. Opening a dialog in place removes the
  * navigation entirely, which is what stops the session being disturbed.
  *
  * Reads only endpoints the viewer is already entitled to, and never renders a
- * provider credential — the wallet API does not return one.
+ * provider credential — the credits API does not return one.
  */
 export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName }) => {
   const [wallet, setWallet] = useState<WalletState | null>(null);
@@ -73,7 +78,7 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
       const walletRes: any = await api.get('/api/verification-credits/wallet');
       const w: WalletState | null = walletRes?.data || null;
       if (!w || typeof w.remainingCredits !== 'number') {
-        throw new Error('The verification wallet returned an unreadable balance.');
+        throw new Error('The verification credit total could not be read.');
       }
       setWallet(w);
 
@@ -92,7 +97,7 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
       setState('ready');
       setLastUpdated(new Date());
     } catch (err: any) {
-      setError(err?.message || 'Could not load the verification wallet.');
+      setError(err?.message || 'Could not load your verification credits.');
       setState('error');
     } finally {
       setRefreshing(false);
@@ -122,14 +127,14 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
   const used = wallet?.usedCredits ?? 0;
   const total = wallet?.totalCredits ?? 0;
   const remaining = wallet?.remainingCredits ?? 0;
-  // Percentages are derived from the wallet the server returned — never assumed.
+  // Percentages are derived from the figures the server returned — never assumed.
   const usedPct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
 
   const severity = !wallet
     ? 'slate'
     : remaining <= 0 || wallet.unavailableCode === 'INSUFFICIENT_CREDITS'
     ? 'red'
-    : wallet.remainingVerifications <= 3
+    : remaining <= 3
     ? 'amber'
     : 'green';
 
@@ -144,37 +149,39 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
     <Modal
       open={open && allowed}
       onClose={onClose}
-      title="Verification Wallet"
+      title="Verification Credits"
       subtitle={companyName || undefined}
       size="lg"
     >
       {state === 'loading' ? (
         <div className="py-12 text-center text-ink-secondary">
           <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-brand-500" />
-          <p className="text-[13px] font-medium">Loading wallet…</p>
+          <p className="text-[13px] font-medium">Loading verification credits…</p>
         </div>
       ) : state === 'error' ? (
         <div className="py-10 text-center">
           <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
           <p className="text-[13.5px] font-semibold text-ink">{error}</p>
-          <p className="text-[12px] text-ink-secondary mt-1.5">Your balance has not been charged.</p>
+          <p className="text-[12px] text-ink-secondary mt-1.5">No verification credits have been used.</p>
           <Button variant="primary" size="sm" className="mt-4" onClick={load} icon={<RefreshCw className="w-3.5 h-3.5" />}>
             Try again
           </Button>
         </div>
       ) : wallet ? (
         <div className="space-y-5">
-          {/* Balance + progress */}
-          <div className={`rounded-card border p-5 ${TONE.panel}`}>
+          {/* Credits + progress. Never a currency — these are verification quota. */}
+          <div className={`rounded-card border p-5 ${TONE.panel}`} title={CREDIT_TOOLTIP}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <span className={LABEL}>Available Balance</span>
+                <span className={LABEL}>Available Verification Credits</span>
                 <p className={`text-[32px] font-bold leading-none mt-1.5 font-heading tabular-nums ${TONE.text}`}>
-                  ₹{remaining}
+                  {creditValue(remaining)}
+                  <span className="text-[13px] font-semibold text-ink-muted ml-1.5 align-middle">
+                    {creditUnit(remaining)}
+                  </span>
                 </p>
                 <p className="text-[12px] font-medium text-ink-secondary mt-2">
-                  {wallet.remainingVerifications} verification{wallet.remainingVerifications === 1 ? '' : 's'} remaining
-                  {wallet.costPerVerification > 0 && <> at ₹{wallet.costPerVerification} each</>}
+                  {creditsMeaning(remaining)}
                 </p>
               </div>
               <Badge variant={TONE.badge} dot>{wallet.walletStatus || wallet.status}</Badge>
@@ -182,8 +189,8 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
 
             <div className="mt-4">
               <div className="flex items-center justify-between text-[11.5px] font-semibold text-ink-secondary mb-1.5">
-                <span>₹{used} used</span>
-                <span>₹{remaining} remaining</span>
+                <span>{creditValue(used)} used</span>
+                <span>{creditValue(remaining)} remaining</span>
               </div>
               <div
                 className="w-full h-2 rounded-full bg-surface overflow-hidden"
@@ -196,19 +203,17 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
                 <div className={`h-full ${TONE.bar} rounded-full transition-all duration-300`} style={{ width: `${usedPct}%` }} />
               </div>
               <p className="text-[11px] font-medium text-ink-muted mt-1.5">
-                {usedPct}% of ₹{total} allocated credits used
+                {usedPct}% of {creditValue(total)} total verification {creditUnit(total)} allocated used
               </p>
             </div>
           </div>
 
           {/* Figures */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-5 gap-y-4">
-            <div><span className={LABEL}>Total Credits</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">₹{total}</p></div>
-            <div><span className={LABEL}>Used Credits</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">₹{used}</p></div>
-            <div><span className={LABEL}>Remaining Credits</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">₹{remaining}</p></div>
-            <div><span className={LABEL}>Cost Per Verification</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">₹{wallet.costPerVerification}</p></div>
-            <div><span className={LABEL}>Remaining Verifications</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">{wallet.remainingVerifications}</p></div>
-            <div><span className={LABEL}>Wallet Status</span><p className="text-[14px] font-semibold text-ink mt-1">{wallet.walletStatus || wallet.status}</p></div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-5 gap-y-4" title={CREDIT_TOOLTIP}>
+            <div><span className={LABEL}>Total Credits Allocated</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">{creditValue(total)}</p></div>
+            <div><span className={LABEL}>Credits Used</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">{creditValue(used)}</p></div>
+            <div><span className={LABEL}>Credits Remaining</span><p className="text-[14px] font-semibold text-ink mt-1 tabular-nums">{creditValue(remaining)}</p></div>
+            <div><span className={LABEL}>Credit Status</span><p className="text-[14px] font-semibold text-ink mt-1">{wallet.walletStatus || wallet.status}</p></div>
             {stats && (
               <>
                 <div>
@@ -254,7 +259,7 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
                   <table className="w-full min-w-[560px] text-left">
                     <thead>
                       <tr className="bg-surface-muted border-b border-hairline">
-                        {['Date & Time', 'Employee', 'Module', 'Credits', 'Status', 'Reference ID'].map((h) => (
+                        {['Date & Time', 'Employee', 'Module', 'Credits Used', 'Status', 'Reference ID'].map((h) => (
                           <th key={h} scope="col" className="px-3 py-2 text-[10.5px] font-semibold uppercase tracking-wide text-ink-secondary whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
@@ -267,8 +272,8 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
                           </td>
                           <td className="px-3 py-2.5 text-[12px] font-semibold text-ink truncate max-w-[140px]">{r.employeeName || '—'}</td>
                           <td className="px-3 py-2.5 text-[12px] font-medium text-ink-secondary whitespace-nowrap">Bank Verification</td>
-                          <td className="px-3 py-2.5 text-[12px] font-semibold text-ink tabular-nums">
-                            {r.verificationCost != null ? `₹${r.verificationCost}` : '—'}
+                          <td className="px-3 py-2.5 text-[12px] font-semibold text-ink tabular-nums" title={CREDIT_TOOLTIP}>
+                            {r.verificationCost != null ? creditValue(r.verificationCost) : '—'}
                           </td>
                           <td className="px-3 py-2.5">
                             <Badge variant={r.status === 'VERIFIED' ? 'green' : r.status === 'FAILED' || r.status === 'ERROR' ? 'danger' : 'warning'}>
@@ -299,14 +304,14 @@ export const WalletModal: React.FC<Props> = ({ open, onClose, role, companyName 
 
           {role === 'HR' && (
             <p className="text-[11.5px] font-medium text-ink-muted inline-flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5" /> Read-only — contact your Company Head to add credits.
+              <ShieldCheck className="w-3.5 h-3.5" /> Read-only — contact your Company Head to add verification credits.
             </p>
           )}
         </div>
       ) : (
         <div className="py-10 text-center text-ink-secondary">
           <XCircle className="w-8 h-8 mx-auto mb-3 text-ink-muted" />
-          <p className="text-[13px] font-medium">No wallet is available for this workspace.</p>
+          <p className="text-[13px] font-medium">No verification credits are configured for this workspace.</p>
         </div>
       )}
     </Modal>

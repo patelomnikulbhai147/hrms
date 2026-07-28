@@ -147,8 +147,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Loose (String) compare: activeCompanyId may arrive as a number (fresh click)
   // or a string (rehydrated from localStorage) — both must resolve the same
   // workspace, otherwise a branch loses its context after a reload.
-  // Verification wallet dialog — opened in place by "View Wallet" so the action
-  // never navigates or opens a second tab.
+  // Verification credits dialog — opened in place by "View Verification Credits"
+  // so the action never navigates or opens a second tab.
   const [walletOpen, setWalletOpen] = useState(false);
 
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId) || companies.find(c => String(c.id) === String(activeCompanyId));
@@ -1214,12 +1214,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           </div>
         </div>
 
-        {/* Remaining API-verification credits. Hides itself when the wallet can't
-            be read, so a lookup failure never shows a false zero.
-            View Wallet opens a dialog IN PLACE. It used to navigate to Settings —
-            which is not a wallet, and the only wallet page in this app is
+        {/* Remaining verification credits — a quota of API verification requests,
+            never money. Hides itself when the figure can't be read, so a lookup
+            failure never shows a false zero.
+            The link opens a dialog IN PLACE. It used to navigate to Settings —
+            which is not a credits screen, and the only credits page in this app is
             registered platformOnly/Super Admin, so a Company Head or HR had
-            nowhere legitimate to be sent. Employees get no wallet at all. */}
+            nowhere legitimate to be sent. Employees get no credits view at all. */}
         <VerificationCreditsCard onViewWallet={() => setWalletOpen(true)} />
         <WalletModal
           open={walletOpen}

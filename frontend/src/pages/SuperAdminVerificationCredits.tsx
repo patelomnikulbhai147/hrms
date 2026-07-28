@@ -1,10 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  ShieldCheck, CreditCard, Building2, Users, CheckCircle2, XCircle, AlertTriangle, 
-  PlusCircle, MinusCircle, RotateCcw, Ban, Play, FileText, Download, Search, 
-  Filter, RefreshCw, ArrowUpRight, DollarSign, Activity, Calendar, Clock, ChevronRight, BarChart3 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ShieldCheck, Building2, CheckCircle2, AlertTriangle, Ticket,
+  PlusCircle, MinusCircle, RotateCcw, FileText, Download, Search,
+  RefreshCw, Activity, BarChart3
 } from 'lucide-react';
 import { api } from '@/api/apiClient';
+import { ui } from '@/components/ui/feedback';
+// The shared HRMS pagination control — the same bar the Employee list, Reports
+// and Companies tables use. Driven here by the server's {page, pageSize, total,
+// totalPages} response rather than by slicing an in-memory array.
+import { PaginationBar } from '@/components/ui/Paginated';
+// Verification credits are a QUOTA of API requests, never money — all wording
+// for them lives in one place so no screen can drift back into currency.
+import {
+  CREDIT_TOOLTIP, creditValue, allocationHelper, ledgerTypeLabel,
+} from '@/components/verification/creditTerminology';
+
+/**
+ * The three credit actions this screen offers, expressed in the verbs the
+ * EXISTING wallet API already accepts (verificationCreditService.allocateCredits).
+ * Nothing new is introduced server-side:
+ *   ADD    → credits + n, allocated + n      (ledger: Addition)
+ *   DEDUCT → credits − n, floored at 0       (ledger: Deduction)
+ *   RESET  → credits/allocated = n, used = 0 (ledger: Reset)
+ */
+type CreditAction = 'ADD' | 'DEDUCT' | 'RESET';
+
+const ACTION_LABEL: Record<CreditAction, string> = {
+  ADD: 'Add Verification Credits',
+  DEDUCT: 'Remove Verification Credits',
+  RESET: 'Reset Verification Credits',
+};
+
+/** Rows per page for the two append-only log tables, and the choices offered. */
+const DEFAULT_LOG_PAGE_SIZE = 20;
+const LOG_PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 interface DashboardMetrics {
   totalCompanies: number;
@@ -28,10 +58,10 @@ interface CompanyCreditRow {
   verificationMode: string;
   allocatedCredits: number;
   usedCredits: number;
+  /** 1 credit = 1 successful verification, so this is also the verifications left. */
   remainingCredits: number;
   expiryDate?: string;
   status: 'Active' | 'Suspended' | 'Exhausted';
-  costPerVerification: number;
 }
 
 interface LedgerTransaction {
@@ -75,14 +105,22 @@ interface ReportRow {
   companyName?: string;
   employeeName?: string;
   plan?: string;
+  /** Ledger activity inside the selected timeframe. */
   allocatedCredits?: number;
+  creditsRemoved?: number;
   creditsConsumed: number;
+  /** LIVE lifetime figure, not timeframe activity. */
+  creditsRemaining?: number;
   verificationsTotal?: number;
   verificationsSuccess?: number;
   verificationsFailed?: number;
   successRate?: number;
-  revenue?: number;
   verifications?: number;
+  /**
+   * The API still returns an estimated `revenue` figure (credits × a fixed
+   * multiplier). It is deliberately NOT rendered: verification credits are a
+   * quota, not money, so no monetary column appears in this report.
+   */
 }
 
 export const SuperAdminVerificationCredits: React.FC = () => {
@@ -95,10 +133,31 @@ export const SuperAdminVerificationCredits: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
 
+  // ── Server-side pagination state ───────────────────────────────────────────
+  // Both the Credit Ledger and the Verification Audit Logs are append-only tables
+  // that grow forever, so neither is ever fetched whole: the server returns one
+  // page and the row count, and these figures drive the shared PaginationBar.
+  // Page size lives in component state, which is exactly "remember it while the
+  // user stays on the page".
+  const [ledgerPage, setLedgerPage] = useState<number>(1);
+  const [ledgerPageSize, setLedgerPageSize] = useState<number>(DEFAULT_LOG_PAGE_SIZE);
+  const [ledgerTotal, setLedgerTotal] = useState<number>(0);
+  const [ledgerTotalPages, setLedgerTotalPages] = useState<number>(1);
+  const [ledgerLoading, setLedgerLoading] = useState<boolean>(true);
+
+  const [auditPage, setAuditPage] = useState<number>(1);
+  const [auditPageSize, setAuditPageSize] = useState<number>(DEFAULT_LOG_PAGE_SIZE);
+  const [auditTotal, setAuditTotal] = useState<number>(0);
+  const [auditTotalPages, setAuditTotalPages] = useState<number>(1);
+  const [auditLoading, setAuditLoading] = useState<boolean>(true);
+
   // Allocation Modal State
   const [showAllocateModal, setShowAllocateModal] = useState<boolean>(false);
   const [selectedCompany, setSelectedCompany] = useState<CompanyCreditRow | null>(null);
-  const [allocAction, setAllocAction] = useState<'ALLOCATE' | 'ADD' | 'DEDUCT' | 'RESET'>('ALLOCATE');
+  // Three actions, mapped onto the EXISTING wallet API verbs. `ALLOCATE` and
+  // `ADD` were two names for one behaviour (same balance maths, different ledger
+  // label), so the UI now offers a single Add.
+  const [allocAction, setAllocAction] = useState<CreditAction>('ADD');
   const [allocCredits, setAllocCredits] = useState<number>(100);
   const [allocExpiry, setAllocExpiry] = useState<string>('');
   const [allocRemarks, setAllocRemarks] = useState<string>('');
@@ -113,25 +172,18 @@ export const SuperAdminVerificationCredits: React.FC = () => {
   const [reportTimeframe, setReportTimeframe] = useState<'daily' | 'weekly' | 'monthly'>('monthly');
   const [reportGroupBy, setReportGroupBy] = useState<'company' | 'employee'>('company');
 
-  const fetchData = async () => {
+  // Each table owns its own fetch so that paging one of them cannot re-issue the
+  // other four requests — and so a new transaction can refresh just the ledger.
+
+  const fetchCore = async () => {
     setLoading(true);
     try {
-      const [dashRes, compRes, ledgRes, auditRes, repRes] = await Promise.allSettled([
+      const [dashRes, compRes] = await Promise.allSettled([
         api.get('/super-admin/verification-credits/dashboard'),
         api.get('/super-admin/verification-credits/companies'),
-        api.get('/super-admin/verification-credits/transactions', { params: { limit: 50 } }),
-        api.get('/super-admin/verification-credits/audit-logs', { params: { limit: 50 } }),
-        api.get('/super-admin/verification-credits/reports', { params: { timeframe: reportTimeframe, groupBy: reportGroupBy } })
       ]);
-
       if (dashRes.status === 'fulfilled') setMetrics(dashRes.value.data);
       if (compRes.status === 'fulfilled') setCompanies(compRes.value.data);
-      if (ledgRes.status === 'fulfilled') {
-        const ledgData = ledgRes.value.data;
-        setLedger(ledgData.transactions || ledgData || []);
-      }
-      if (auditRes.status === 'fulfilled') setAudits(auditRes.value.data);
-      if (repRes.status === 'fulfilled') setReports(repRes.value.data);
     } catch (err) {
       console.error('Failed to load Super Admin verification credit data:', err);
     } finally {
@@ -139,15 +191,82 @@ export const SuperAdminVerificationCredits: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchData();
+  /**
+   * One page of the Credit Ledger. `page`/`pageSize` are sent to the server,
+   * which returns only those rows plus the total — nothing is sliced here.
+   */
+  const fetchLedger = useCallback(async () => {
+    setLedgerLoading(true);
+    try {
+      const res: any = await api.get('/super-admin/verification-credits/transactions', {
+        params: { page: ledgerPage, pageSize: ledgerPageSize },
+      });
+      const data = res?.data || {};
+      setLedger(data.transactions || []);
+      setLedgerTotal(data.totalRecords ?? data.total ?? 0);
+      setLedgerTotalPages(data.totalPages || 1);
+    } catch (err) {
+      console.error('Failed to load the credit ledger page:', err);
+    } finally {
+      setLedgerLoading(false);
+    }
+  }, [ledgerPage, ledgerPageSize]);
+
+  /** One page of the Verification Audit Logs, on the same contract. */
+  const fetchAudits = useCallback(async () => {
+    setAuditLoading(true);
+    try {
+      const res: any = await api.get('/super-admin/verification-credits/audit-logs', {
+        params: { page: auditPage, pageSize: auditPageSize },
+      });
+      const data = res?.data;
+      // This endpoint used to answer with a bare array. During a rolling deploy
+      // the frontend can briefly meet the older backend, so both shapes are read
+      // — an array is treated as a single complete page rather than as no data.
+      if (Array.isArray(data)) {
+        setAudits(data);
+        setAuditTotal(data.length);
+        setAuditTotalPages(1);
+      } else {
+        setAudits(data?.records || []);
+        setAuditTotal(data?.totalRecords ?? data?.total ?? 0);
+        setAuditTotalPages(data?.totalPages || 1);
+      }
+    } catch (err) {
+      console.error('Failed to load the verification audit log page:', err);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [auditPage, auditPageSize]);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const res: any = await api.get('/super-admin/verification-credits/reports', {
+        params: { timeframe: reportTimeframe, groupBy: reportGroupBy },
+      });
+      setReports(res?.data || []);
+    } catch (err) {
+      console.error('Failed to load usage reports:', err);
+    }
   }, [reportTimeframe, reportGroupBy]);
 
-  const handleOpenAllocate = (company: CompanyCreditRow | null, action: 'ALLOCATE' | 'ADD' | 'DEDUCT' | 'RESET' = 'ALLOCATE') => {
+  /** Refresh button — every table at once. Paging never calls this. */
+  const fetchData = async () => {
+    await Promise.allSettled([fetchCore(), fetchLedger(), fetchAudits(), fetchReports()]);
+  };
+
+  useEffect(() => { fetchCore(); }, []);
+  useEffect(() => { fetchLedger(); }, [fetchLedger]);
+  useEffect(() => { fetchAudits(); }, [fetchAudits]);
+  useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const handleOpenAllocate = (company: CompanyCreditRow | null, action: CreditAction = 'ADD') => {
     setSelectedCompany(company);
     setAllocAction(action);
-    setAllocCredits(action === 'RESET' ? 100 : 50);
-    setAllocRemarks(`Super Admin ${action.toLowerCase()} via Credit Management Portal`);
+    // Reset zeroes the wallet (balance, allocated and used) — there is no amount
+    // to choose, which is why its dialog asks only for confirmation.
+    setAllocCredits(action === 'RESET' ? 0 : 50);
+    setAllocRemarks(`Super Admin ${ACTION_LABEL[action].toLowerCase()} via Credit Management Portal`);
     setAllocError('');
     setCompanySearchQuery('');
     setShowCompanyDropdown(!company);
@@ -178,7 +297,22 @@ export const SuperAdminVerificationCredits: React.FC = () => {
       return;
     }
     if (allocCredits < 0 || isNaN(allocCredits)) {
-      setAllocError('Please enter valid credits.');
+      setAllocError('Please enter a valid number of verification credits.');
+      return;
+    }
+    if (allocAction !== 'RESET' && allocCredits === 0) {
+      setAllocError('Enter a number of verification credits greater than zero.');
+      return;
+    }
+    // A credit balance can never go negative. The server already floors a
+    // deduction at zero; refusing here means the Super Admin is told what will
+    // happen instead of silently removing less than they asked for.
+    if (allocAction === 'DEDUCT' && allocCredits > (selectedCompany.remainingCredits || 0)) {
+      setAllocError(`Cannot remove ${allocCredits.toLocaleString()} verification credits — only ${(selectedCompany.remainingCredits || 0).toLocaleString()} remain.`);
+      return;
+    }
+    if (allocAction === 'DEDUCT' && !String(allocRemarks || '').trim()) {
+      setAllocError('A reason is required when removing verification credits.');
       return;
     }
     setAllocSubmitting(true);
@@ -194,13 +328,32 @@ export const SuperAdminVerificationCredits: React.FC = () => {
         provider: selectedCompany.provider
       });
 
+      // Refreshes every open company wallet (employee form, dashboard card) in
+      // this tab and in any other tab, then this dashboard's own figures.
       window.dispatchEvent(new CustomEvent('hrms:wallet-updated'));
       localStorage.setItem('hrms_wallet_updated', Date.now().toString());
 
       setShowAllocateModal(false);
-      fetchData();
+      // Refresh only what this action changed: the wallet balances (dashboard +
+      // Companies tab) and the ledger, which just gained a row. The audit log and
+      // the usage reports are untouched by a credit adjustment, so they are not
+      // re-fetched. The ledger returns to page 1 because the new entry sorts
+      // newest-first; if it is already on page 1 the effect would not re-run, so
+      // it is fetched directly — either way exactly one request is issued.
+      await fetchCore();
+      if (ledgerPage === 1) await fetchLedger();
+      else setLedgerPage(1);
+
+      const name = selectedCompany.companyName;
+      ui.toast.success(
+        allocAction === 'ADD'
+          ? `${allocCredits.toLocaleString()} verification credits added to ${name}.`
+          : allocAction === 'DEDUCT'
+          ? `${allocCredits.toLocaleString()} verification credits removed from ${name}.`
+          : `Verification credits reset for ${name}.`
+      );
     } catch (err: any) {
-      setAllocError(err.message || 'Error saving credit allocation');
+      setAllocError(err.message || 'Could not save the verification credit change.');
     } finally {
       setAllocSubmitting(false);
     }
@@ -214,7 +367,8 @@ export const SuperAdminVerificationCredits: React.FC = () => {
       await api.put('/super-admin/verification-credits/company-status', { companyId, status: nextStatus });
       window.dispatchEvent(new CustomEvent('hrms:wallet-updated'));
       localStorage.setItem('hrms_wallet_updated', Date.now().toString());
-      fetchData();
+      // Suspend/Resume changes wallet status only — no ledger or audit row.
+      fetchCore();
     } catch (err) {
       console.error('Status toggle error:', err);
     }
@@ -269,8 +423,8 @@ export const SuperAdminVerificationCredits: React.FC = () => {
               <span>Bank Verification Credit Management</span>
               <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#C77E52] text-white shadow-sm">Super Admin</span>
             </h1>
-            <p className="text-sm mt-1 font-semibold" style={{ color: '#C77E52' }}>
-              Multi-tenant credit wallet administration, transaction ledger, and automated API billing
+            <p className="text-sm mt-1 font-semibold" style={{ color: '#C77E52' }} title={CREDIT_TOOLTIP}>
+              One credit = one successful verification · per-company quotas, credit ledger and API usage
             </p>
           </div>
         </div>
@@ -284,11 +438,11 @@ export const SuperAdminVerificationCredits: React.FC = () => {
             <span>Refresh</span>
           </button>
           <button 
-            onClick={() => handleOpenAllocate(null, 'ALLOCATE')}
+            onClick={() => handleOpenAllocate(null, 'ADD')}
             className="flex items-center space-x-2 px-5 py-2.5 bg-gradient-to-r from-[#C77E52] to-[#E0996A] hover:from-[#E0996A] hover:to-[#C77E52] text-white rounded-xl text-sm font-bold transition shadow-[0_4px_12px_rgba(199,126,82,0.25)] hover:shadow-[0_6px_20px_rgba(199,126,82,0.35)] border border-[#C77E52]/30"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Allocate Credits</span>
+            <span>Add Verification Credits</span>
           </button>
         </div>
       </div>
@@ -308,28 +462,28 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition" title={CREDIT_TOOLTIP}>
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Credits Remaining</span>
-            <CreditCard className="w-5 h-5 text-emerald-500" />
+            <Ticket className="w-5 h-5 text-emerald-500" />
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-bold text-slate-900">{metrics?.creditsRemaining?.toLocaleString() || 0}</span>
+            <span className="text-2xl font-bold text-slate-900">{creditValue(metrics?.creditsRemaining)}</span>
             <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
-              {metrics?.totalCreditsSold?.toLocaleString() || 0} Sold
+              {creditValue(metrics?.totalCreditsSold)} allocated
             </span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition" title={CREDIT_TOOLTIP}>
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold uppercase tracking-wider">Credits Used Today</span>
             <Activity className="w-5 h-5 text-amber-500" />
           </div>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-bold text-slate-900">{metrics?.creditsUsedToday?.toLocaleString() || 0}</span>
+            <span className="text-2xl font-bold text-slate-900">{creditValue(metrics?.creditsUsedToday)}</span>
             <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
-              Real-time Billing
+              Live usage
             </span>
           </div>
         </div>
@@ -342,7 +496,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           <div className="flex items-baseline justify-between">
             <span className="text-2xl font-bold text-slate-900">{metrics?.apiSuccessRate || 100}%</span>
             <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-              ₹{(metrics?.revenue || 0).toLocaleString()} Est. Rev
+              Verification requests
             </span>
           </div>
         </div>
@@ -359,7 +513,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Company Wallets ({companies.length})</span>
+          <span>Company Credits ({companies.length})</span>
         </button>
         <button
           onClick={() => setActiveTab('ledger')}
@@ -370,7 +524,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Credit Ledger</span>
+          <span>Verification Credit Ledger</span>
         </button>
         <button
           onClick={() => setActiveTab('audits')}
@@ -392,7 +546,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span>Usage Reports & Revenue</span>
+          <span>Verification Usage Reports</span>
         </button>
       </div>
 
@@ -422,16 +576,16 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                     <th className="py-3 px-4">Company</th>
                     <th className="py-3 px-4">Plan / Mode</th>
                     <th className="py-3 px-4">Provider</th>
-                    <th className="py-3 px-4 text-right">Allocated</th>
-                    <th className="py-3 px-4 text-right">Used</th>
-                    <th className="py-3 px-4 text-right">Remaining</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Total Credits Allocated</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Used</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Remaining</th>
                     <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-sm">
                   {loading ? (
-                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">Loading company credit balances...</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">Loading company verification credits…</td></tr>
                   ) : filteredCompanies.length === 0 ? (
                     <tr><td colSpan={8} className="py-8 text-center text-slate-500">No matching companies found.</td></tr>
                   ) : (
@@ -450,14 +604,17 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4 font-medium text-slate-700">{comp.provider}</td>
-                        <td className="py-3 px-4 text-right font-semibold text-slate-700">{comp.allocatedCredits.toLocaleString()}</td>
-                        <td className="py-3 px-4 text-right font-semibold text-slate-500">{comp.usedCredits.toLocaleString()}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-slate-700" title={CREDIT_TOOLTIP}>{creditValue(comp.allocatedCredits)}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-slate-500" title={CREDIT_TOOLTIP}>{creditValue(comp.usedCredits)}</td>
                         <td className="py-3 px-4 text-right">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${
-                            comp.remainingCredits > 50 ? 'bg-emerald-100 text-emerald-800' :
-                            comp.remainingCredits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
-                          }`}>
-                            {comp.remainingCredits.toLocaleString()}
+                          <span
+                            title={CREDIT_TOOLTIP}
+                            className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold ${
+                              comp.remainingCredits > 50 ? 'bg-emerald-100 text-emerald-800' :
+                              comp.remainingCredits > 0 ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {creditValue(comp.remainingCredits)}
                           </span>
                         </td>
                         <td className="py-3 px-4">
@@ -469,34 +626,33 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <div className="flex items-center justify-center space-x-1.5">
-                            <button
-                              onClick={() => handleOpenAllocate(comp, 'ALLOCATE')}
-                              title="Allocate Credits"
-                              className="p-1.5 bg-[rgba(199,126,82,0.05)] hover:bg-[rgba(199,126,82,0.15)] text-[#C77E52] rounded-lg transition text-xs font-semibold border border-[#C77E52]/20"
-                            >
-                              +Alloc
-                            </button>
+                          <div className="flex flex-wrap items-center justify-center gap-1.5">
+                            {/* Three actions, one purpose each. Every one is
+                                Super-Admin-only (this whole page is), disabled
+                                while a request is in flight. */}
                             <button
                               onClick={() => handleOpenAllocate(comp, 'ADD')}
-                              title="Add Credits"
-                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg transition text-xs font-semibold"
+                              disabled={allocSubmitting}
+                              title="Add verification credits for this company"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition text-xs font-semibold border border-emerald-200 disabled:opacity-50 disabled:pointer-events-none"
                             >
-                              +Add
+                              <PlusCircle className="w-3.5 h-3.5" /> Add
                             </button>
                             <button
                               onClick={() => handleOpenAllocate(comp, 'DEDUCT')}
-                              title="Deduct Credits"
-                              className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg transition text-xs font-semibold"
+                              disabled={allocSubmitting}
+                              title="Remove verification credits from this company"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg transition text-xs font-semibold border border-amber-200 disabled:opacity-50 disabled:pointer-events-none"
                             >
-                              -Ded
+                              <MinusCircle className="w-3.5 h-3.5" /> Remove
                             </button>
                             <button
                               onClick={() => handleOpenAllocate(comp, 'RESET')}
-                              title="Reset Balance"
-                              className="p-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg transition text-xs font-semibold"
+                              disabled={allocSubmitting}
+                              title="Reset this company's verification credits"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition text-xs font-semibold border border-slate-200 disabled:opacity-50 disabled:pointer-events-none"
                             >
-                              Reset
+                              <RotateCcw className="w-3.5 h-3.5" /> Reset
                             </button>
                             <button
                               onClick={() => handleToggleStatus(comp.companyId, comp.status)}
@@ -522,26 +678,31 @@ export const SuperAdminVerificationCredits: React.FC = () => {
         {activeTab === 'ledger' && (
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-bold text-slate-900">Global Credit Transaction Ledger</h3>
-              <span className="text-xs text-slate-500 font-medium">Immutable audit trail of all token transactions</span>
+              <h3 className="text-lg font-bold text-slate-900">Verification Credit Ledger</h3>
+              <span className="text-xs text-slate-500 font-medium" title={CREDIT_TOOLTIP}>Immutable record of every verification credit movement</span>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            {/* The table scrolls sideways inside its own box; the pagination bar
+                sits below it and never moves with that scroll. */}
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 font-semibold text-xs uppercase tracking-wider border-b border-slate-200">
                     <th className="py-3 px-4">Transaction ID</th>
                     <th className="py-3 px-4">Company</th>
                     <th className="py-3 px-4">Type</th>
-                    <th className="py-3 px-4 text-right">Opening</th>
-                    <th className="py-3 px-4 text-right">Amount</th>
-                    <th className="py-3 px-4 text-right">Closing</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Before</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Changed</th>
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits After</th>
                     <th className="py-3 px-4">Reference / User</th>
                     <th className="py-3 px-4">Date Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {ledger.length === 0 ? (
-                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">No transactions recorded in the ledger yet.</td></tr>
+                  {ledgerLoading ? (
+                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">Loading verification credit entries…</td></tr>
+                  ) : ledger.length === 0 ? (
+                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">No verification credit movements recorded yet.</td></tr>
                   ) : (
                     ledger.map((tx) => (
                       <tr key={tx.id} className="hover:bg-slate-50/80 transition font-mono text-xs">
@@ -554,12 +715,15 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                             tx.transactionType === 'Deduction' ? 'bg-amber-100 text-amber-800' :
                             tx.transactionType === 'Reset' ? 'bg-orange-100 text-orange-800' : 'bg-slate-100 text-slate-700'
                           }`}>
-                            {tx.transactionType}
+                            {/* The stored transactionType is left untouched — every
+                                historical row keeps its original value — and is
+                                mapped to credit wording for display only. */}
+                            {ledgerTypeLabel(tx.transactionType)}
                           </span>
                         </td>
-                        <td className="py-3 px-4 text-right">{tx.openingBalance}</td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900">{tx.credits}</td>
-                        <td className="py-3 px-4 text-right font-bold text-[#C77E52]">{tx.closingBalance}</td>
+                        <td className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>{creditValue(tx.openingBalance)}</td>
+                        <td className="py-3 px-4 text-right font-bold text-slate-900" title={CREDIT_TOOLTIP}>{creditValue(tx.credits)}</td>
+                        <td className="py-3 px-4 text-right font-bold text-[#C77E52]" title={CREDIT_TOOLTIP}>{creditValue(tx.closingBalance)}</td>
                         <td className="py-3 px-4 font-sans text-xs text-slate-600">
                           {tx.remarks || tx.referenceId || tx.verifiedBy || 'System'}
                         </td>
@@ -569,6 +733,17 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                   )}
                 </tbody>
               </table>
+              </div>
+              <PaginationBar
+                page={ledgerPage}
+                totalPages={ledgerTotalPages}
+                total={ledgerTotal}
+                pageSize={ledgerPageSize}
+                label="transactions"
+                onChange={setLedgerPage}
+                onPageSizeChange={(size) => { setLedgerPageSize(size); setLedgerPage(1); }}
+                pageSizeOptions={LOG_PAGE_SIZE_OPTIONS}
+              />
             </div>
           </div>
         )}
@@ -580,7 +755,8 @@ export const SuperAdminVerificationCredits: React.FC = () => {
               <h3 className="text-lg font-bold text-slate-900">Bank Verification Request Audit Logs</h3>
               <span className="text-xs text-slate-500 font-medium">Real-time gateway request monitoring</span>
             </div>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
+            <div className="rounded-xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 font-semibold text-xs uppercase tracking-wider border-b border-slate-200">
@@ -595,7 +771,9 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {audits.length === 0 ? (
+                  {auditLoading ? (
+                    <tr><td colSpan={8} className="py-8 text-center text-slate-500">Loading verification audit logs...</td></tr>
+                  ) : audits.length === 0 ? (
                     <tr><td colSpan={8} className="py-8 text-center text-slate-500">No verification audit logs recorded yet.</td></tr>
                   ) : (
                     audits.map((log) => (
@@ -623,6 +801,17 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                   )}
                 </tbody>
               </table>
+              </div>
+              <PaginationBar
+                page={auditPage}
+                totalPages={auditTotalPages}
+                total={auditTotal}
+                pageSize={auditPageSize}
+                label="records"
+                onChange={setAuditPage}
+                onPageSizeChange={(size) => { setAuditPageSize(size); setAuditPage(1); }}
+                pageSizeOptions={LOG_PAGE_SIZE_OPTIONS}
+              />
             </div>
           </div>
         )}
@@ -667,21 +856,27 @@ export const SuperAdminVerificationCredits: React.FC = () => {
               </button>
             </div>
 
+            <p className="text-[11.5px] font-medium text-slate-500 leading-relaxed">
+              One verification credit = one successful API verification, so <strong className="text-slate-700">Credits Used</strong> and{' '}
+              <strong className="text-slate-700">Successful Verifications</strong> are the same count. Credits Added, Removed and Used
+              cover the selected timeframe; <strong className="text-slate-700">Credits Remaining</strong> is the company&rsquo;s live total.
+            </p>
+
             <div className="overflow-x-auto rounded-xl border border-slate-200">
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-50 text-slate-600 font-semibold text-xs uppercase tracking-wider border-b border-slate-200">
                     <th className="py-3 px-4">{reportGroupBy === 'company' ? 'Company Name' : 'Employee / User'}</th>
                     {reportGroupBy === 'company' && <th className="py-3 px-4">Plan</th>}
-                    {reportGroupBy === 'company' && <th className="py-3 px-4 text-right">Allocated</th>}
-                    <th className="py-3 px-4 text-right">Credits Consumed</th>
+                    {reportGroupBy === 'company' && <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Added</th>}
+                    {reportGroupBy === 'company' && <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Removed</th>}
+                    <th className="py-3 px-4 text-right" title={CREDIT_TOOLTIP}>Credits Used</th>
                     {reportGroupBy === 'company' ? (
                       <>
-                        <th className="py-3 px-4 text-right">Total Verifications</th>
-                        <th className="py-3 px-4 text-right">Success</th>
+                        <th className="py-3 px-4 text-right" title="Live figure — the company's current verification credits, not activity within the selected timeframe.">Credits Remaining</th>
+                        <th className="py-3 px-4 text-right" title="Each successful verification uses exactly 1 credit, so this matches Credits Used.">Successful Verifications</th>
                         <th className="py-3 px-4 text-right">Failed</th>
                         <th className="py-3 px-4 text-right">Success Rate</th>
-                        <th className="py-3 px-4 text-right">Est. Revenue</th>
                       </>
                     ) : (
                       <th className="py-3 px-4 text-right">Total Verifications Executed</th>
@@ -690,7 +885,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                 </thead>
                 <tbody className="divide-y divide-slate-200 text-sm">
                   {reports.length === 0 ? (
-                    <tr><td colSpan={9} className="py-8 text-center text-slate-500">No usage report data generated for this timeframe.</td></tr>
+                    <tr><td colSpan={9} className="py-8 text-center text-slate-500">No verification usage recorded for this timeframe.</td></tr>
                   ) : (
                     reports.map((row, idx) => (
                       <tr key={idx} className="hover:bg-slate-50/80 transition">
@@ -699,15 +894,15 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                           {reportGroupBy === 'company' && <span className="block text-xs font-normal text-slate-400">ID: #{row.companyId}</span>}
                         </td>
                         {reportGroupBy === 'company' && <td className="py-3 px-4 font-medium text-slate-600">{row.plan}</td>}
-                        {reportGroupBy === 'company' && <td className="py-3 px-4 text-right font-semibold text-slate-700">{row.allocatedCredits?.toLocaleString()}</td>}
-                        <td className="py-3 px-4 text-right font-bold text-[#C77E52]">{row.creditsConsumed.toLocaleString()}</td>
+                        {reportGroupBy === 'company' && <td className="py-3 px-4 text-right font-semibold text-emerald-700" title={CREDIT_TOOLTIP}>{creditValue(row.allocatedCredits)}</td>}
+                        {reportGroupBy === 'company' && <td className="py-3 px-4 text-right font-semibold text-amber-700" title={CREDIT_TOOLTIP}>{creditValue(row.creditsRemoved)}</td>}
+                        <td className="py-3 px-4 text-right font-bold text-[#C77E52]" title={CREDIT_TOOLTIP}>{creditValue(row.creditsConsumed)}</td>
                         {reportGroupBy === 'company' ? (
                           <>
-                            <td className="py-3 px-4 text-right font-semibold text-slate-700">{row.verificationsTotal?.toLocaleString()}</td>
+                            <td className="py-3 px-4 text-right font-semibold text-slate-700" title={CREDIT_TOOLTIP}>{creditValue(row.creditsRemaining)}</td>
                             <td className="py-3 px-4 text-right font-semibold text-emerald-600">{row.verificationsSuccess?.toLocaleString()}</td>
                             <td className="py-3 px-4 text-right font-semibold text-rose-600">{row.verificationsFailed?.toLocaleString()}</td>
                             <td className="py-3 px-4 text-right font-bold text-slate-900">{row.successRate}%</td>
-                            <td className="py-3 px-4 text-right font-bold text-emerald-700">₹{row.revenue?.toLocaleString()}</td>
                           </>
                         ) : (
                           <td className="py-3 px-4 text-right font-semibold text-slate-700">{row.verifications?.toLocaleString()}</td>
@@ -729,12 +924,12 @@ export const SuperAdminVerificationCredits: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center space-x-3">
                 <div className="p-2.5 bg-[rgba(199,126,82,0.05)] text-[#C77E52] rounded-xl border border-[#C77E52]/20 shadow-sm">
-                  <CreditCard className="w-6 h-6" />
+                  <Ticket className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">Manage Verification Credits</h3>
+                  <h3 className="text-lg font-bold text-slate-900">{ACTION_LABEL[allocAction]}</h3>
                   <p className="text-xs text-slate-500">
-                    {selectedCompany ? `Atomic balance adjustment for #${selectedCompany.companyId}: ${selectedCompany.companyName}` : 'Select a company to allocate or adjust verification credits'}
+                    {selectedCompany ? `#${selectedCompany.companyId} · ${selectedCompany.companyName}` : 'Select a company first'}
                   </p>
                 </div>
               </div>
@@ -775,8 +970,12 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                   </div>
                   <div className="flex items-center space-x-2 flex-shrink-0">
                     {selectedCompany && (
-                      <span className="text-xs text-[#C77E52] font-bold bg-[rgba(199,126,82,0.05)] border border-[#C77E52]/20 px-2.5 py-1 rounded-lg">
-                        {fetchingCompanyBalance ? 'Loading bal...' : selectedCompany.remainingCredits === 0 ? '0 Credits (Exhausted)' : `Current Balance: ${selectedCompany.remainingCredits.toLocaleString()} Credits`}
+                      <span className="text-xs text-[#C77E52] font-bold bg-[rgba(199,126,82,0.05)] border border-[#C77E52]/20 px-2.5 py-1 rounded-lg" title={CREDIT_TOOLTIP}>
+                        {fetchingCompanyBalance
+                          ? 'Loading credits…'
+                          : selectedCompany.remainingCredits === 0
+                          ? '0 Verification Credits (Exhausted)'
+                          : `Available Verification Credits: ${creditValue(selectedCompany.remainingCredits)}`}
                       </span>
                     )}
                     <span className="text-slate-400 text-xs">▼</span>
@@ -817,7 +1016,7 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                             <div className="text-[10px] text-slate-400">ID: #{comp.companyId} {comp.companyCode ? `• Code: ${comp.companyCode}` : ''} {comp.gstNumber ? `• GST: ${comp.gstNumber}` : ''}</div>
                           </div>
                           <div className="text-right">
-                            <span className="block font-bold text-[#C77E52]">{comp.remainingCredits.toLocaleString()} Credits</span>
+                            <span className="block font-bold text-[#C77E52]" title={CREDIT_TOOLTIP}>{creditValue(comp.remainingCredits)} Credits</span>
                             <span className={`text-[10px] px-1.5 py-0.2 rounded ${comp.status === 'Active' ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>{comp.status}</span>
                           </div>
                         </div>
@@ -833,86 +1032,132 @@ export const SuperAdminVerificationCredits: React.FC = () => {
                     <span>{selectedCompany.companyName} (ID: #{selectedCompany.companyId})</span>
                     <span className="text-[#C77E52]">{selectedCompany.verificationMode} Mode ({selectedCompany.status})</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center pt-0.5">
+                  <div className="grid grid-cols-3 gap-2 text-center pt-0.5" title={CREDIT_TOOLTIP}>
                     <div className="bg-white p-1.5 rounded-lg border border-[#C77E52]/10 shadow-sm">
-                      <span className="block text-[10px] text-slate-400 uppercase">Allocated</span>
-                      <span className="font-bold text-slate-700">{selectedCompany.allocatedCredits.toLocaleString()}</span>
+                      <span className="block text-[10px] text-slate-400 uppercase">Total Credits Allocated</span>
+                      <span className="font-bold text-slate-700">{creditValue(selectedCompany.allocatedCredits)}</span>
                     </div>
                     <div className="bg-white p-1.5 rounded-lg border border-[#C77E52]/10 shadow-sm">
-                      <span className="block text-[10px] text-slate-400 uppercase">Used</span>
-                      <span className="font-bold text-slate-500">{selectedCompany.usedCredits.toLocaleString()}</span>
+                      <span className="block text-[10px] text-slate-400 uppercase">Credits Used</span>
+                      <span className="font-bold text-slate-500">{creditValue(selectedCompany.usedCredits)}</span>
                     </div>
                     <div className="bg-white p-1.5 rounded-lg border border-[#C77E52]/20 shadow-sm bg-gradient-to-br from-white to-[rgba(199,126,82,0.05)]">
-                      <span className="block text-[10px] text-[#C77E52] font-bold uppercase">Current Balance</span>
-                      <span className="font-extrabold text-[#C77E52]">{selectedCompany.remainingCredits.toLocaleString()} Credits</span>
+                      <span className="block text-[10px] text-[#C77E52] font-bold uppercase">Credits Remaining</span>
+                      <span className="font-extrabold text-[#C77E52]">{creditValue(selectedCompany.remainingCredits)}</span>
                     </div>
                   </div>
+                  <p className="text-[10.5px] font-medium text-slate-500 leading-relaxed pt-0.5">
+                    One verification credit = one successful API verification. This company can
+                    perform <strong className="text-slate-700">{creditValue(selectedCompany.remainingCredits)}</strong>{' '}
+                    more verification{selectedCompany.remainingCredits === 1 ? '' : 's'}.
+                  </p>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Action Type</label>
-                  <select
-                    value={allocAction}
-                    onChange={(e) => setAllocAction(e.target.value as any)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 focus:ring-2 focus:ring-[#C77E52]"
-                  >
-                    <option value="ALLOCATE">Allocate Credits (+)</option>
-                    <option value="ADD">Add Credits (+)</option>
-                    <option value="DEDUCT">Deduct Credits (-)</option>
-                    <option value="RESET">Reset Balance (=)</option>
-                  </select>
+              {/* RESET asks for confirmation only — there is no amount to pick,
+                  because the wallet returns to zero on every counter. */}
+              {allocAction === 'RESET' ? (
+                <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-3">
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="text-xs text-rose-900 leading-relaxed">
+                    <p className="font-bold">
+                      You are about to reset this company's verification credits. This action should only be used by Super Admin.
+                    </p>
+                    <p className="mt-1.5 font-medium text-rose-800">
+                      Credits remaining, total credits allocated and credits used all return to zero, and a Verification Credits Reset entry is written to the ledger. Verification stays blocked until credits are added again.
+                    </p>
+                  </div>
                 </div>
+              ) : (
+                <>
+                  <div>
+                    <label
+                      htmlFor="verification-credit-amount"
+                      className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1"
+                      title={CREDIT_TOOLTIP}
+                    >
+                      {allocAction === 'ADD' ? 'Verification Credits to Add' : 'Verification Credits to Remove'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="verification-credit-amount"
+                        type="number"
+                        min="1"
+                        max={allocAction === 'DEDUCT' ? (selectedCompany?.remainingCredits ?? undefined) : undefined}
+                        required
+                        placeholder="Enter number of verification credits"
+                        title={CREDIT_TOOLTIP}
+                        aria-describedby="verification-credit-help"
+                        value={allocCredits}
+                        onChange={(e) => setAllocCredits(parseInt(e.target.value, 10) || 0)}
+                        className="w-full p-2.5 pr-[7.5rem] bg-white border border-slate-300 rounded-xl font-bold text-[#C77E52] focus:ring-2 focus:ring-[#C77E52]"
+                      />
+                      {/* The unit sits inside the field so the number can never be
+                          read as an amount of money. */}
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                        Verification Credits
+                      </span>
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Verification Credits</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={allocCredits}
-                    onChange={(e) => setAllocCredits(parseInt(e.target.value, 10) || 0)}
-                    className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-[#C77E52] focus:ring-2 focus:ring-[#C77E52]"
-                  />
-                </div>
-              </div>
+                    {/* Spells out, in the tenant's own configured cost, exactly what
+                        the number just typed buys. */}
+                    <p id="verification-credit-help" className="text-[11px] font-medium text-slate-500 mt-1.5 leading-relaxed">
+                      {allocAction === 'ADD'
+                        ? allocationHelper(allocCredits)
+                        : `Removes ${creditValue(allocCredits)} verification ${allocCredits === 1 ? 'credit' : 'credits'}, and therefore ${creditValue(allocCredits)} verification ${allocCredits === 1 ? 'request' : 'requests'}, from this company. ${creditValue(selectedCompany?.remainingCredits)} are currently available, and the total can never fall below zero.`}
+                    </p>
+                  </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Expiry Date (Optional)</label>
-                <input
-                  type="date"
-                  value={allocExpiry}
-                  onChange={(e) => setAllocExpiry(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-medium text-slate-700 focus:ring-2 focus:ring-[#C77E52]"
-                />
-              </div>
+                  {allocAction === 'ADD' && (
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Expiry Date (Optional)</label>
+                      <input
+                        type="date"
+                        value={allocExpiry}
+                        onChange={(e) => setAllocExpiry(e.target.value)}
+                        className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-medium text-slate-700 focus:ring-2 focus:ring-[#C77E52]"
+                      />
+                    </div>
+                  )}
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Remarks / Audit Note</label>
-                <textarea
-                  rows={2}
-                  value={allocRemarks}
-                  onChange={(e) => setAllocRemarks(e.target.value)}
-                  placeholder="Reason for allocation or credit adjustment..."
-                  className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-normal text-slate-700 focus:ring-2 focus:ring-[#C77E52]"
-                />
-              </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">
+                      {allocAction === 'ADD' ? 'Remarks (Optional)' : 'Reason'}
+                    </label>
+                    <textarea
+                      rows={2}
+                      required={allocAction === 'DEDUCT'}
+                      value={allocRemarks}
+                      onChange={(e) => setAllocRemarks(e.target.value)}
+                      placeholder={allocAction === 'ADD' ? 'Why these verification credits are being added…' : 'Why these verification credits are being removed…'}
+                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-normal text-slate-700 focus:ring-2 focus:ring-[#C77E52]"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex justify-end space-x-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAllocateModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs transition"
+                  disabled={allocSubmitting}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-semibold text-xs transition disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={allocSubmitting}
-                  className="px-5 py-2 bg-gradient-to-r from-[#C77E52] to-[#C77E52] hover:from-[#E0996A] hover:to-[#E0996A] text-white rounded-xl font-semibold text-xs transition shadow-[0_4px_12px_rgba(184,116,60,0.30)] hover:shadow-[0_6px_20px_rgba(184,116,60,0.45)] disabled:opacity-50 border border-[rgba(199,126,82,0.15)]/20"
+                  className={`px-5 py-2 text-white rounded-xl font-semibold text-xs transition shadow-sm disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                    allocAction === 'RESET'
+                      ? 'bg-rose-600 hover:bg-rose-700'
+                      : allocAction === 'DEDUCT'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-gradient-to-r from-[#C77E52] to-[#E0996A] hover:from-[#E0996A] hover:to-[#C77E52] border border-[#C77E52]/30'
+                  }`}
                 >
-                  {allocSubmitting ? 'Processing...' : `${allocAction} CREDITS`}
+                  {allocSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                  {allocSubmitting ? 'Processing…' : ACTION_LABEL[allocAction]}
                 </button>
               </div>
             </form>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ShieldCheck, Search, RefreshCw, ChevronLeft, ChevronRight, Eye, AlertTriangle,
-  TrendingUp, Wallet, Gauge, FileSearch, X, Download,
+  TrendingUp, Ticket, Gauge, FileSearch, X, Download,
 } from 'lucide-react';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
@@ -11,6 +11,7 @@ import { formatDateTime } from '@/utils/formatDate';
 import { Modal } from '@/components/ui/Modal';
 import { BankVerificationReport } from './BankVerificationReport';
 import { VerificationView, fromRecord, maskAccount, orNA, statusLabel, statusTone } from './bankVerification';
+import { CREDIT_TOOLTIP, creditValue } from '@/components/verification/creditTerminology';
 
 interface Props {
   companyName?: string | null;
@@ -132,7 +133,7 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
       ui.toast.info('There are no records to export.');
       return;
     }
-    const header = ['Date', 'Employee', 'Employee ID', 'Status', 'Verified By', 'Provider', 'Reference ID', 'Branch', 'Latency (ms)', 'Cost (INR)'];
+    const header = ['Date', 'Employee', 'Employee ID', 'Status', 'Verified By', 'Provider', 'Reference ID', 'Branch', 'Latency (ms)', 'Verification Credits Used'];
     const rows = records.map((r) => [
       r.createdAt ? formatDateTime(r.createdAt) : '',
       r.employeeName || '', r.employeeCode || '', statusLabel(r.status),
@@ -176,10 +177,10 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
           hint={stats ? `${stats.verified} verified · ${stats.failed} failed` : undefined}
         />
         <StatCard
-          icon={<Wallet className="w-3.5 h-3.5" />}
-          label="Total Spend"
-          value={stats ? `₹${stats.totalSpend}` : '—'}
-          hint="Charged only on successful verifications"
+          icon={<Ticket className="w-3.5 h-3.5" />}
+          label="Verification Credits Consumed"
+          value={stats ? creditValue(stats.totalSpend) : '—'}
+          hint="Deducted only on successful verifications"
         />
         <StatCard
           icon={<Gauge className="w-3.5 h-3.5" />}
@@ -276,12 +277,13 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
             <table className="w-full min-w-[960px] text-left">
               <thead>
                 <tr className="border-b border-hairline bg-surface-muted">
-                  {['Date', 'Employee', 'Status', 'Verified By', 'Provider', 'Reference ID', 'Branch', 'Latency', 'Cost', ''].map((h, i) => (
+                  {['Date', 'Employee', 'Status', 'Verified By', 'Provider', 'Reference ID', 'Branch', 'Latency', 'Credits Used', ''].map((h, i) => (
                     <th
                       key={h || `action-${i}`}
                       scope="col"
+                      title={h === 'Credits Used' ? CREDIT_TOOLTIP : undefined}
                       className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-secondary whitespace-nowrap ${
-                        h === 'Latency' || h === 'Cost' ? 'text-right' : ''
+                        h === 'Latency' || h === 'Credits Used' ? 'text-right' : ''
                       }`}
                     >
                       {h}
@@ -321,8 +323,8 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
                     <td className="px-4 py-3.5 text-[12.5px] font-semibold text-ink text-right whitespace-nowrap tabular-nums">
                       {r.responseTimeMs != null ? `${r.responseTimeMs} ms` : '—'}
                     </td>
-                    <td className="px-4 py-3.5 text-[12.5px] font-semibold text-ink text-right whitespace-nowrap tabular-nums">
-                      {r.verificationCost != null ? `₹${r.verificationCost}` : '—'}
+                    <td className="px-4 py-3.5 text-[12.5px] font-semibold text-ink text-right whitespace-nowrap tabular-nums" title={CREDIT_TOOLTIP}>
+                      {r.verificationCost != null ? creditValue(r.verificationCost) : '—'}
                     </td>
                     <td className="px-4 py-3.5 text-right">
                       <Button

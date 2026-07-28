@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
 import { api } from '@/api/apiClient';
+import { CREDIT_TOOLTIP, creditValue, creditsMeaning } from '@/components/verification/creditTerminology';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -29,15 +30,14 @@ interface BankVerificationSettingsProps {
 /**
  * Live verification state for this workspace, exactly as
  * GET /api/verification-credits/wallet returns it. This is the ONLY source the
- * screen reads: mode, balance, price and the server's own verdict on whether a
- * verification can run right now.
+ * screen reads: mode, remaining credits and the server's own verdict on whether
+ * a verification can run right now.
  */
 interface WalletStatus {
+  /** 1 credit = 1 successful verification, so this is also the verifications left. */
   remainingCredits: number;
   totalCredits: number;
   usedCredits: number;
-  costPerVerification: number;
-  remainingVerifications: number;
   walletStatus: string;
   status: string;
   provider?: string;
@@ -85,12 +85,12 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
       const res = await api.get('/api/verification-credits/wallet', { params: { companyId } });
       const w: WalletStatus | null = res?.data || null;
       if (!w || typeof w.remainingCredits !== 'number') {
-        throw new Error('The verification wallet returned an unreadable balance.');
+        throw new Error('The verification credit total could not be read.');
       }
       setWallet(w);
       setLoadError('');
     } catch (err: any) {
-      console.error('Failed to load verification wallet:', err);
+      console.error('Failed to load verification credits:', err);
       setLoadError(err?.message || 'Could not load bank verification settings.');
     } finally {
       setLoading(false);
@@ -107,13 +107,12 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
 
   const apiEnabled = API_MODES.includes(wallet?.verificationMode || '');
   const remainingCredits = wallet?.remainingCredits ?? 0;
-  const costPerVerification = wallet?.costPerVerification ?? 0;
-  const remainingVerifications = wallet?.remainingVerifications ?? 0;
   // A platform-level suspension is NOT something a company user can toggle their
   // way out of, so it is stated plainly rather than hidden behind a switch that
   // would appear to work and then change nothing.
   const suspended = wallet?.walletStatus === 'Suspended' || wallet?.status === 'Suspended';
-  const underfunded = apiEnabled && remainingVerifications < 1;
+  // 1 credit = 1 verification, so "cannot verify" is simply "no credits left".
+  const underfunded = apiEnabled && remainingCredits < 1;
 
   /**
    * The single control on this screen. Writes ONLY the verification mode — never
@@ -155,12 +154,12 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
         credits: requestedAmount,
         remarks: creditRemarks
       });
-      ui.toast.success(res?.data?.message || 'Credit request submitted to Super Admin successfully.');
+      ui.toast.success(res?.data?.message || 'Verification credit request submitted to Super Admin successfully.');
       setShowRequestModal(false);
       setCreditRemarks('');
       fetchWallet();
     } catch (err: any) {
-      ui.toast.error(err?.message || 'Error submitting credit request.');
+      ui.toast.error(err?.message || 'Could not submit the verification credit request.');
     } finally {
       setRequestingCredits(false);
     }
@@ -319,10 +318,10 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
                       <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
                         Using global verification configuration.
                       </p>
-                      <p className="text-xs text-emerald-900 font-semibold mt-1">
-                        Balance: ₹{remainingCredits}
+                      <p className="text-xs text-emerald-900 font-semibold mt-1" title={CREDIT_TOOLTIP}>
+                        Remaining Verification Credits: {creditValue(remainingCredits)}
                         <span className="font-medium text-emerald-800">
-                          {' '}— {remainingVerifications} verification{remainingVerifications === 1 ? '' : 's'} at ₹{costPerVerification} each, charged only when a verification succeeds.
+                          {' '}— {creditsMeaning(remainingCredits)}. One credit is deducted only when a verification succeeds.
                         </span>
                       </p>
                     </div>
@@ -337,7 +336,7 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
                       <ul className="text-xs text-slate-600 mt-1 space-y-0.5 leading-relaxed">
                         <li>Bank verification is disabled.</li>
                         <li>No API calls will be made.</li>
-                        <li>Verification credits remain untouched — balance ₹{remainingCredits}.</li>
+                        <li title={CREDIT_TOOLTIP}>Verification credits remain untouched — {creditValue(remainingCredits)} remaining.</li>
                       </ul>
                     </div>
                   </div>
@@ -360,28 +359,28 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
               {underfunded && !suspended && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex flex-wrap items-center gap-3">
                   <AlertTriangle size={18} className="text-amber-600 shrink-0" />
-                  <p className="text-xs font-semibold text-amber-900 flex-1 min-w-[16rem] leading-relaxed">
-                    Balance ₹{remainingCredits} is below the ₹{costPerVerification} charged per verification. Registration falls back to manual entry until the wallet is recharged.
+                  <p className="text-xs font-semibold text-amber-900 flex-1 min-w-[16rem] leading-relaxed" title={CREDIT_TOOLTIP}>
+                    No verification credits remaining. Registration falls back to manual entry until more verification credits are added — each credit allows one verification.
                   </p>
                   <Button
                     type="button"
                     onClick={() => setShowRequestModal(true)}
                     className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs shadow-sm px-4 py-2"
                   >
-                    Request Credits
+                    Request Verification Credits
                   </Button>
                 </div>
               )}
 
-              {/* Wallet summary + the only other action a company user has. */}
+              {/* Credit summary + the only other action a company user has. */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs" title={CREDIT_TOOLTIP}>
                   <span className="text-slate-500 font-medium">
-                    Used <strong className="text-slate-700">{wallet.usedCredits}</strong> of{' '}
-                    <strong className="text-slate-700">{wallet.totalCredits}</strong> allocated
+                    Credits Used <strong className="text-slate-700">{creditValue(wallet.usedCredits)}</strong> of{' '}
+                    <strong className="text-slate-700">{creditValue(wallet.totalCredits)}</strong> total credits allocated
                   </span>
                   <span className="text-slate-500 font-medium">
-                    Wallet status: <strong className="text-slate-700">{wallet.walletStatus}</strong>
+                    Credit status: <strong className="text-slate-700">{wallet.walletStatus}</strong>
                   </span>
                 </div>
                 <Button
@@ -391,7 +390,7 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
                   onClick={() => setShowRequestModal(true)}
                   className="gap-1.5 text-xs font-semibold"
                 >
-                  + Request Credits
+                  + Request Verification Credits
                 </Button>
               </div>
 
@@ -450,7 +449,7 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900">Request Verification Credits</h3>
-                  <p className="text-xs text-slate-500">Submit a token allocation request to Super Admin</p>
+                  <p className="text-xs text-slate-500">Ask the Super Admin to allocate more verification credits</p>
                 </div>
               </div>
               <button type="button" onClick={() => setShowRequestModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
@@ -458,18 +457,32 @@ export const BankVerificationSettings: React.FC<BankVerificationSettingsProps> =
 
             <form onSubmit={handleRequestCredits} className="space-y-4 text-sm">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Requested Verification Tokens</label>
+                <label
+                  htmlFor="requested-verification-credits"
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1"
+                  title={CREDIT_TOOLTIP}
+                >
+                  Verification Credits Requested
+                </label>
                 <select
+                  id="requested-verification-credits"
                   value={requestedAmount}
                   onChange={(e) => setRequestedAmount(parseInt(e.target.value, 10))}
+                  title={CREDIT_TOOLTIP}
+                  aria-describedby="requested-verification-credits-help"
                   className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value={20}>20 Tokens</option>
-                  <option value={50}>50 Tokens (Standard Pack)</option>
-                  <option value={100}>100 Tokens (Pro Pack)</option>
-                  <option value={250}>250 Tokens (Enterprise Pack)</option>
-                  <option value={500}>500 Tokens</option>
+                  <option value={20}>20 Verification Credits</option>
+                  <option value={50}>50 Verification Credits (Standard Pack)</option>
+                  <option value={100}>100 Verification Credits (Pro Pack)</option>
+                  <option value={250}>250 Verification Credits (Enterprise Pack)</option>
+                  <option value={500}>500 Verification Credits</option>
                 </select>
+                <p id="requested-verification-credits-help" className="text-[11px] font-medium text-slate-500 mt-1.5 leading-relaxed">
+                  One verification credit allows one successful API verification — credits are a
+                  verification quota, not money. Requesting {requestedAmount.toLocaleString()} credits
+                  asks for exactly {requestedAmount.toLocaleString()} verification{requestedAmount === 1 ? '' : 's'}.
+                </p>
               </div>
 
               <div>

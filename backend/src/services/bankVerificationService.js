@@ -251,7 +251,9 @@ class BankVerificationService {
         verificationMode: upsertData.verificationMode,
         provider: upsertData.provider,
         status: upsertData.isEnabled ? 'Connected' : 'Disconnected',
-        costPerVerification: 4
+        // 1 verification credit = 1 successful API verification. Persisted for
+        // schema compatibility only; the verification flow no longer reads it.
+        costPerVerification: 1
       }
     });
 

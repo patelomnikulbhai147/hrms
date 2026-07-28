@@ -12,6 +12,7 @@ import {
   VerificationView, buildTimeline, maskAccount, nameMatchLabel, nameMatchTone,
   orNA, statusLabel, statusTone,
 } from './bankVerification';
+import { creditValue } from '@/components/verification/creditTerminology';
 import {
   copyText, downloadVerificationPdf, exportVerificationJson, printVerificationReport,
 } from './bankVerificationExport';
@@ -177,7 +178,7 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
           <Field label="Verification ID" value={view.verificationId} mono />
           <Field label="Request ID" value={view.requestId} mono />
           <Field label="API Response Time" value={view.responseTimeMs != null ? `${view.responseTimeMs} ms` : null} />
-          <Field label="Verification Cost" value={view.verificationCost != null ? `₹${view.verificationCost}` : null} />
+          <Field label="Verification Credits Used" value={view.verificationCost != null ? creditValue(view.verificationCost) : null} />
           <Field label="Verified By" value={view.verifiedBy} />
           <Field label="Company" value={companyName || view.companyName} />
           <Field label="Branch" value={view.branchName} />
@@ -404,9 +405,9 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
                     <Field label="Reference ID" value={view.referenceId} mono />
                     <Field label="Verification ID" value={view.verificationId} mono />
                     <Field label="Retry Count" value={view.retryCount} />
-                    <Field label="Wallet Debit" value={view.verificationCost != null ? `₹${view.verificationCost}` : null} />
-                    <Field label="Balance Before" value={view.walletBalanceBefore != null ? `₹${view.walletBalanceBefore}` : null} />
-                    <Field label="Balance After" value={view.walletBalanceAfter != null ? `₹${view.walletBalanceAfter}` : null} />
+                    <Field label="Verification Credits Used" value={view.verificationCost != null ? creditValue(view.verificationCost) : null} />
+                    <Field label="Credits Before" value={view.walletBalanceBefore != null ? creditValue(view.walletBalanceBefore) : null} />
+                    <Field label="Credits After" value={view.walletBalanceAfter != null ? creditValue(view.walletBalanceAfter) : null} />
                     <Field label="Request Sent" value={view.requestTimestamp ? formatDateTime(view.requestTimestamp) : null} />
                     <Field label="Response Received" value={view.responseTimestamp ? formatDateTime(view.responseTimestamp) : null} />
                   </div>

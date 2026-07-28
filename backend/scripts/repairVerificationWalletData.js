@@ -3,9 +3,10 @@
  *
  * Idempotent data repair for tenants damaged by the wallet defects:
  *
- *  1. PRICE — rows created before the price default was unified carry
- *     costPerVerification = 1 while every debit charged ₹4. The tenant's price
- *     and the amount charged must be the same number.
+ *  1. CREDIT COST — every tenant must record costPerVerification = 1, because
+ *     one verification credit buys exactly one successful verification. The
+ *     column is retained for schema compatibility; the verification flow no
+ *     longer reads it. See scripts/migrateOneCreditOneVerification.js.
  *
  *  2. MODE — running out of credits used to force verificationMode to 'Manual'
  *     and status to 'Disconnected'. Recharging restored the balance but never
@@ -28,7 +29,9 @@ require('dotenv').config();
 const prisma = require('../src/config/prisma');
 
 const APPLY = process.argv.includes('--apply');
-const STANDARD_COST = 4; // ₹4 per verification — the published price.
+// 1 verification credit = 1 successful verification. This must stay 1: setting it
+// higher would reintroduce the credits ÷ cost conversion that was removed.
+const STANDARD_COST = 1;
 
 (async () => {
   console.log(APPLY ? '=== REPAIR (writing) ===\n' : '=== DRY RUN (no writes; pass --apply to repair) ===\n');
@@ -47,7 +50,7 @@ const STANDARD_COST = 4; // ₹4 per verification — the published price.
 
   // 1. Price alignment
   const mispriced = settings.filter((s) => (s.costPerVerification || 0) !== STANDARD_COST);
-  console.log(`1. Price ≠ ₹${STANDARD_COST}: ${mispriced.length} tenant(s)`);
+  console.log(`1. costPerVerification ≠ ${STANDARD_COST}: ${mispriced.length} tenant(s)`);
   for (const s of mispriced) {
     console.log(`   companyId=${s.companyId} costPerVerification=${s.costPerVerification} → ${STANDARD_COST}`);
     if (APPLY) {

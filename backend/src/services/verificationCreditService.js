@@ -9,13 +9,27 @@ const prisma = require('../config/prisma');
 // Owns the platform-level provider/environment resolution (no cycle: that module
 // does not require this one).
 const BankVerificationService = require('./bankVerificationService');
+// Shared page-window + metadata contract (utils/pagination.js) — the same helper
+// the audit-log endpoint uses, so both lists page identically.
+const { pageWindow, pageMeta } = require('../utils/pagination');
 
-// Price of ONE verification, in wallet currency (₹). Used only when a tenant has
-// no configured price yet — the live price always comes from
-// verification_settings.costPerVerification for that tenant.
-const FALLBACK_COST_PER_VERIFICATION = 4;
+/**
+ * ONE verification credit buys exactly ONE successful API verification.
+ *
+ * This is the whole pricing model, and it is deliberately a constant rather than
+ * tenant configuration: there is no per-tenant cost, no conversion, and nothing
+ * anywhere in this module divides credits by anything. `remaining` IS the number
+ * of verifications left.
+ *
+ * The `verification_settings.costPerVerification` column still exists so no
+ * historical row is destroyed, but the verification flow no longer reads it.
+ * The value is still echoed back in API payloads (always 1) so existing clients
+ * keep parsing the same shape.
+ */
+const CREDITS_PER_VERIFICATION = 1;
 
-// Free credits granted to a tenant on first use: 8 = 2 free verifications at ₹4.
+// Verification credits granted to a tenant on first use — with 1 credit = 1
+// verification this is 8 free verifications.
 const FREE_STARTER_CREDITS = 8;
 
 // Modes that mean "use the verification API" (several spellings exist in data).
@@ -23,16 +37,6 @@ const API_MODES = ['API', 'API Verification', 'Fetch by API'];
 const isApiMode = (mode) => API_MODES.includes(mode);
 
 class VerificationCreditService {
-  /**
-   * The tenant's price per verification. Never hardcoded at a call site: every
-   * balance check, gate, and ledger entry reads this one value so the price the
-   * UI shows is exactly the price that gets debited.
-   */
-  static costOf(settings) {
-    const raw = parseInt(settings?.costPerVerification, 10);
-    return Number.isFinite(raw) && raw > 0 ? raw : FALLBACK_COST_PER_VERIFICATION;
-  }
-
   /**
    * Generate stable unique ledger transaction ID
    */
@@ -98,7 +102,8 @@ class VerificationCreditService {
           verificationMode: byo?.verificationMode || 'Manual',
           provider: byo?.provider || 'Cashfree Sandbox API',
           status: 'Connected',
-          costPerVerification: FALLBACK_COST_PER_VERIFICATION
+          // Persisted for schema compatibility only — 1 credit = 1 verification.
+          costPerVerification: CREDITS_PER_VERIFICATION
         }
       });
     }
@@ -119,16 +124,17 @@ class VerificationCreditService {
         verificationMode: data.verificationMode || undefined,
         provider: data.provider || undefined,
         status: data.status || undefined,
-        costPerVerification: data.costPerVerification !== undefined ? parseInt(data.costPerVerification, 10) : undefined
+        // Deliberately NOT writable from a caller any more. A per-tenant cost
+        // would reintroduce the credits ÷ cost conversion; every tenant is
+        // 1 credit = 1 verification.
+        costPerVerification: CREDITS_PER_VERIFICATION
       },
       create: {
         companyId: cid,
         verificationMode: data.verificationMode || 'Manual',
         provider: data.provider || 'ZeniaHR Verification Gateway',
         status: data.status || 'Connected',
-        // A tenant created without an explicit price is priced like every other
-        // tenant; it must never disagree with what the debit actually charges.
-        costPerVerification: data.costPerVerification !== undefined ? parseInt(data.costPerVerification, 10) : FALLBACK_COST_PER_VERIFICATION
+        costPerVerification: CREDITS_PER_VERIFICATION
       }
     });
 
@@ -155,14 +161,12 @@ class VerificationCreditService {
   /**
    * Check remaining credits and availability status for verification.
    *
-   * A verification costs `costPerVerification`, so the balance gate is
-   * `remaining >= cost` — NOT `remaining > 0`. Testing against 0 let a wallet
-   * holding less than one verification's worth (e.g. ₹2 of a ₹4 charge) pass the
-   * gate, call the provider, and then fail the debit: a billable verification
-   * nobody was charged for.
+   * One verification consumes exactly one credit, so `remainingCredits` IS the
+   * number of verifications left — there is no conversion and nothing to divide.
+   * The gate is simply `remaining >= 1`.
    *
    * Each blocking condition reports its own code so the UI can say what is
-   * actually wrong instead of labelling everything "balance exhausted".
+   * actually wrong instead of labelling everything "credits exhausted".
    */
   static async checkCredits(companyId, serviceType = 'BANK_VERIFICATION') {
     const cid = parseInt(companyId, 10);
@@ -177,13 +181,14 @@ class VerificationCreditService {
     }).catch(() => null);
     const byo = byoRow ? BankVerificationService.applyGlobalProviderConfig(byoRow) : null;
 
-    const cost = VerificationCreditService.costOf(settings);
     const remaining = wallet.remainingCredits || 0;
-    const remainingVerifications = Math.floor(remaining / cost);
+    // 1 credit = 1 verification, so these are the same number. `remainingVerifications`
+    // is still returned for API compatibility; it is not a separate quantity.
+    const remainingVerifications = remaining;
 
     const apiMode = isApiMode(settings.verificationMode);
     const isSuspended = wallet.status === 'Suspended' || settings.status === 'Suspended';
-    const hasBalance = remaining >= cost;
+    const hasCredits = remaining >= CREDITS_PER_VERIFICATION;
 
     let code = 'OK';
     let reason = 'OK';
@@ -193,9 +198,9 @@ class VerificationCreditService {
     } else if (isSuspended) {
       code = 'SUSPENDED';
       reason = 'Verification API is suspended for this workspace. Please contact support.';
-    } else if (!hasBalance) {
+    } else if (!hasCredits) {
       code = 'INSUFFICIENT_CREDITS';
-      reason = `Verification balance is ₹${remaining}, which is below the ₹${cost} charged per verification. Please recharge the wallet.`;
+      reason = 'No verification credits remaining. Please ask your administrator to add verification credits.';
     }
 
     return {
@@ -209,7 +214,7 @@ class VerificationCreditService {
       provider: byo?.provider || settings.provider,
       environment: byo?.environment || null,
       status: settings.status,
-      costPerVerification: cost,
+      costPerVerification: CREDITS_PER_VERIFICATION,
       remainingVerifications,
       verificationMode: settings.verificationMode,
       isAvailable: code === 'OK',
@@ -219,8 +224,14 @@ class VerificationCreditService {
   }
 
   /**
-   * Deduct one verification's cost upon SUCCESSFUL verification, inside an atomic
-   * transaction. If verification fails or is incomplete, this is NEVER called.
+   * Deduct EXACTLY ONE verification credit upon SUCCESSFUL verification, inside
+   * an atomic transaction. If verification fails or is incomplete, this is NEVER
+   * called.
+   *
+   * The amount is the constant 1 — not a parameter, not tenant configuration —
+   * so no call site can ever deduct more than one credit for one verification.
+   * The conditional write below (`remainingCredits: { gte: 1 }` matched against
+   * exactly one row) is what stops a double deduction under concurrency.
    */
   static async deductCreditOnSuccess({
     companyId,
@@ -230,16 +241,13 @@ class VerificationCreditService {
     referenceId = null,
     verifiedBy = 'System',
     serviceType = 'BANK_VERIFICATION',
-    remarks = 'Bank Account Verification Fee'
+    remarks = 'Bank Account Verification'
   }) {
     const cid = parseInt(companyId, 10);
     if (!cid) throw new Error('Valid companyId is required.');
 
-    // The price is the tenant's configured price — the same value checkCredits
-    // gated on and the UI displayed. Read outside the transaction so the debit
-    // itself stays a single conditional write.
-    const settings = await this.getSettings(cid);
-    const cost = VerificationCreditService.costOf(settings);
+    // One verification, one credit. Always.
+    const cost = CREDITS_PER_VERIFICATION;
 
     return await prisma.$transaction(async (tx) => {
       // 1. Retrieve current wallet
@@ -253,35 +261,49 @@ class VerificationCreditService {
       });
 
       if (!wallet || wallet.remainingCredits < cost) {
-        throw new Error(`Verification balance is below the ₹${cost} charged per verification.`);
+        throw new Error('No verification credits remaining.');
       }
 
       if (wallet.status === 'Suspended') {
         throw new Error('Verification API is currently suspended for this company. Please contact support.');
       }
 
-      const openingBalance = wallet.remainingCredits;
-      const closingBalance = openingBalance - cost;
-
-      // 2. Debit the wallet with the balance re-asserted in the WHERE clause, so
-      //    two verifications racing on the same wallet can never both succeed on
-      //    funds only one of them had.
+      // 2. Deduct the single credit as a RELATIVE decrement guarded on there
+      //    still being one to take.
+      //
+      //    This must not be an absolute write. Computing `remaining - 1` from the
+      //    row read above and storing that value loses updates under concurrency:
+      //    several verifications read the same figure, all compute the same
+      //    result, and all store it — so N verifications consumed one credit
+      //    between them. `{ decrement }` makes the database do the arithmetic on
+      //    the currently committed row, and because the UPDATE takes a row lock,
+      //    racing transactions queue and re-evaluate the guard against the value
+      //    their predecessor actually committed.
       const debited = await tx.verificationCreditWallet.updateMany({
         where: { id: wallet.id, remainingCredits: { gte: cost } },
         data: {
-          remainingCredits: closingBalance,
-          usedCredits: wallet.usedCredits + cost,
-          // "Exhausted" means the wallet can no longer fund a verification, not
-          // merely that it hit exactly zero.
-          status: closingBalance < cost ? 'Exhausted' : wallet.status
+          remainingCredits: { decrement: cost },
+          usedCredits: { increment: cost }
         }
       });
 
       if (debited.count !== 1) {
-        throw new Error('Verification balance changed during this verification. Please retry.');
+        throw new Error('No verification credits remaining.');
       }
 
+      // The authoritative figures come from the row as it now stands, never from
+      // the pre-update read.
       const updatedWallet = await tx.verificationCreditWallet.findUnique({ where: { id: wallet.id } });
+      const closingBalance = updatedWallet.remainingCredits;
+      const openingBalance = closingBalance + cost;
+
+      // "Exhausted" once no credit remains. Never overrides a deliberate suspension.
+      if (closingBalance < CREDITS_PER_VERIFICATION && updatedWallet.status !== 'Suspended') {
+        await tx.verificationCreditWallet.update({
+          where: { id: wallet.id },
+          data: { status: 'Exhausted' }
+        });
+      }
 
       // 3. Create immutable transaction ledger record
       const txRecord = await tx.verificationCreditTransaction.create({
@@ -297,27 +319,28 @@ class VerificationCreditService {
           closingBalance,
           provider: provider || 'ZeniaHR Verification Gateway',
           referenceId: referenceId ? String(referenceId) : null,
-          remarks: remarks || 'Bank Account Verification Fee',
+          remarks: remarks || 'Bank Account Verification — credit usage',
           verifiedBy: String(verifiedBy || 'System')
         }
       });
 
-      // 4. Running out of balance must NEVER rewrite the tenant's configuration.
+      // 4. Running out of credits must NEVER rewrite the tenant's configuration.
       //    This previously forced verificationMode to 'Manual' and status to
-      //    'Disconnected'; recharging restored the balance but not the mode, so a
-      //    funded wallet stayed permanently locked out of API verification and
-      //    every attempt came back "credits exhausted". The balance check alone
+      //    'Disconnected'; adding credits restored the figure but not the mode, so
+      //    a funded tenant stayed permanently locked out of API verification and
+      //    every attempt came back "credits exhausted". The credit check alone
       //    gates API use, and it recovers on its own the moment credits arrive.
 
       return {
         success: true,
         wallet: updatedWallet,
         transaction: txRecord,
-        costPerVerification: cost,
+        costPerVerification: CREDITS_PER_VERIFICATION,
+        // 1 credit = 1 verification — the same number, not a derived one.
         remainingCredits: closingBalance,
-        remainingVerifications: Math.floor(closingBalance / cost),
-        lowCreditAlert: closingBalance >= cost && closingBalance < cost * 5,
-        exhaustedAlert: closingBalance < cost
+        remainingVerifications: closingBalance,
+        lowCreditAlert: closingBalance >= 1 && closingBalance < 5,
+        exhaustedAlert: closingBalance < CREDITS_PER_VERIFICATION
       };
     });
   }
@@ -340,9 +363,6 @@ class VerificationCreditService {
     const amount = parseInt(credits, 10) || 0;
     if (!cid) throw new Error('Valid companyId is required.');
     if (amount < 0) throw new Error('Credits amount must be non-negative.');
-
-    const settings = await this.getSettings(cid);
-    const cost = VerificationCreditService.costOf(settings);
 
     return await prisma.$transaction(async (tx) => {
       let wallet = await tx.verificationCreditWallet.findUnique({
@@ -374,6 +394,11 @@ class VerificationCreditService {
       let newUsed = wallet.usedCredits;
       let txType = 'Allocation';
 
+      // Every branch keeps the reporting identity exact:
+      //     Credits Remaining = Total Credits Allocated − Credits Used
+      // so the Companies table, the ledger and the usage report can never
+      // disagree. n credits in means n verifications available — the amount is
+      // applied verbatim, with no conversion anywhere.
       const act = String(action).toUpperCase();
       if (act === 'ALLOCATE' || act === 'ADD') {
         closingBalance = openingBalance + amount;
@@ -381,6 +406,11 @@ class VerificationCreditService {
         txType = act === 'ALLOCATE' ? 'Allocation' : 'Addition';
       } else if (act === 'DEDUCT') {
         closingBalance = Math.max(0, openingBalance - amount);
+        // Withdrawing credits lowers what was allocated by the amount actually
+        // taken back (the request is floored at zero). Leaving totalCredits
+        // untouched here would strand the identity above: allocated 100 − used
+        // 35 would keep claiming 65 remaining after 5 were withdrawn.
+        newTotal = Math.max(0, wallet.totalCredits - (openingBalance - closingBalance));
         txType = 'Deduction';
       } else if (act === 'RESET') {
         closingBalance = amount;
@@ -398,18 +428,18 @@ class VerificationCreditService {
           usedCredits: newUsed,
           remainingCredits: closingBalance,
           expiryDate: expiryDate ? new Date(expiryDate) : wallet.expiryDate,
-          // A wallet is usable once it can fund at least one verification.
-          // A Suspended wallet stays suspended — money does not lift a block a
-          // Super Admin put there deliberately.
+          // Usable as soon as at least one credit remains. A Suspended wallet
+          // stays suspended — adding credits does not lift a block a Super Admin
+          // put there deliberately.
           status: wallet.status === 'Suspended'
             ? 'Suspended'
-            : (closingBalance >= cost ? 'Active' : 'Exhausted')
+            : (closingBalance >= CREDITS_PER_VERIFICATION ? 'Active' : 'Exhausted')
         }
       });
 
-      // A recharge clears a connection that was dropped for lack of funds, but
-      // never overrides a deliberate suspension.
-      if (closingBalance >= cost) {
+      // Adding credits clears a connection that was dropped for lack of them,
+      // but never overrides a deliberate suspension.
+      if (closingBalance >= CREDITS_PER_VERIFICATION) {
         await tx.verificationSettings.updateMany({
           where: { companyId: cid, status: 'Disconnected' },
           data: { status: 'Connected' }
@@ -477,7 +507,7 @@ class VerificationCreditService {
         companyId: cid,
         type: 'CREDIT_REQUEST',
         title: 'Verification Credits Requested',
-        message: `Company #${cid} requested ${requestedAmount} verification tokens. Remarks: ${remarks || 'None'}`,
+        message: `Company #${cid} requested ${requestedAmount} verification credits. Remarks: ${remarks || 'None'}`,
         timestamp: new Date().toISOString(),
         priority: 'high'
       }
@@ -493,7 +523,7 @@ class VerificationCreditService {
         openingBalance: 0,
         closingBalance: 0,
         provider: 'ZeniaHR Verification Gateway',
-        remarks: remarks || `Credit request for ${requestedAmount} tokens by ${requestedBy}`,
+        remarks: remarks || `Request for ${requestedAmount} verification credits by ${requestedBy}`,
         createdBy: String(requestedBy)
       }
     }).catch(() => {});
@@ -502,17 +532,24 @@ class VerificationCreditService {
       success: true,
       companyId: cid,
       requestedAmount,
-      message: `Credit request for ${requestedAmount} verification tokens submitted successfully.`
+      message: `Request for ${requestedAmount} verification credits submitted successfully.`
     };
   }
 
   /**
-   * Retrieve transaction ledger with filtering and pagination
+   * Retrieve transaction ledger with filtering and SERVER-SIDE pagination.
+   *
+   * Only the requested page is ever read out of the database — the ledger is
+   * append-only and grows without bound, so `findMany` is never issued without a
+   * `take`. Ordering is `id desc` (newest first) and is fixed: paging must not
+   * change it, or a row could appear on two pages while another is skipped.
    */
   static async getLedger({
     companyId = null,
     serviceType = null,
     transactionType = null,
+    createdBy = null,
+    search = null,
     startDate = null,
     endDate = null,
     page = 1,
@@ -522,14 +559,25 @@ class VerificationCreditService {
     if (companyId) where.companyId = parseInt(companyId, 10);
     if (serviceType && serviceType !== 'All') where.serviceType = serviceType;
     if (transactionType && transactionType !== 'All') where.transactionType = transactionType;
+    if (createdBy && createdBy !== 'All') where.createdBy = createdBy;
     if (startDate || endDate) {
       where.createdAt = {};
       if (startDate) where.createdAt.gte = new Date(startDate);
       if (endDate) where.createdAt.lte = new Date(endDate);
     }
+    // Free-text search across the human-readable columns of a ledger row.
+    const term = String(search || '').trim();
+    if (term) {
+      where.OR = [
+        { transactionId: { contains: term } },
+        { referenceId: { contains: term } },
+        { remarks: { contains: term } },
+        { createdBy: { contains: term } },
+        { verifiedBy: { contains: term } }
+      ];
+    }
 
-    const skip = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
-    const take = parseInt(limit, 10) || 50;
+    const { page: pageNo, take, skip } = pageWindow(page, limit, 50);
 
     const [total, transactions] = await Promise.all([
       prisma.verificationCreditTransaction.count({ where }),
@@ -555,13 +603,7 @@ class VerificationCreditService {
       companyPlan: compMap.get(t.companyId)?.plan || 'Standard'
     }));
 
-    return {
-      total,
-      page: parseInt(page, 10),
-      limit: take,
-      totalPages: Math.ceil(total / take),
-      transactions: enriched
-    };
+    return { ...pageMeta(total, pageNo, take), transactions: enriched };
   }
 
   /**
@@ -607,8 +649,11 @@ class VerificationCreditService {
     }).catch(() => ({ _sum: { credits: 0 } }));
     const creditsUsedToday = todayAgg._sum.credits || 0;
 
-    // 5. Revenue estimation (assuming 10 INR / credit average or cost calculation)
-    const revenue = totalCreditsSold * 10; // Can be configured or derived from billing
+    // 5. Legacy estimated-revenue figure (credits × a fixed multiplier). It is no
+    //    longer rendered anywhere: verification credits are a quota of API
+    //    requests, not money, so the UI shows no monetary column. The field is
+    //    still returned so no API consumer breaks.
+    const revenue = totalCreditsSold * 10;
 
     // 6. API Success Rate from audit logs
     const [auditTotal, auditSuccess] = await Promise.all([
@@ -658,9 +703,8 @@ class VerificationCreditService {
 
       const mode = s.verificationMode || b.verificationMode || 'Manual';
       const prov = s.provider || b.provider || 'ZeniaHR Verification Gateway';
-      const cost = VerificationCreditService.costOf(s);
-      // Exhausted = cannot fund one more verification (not merely "zero left").
-      const stat = w.status === 'Suspended' ? 'Suspended' : s.status === 'Suspended' ? 'Suspended' : w.remainingCredits < cost ? 'Exhausted' : 'Active';
+      // Exhausted = no credits left, which is the same thing as no verifications left.
+      const stat = w.status === 'Suspended' ? 'Suspended' : s.status === 'Suspended' ? 'Suspended' : w.remainingCredits < CREDITS_PER_VERIFICATION ? 'Exhausted' : 'Active';
 
       return {
         companyId: comp.id,
@@ -674,10 +718,10 @@ class VerificationCreditService {
         allocatedCredits: w.totalCredits,
         usedCredits: w.usedCredits,
         remainingCredits: w.remainingCredits,
-        remainingVerifications: Math.floor((w.remainingCredits || 0) / cost),
+        remainingVerifications: w.remainingCredits || 0,
         expiryDate: w.expiryDate,
         status: stat,
-        costPerVerification: cost
+        costPerVerification: CREDITS_PER_VERIFICATION
       };
     });
   }
@@ -710,8 +754,7 @@ class VerificationCreditService {
     const wallet = w || { totalCredits: 0, usedCredits: 0, remainingCredits: 0, expiryDate: null, status: 'Active' };
     const mode = (s && s.verificationMode) || (b && b.verificationMode) || 'Manual';
     const prov = (s && s.provider) || (b && b.provider) || 'ZeniaHR Verification Gateway';
-    const cost = VerificationCreditService.costOf(s);
-    const stat = wallet.status === 'Suspended' ? 'Suspended' : (s && s.status === 'Suspended') ? 'Suspended' : wallet.remainingCredits < cost ? 'Exhausted' : 'Active';
+    const stat = wallet.status === 'Suspended' ? 'Suspended' : (s && s.status === 'Suspended') ? 'Suspended' : wallet.remainingCredits < CREDITS_PER_VERIFICATION ? 'Exhausted' : 'Active';
 
     return {
       companyId: comp.id,
@@ -725,10 +768,10 @@ class VerificationCreditService {
       allocatedCredits: wallet.totalCredits || 0,
       usedCredits: wallet.usedCredits || 0,
       remainingCredits: wallet.remainingCredits || 0,
-      remainingVerifications: Math.floor((wallet.remainingCredits || 0) / cost),
+      remainingVerifications: wallet.remainingCredits || 0,
       expiryDate: wallet.expiryDate,
       status: stat,
-      costPerVerification: cost
+      costPerVerification: CREDITS_PER_VERIFICATION
     };
   }
 
@@ -781,44 +824,52 @@ class VerificationCreditService {
       return Array.from(empMap.values()).sort((a, b) => b.creditsConsumed - a.creditsConsumed);
     }
 
-    // Default Group by company
+    // Default Group by company.
+    //
+    // Credits added / removed / used are ledger activity WITHIN the selected
+    // timeframe. Credits remaining is the company's live figure, which is a
+    // lifetime position — the two are labelled distinctly in the UI so they are
+    // never read as parts of one sum.
+    //
+    // With 1 credit = 1 verification, `creditsConsumed` and
+    // `verificationsSuccess` describe the same events from two tables (ledger
+    // Debit rows and VERIFIED audit rows) and should agree exactly.
+    const liveWallets = await prisma.verificationCreditWallet.findMany({
+      where: serviceType ? { serviceType } : undefined,
+      select: { companyId: true, remainingCredits: true },
+    }).catch(() => []);
+    const remainingMap = new Map(liveWallets.map((w) => [w.companyId, w.remainingCredits || 0]));
+
+    const blankRow = (companyId, companyName, plan) => ({
+      companyId,
+      companyName,
+      plan: plan || 'Standard',
+      allocatedCredits: 0,
+      creditsRemoved: 0,
+      creditsConsumed: 0,
+      creditsRemaining: remainingMap.get(companyId) || 0,
+      verificationsTotal: 0,
+      verificationsSuccess: 0,
+      verificationsFailed: 0,
+      successRate: 100.0,
+    });
+
     const reportMap = new Map();
     for (const comp of companies) {
-      reportMap.set(comp.id, {
-        companyId: comp.id,
-        companyName: comp.name,
-        plan: comp.plan || 'Standard',
-        allocatedCredits: 0,
-        creditsConsumed: 0,
-        verificationsTotal: 0,
-        verificationsSuccess: 0,
-        verificationsFailed: 0,
-        successRate: 100.0,
-        revenue: 0
-      });
+      reportMap.set(comp.id, blankRow(comp.id, comp.name, comp.plan));
     }
 
     for (const tx of transactions) {
       if (!reportMap.has(tx.companyId)) {
-        reportMap.set(tx.companyId, {
-          companyId: tx.companyId,
-          companyName: `Company #${tx.companyId}`,
-          plan: 'Standard',
-          allocatedCredits: 0,
-          creditsConsumed: 0,
-          verificationsTotal: 0,
-          verificationsSuccess: 0,
-          verificationsFailed: 0,
-          successRate: 100.0,
-          revenue: 0
-        });
+        reportMap.set(tx.companyId, blankRow(tx.companyId, `Company #${tx.companyId}`, 'Standard'));
       }
       const item = reportMap.get(tx.companyId);
       if (['Allocation', 'Addition', 'Reset'].includes(tx.transactionType)) {
         item.allocatedCredits += tx.credits;
+      } else if (tx.transactionType === 'Deduction') {
+        item.creditsRemoved += tx.credits;
       } else if (tx.transactionType === 'Debit') {
         item.creditsConsumed += tx.credits;
-        item.revenue += tx.credits * 10; // estimated revenue
       }
     }
 
