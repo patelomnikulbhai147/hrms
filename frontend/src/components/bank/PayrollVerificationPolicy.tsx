@@ -86,25 +86,23 @@ export const PayrollVerificationPolicy: React.FC<Props> = ({ role }) => {
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm">
+    <div className="bg-surface rounded-card border border-hairline shadow-card p-5">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div className="flex items-start gap-3 min-w-0">
-          <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
+          <span className="p-2.5 rounded-xl bg-surface-muted text-ink-secondary shrink-0">
             <ShieldAlert size={20} />
-          </div>
+          </span>
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Require verified bank account for payroll</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed max-w-xl">
+            <h3 className="text-[13.5px] font-bold text-ink font-heading tracking-tight">
+              Require verified bank account for payroll
+            </h3>
+            <p className="text-[12px] text-ink-secondary mt-1 leading-relaxed max-w-xl font-medium">
               When enabled, payroll warns before transferring salary to an employee whose bank account has not been
               verified. Existing payroll records are never altered by this setting.
             </p>
 
             {state === 'ready' && unverified != null && (
-              <p
-                className={`text-[11.5px] font-semibold mt-2 inline-flex items-center gap-1.5 ${
-                  unverified > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
-                }`}
-              >
+              <p className={`text-[12px] font-semibold mt-2.5 inline-flex items-center gap-1.5 ${unverified > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>
                 {unverified > 0 ? <AlertTriangle className="w-3.5 h-3.5" /> : <Info className="w-3.5 h-3.5" />}
                 {unverified > 0
                   ? `${unverified} active employee${unverified === 1 ? '' : 's'} without a verified bank account`
@@ -113,9 +111,15 @@ export const PayrollVerificationPolicy: React.FC<Props> = ({ role }) => {
             )}
 
             {state === 'error' && (
-              <p className="text-[11.5px] font-semibold text-amber-700 dark:text-amber-400 mt-2 inline-flex items-center gap-1.5">
+              <p className="text-[12px] font-semibold text-amber-700 mt-2.5 inline-flex items-center gap-1.5">
                 <AlertTriangle className="w-3.5 h-3.5" /> {error}
-                <button type="button" onClick={load} className="underline underline-offset-2 ml-1">Retry</button>
+                <button
+                  type="button"
+                  onClick={load}
+                  className="underline underline-offset-2 ml-1 rounded focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25"
+                >
+                  Retry
+                </button>
               </p>
             )}
           </div>
@@ -123,11 +127,11 @@ export const PayrollVerificationPolicy: React.FC<Props> = ({ role }) => {
 
         <div className="shrink-0 flex items-center gap-2.5">
           {state === 'loading' ? (
-            <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+            <RefreshCw className="w-4 h-4 animate-spin text-ink-muted" />
           ) : (
             <>
               {!canEdit && (
-                <span className="inline-flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-muted">
                   <Lock className="w-3 h-3" /> Leadership only
                 </span>
               )}
@@ -138,14 +142,12 @@ export const PayrollVerificationPolicy: React.FC<Props> = ({ role }) => {
                 aria-label="Require verified bank account for payroll"
                 disabled={!canEdit || saving || state !== 'ready'}
                 onClick={toggle}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  enabled ? 'bg-brand-600' : 'bg-slate-300 dark:bg-slate-600'
+                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  enabled ? 'bg-brand-500' : 'bg-surface-muted border border-hairline'
                 }`}
               >
                 <span
-                  className={`inline-block h-4.5 w-4.5 transform rounded-full bg-white shadow transition-transform ${
-                    enabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className={`inline-block rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-[22px]' : 'translate-x-[3px]'}`}
                   style={{ height: 18, width: 18 }}
                 />
               </button>

@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ShieldCheck, ShieldX, ShieldAlert, RefreshCw, FileSearch, ExternalLink } from 'lucide-react';
 import { api } from '@/api/apiClient';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { formatDateTime } from '@/utils/formatDate';
 import { BankVerificationReport } from './BankVerificationReport';
 import { VerificationView, fromRecord, orNA, statusLabel, statusTone } from './bankVerification';
@@ -28,12 +30,19 @@ interface Props {
   onReverify?: () => void;
 }
 
-const TONE_CLASS: Record<string, string> = {
-  green: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
-  amber: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
-  red: 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200',
-  slate: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300',
+/**
+ * Tone → the app's plain status shades, which index.css remaps for the dark
+ * theme. No `dark:` variants and no opacity modifiers — both would break the
+ * theme switch this app implements through `data-theme`.
+ */
+const TONE = {
+  green: { panel: 'bg-emerald-50 border-emerald-200', icon: 'text-emerald-600', badge: 'green' as const },
+  amber: { panel: 'bg-amber-50 border-amber-200', icon: 'text-amber-600', badge: 'warning' as const },
+  red: { panel: 'bg-red-50 border-red-200', icon: 'text-red-600', badge: 'danger' as const },
+  slate: { panel: 'bg-surface-muted border-hairline', icon: 'text-ink-muted', badge: 'gray' as const },
 };
+
+const LABEL = 'text-[10.5px] font-semibold uppercase tracking-wide text-ink-muted';
 
 /**
  * §11 — the employee profile's permanent bank verification state.
@@ -69,7 +78,7 @@ export const EmployeeBankVerificationPanel: React.FC<Props> = ({ employee, compa
   // fallback so a profile still shows its verified state while the record loads.
   const status = record?.status || employee.bankVerificationStatus || 'UNVERIFIED';
   const verified = status === 'VERIFIED';
-  const tone = TONE_CLASS[statusTone(status)];
+  const tone = TONE[statusTone(status)];
 
   const verifiedAt = record?.verifiedAt || employee.bankVerifiedAt || null;
   const referenceId = record?.referenceId || employee.bankVerificationRefId || null;
@@ -80,15 +89,15 @@ export const EmployeeBankVerificationPanel: React.FC<Props> = ({ employee, compa
 
   return (
     <>
-      <div className={`rounded-xl border px-4 py-3.5 ${tone}`}>
+      <div className={`rounded-card border px-4 py-4 ${tone.panel}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <Icon className="w-[18px] h-[18px] shrink-0" />
+            <Icon className={`w-[18px] h-[18px] shrink-0 ${tone.icon}`} />
             <div className="min-w-0">
-              <p className="text-[13.5px] font-bold leading-tight">
+              <p className="text-[13.5px] font-bold leading-tight text-ink font-heading">
                 {verified ? 'Bank Verified' : `Bank Account ${statusLabel(status)}`}
               </p>
-              <p className="text-[11.5px] font-medium opacity-80 mt-0.5">
+              <p className="text-[12px] font-medium text-ink-secondary mt-1 leading-relaxed">
                 {verified
                   ? `Verified against ${orNA(provider)}`
                   : 'This account has not been verified against the banking network.'}
@@ -97,59 +106,52 @@ export const EmployeeBankVerificationPanel: React.FC<Props> = ({ employee, compa
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Badge variant={tone.badge} dot>{statusLabel(status)}</Badge>
             {record && (
-              <button
-                type="button"
-                onClick={() => setReportOpen(true)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold bg-white/80 dark:bg-slate-900/60 border border-current/20 hover:bg-white dark:hover:bg-slate-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                <FileSearch className="w-3.5 h-3.5" /> View Full Report
-              </button>
+              <Button variant="outline" size="xs" onClick={() => setReportOpen(true)} icon={<FileSearch className="w-3.5 h-3.5" />}>
+                View Full Report
+              </Button>
             )}
             {onReverify && (
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="xs"
                 onClick={onReverify}
+                loading={loading}
                 title="Opens the bank details editor, where a re-verification can be run"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold bg-white/80 dark:bg-slate-900/60 border border-current/20 hover:bg-white dark:hover:bg-slate-900 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                icon={<RefreshCw className="w-3.5 h-3.5" />}
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> Reverify
-                <ExternalLink className="w-3 h-3 opacity-60" />
-              </button>
+                Reverify <ExternalLink className="w-3 h-3 opacity-70" />
+              </Button>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3 mt-3.5 pt-3.5 border-t border-current/15">
+        <dl className="grid grid-cols-2 sm:grid-cols-4 gap-x-5 gap-y-3.5 mt-4 pt-4 border-t border-hairline">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Verification Status</p>
-            <p className="text-[12.5px] font-bold mt-0.5">{statusLabel(status)}</p>
+            <dt className={LABEL}>Verification Status</dt>
+            <dd className="text-[12.5px] font-semibold text-ink mt-1">{statusLabel(status)}</dd>
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Verified At</p>
-            <p className="text-[12.5px] font-semibold mt-0.5">{verifiedAt ? formatDateTime(verifiedAt) : 'N/A'}</p>
+            <dt className={LABEL}>Verified At</dt>
+            <dd className="text-[12.5px] font-semibold text-ink mt-1">{verifiedAt ? formatDateTime(verifiedAt) : 'N/A'}</dd>
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Reference ID</p>
-            <p className="text-[12.5px] font-semibold font-mono mt-0.5 truncate" title={referenceId || undefined}>
+            <dt className={LABEL}>Reference ID</dt>
+            <dd className="text-[12.5px] font-semibold font-mono text-ink mt-1 truncate" title={referenceId || undefined}>
               {orNA(referenceId)}
-            </p>
+            </dd>
           </div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-70">Verified By</p>
-            <p className="text-[12.5px] font-semibold mt-0.5 truncate" title={verifiedBy || undefined}>
+            <dt className={LABEL}>Verified By</dt>
+            <dd className="text-[12.5px] font-semibold text-ink mt-1 truncate" title={verifiedBy || undefined}>
               {orNA(verifiedBy)}
-            </p>
+            </dd>
           </div>
-        </div>
+        </dl>
       </div>
 
-      <Modal
-        open={reportOpen}
-        onClose={() => setReportOpen(false)}
-        title="Bank Account Verification"
-        size="xl"
-      >
+      <Modal open={reportOpen} onClose={() => setReportOpen(false)} title="Bank Account Verification" size="xl">
         {record && <BankVerificationReport view={record} companyName={companyName} />}
       </Modal>
     </>

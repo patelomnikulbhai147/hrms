@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { formatDateTime } from '@/utils/formatDate';
 import { Modal } from '@/components/ui/Modal';
 import { BankVerificationReport } from './BankVerificationReport';
@@ -32,21 +34,24 @@ const STATUS_FILTERS = [
   'MANUAL_OVERRIDE', 'MANUAL_ONLY', 'RATE_LIMITED', 'INSUFFICIENT_CREDITS',
 ];
 
-const CHIP_TONE: Record<string, string> = {
-  green: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800',
-  amber: 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800',
-  red: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-300 dark:border-red-800',
-  slate: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
-};
+/** Status tone → the shared Badge variant, so these chips match every other table. */
+const BADGE_VARIANT = { green: 'green', amber: 'warning', red: 'danger', slate: 'gray' } as const;
+
+// Matches the app's field controls (Input.tsx fieldBase): 48px, rounded-xl, tokens.
+const FIELD =
+  'w-full h-12 px-3.5 rounded-xl border border-hairline bg-surface text-[13px] text-ink ' +
+  'placeholder:text-ink-muted transition-colors focus:outline-none focus:border-brand-400 ' +
+  'focus:ring-[3px] focus:ring-brand-500/20';
+const FIELD_LABEL = 'text-[11px] font-semibold uppercase tracking-wide text-ink-muted block mb-1.5';
 
 const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: string; hint?: string }> = ({ icon, label, value, hint }) => (
-  <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3.5 shadow-sm">
-    <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 mb-1.5">
+  <div className="bg-surface rounded-card border border-hairline shadow-card px-4 py-4 text-ink">
+    <div className="flex items-center gap-2 text-ink-muted mb-2">
       {icon}
-      <span className="text-[10.5px] font-bold uppercase tracking-[0.07em]">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide">{label}</span>
     </div>
-    <p className="text-[20px] font-extrabold text-slate-900 dark:text-slate-100 leading-none">{value}</p>
-    {hint && <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1.5">{hint}</p>}
+    <p className="text-[22px] font-bold text-ink leading-none font-heading tabular-nums">{value}</p>
+    {hint && <p className="text-[12px] font-medium text-ink-secondary mt-2 leading-relaxed">{hint}</p>}
   </div>
 );
 
@@ -157,7 +162,7 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
   return (
     <div className="space-y-4">
       {/* Header cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         <StatCard
           icon={<FileSearch className="w-3.5 h-3.5" />}
           label="Total Verifications"
@@ -185,113 +190,82 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
       </div>
 
       {/* Filters */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-3.5 shadow-sm">
+      <div className="bg-surface rounded-card border border-hairline shadow-card p-4">
         <div className="flex flex-col lg:flex-row lg:items-end gap-3">
           <div className="flex-1 min-w-0">
-            <label htmlFor="bvh-search" className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 block mb-1.5">
-              Search
-            </label>
+            <label htmlFor="bvh-search" className={FIELD_LABEL}>Search</label>
             <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Search className="w-4 h-4 text-ink-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 id="bvh-search"
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Employee, employee ID, reference ID, bank, IFSC…"
-                className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+                className={`${FIELD} pl-10`}
               />
             </div>
           </div>
 
           <div className="w-full lg:w-52">
-            <label htmlFor="bvh-status" className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 block mb-1.5">
-              Status
-            </label>
-            <select
-              id="bvh-status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
-            >
+            <label htmlFor="bvh-status" className={FIELD_LABEL}>Status</label>
+            <select id="bvh-status" value={status} onChange={(e) => setStatus(e.target.value)} className={FIELD}>
               {STATUS_FILTERS.map((s) => (
                 <option key={s} value={s}>{s === 'All' ? 'All statuses' : statusLabel(s)}</option>
               ))}
             </select>
           </div>
 
-          <div className="w-full lg:w-40">
-            <label htmlFor="bvh-from" className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 block mb-1.5">From</label>
-            <input
-              id="bvh-from" type="date" value={startDate} max={endDate || undefined}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-            />
+          <div className="w-full lg:w-44">
+            <label htmlFor="bvh-from" className={FIELD_LABEL}>From</label>
+            <input id="bvh-from" type="date" value={startDate} max={endDate || undefined}
+              onChange={(e) => setStartDate(e.target.value)} className={FIELD} />
           </div>
-          <div className="w-full lg:w-40">
-            <label htmlFor="bvh-to" className="text-[10.5px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400 block mb-1.5">To</label>
-            <input
-              id="bvh-to" type="date" value={endDate} min={startDate || undefined}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-[13px] text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
-            />
+          <div className="w-full lg:w-44">
+            <label htmlFor="bvh-to" className={FIELD_LABEL}>To</label>
+            <input id="bvh-to" type="date" value={endDate} min={startDate || undefined}
+              onChange={(e) => setEndDate(e.target.value)} className={FIELD} />
           </div>
 
           <div className="flex items-center gap-2">
             {filtersActive && (
-              <button
-                type="button"
-                onClick={() => { setStatus('All'); setSearch(''); setStartDate(''); setEndDate(''); }}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-              >
-                <X className="w-3.5 h-3.5" /> Clear
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => { setStatus('All'); setSearch(''); setStartDate(''); setEndDate(''); }} icon={<X className="w-3.5 h-3.5" />}>
+                Clear
+              </Button>
             )}
-            <button
-              type="button"
-              onClick={exportCsv}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" /> CSV
-            </button>
-            <button
-              type="button"
-              onClick={load}
-              title="Refresh"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
-            >
-              <RefreshCw className={`w-4 h-4 ${state === 'loading' ? 'animate-spin' : ''}`} />
-            </button>
+            <Button variant="outline" size="sm" onClick={exportCsv} icon={<Download className="w-3.5 h-3.5" />}>
+              CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={load} aria-label="Refresh verification history" title="Refresh"
+              icon={<RefreshCw className={`w-4 h-4 ${state === 'loading' ? 'animate-spin' : ''}`} />}>
+              <span className="sr-only">Refresh</span>
+            </Button>
           </div>
         </div>
       </div>
 
       {/* Table — the only horizontally scrolling element, so the page never scrolls sideways. */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+      <div className="bg-surface rounded-card border border-hairline shadow-card overflow-hidden">
         {state === 'error' ? (
-          <div className="p-8 text-center">
+          <div className="p-10 text-center">
             <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-3" />
-            <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-200">{error}</p>
-            <button
-              type="button"
-              onClick={load}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-semibold bg-brand-600 hover:bg-brand-700 text-white transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5" /> Try again
-            </button>
+            <p className="text-[14px] font-semibold text-ink">{error}</p>
+            <Button variant="primary" size="sm" className="mt-4" onClick={load} icon={<RefreshCw className="w-3.5 h-3.5" />}>
+              Try again
+            </Button>
           </div>
         ) : state === 'loading' && !records.length ? (
-          <div className="p-10 text-center text-slate-500 dark:text-slate-400">
+          <div className="p-12 text-center text-ink-secondary">
             <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-3 text-brand-500" />
             <p className="text-[13px] font-medium">Loading verification history…</p>
           </div>
         ) : !records.length ? (
-          <div className="p-10 text-center">
-            <ShieldCheck className="w-9 h-9 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-            <p className="text-[14px] font-bold text-slate-700 dark:text-slate-200">
+          <div className="p-12 text-center">
+            <ShieldCheck className="w-9 h-9 text-ink-muted mx-auto mb-3" />
+            <p className="text-[14px] font-bold text-ink font-heading">
               {filtersActive ? 'No verifications match these filters' : 'No bank verifications yet'}
             </p>
-            <p className="text-[12.5px] font-medium text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-[12.5px] font-medium text-ink-secondary mt-1.5 max-w-md mx-auto leading-relaxed">
               {filtersActive
                 ? 'Clear the filters to see the full register.'
                 : 'Every verification your team runs will be permanently recorded here.'}
@@ -301,11 +275,12 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60">
+                <tr className="border-b border-hairline bg-surface-muted">
                   {['Date', 'Employee', 'Status', 'Verified By', 'Provider', 'Reference ID', 'Branch', 'Latency', 'Cost', ''].map((h, i) => (
                     <th
-                      key={h || `a${i}`}
-                      className={`px-4 py-2.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400 whitespace-nowrap ${
+                      key={h || `action-${i}`}
+                      scope="col"
+                      className={`px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-ink-secondary whitespace-nowrap ${
                         h === 'Latency' || h === 'Cost' ? 'text-right' : ''
                       }`}
                     >
@@ -315,84 +290,71 @@ export const BankVerificationHistory: React.FC<Props> = ({ companyName, employee
                 </tr>
               </thead>
               <tbody>
-                {records.map((r) => {
-                  const tone = CHIP_TONE[statusTone(r.status)];
-                  return (
-                    <tr key={r.id} className="border-b border-slate-100 dark:border-slate-800 last:border-0 hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
-                      <td className="px-4 py-3 text-[12.5px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        {r.createdAt ? formatDateTime(r.createdAt) : '—'}
-                      </td>
-                      <td className="px-4 py-3 min-w-[180px]">
-                        <p className="text-[13px] font-bold text-slate-900 dark:text-slate-100 truncate max-w-[220px]" title={r.employeeName || ''}>
-                          {orNA(r.employeeName)}
-                        </p>
-                        <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 font-mono">
-                          {r.employeeCode ? r.employeeCode : maskAccount(r.accountNumberMasked)}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold whitespace-nowrap ${tone}`}>
-                          {statusLabel(r.status)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-[12.5px] font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[150px]" title={r.verifiedByName || ''}>
-                        {orNA(r.verifiedByName)}
-                      </td>
-                      <td className="px-4 py-3 text-[12.5px] font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        {orNA(r.provider)}
-                      </td>
-                      <td className="px-4 py-3 text-[12px] font-mono font-semibold text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                        {orNA(r.referenceId)}
-                      </td>
-                      <td className="px-4 py-3 text-[12.5px] font-medium text-slate-600 dark:text-slate-300 truncate max-w-[140px]">
-                        {orNA(r.branchName)}
-                      </td>
-                      <td className="px-4 py-3 text-[12.5px] font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">
-                        {r.responseTimeMs != null ? `${r.responseTimeMs} ms` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-[12.5px] font-semibold text-slate-700 dark:text-slate-300 text-right whitespace-nowrap">
-                        {r.verificationCost != null ? `₹${r.verificationCost}` : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openDetail(r.id)}
-                          disabled={detailLoading}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11.5px] font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors whitespace-nowrap"
-                        >
-                          <Eye className="w-3.5 h-3.5" /> View
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {records.map((r) => (
+                  <tr key={r.id} className="border-b border-hairline last:border-0 hover:bg-surface-muted transition-colors">
+                    <td className="px-4 py-3.5 text-[12.5px] font-medium text-ink-secondary whitespace-nowrap tabular-nums">
+                      {r.createdAt ? formatDateTime(r.createdAt) : '—'}
+                    </td>
+                    <td className="px-4 py-3.5 min-w-[180px]">
+                      <p className="text-[13px] font-semibold text-ink truncate max-w-[220px]" title={r.employeeName || ''}>
+                        {orNA(r.employeeName)}
+                      </p>
+                      <p className="text-[11.5px] font-medium text-ink-muted font-mono mt-0.5">
+                        {r.employeeCode ? r.employeeCode : maskAccount(r.accountNumberMasked)}
+                      </p>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Badge variant={BADGE_VARIANT[statusTone(r.status)]} dot>{statusLabel(r.status)}</Badge>
+                    </td>
+                    <td className="px-4 py-3.5 text-[12.5px] font-medium text-ink truncate max-w-[150px]" title={r.verifiedByName || ''}>
+                      {orNA(r.verifiedByName)}
+                    </td>
+                    <td className="px-4 py-3.5 text-[12.5px] font-medium text-ink-secondary whitespace-nowrap">
+                      {orNA(r.provider)}
+                    </td>
+                    <td className="px-4 py-3.5 text-[12px] font-mono font-medium text-ink-secondary whitespace-nowrap">
+                      {orNA(r.referenceId)}
+                    </td>
+                    <td className="px-4 py-3.5 text-[12.5px] font-medium text-ink-secondary truncate max-w-[140px]">
+                      {orNA(r.branchName)}
+                    </td>
+                    <td className="px-4 py-3.5 text-[12.5px] font-semibold text-ink text-right whitespace-nowrap tabular-nums">
+                      {r.responseTimeMs != null ? `${r.responseTimeMs} ms` : '—'}
+                    </td>
+                    <td className="px-4 py-3.5 text-[12.5px] font-semibold text-ink text-right whitespace-nowrap tabular-nums">
+                      {r.verificationCost != null ? `₹${r.verificationCost}` : '—'}
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => openDetail(r.id)}
+                        disabled={detailLoading}
+                        icon={<Eye className="w-3.5 h-3.5" />}
+                        aria-label={`View verification ${r.referenceId || r.id}`}
+                      >
+                        View
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
 
         {records.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40">
-            <p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5 border-t border-hairline bg-surface-muted">
+            <p className="text-[12px] font-medium text-ink-secondary">
               Page {page} of {totalPages} · {total} record{total === 1 ? '' : 's'}
             </p>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" /> Previous
-              </button>
-              <button
-                type="button"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} icon={<ChevronLeft className="w-3.5 h-3.5" />}>
+                Previous
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>
                 Next <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+              </Button>
             </div>
           </div>
         )}
