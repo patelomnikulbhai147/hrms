@@ -11,18 +11,12 @@ const idParam = require('../utils/idParam');
 const { resolvePunch, STATUS, QUEUEABLE } = require('../services/attendanceMatcher');
 const { processAttendanceRows } = require('../services/attendanceSheetService');
 
-const companyScopeFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
-const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
+// Branch-aware workspace authorisation (see utils/workspaceScope.js). The old
+// private helper matched the workspace id against accessibleCompanyIds only,
+// which never holds branch ids — every branch workspace was refused.
+const { isSuperAdmin, companyScopeFor, scopedCompanyWhere, targetCompanyId } = require('../utils/workspaceScope');
 const canView = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
-
-// Resolve which company a write targets, honouring RULE 5 isolation: a non-admin
-// can only ever act on their own company; an admin must name the company.
-function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested) || null;
-  return req.user?.companyId || null;
-}
 
 /**
  * POST /validate — run the safety checks over a batch of punches (DRY RUN).
@@ -169,14 +163,10 @@ exports.process = async (req, res) => {
   }
 };
 
-// Build a company-scoped WHERE that enforces RULE 5 for reads.
-function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { companyId: workspaceId } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null; // unauthorized
-  return { companyId: workspaceId || { in: scope.length ? scope : [-1] } };
-}
+// Build a company-scoped WHERE that enforces RULE 5 for reads. Branch-aware:
+// import logs are company-level, so a branch workspace resolves to its parent
+// company rather than being refused. (null → genuinely unauthorised.)
+const scopedWhere = (req) => scopedCompanyWhere(req);
 
 // GET /logs — import-log audit trail, company-scoped.
 exports.getLogs = async (req, res) => {

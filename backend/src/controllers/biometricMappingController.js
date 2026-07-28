@@ -15,12 +15,11 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
-const companyScopeFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Branch-aware workspace authorisation (see utils/workspaceScope.js).
+const { isSuperAdmin, companyScopeFor, canEnterWorkspace, requestedWorkspaceId } = require('../utils/workspaceScope');
 
 const canView = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
-const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 
 const norm = (v) => (v == null ? '' : String(v).trim());
 
@@ -35,17 +34,24 @@ const MAPPING_SELECT = {
 exports.list = async (req, res) => {
   try {
     if (!canView(req)) return res.status(403).json({ error: 'You do not have permission to view biometric mappings.' });
-    const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
+    const workspaceId = requestedWorkspaceId(req);
     let where = {};
     if (!isSuperAdmin(req)) {
-      const scope = companyScopeFor(req);
-      where.companyId = { in: scope.length ? scope : [-1] };
-      if (workspaceId && !scope.includes(workspaceId)) {
+      if (!canEnterWorkspace(req, workspaceId)) {
         return res.status(403).json({ error: 'Unauthorized to view this workspace.' });
       }
-      if (workspaceId) where.companyId = workspaceId;
-    } else if (workspaceId) {
-      where.companyId = workspaceId;
+      const scope = companyScopeFor(req);
+      const branchScope = (req.user?.accessibleBranchIds || []).map(Number);
+      // Employees carry BOTH companyId and branchId, so the workspace is matched
+      // on either — a branch workspace lists that branch's people, not the whole
+      // parent company's.
+      where.OR = [
+        { companyId: { in: scope.length ? scope : [-1] } },
+        { branchId: { in: branchScope.length ? branchScope : [-1] } },
+      ];
+    }
+    if (workspaceId != null) {
+      where.OR = [{ companyId: workspaceId }, { branchId: workspaceId }];
     }
     const rows = await prisma.employee.findMany({ where, orderBy: { employeeId: 'asc' }, select: MAPPING_SELECT });
     res.json(rows);

@@ -21,21 +21,21 @@ const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 const { grantedCompanyIds } = require('./companyScope');
 const companyScopeFor = (req) => grantedCompanyIds(req);
 
+// Card templates are COMPANY-level, so a BRANCH workspace resolves to its parent
+// company (ws.targetCompanyId / ws.scopedCompanyWhere) instead of being refused —
+// branch ids are never present in the company grant list.
+const ws = require('./workspaceScope');
+
 function readCompanyId(req, requested) {
-  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId || null;
-  const scope = companyScopeFor(req);
-  if (workspaceId && scope.includes(workspaceId)) return workspaceId;
-  return req.user?.companyId || null;
+  return ws.targetCompanyId(req, requested);
 }
 
 // Reads return the company's OWN templates plus any Super-Admin `shared` ones.
 function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { OR: [{ companyId: workspaceId }, { shared: true }] } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null;
-  const companyFilter = workspaceId ? { companyId: workspaceId } : { companyId: { in: scope.length ? scope : [-1] } };
+  const companyFilter = ws.scopedCompanyWhere(req);
+  if (companyFilter === null) return null;
+  // `{}` = unrestricted (Super Admin with no workspace named).
+  if (!Object.keys(companyFilter).length) return {};
   return { OR: [companyFilter, { shared: true }] };
 }
 

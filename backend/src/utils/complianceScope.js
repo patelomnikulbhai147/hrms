@@ -11,19 +11,13 @@ const canEdit = (req) => ['Company Head', 'HR', 'Finance'].includes(req.user?.ro
 const canManage = (req) => ['Company Head', 'Finance'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Branch-aware. Compliance filings are COMPANY-level, so a branch workspace
+// resolves to its parent company; the previous company-only grant list held no
+// branch ids at all and refused every branch workspace outright.
+const ws = require('./workspaceScope');
 
-function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested || req.query.companyId || req.headers['x-workspace-id']) || null;
-  return req.user?.companyId || null;
-}
-
-function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { companyId: workspaceId } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null;
-  return { companyId: workspaceId || { in: scope.length ? scope : [-1] } };
-}
+const companyScopeFor = (req) => ws.companyScopeFor(req);
+const targetCompanyId = (req, requested) => ws.targetCompanyId(req, requested);
+const scopedWhere = (req) => ws.scopedCompanyWhere(req);
 
 module.exports = { isSuperAdmin, canView, canEdit, canManage, actorOf, targetCompanyId, scopedWhere };

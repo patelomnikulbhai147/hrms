@@ -4,6 +4,11 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { canView, canEdit, canManage, actorOf, isSuperAdmin, scopedWhere } = require('../utils/complianceScope');
+// Branch-aware company scope: company-wide grants PLUS the parent company of
+// every branch the user may enter. A branch id is never present in
+// accessibleCompanyIds, so the old inline list refused branch workspaces
+// outright. See utils/workspaceScope.js.
+const { companyScopeFor, targetCompanyId } = require('../utils/workspaceScope');
 
 // The statutory document categories the module ships with. Custom names are also
 // allowed (free text) — this list drives the dropdown + the "Compliance
@@ -21,11 +26,7 @@ const CERTIFICATE_CATEGORIES = new Set(['PF Challan', 'ESI Challan', 'Profession
 // user's scope), falling back to their home company. Mirrors the loan-type fix
 // so a multi-company user files documents against the company they're viewing.
 function writeCompanyId(req, requested) {
-  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId || null;
-  const scope = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
-  if (workspaceId && scope.includes(workspaceId)) return workspaceId;
-  return req.user?.companyId || null;
+  return targetCompanyId(req, requested);
 }
 
 // Derived expiry state from expiryDate (does not overwrite an explicit terminal
@@ -152,7 +153,7 @@ exports.get = async (req, res) => {
     if (base === null) return res.status(403).json({ error: 'Unauthorised workspace.' });
     // Company isolation: a non-Super-Admin can only read docs in their scope.
     if (!isSuperAdmin(req)) {
-      const scope = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+      const scope = companyScopeFor(req);
       if (!scope.includes(doc.companyId)) return res.status(403).json({ error: 'Not your company.' });
     }
     res.json(doc);
@@ -211,7 +212,7 @@ exports.update = async (req, res) => {
     const existing = await prisma.complianceDocument.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Document not found.' });
     if (!isSuperAdmin(req)) {
-      const scope = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+      const scope = companyScopeFor(req);
       if (!scope.includes(existing.companyId)) return res.status(403).json({ error: 'Not your company.' });
     }
     const actor = actorOf(req);
@@ -260,7 +261,7 @@ exports.remove = async (req, res) => {
     const existing = await prisma.complianceDocument.findUnique({ where: { id }, select: { id: true, companyId: true, name: true } });
     if (!existing) return res.status(404).json({ error: 'Document not found.' });
     if (!isSuperAdmin(req)) {
-      const scope = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+      const scope = companyScopeFor(req);
       if (!scope.includes(existing.companyId)) return res.status(403).json({ error: 'Not your company.' });
     }
     await prisma.complianceDocument.delete({ where: { id } });

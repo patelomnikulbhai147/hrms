@@ -11,9 +11,8 @@ const idParam = require('../utils/idParam');
 
 const BONUS_TYPES = ['Statutory', 'Festival', 'Performance', 'Ex-Gratia', 'Special'];
 
-const companyScopeFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
-const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
+// Branch-aware workspace authorisation (see utils/workspaceScope.js).
+const { isSuperAdmin, scopedCompanyWhere, targetCompanyId } = require('../utils/workspaceScope');
 const canView = (req) => ['Super Admin', 'Company Head', 'HR', 'Finance'].includes(req.user?.role);
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 
@@ -46,24 +45,14 @@ const shape = (b) => {
   return out;
 };
 
-function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested) || null;
-  return req.user?.companyId || null;
-}
 
 exports.getAll = async (req, res) => {
   try {
     if (!canView(req)) return res.status(403).json({ error: 'You do not have permission to view bonus configurations.' });
-    const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-    let where = {};
-    if (!isSuperAdmin(req)) {
-      const scope = companyScopeFor(req);
-      where.companyId = { in: scope.length ? scope : [-1] };
-      if (workspaceId && !scope.includes(workspaceId)) return res.status(403).json({ error: 'Unauthorized to view this workspace.' });
-      if (workspaceId) where.companyId = workspaceId;
-    } else if (workspaceId) {
-      where.companyId = workspaceId;
-    }
+    // Branch-aware: a branch workspace resolves to its parent company (bonus
+    // configurations are company-level), instead of being refused outright.
+    const where = scopedCompanyWhere(req);
+    if (where === null) return res.status(403).json({ error: 'Unauthorized to view this workspace.' });
     const rows = await prisma.bonusConfiguration.findMany({ where, orderBy: [{ financialYear: 'desc' }, { bonusType: 'asc' }] });
     res.json(rows);
   } catch (e) {

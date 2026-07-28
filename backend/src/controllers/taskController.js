@@ -15,8 +15,12 @@ const idParam = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const { notify, notifyMany } = require('../services/notificationService');
 
-const allowedIdsFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Company-wide grants PLUS the branches the user may enter — a branch id never
+// appears in accessibleCompanyIds, so a company-only list refused every branch
+// workspace with "outside your workspace".
+const { companyScopeFor } = require('../utils/workspaceScope');
+const { grantedBranchIds } = require('../utils/companyScope');
+const allowedIdsFor = (req) => [...new Set([...companyScopeFor(req), ...grantedBranchIds(req)])];
 
 const asArray = (v) => (Array.isArray(v) ? v : (v == null ? [] : [v]));
 const idStr = (v) => String(v);
