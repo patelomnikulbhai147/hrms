@@ -32,6 +32,7 @@ import { api, type SuperAdminStats } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { Card, StatCard } from '@/components/ui/Card';
+import { VerificationCreditsCard } from '@/components/verification/VerificationCreditsCard';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
 import { RecentActivityFeed } from '@/components/activity/RecentActivityFeed';
@@ -1198,6 +1199,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Remaining API-verification credits. Hides itself when the wallet can't
+            be read, so a lookup failure never shows a false zero. */}
+        <VerificationCreditsCard onViewWallet={() => onNavigate?.('settings')} />
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
         {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}

@@ -99,10 +99,18 @@ async function apiFetch(url: string, options?: RequestInit) {
       if (code === 'EMPLOYEE_LIMIT_REACHED') {
         try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
       }
+      // The audited Support Session backing a Super Admin's masquerade is gone
+      // (hard expiry, or ended in another tab). Broadcast so App can leave
+      // masquerade instead of leaving the tab stuck in a workspace where every
+      // employee-PII request 403s and looks like a backend outage.
+      if (code === 'SUPPORT_SESSION_REQUIRED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:support-session-expired', { detail: body })); } catch (_) { /* ignore */ }
+      }
       const err: any = new Error(msg);
       err.status = res.status;
       err.code = code;
       err.data = body; // full parsed body (e.g. { duplicate: {...} } for 409s)
+      err.response = { data: body, status: res.status };
       throw err;
     }
     return await res.json();
@@ -131,7 +139,100 @@ async function apiFetch(url: string, options?: RequestInit) {
   }
 }
 
+function resolveUrl(url: string, params?: Record<string, any>) {
+  let cleanUrl = url;
+  if (cleanUrl.startsWith('/api/') && BASE_URL.endsWith('/api')) {
+    cleanUrl = cleanUrl.slice(4);
+  }
+  let fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `${BASE_URL}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+  if (params) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.append(k, String(v));
+    });
+    const queryString = qs.toString();
+    if (queryString) {
+      fullUrl += (fullUrl.includes('?') ? '&' : '?') + queryString;
+    }
+  }
+  return fullUrl;
+}
+
+async function apiFetchWithMeta(url: string, options?: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const _hadToken = !!authStorage.get('hrms_jwt_token');
+  if (_hadToken) authStorage.markActivity();
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch (_) {}
+    if (!res.ok) {
+      let msg = body?.error || body?.message || '';
+      const code = body?.code;
+      if (!msg) {
+        if (res.status === 401) msg = 'Your session has expired. Please sign in again.';
+        else if (res.status === 403) msg = 'You do not have permission to perform this action.';
+        else if (res.status === 404) msg = 'The requested record was not found.';
+        else if (res.status === 503) msg = 'The database is currently unreachable. Please try again shortly.';
+        else if (res.status >= 500) msg = 'The server encountered an error. Please try again.';
+        else msg = `Request failed (HTTP ${res.status}).`;
+      }
+      if (res.status === 401 && _hadToken) {
+        authStorage.clearSession();
+        authStorage.broadcastLogout('expired');
+        try { window.dispatchEvent(new CustomEvent('hrms:unauthorized')); } catch (_) { /* ignore */ }
+      }
+      if (code === 'EMPLOYEE_LIMIT_REACHED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
+      }
+      if (code === 'SUPPORT_SESSION_REQUIRED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:support-session-expired', { detail: body })); } catch (_) { /* ignore */ }
+      }
+      const err: any = new Error(msg);
+      err.status = res.status;
+      err.code = code;
+      err.data = body;
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
+    return { data: body, status: res.status };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      const e: any = new Error('The request timed out. The server took too long to respond.');
+      e.isTimeout = true;
+      e.isNetworkError = true;
+      console.error('API Client Timeout:', url);
+      throw e;
+    }
+    if (err instanceof TypeError) {
+      const e: any = new Error('Cannot reach the server. Please check your connection and try again.');
+      e.isNetworkError = true;
+      console.error('API Client Network Error:', url, err.message);
+      throw e;
+    }
+    console.error('API Client Error:', err);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const api = {
+  get: async (url: string, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'GET', headers: { ...getHeaders(), ...(config?.headers || {}) } });
+  },
+  post: async (url: string, body?: any, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'POST', headers: { ...getHeaders(), ...(config?.headers || {}) }, body: body ? JSON.stringify(body) : undefined });
+  },
+  put: async (url: string, body?: any, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'PUT', headers: { ...getHeaders(), ...(config?.headers || {}) }, body: body ? JSON.stringify(body) : undefined });
+  },
+  delete: async (url: string, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'DELETE', headers: { ...getHeaders(), ...(config?.headers || {}) } });
+  },
   auth: {
     login: async (credentials: any) => {
       return await apiFetch(`${BASE_URL}/auth/login`, {
@@ -661,6 +762,10 @@ export const api = {
     // client is rendering, so the attachment matches the invoice on screen.
     emailInvoice: async (id: any, data: { to: string; cc?: string; subject?: string; message?: string; html?: string }) =>
       apiFetch(`${BASE_URL}/invoicing/invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    getReminderCenter: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/reminder-center`, { headers: getHeaders() }),
+    sendReminder: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/remind`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    rescheduleDueDate: async (id: any, dueDate: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/reschedule`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ dueDate }) }),
+    sendThankYou: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/thank-you`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
     recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
@@ -838,7 +943,42 @@ export const api = {
 
   // IFSC → bank/branch lookup (auto-fills bank details from the IFSC code)
   ifsc: {
-    lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },
+    lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/bank/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },
+  },
+
+  // Smart Bank Account Verification & IFSC Lookup
+  bank: {
+    ifscLookup: async (ifsc: string) => { return await apiFetch(`${BASE_URL}/bank/ifsc/${encodeURIComponent(ifsc)}`, { headers: getHeaders() }); },
+    verifyAccount: async (payload: { ifsc: string; accountNumber: string; employeeName?: string; employeeId?: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/verify-account`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+    logManualOverride: async (payload: { ifsc?: string; accountNumber?: string; reason?: string; employeeId?: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/log-manual-override`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+
+    // Permanent verification history. Reading these NEVER calls the provider and
+    // never costs a credit — only verifyAccount does.
+    verifications: async (params: Record<string, any> = {}) => {
+      const qs = new URLSearchParams(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '') as [string, string][]
+      ).toString();
+      return await apiFetch(`${BASE_URL}/bank/verifications${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+    },
+    verification: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/${encodeURIComponent(String(id))}`, { headers: getHeaders() });
+    },
+    latestVerification: async (employeeId: string | number) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/latest/${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() });
+    },
+    linkVerification: async (payload: { referenceId: string; employeeId: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/link`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+    payrollPolicy: async () => {
+      return await apiFetch(`${BASE_URL}/bank/payroll-policy`, { headers: getHeaders() });
+    },
+    savePayrollPolicy: async (requireVerifiedBankForPayroll: boolean) => {
+      return await apiFetch(`${BASE_URL}/bank/payroll-policy`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ requireVerifiedBankForPayroll }) });
+    },
   },
 
   // Task Manager

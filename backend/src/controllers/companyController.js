@@ -682,30 +682,32 @@ exports.getCompanyAssets = async (req, res) => {
     const id = idParam(req.params.id);
     if (!id) return res.status(400).json({ error: 'Company id required.' });
 
-    if (req.user && req.user.role !== 'Super Admin') {
-      // A branch workspace inherits its parent company's artwork, so resolve the
-      // branch to its parent before deciding whether this caller may read it.
-      let effective = id;
-      if (!canReachCompany(req, id)) {
-        const branch = await prisma.branch.findUnique({ where: { id }, select: { companyId: true } });
-        if (!branch || !canReachCompany(req, branch.companyId)) {
-          return res.status(403).json({ error: 'Not your company.' });
-        }
-        effective = branch.companyId;
-      }
-      const c = await prisma.company.findUnique({
-        where: { id: effective },
-        select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
-      });
-      if (!c) return res.status(404).json({ error: 'Company not found.' });
-      return res.json(c);
-    }
-
-    const c = await prisma.company.findUnique({
-      where: { id },
+    let effectiveId = id;
+    let c = await prisma.company.findUnique({
+      where: { id: effectiveId },
       select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
     });
+
+    if (!c) {
+      // If not found in Company, check if it's a Branch workspace ID and resolve to its parent Company
+      const branch = await prisma.branch.findUnique({ where: { id: effectiveId }, select: { companyId: true } });
+      if (branch && branch.companyId) {
+        effectiveId = branch.companyId;
+        c = await prisma.company.findUnique({
+          where: { id: effectiveId },
+          select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
+        });
+      }
+    }
+
     if (!c) return res.status(404).json({ error: 'Company not found.' });
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      if (!canReachCompany(req, id) && !canReachCompany(req, effectiveId)) {
+        return res.status(403).json({ error: 'Not your company.' });
+      }
+    }
+
     res.json(c);
   } catch (error) {
     console.error('company.getAssets', error);

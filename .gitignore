@@ -33,3 +33,8 @@ backend/.env.bak-*
 screenshots/
 backend/scripts/shotOvertimeScreen.js
 backend/scripts/shotLeaveEligibility.js
+# Ad-hoc Cashfree probes with a PRODUCTION client id/secret pasted inline. Never
+# commit these — a payment-provider secret in git history cannot be un-published,
+# it can only be rotated. Use backend/.env (CASHFREE_PROD_*) instead.
+backend/scripts/cashfree_audit.js
+backend/scripts/phase2_test.js

@@ -755,6 +755,21 @@ model Employee {
   bankCity            String?
   bankDistrict        String?
   bankState           String?
+  micr                String?             @db.VarChar(32)
+  swift               String?             @db.VarChar(32)
+  // ── Bank verification outcome, denormalised onto the employee so the profile
+  //    can show "Bank Verified" without replaying the verification history.
+  //    The full record lives in BankVerificationAuditLog, joined on
+  //    bankVerificationRefId. Never a substitute for that history — a summary of it.
+  bankVerificationStatus      String?     @db.VarChar(32) // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / UNVERIFIED / MANUAL
+  bankVerificationRefId       String?     @db.VarChar(191)
+  bankVerificationId          String?     @db.VarChar(191)
+  bankVerifiedAt              DateTime?
+  bankVerifiedBy              String?     @db.VarChar(191)
+  bankVerificationProvider    String?     @db.VarChar(64)
+  bankVerificationEnvironment String?     @db.VarChar(32)
+  bankNameMatchResult         String?     @db.VarChar(32)
+  bankNameMatchScore          Int?
   offboardingState    Json?
   employmentHistory   Json?
   createdAt           DateTime            @default(now())
@@ -2498,11 +2513,30 @@ model InvoiceAudit {
   action      String // CREATED / UPDATED / SENT / PRINTED / EMAILED / PAYMENT_RECORDED / CANCELLED / DELETED
   performedBy String?
   details     String?  @db.Text
+  ip          String?  @db.VarChar(60)
   createdAt   DateTime @default(now())
 
   @@index([companyId])
   @@index([invoiceId])
   @@map("invoice_audits")
+}
+
+model InvoiceReminder {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  invoiceId   Int
+  channel     String   // Email, WhatsApp, SMS, In-App Notification
+  sentBy      String?
+  status      String   @default("Delivered") // Opened, Delivered, Failed
+  recipient   String?
+  message     String?  @db.Text
+  attachments String?  @db.Text // JSON string of selected attachments
+  ip          String?  @db.VarChar(60)
+  createdAt   DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([companyId])
+  @@map("invoice_reminders")
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2842,4 +2876,177 @@ model LeaveTypePolicy {
   @@unique([companyId, code])
   @@index([companyId])
   @@map("leave_type_policy")
+}
+
+// ── Multi-Tenant Bank Verification Platform (BYO API Architecture) ──────────────
+// Stores company-specific bank verification provider settings with encrypted credentials.
+model CompanyBankVerificationSettings {
+  id                      Int       @id @default(autoincrement())
+  companyId               Int       @unique
+  verificationMode        String    @default("Manual") // Manual / API Verification
+  provider                String    @default("RazorpayX") // RazorpayX / Cashfree / Decentro / Signzy / SurePass / HyperVerge / Setu / Custom Provider
+  credentialSource        String    @default("Global") // Global / Company
+  authenticationType      String    @default("Bearer Token") // Bearer Token / API Key / API Key + Secret / OAuth2 Client Credentials / Basic Authentication
+  apiBaseUrl              String?   @db.Text
+  apiKeyEncrypted         String?   @db.Text
+  apiSecretEncrypted      String?   @db.Text
+  bearerTokenEncrypted    String?   @db.Text
+  clientIdEncrypted       String?   @db.Text
+  clientSecretEncrypted   String?   @db.Text
+  webhookSecretEncrypted  String?   @db.Text
+  environment             String    @default("Sandbox") // Sandbox / Production
+  isEnabled               Boolean   @default(false)
+  lastConnectionStatus    String?   // connected / failed / invalid_token / unreachable
+  lastConnectionCheckedAt DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@map("company_bank_verification_settings")
+}
+
+// Immutable audit log of every bank account verification request per tenant.
+// Rows are never updated or deleted — one row per verification attempt, forever.
+//
+// The columns below the original block are the enterprise verification record:
+// every field the provider returns is extracted into a typed column AND kept
+// verbatim in `rawResponse`, so a field Cashfree adds tomorrow is still stored
+// without a schema change. `rawRequest` is the outbound payload with credentials
+// stripped — client secrets/keys/tokens are never written here.
+model BankVerificationAuditLog {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int
+  provider            String
+  verificationMode    String   @default("API Verification")
+  ifsc                String?
+  accountNumberMasked String?
+  employeeName        String?
+  referenceId         String?
+  requestTime         DateTime @default(now())
+  responseTimeMs      Int?
+  status              String   // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / MANUAL_OVERRIDE / RATE_LIMITED / ERROR
+  errorMessage        String?  @db.Text
+  createdAt           DateTime @default(now())
+
+  // ── Who / where (§1, §2, §7) ──────────────────────────────────────────────
+  employeeId          Int?
+  employeeCode        String?  @db.VarChar(64)
+  branchId            Int?
+  branchName          String?  @db.VarChar(191)
+  department          String?  @db.VarChar(191)
+  designation         String?  @db.VarChar(191)
+  employeeEmail       String?  @db.VarChar(191)
+  employeePhone       String?  @db.VarChar(32)
+  verifiedById        Int?
+  verifiedByName      String?  @db.VarChar(191)
+  verifiedByRole      String?  @db.VarChar(64)
+
+  // ── Provider identity & environment (§1, §6) ──────────────────────────────
+  environment         String?  @db.VarChar(32)  // Production / Sandbox
+  verificationId      String?  @db.VarChar(191) // provider-side verification id
+  requestId           String?  @db.VarChar(191) // provider-side request/trace id
+  verificationSource  String?  @db.VarChar(64)
+
+  // ── Bank response payload (§3) ────────────────────────────────────────────
+  accountHolderName   String?  @db.VarChar(191)
+  bankName            String?  @db.VarChar(191)
+  branchName2         String?  @db.VarChar(191) // bank branch (distinct from company branch)
+  branchAddress       String?  @db.Text
+  city                String?  @db.VarChar(128)
+  district            String?  @db.VarChar(128)
+  state               String?  @db.VarChar(128)
+  micr                String?  @db.VarChar(32)
+  swift               String?  @db.VarChar(32)
+  utr                 String?  @db.VarChar(64)
+  accountStatus       String?  @db.VarChar(64)
+  accountStatusCode   String?  @db.VarChar(64)
+  verificationMessage String?  @db.Text
+
+  // ── Name match (§4) ───────────────────────────────────────────────────────
+  enteredName         String?  @db.VarChar(191)
+  nameMatchResult     String?  @db.VarChar(32) // EXACT_MATCH / PARTIAL_MATCH / MISMATCH
+  nameMatchScore      Int?                     // 0–100
+  nameMatchSource     String?  @db.VarChar(32) // PROVIDER / COMPUTED
+
+  // ── API log (§6, §10) ─────────────────────────────────────────────────────
+  requestTimestamp    DateTime?
+  responseTimestamp   DateTime?
+  httpStatus          Int?
+  retryCount          Int      @default(0)
+  rawRequest          Json?    // credentials stripped
+  rawResponse         Json?    // verbatim provider body — future fields included
+
+  // ── Billing (§6, §7) ──────────────────────────────────────────────────────
+  verificationCost    Int?
+  walletBalanceBefore Int?
+  walletBalanceAfter  Int?
+
+  @@index([companyId])
+  @@index([referenceId])
+  @@index([employeeId])
+  @@index([companyId, status])
+  @@index([createdAt])
+  @@map("bank_verification_audit_logs")
+}
+
+// ── Enterprise Bank Verification Credit Management System ───────────────────────
+// Stores verification credit balance, usage, and expiry per tenant and service type.
+model VerificationCreditWallet {
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  serviceType      String    @default("BANK_VERIFICATION") // BANK_VERIFICATION, PAN, GST, AADHAAR, UAN, DL, PASSPORT...
+  totalCredits     Int       @default(0)
+  usedCredits      Int       @default(0)
+  remainingCredits Int       @default(0)
+  expiredCredits   Int       @default(0)
+  expiryDate       DateTime?
+  status           String    @default("Active") // Active / Suspended / Exhausted
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([companyId, serviceType])
+  @@index([companyId])
+  @@map("verification_credit_wallet")
+}
+
+// Immutable ledger of all credit allocations, additions, deductions, resets, and verifications.
+model VerificationCreditTransaction {
+  id               Int       @id @default(autoincrement())
+  transactionId    String    @unique // stable ledger tx ID (e.g. TX-CR-20260727-0001)
+  companyId        Int
+  employeeId       Int?
+  verificationId   String?   // reference to verification audit log or external ref
+  serviceType      String    @default("BANK_VERIFICATION")
+  transactionType  String    // Credit / Debit / Allocation / Reset / Expired / Addition / Deduction
+  credits          Int       // number of credits added or deducted
+  openingBalance   Int
+  closingBalance   Int
+  provider         String    @default("ZeniaHR Verification Gateway")
+  referenceId      String?
+  remarks          String?   @db.Text
+  createdBy        String?   // Super Admin or System
+  verifiedBy       String?   // Employee / HR who triggered verification
+  createdAt        DateTime  @default(now())
+
+  @@index([companyId])
+  @@index([transactionId])
+  @@index([createdAt])
+  @@map("verification_credit_transactions")
+}
+
+// Lightweight tenant verification settings for mode and provider selection.
+model VerificationSettings {
+  id                  Int      @id @default(autoincrement())
+  companyId           Int      @unique
+  verificationMode    String   @default("Manual") // Manual / API
+  provider            String   @default("ZeniaHR Verification Gateway")
+  status              String   @default("Connected") // Connected / Disconnected / Suspended
+  costPerVerification Int      @default(1)
+  // §12 — when on, payroll salary transfer requires a VERIFIED bank account.
+  // Off by default: turning it on is a deliberate tenant policy decision, never
+  // something a module upgrade imposes on existing payroll runs.
+  requireVerifiedBankForPayroll Boolean @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("verification_settings")
 }

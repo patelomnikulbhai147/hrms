@@ -214,8 +214,19 @@ export interface Employee {
   esic?: string;
 
   bankName?: string;
+  bankBranch?: string;
+  bankAddress?: string;
+  bankCity?: string;
+  bankDistrict?: string;
+  bankState?: string;
   accountNumber?: string;
   ifsc?: string;
+  micr?: string;
+  swift?: string;
+  accountHolderName?: string;
+  verificationStatus?: 'VERIFIED' | 'FAILED' | 'NETWORK_ERROR' | 'UNVERIFIED';
+  verificationReferenceId?: string;
+  verifiedAt?: string;
 
   presentAddress?: string;
   permanentAddress?: string;

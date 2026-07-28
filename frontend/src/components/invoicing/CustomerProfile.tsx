@@ -12,8 +12,10 @@ import { formatDate, formatDateTime } from '@/utils/formatDate';
 import { 
   Building2, MapPin, Mail, Phone, FileText, ArrowLeft, MoreHorizontal, Download, 
   Printer, TrendingUp, CreditCard, Clock, CheckCircle2, AlertTriangle, Receipt, 
-  Send, Maximize2, History, MessageSquare, Briefcase, Activity, Search
+  Send, Maximize2, History, MessageSquare, Briefcase, Activity, Search, Bell
 } from 'lucide-react';
+import { ui } from '@/components/ui/feedback';
+import { PaymentReminderCenterModal } from '@/components/invoicing/PaymentReminderCenterModal';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
@@ -34,6 +36,7 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTabState] = useState<'overview' | 'invoices' | 'payments' | 'products' | 'timeline' | 'info'>('overview');
+  const [remindId, setRemindId] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -162,7 +165,16 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
               <Button variant="outline" onClick={() => onEdit(customer.id)}>
                 Edit Customer
               </Button>
-              <Button variant="outline">
+              <Button variant="outline" icon={<Bell size={14} />} onClick={() => {
+                if (!invoices || invoices.length === 0) {
+                  ui.toast.error('No invoices exist for this customer yet.');
+                  return;
+                }
+                const overdue = invoices.find((i: any) => i.status === 'Overdue' || (i.balanceDue > 0 && new Date(i.dueDate) < new Date()));
+                const pending = invoices.find((i: any) => i.balanceDue > 0 && i.status !== 'Draft' && i.status !== 'Cancelled');
+                const target = overdue || pending || invoices[0];
+                setRemindId(target.id);
+              }}>
                 Send Reminder
               </Button>
               <Button variant="primary" className="bg-[#C77E52] hover:bg-[#b06f47] text-white" onClick={() => onGenerateInvoice(customer.id)}>
@@ -501,6 +513,21 @@ export const CustomerProfile: React.FC<Props> = ({ customerId, onBack, onEdit, o
         )}
 
       </div>
+
+      {remindId !== null && (
+        <PaymentReminderCenterModal
+          invoiceId={remindId}
+          onClose={() => setRemindId(null)}
+          onChanged={() => {
+            (api as any).invoicing.getCustomerProfile(customerId).then(setData).catch(() => {});
+          }}
+          onViewInvoice={() => {
+            const id = remindId;
+            setRemindId(null);
+            if (onSelectInvoice) onSelectInvoice(id);
+          }}
+        />
+      )}
     </div>
   );
 };

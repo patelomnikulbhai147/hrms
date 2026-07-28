@@ -22,6 +22,7 @@ import { PayrollComplianceEngine } from '@/components/settings/PayrollCompliance
 import { LabourCompliance } from '@/components/settings/LabourCompliance';
 import { GoogleMapsIntegration } from '@/components/settings/GoogleMapsIntegration';
 import { SecuritySettings } from '@/components/settings/SecuritySettings';
+import { BankVerificationSettings } from '@/components/settings/BankVerificationSettings';
 import { Scale } from 'lucide-react';
 import { ui } from '@/components/ui/feedback';
 
@@ -40,7 +41,19 @@ export const Settings: React.FC<SettingsProps> = ({
   onUpdateCompanies,
   onRefresh
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'payroll' | 'departments' | 'roles' | 'labour'>('payroll');
+  // A deep link may name the sub-tab (?tab=integrations), so a pointer from
+  // elsewhere in the product — e.g. "Open Settings" on the bank-verification
+  // notice — lands on the right tab instead of on Payroll. Unknown values fall
+  // back to the default, so a stale or hand-typed link can never render nothing.
+  const [activeSubTab, setActiveSubTab] = useState<'payroll' | 'departments' | 'roles' | 'labour' | 'integrations'>(() => {
+    const SUB_TABS = ['payroll', 'departments', 'roles', 'labour', 'integrations'] as const;
+    try {
+      const requested = new URLSearchParams(window.location.search).get('tab');
+      if (requested && (SUB_TABS as readonly string[]).includes(requested)) return requested as typeof SUB_TABS[number];
+    } catch { /* no URL access (SSR) — use the default */ }
+    return 'payroll';
+  });
+
   
   // Find current company context (kind-aware — resolves a branch workspace to
   // the branch, not the parent company it shares a numeric id with).
@@ -326,6 +339,7 @@ export const Settings: React.FC<SettingsProps> = ({
             <p className="text-xs text-gray-500 mt-0.5">Configure once for the whole installation. Every company uses these automatically.</p>
           </div>
           <GoogleMapsIntegration />
+          <BankVerificationSettings companyId={String(currentCompany.id || '1')} canEdit={true} companyName={currentCompany.name} role={role} />
           <SecuritySettings />
         </div>
       </div>
@@ -382,6 +396,17 @@ export const Settings: React.FC<SettingsProps> = ({
             Labour Compliance
           </button>
         )}
+        {(role === 'Company Head' || role === 'HR') && (
+          <button
+            onClick={() => setActiveSubTab('integrations')}
+            className={`px-4 py-2 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 ${
+              activeSubTab === 'integrations' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            <ShieldCheck size={13} />
+            Bank Verification Gateways
+          </button>
+        )}
       </div>
 
       {/* User Roles & Permissions — full width (its matrix needs the room) */}
@@ -404,8 +429,13 @@ export const Settings: React.FC<SettingsProps> = ({
         />
       )}
 
+      {/* Integrations & Bank Verification — full width */}
+      {activeSubTab === 'integrations' && (
+        <BankVerificationSettings companyId={String(currentCompany.id)} canEdit={isSuperOrHead || (role === 'HR' && canEdit)} companyName={currentCompany.name} role={role} />
+      )}
+
       {/* Layout panels */}
-      {activeSubTab !== 'roles' && activeSubTab !== 'labour' && (
+      {activeSubTab !== 'roles' && activeSubTab !== 'labour' && activeSubTab !== 'integrations' && (
       <div className="space-y-4">
 
           {/* TAB 1: Statutory Payroll Rules — the full compliance engine. Its own

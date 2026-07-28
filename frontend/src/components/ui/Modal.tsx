@@ -45,12 +45,28 @@ export const Modal: React.FC<ModalProps> = ({
   // ── FULL-PAGE variant ──────────────────────────────────────────────────────
   // Portals into <main> and covers it (absolute inset-0), hiding the page list
   // behind it while the sidebar + top nav (outside <main>) remain visible.
-  const mainEl = typeof document !== 'undefined' ? document.querySelector('main') : null;
+  //
+  // The target is resolved in a LAYOUT EFFECT, not during render. Querying the
+  // DOM while rendering can miss <main> entirely — on a deep link or hard
+  // refresh the child renders before the shell has committed — and the old code
+  // then silently fell back to rendering this overlay inline, where
+  // `absolute inset-0` resolves against whatever container it happened to land
+  // in and collapses into a clipped, compressed panel. Rendering nothing for
+  // that one frame is strictly better than rendering it wrong, and it is why
+  // the same screen looked full-page for some users and boxed-in for others.
+  const [mainEl, setMainEl] = React.useState<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    if (variant !== 'page' || !open) return;
+    setMainEl(document.querySelector('main'));
+  }, [variant, open]);
+
   useEffect(() => {
     if (variant !== 'page') return;
     const m = document.querySelector('main') as HTMLElement | null;
     if (!m) return;
     if (open) {
+      // Must be positioned BEFORE paint, or the absolutely-positioned overlay
+      // lays out against the wrong containing block on its first frame.
       m.style.position = m.style.position || 'relative';
       const prevOverflow = m.style.overflow;
       m.style.overflow = 'hidden';
@@ -116,7 +132,8 @@ export const Modal: React.FC<ModalProps> = ({
         )}
       </AnimatePresence>
     );
-    return mainEl ? createPortal(node, mainEl) : node;
+    // Never render inline: without <main> there is no correct place for it yet.
+    return mainEl ? createPortal(node, mainEl) : null;
   }
 
   // ── DIALOG variant ──────────────────────────────────────────────────────────

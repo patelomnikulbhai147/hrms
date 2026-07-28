@@ -136,6 +136,24 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [yearFilter] = useState(() => new Date().getFullYear());
   // Drives the Lock/Unlock Month button's loading state.
   const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
+  // §12 — whether this workspace requires a VERIFIED bank account before salary
+  // transfer. Off unless a Company Head has switched it on, so payroll behaves
+  // exactly as before for every tenant that has not opted in.
+  const [requireVerifiedBank, setRequireVerifiedBank] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res: any = await api.bank.payrollPolicy();
+        if (!cancelled) setRequireVerifiedBank(!!res?.data?.requireVerifiedBankForPayroll);
+      } catch {
+        // Policy unreadable → payroll is not gated. Failing open is deliberate:
+        // a settings lookup that times out must not stop payday.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Server-Side Pagination State
   const [page, setPage] = useState(() => Number(sessionStorage.getItem('payroll_emp_page')) || 1);
@@ -528,7 +546,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   // Bank Transfer Sheet — NEFT/RTGS style export of net payable per employee.
-  const handleExportBankSheet = () => {
+  const handleExportBankSheet = async () => {
     const cols: ExportColumn[] = [
       { header: 'Sr No', key: 'srNo', width: 8 },
       { header: 'Employee Name', key: 'employeeName', width: 26 },
@@ -536,6 +554,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       { header: 'Bank Name', key: 'bankName', width: 22 },
       { header: 'Account Number', key: 'accountNumber', width: 22 },
       { header: 'IFSC', key: 'ifsc', width: 16 },
+      { header: 'Bank Verified', key: 'bankVerified', width: 14 },
       { header: 'Net Amount (INR)', key: 'netSalary', width: 18 },
     ];
     const rows = [...scopedRecords]
@@ -549,9 +568,32 @@ export const Payroll: React.FC<PayrollProps> = ({
         bankName: emp.bankName || '',
         accountNumber: emp.accountNumber || '',
         ifsc: emp.ifsc || '',
+        bankVerified: emp.bankVerificationStatus === 'VERIFIED' ? 'Yes' : 'No',
         netSalary: r.netSalary || 0,
       };
     });
+
+    // §12 — when the workspace requires verified accounts, an unverified employee
+    // on the transfer sheet is called out BEFORE the file is produced. It is a
+    // warning that must be acknowledged, not a silent block: the person running
+    // payroll is the one who decides whether to proceed or fix the accounts first.
+    const unverified = rows.filter((row) => row.bankVerified !== 'Yes');
+    if (requireVerifiedBank && unverified.length > 0) {
+      const names = unverified.slice(0, 8).map((row) => `• ${row.employeeName}${row.employeeId ? ` (${row.employeeId})` : ''}`).join('\n');
+      const more = unverified.length > 8 ? `\n…and ${unverified.length - 8} more.` : '';
+      const proceed = await ui.confirm({
+        title: 'Unverified bank accounts in this transfer',
+        message:
+          `This workspace requires a verified bank account before salary transfer. ` +
+          `${unverified.length} of ${rows.length} employee${rows.length === 1 ? '' : 's'} on this sheet ${unverified.length === 1 ? 'has' : 'have'} not been verified:\n\n${names}${more}\n\n` +
+          `Export the transfer sheet anyway?`,
+        confirmText: 'Export anyway',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      });
+      if (!proceed) return;
+    }
+
     exportRowsToExcel(`Bank_Transfer_${monthFilter}`, cols, rows, `Bank Transfer ${monthFilter}`);
   };
 

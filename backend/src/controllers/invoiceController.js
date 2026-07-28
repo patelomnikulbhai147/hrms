@@ -486,3 +486,194 @@ exports.logAction = async (req, res) => {
     res.json({ ok: true });
   } catch (e) { console.error('invoice.logAction', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };
+
+exports.getReminderCenter = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const payments = await prisma.invoicePayment.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } });
+    const reminders = await prisma.invoiceReminder.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } }).catch(() => []);
+    const audits = await prisma.invoiceAudit.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } });
+    const settings = await prisma.invoiceSettings.findUnique({ where: { companyId: invoice.companyId } }).catch(() => null);
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true, phone: true, contactEmail: true, adminEmail: true } }).catch(() => null);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let autoStatus = invoice.status;
+    let overdueDays = 0;
+    if (!['Cancelled', 'Closed', 'Paid'].includes(autoStatus)) {
+      if (invoice.balanceDue <= 0) {
+        autoStatus = 'Paid';
+      } else if (invoice.dueDate && invoice.dueDate < todayStr) {
+        autoStatus = 'Overdue';
+        const dToday = new Date(todayStr);
+        const dDue = new Date(invoice.dueDate);
+        overdueDays = Math.max(0, Math.floor((dToday - dDue) / 86400000));
+      } else if (invoice.amountPaid > 0) {
+        autoStatus = 'Partially Paid';
+      } else if (['Sent', 'Viewed'].includes(invoice.status)) {
+        autoStatus = 'Pending Payment';
+      }
+    }
+
+    const progress = {
+      total: invoice.grandTotal || 0,
+      paid: invoice.amountPaid || 0,
+      remaining: invoice.balanceDue || 0,
+      percent: Math.min(100, Math.round(((invoice.amountPaid || 0) / (invoice.grandTotal || 1)) * 100))
+    };
+
+    const recentReminder = reminders.length > 0 ? reminders[0] : null;
+    let isRateLimited = false;
+    if (recentReminder && recentReminder.createdAt) {
+      const diffMins = (Date.now() - new Date(recentReminder.createdAt).getTime()) / 60000;
+      if (diffMins < 10) isRateLimited = true;
+    }
+
+    res.json({
+      invoice: { ...invoice, items },
+      payments,
+      reminders,
+      audits,
+      settings: settings || {},
+      companyName: company?.name || 'Company',
+      companyContact: { phone: company?.phone, email: company?.email },
+      autoStatus,
+      overdueDays,
+      progress,
+      isRateLimited
+    });
+  } catch (e) { console.error('invoice.getReminderCenter', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.sendReminder = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to send reminders.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    if (invoice.balanceDue <= 0 && invoice.status !== 'Draft') {
+      return res.status(400).json({ error: 'No reminder allowed for fully paid invoices.' });
+    }
+
+    const channels = Array.isArray(req.body.channels) ? req.body.channels : ['Email'];
+    const message = String(req.body.message || '').trim();
+    const subject = String(req.body.subject || `Payment Reminder - Invoice ${invoice.invoiceNumber}`).trim();
+    const attachments = Array.isArray(req.body.attachments) ? req.body.attachments : ['Attach Invoice PDF'];
+    const toEmail = String(req.body.toEmail || invoice.billToEmail || '').trim();
+    const toPhone = String(req.body.toPhone || invoice.billToPhone || '').trim();
+    const force = Boolean(req.body.force);
+
+    if (!force) {
+      const recent = await prisma.invoiceReminder.findFirst({ where: { invoiceId: id }, orderBy: { id: 'desc' } }).catch(() => null);
+      if (recent && recent.createdAt) {
+        const diffMins = (Date.now() - new Date(recent.createdAt).getTime()) / 60000;
+        if (diffMins < 10) {
+          return res.status(429).json({ error: 'A reminder was sent recently (less than 10 minutes ago). Confirm to resend.', requiresConfirmation: true });
+        }
+      }
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true } }).catch(() => null);
+    const actor = actorOf(req);
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    const sentResults = [];
+
+    for (const channel of channels) {
+      let recipient = '';
+      let status = 'Delivered';
+      if (channel === 'Email') {
+        if (!toEmail) return res.status(400).json({ error: 'Customer email address is required for Email reminder.' });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) return res.status(400).json({ error: `"${toEmail}" is not a valid email address.` });
+        recipient = toEmail;
+        if (req.body.html) {
+          try {
+            const { emailInvoicePdf } = require('../services/invoicePdfMailer');
+            const mailRes = await emailInvoicePdf({
+              to: toEmail, subject, message, html: req.body.html, invoice, companyName: company?.name
+            });
+            if (mailRes.error && !mailRes.delivered) status = 'Failed';
+          } catch (err) { status = 'Failed'; }
+        }
+      } else if (channel === 'WhatsApp' || channel === 'SMS') {
+        if (!toPhone) return res.status(400).json({ error: `Customer mobile number is required for ${channel} reminder.` });
+        recipient = toPhone;
+      } else {
+        recipient = invoice.billToName;
+      }
+
+      const rem = await prisma.invoiceReminder.create({
+        data: {
+          companyId: invoice.companyId,
+          invoiceId: id,
+          channel,
+          sentBy: actor,
+          status,
+          recipient,
+          message,
+          attachments: JSON.stringify(attachments),
+          ip
+        }
+      }).catch(() => null);
+      if (rem) sentResults.push(rem);
+    }
+
+    audit(invoice.companyId, id, 'REMINDER_SENT', actor, `Payment reminder sent via ${channels.join(', ')}`);
+
+    if (['Draft', 'Generated'].includes(invoice.status)) {
+      await prisma.invoice.update({ where: { id }, data: { status: 'Sent' } }).catch(() => {});
+    }
+
+    res.json({ ok: true, sentCount: sentResults.length, reminders: sentResults });
+  } catch (e) { console.error('invoice.sendReminder', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.rescheduleDueDate = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to reschedule due date.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const newDate = String(req.body.dueDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return res.status(400).json({ error: 'Invalid due date format (YYYY-MM-DD required).' });
+
+    await prisma.invoice.update({ where: { id }, data: { dueDate: newDate } });
+    audit(invoice.companyId, id, 'DUE_DATE_RESCHEDULED', actorOf(req), `Due date rescheduled from ${invoice.dueDate || 'none'} to ${newDate}`);
+
+    res.json({ ok: true, dueDate: newDate });
+  } catch (e) { console.error('invoice.rescheduleDueDate', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.sendThankYou = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const toEmail = String(req.body.toEmail || invoice.billToEmail || '').trim();
+    if (!toEmail) return res.status(400).json({ error: 'No email address found to send thank you note.' });
+
+    const subject = `Thank You for Your Payment - Invoice ${invoice.invoiceNumber}`;
+    const message = req.body.message || `Dear ${invoice.billToName},\n\nWe have received your payment in full for Invoice ${invoice.invoiceNumber}.\n\nThank you for your business!\n\nRegards,\nYour Company`;
+
+    if (req.body.html) {
+      try {
+        const { emailInvoicePdf } = require('../services/invoicePdfMailer');
+        await emailInvoicePdf({ to: toEmail, subject, message, html: req.body.html, invoice });
+      } catch (e) {}
+    }
+
+    audit(invoice.companyId, id, 'THANK_YOU_SENT', actorOf(req), `Thank you note sent to ${toEmail}`);
+    res.json({ ok: true });
+  } catch (e) { console.error('invoice.sendThankYou', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};

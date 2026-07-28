@@ -338,3 +338,6 @@ exports.sendNow = async (req, res) => {
     res.json(out);
   } catch (e) { console.error('customReport.sendNow', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };
+
+exports.ensureTable = ensureTable;
+

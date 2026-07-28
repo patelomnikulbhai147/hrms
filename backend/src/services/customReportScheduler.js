@@ -112,6 +112,10 @@ async function sendReportNow(report, { recipients, format = 'excel', role } = {}
 
 async function loadScheduledReports() {
   try {
+    try {
+      const { ensureTable } = require('../controllers/customReportController');
+      if (ensureTable) await ensureTable();
+    } catch (_) {}
     const rows = await prisma.$queryRawUnsafe(`SELECT * FROM custom_reports WHERE schedule IS NOT NULL`);
     return rows.map((r) => ({ ...r, config: parseJson(r.config, {}), schedule: parseJson(r.schedule, null) }))
       .filter((r) => r.schedule && r.schedule.enabled);

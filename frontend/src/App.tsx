@@ -26,6 +26,7 @@ const CustomReportBuilder = React.lazy(() => import('@/pages/CustomReportBuilder
 const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionManagement').then(m => ({ default: m.SubscriptionManagement })));
+const SuperAdminVerificationCredits = React.lazy(() => import('@/pages/SuperAdminVerificationCredits').then(m => ({ default: m.SuperAdminVerificationCredits })));
 const SubscriptionManage = React.lazy(() => import('@/pages/SubscriptionManage').then(m => ({ default: m.SubscriptionManage })));
 const SubscriptionInvoicePage = React.lazy(() => import('@/pages/SubscriptionInvoicePage').then(m => ({ default: m.SubscriptionInvoicePage })));
 const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
@@ -92,6 +93,7 @@ const pageTitles: Record<PageId, string> = {
   'custom-report-builder': 'Custom Report Builder',
   settings: 'Settings',
   billing: 'Subscription Management',
+  'verification-credits': 'Bank Verification Credits',
   'subscription-manage': 'Manage Subscription',
   plans: 'Subscription Plans',
   users: 'User Management',
@@ -110,13 +112,19 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
-  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'verification-credits', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'company-edit', 'subscription-manage', 'subscription-invoice', 'communication', 'notifications', 'select-workspace',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
   return (PAGE_IDS as readonly string[]).includes(seg) ? (seg as PageId) : null;
 };
+
+// Shown when the platform admin's audited Support Session is no longer honoured
+// by the server. One constant so the reconcile path and the live 403 path can
+// never drift into telling the user two different stories.
+const SUPPORT_SESSION_ENDED_MSG =
+  'Your audited Support Session has ended, so company HR data (employees, payroll, attendance, documents) is no longer accessible. Start a new Support Session from Companies → Overview to assist this company again.';
 
 const defaultUsers: UserAccount[] = [
   { id: 'u1', name: 'Super Admin', email: 'admin@platform.in', username: 'superadmin', passwordStr: 'admin123', role: 'Super Admin', companyId: '', status: 'Active', avatar: 'SA' }
@@ -563,6 +571,11 @@ export default function App() {
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Explains an ended/expired Support Session. Kept OUT of loadError because
+  // dropping the session re-runs hydrateAll, and that pass — now legitimately
+  // loading nothing — would immediately clear the very notice that tells the
+  // platform admin why the workspace emptied.
+  const [supportNotice, setSupportNotice] = useState<string | null>(null);
   // Support Session (a Super Admin assisting one company). Declared here — above
   // hydrateAll — because the hydrate logic reads it to skip employee-PII loads for
   // a non-masquerading Super Admin (multi-tenant privacy).
@@ -574,20 +587,49 @@ export default function App() {
   const hydrateAll = async () => {
     setIsHydrating(true);
     const failed: string[] = [];
+    // Datasets the SERVER refused because the audited Support Session is gone.
+    // Tracked apart from `failed`: a refusal is an authorization decision, never a
+    // connection/backend fault, and must never be reported as one.
+    const denied: string[] = [];
     try {
       const catchApi = (apiCall: Promise<any>, name: string) =>
         apiCall.catch((e: any) => {
           if (e.status === 401 || e.message?.includes('Not authorized')) throw e;
+          if (e.code === 'SUPPORT_SESSION_REQUIRED') {
+            denied.push(name);
+            return null;
+          }
           console.warn(`[Hydration] API error (${name}):`, e);
           failed.push(name);
           return null;
         });
 
+      const storedRole = (() => {
+        try { return JSON.parse(authStorage.get('hrms_profile') || '{}').role; } catch { return null; }
+      })();
+      const isPlatformAdmin = storedRole === 'Super Admin';
+
+      // A Support Session is owned by the SERVER (it carries a hard expiry and can
+      // be ended from another tab); `hrms_is_masquerading` is only this browser's
+      // copy of that fact. Reconcile before loading anything, or an expired session
+      // leaves the tab masquerading forever — firing employee-PII requests that all
+      // 403 and surface as a bogus "connection error" over an empty workspace.
+      let sessionActive = isMasquerading;
+      if (isPlatformAdmin && isMasquerading) {
+        // undefined = the check itself failed (offline/500) → keep the current
+        // state rather than dropping a legitimately open session.
+        const active = await api.supportSessions.active().catch(() => undefined);
+        if (active === null) {
+          sessionActive = false;
+          endExpiredSupportSession();
+        }
+      }
+
       // Multi-tenant privacy: the platform admin (Super Admin) must NOT bulk-load
       // any company's employee PII. Those datasets load ONLY inside an audited
-      // Support Session (when isMasquerading is true). The backend enforces this
-      // too (403 without a session) — this simply avoids needless 403s/banners.
-      const skipPII = authProfile?.role === 'Super Admin' && !isMasquerading;
+      // Support Session. The backend enforces this too (403 without a session) —
+      // this simply avoids needless 403s/banners.
+      const skipPII = isPlatformAdmin && !sessionActive;
       const skip = () => Promise.resolve(null);
 
       const [fetchedCompanies, fetchedBranches, fetchedEmployees, fetchedUsers, fetchedPayroll, fetchedDocuments, fetchedLeaves, fetchedAttendance] = await Promise.all([
@@ -627,21 +669,19 @@ export default function App() {
       if (fetchedAttendance) setAttendance(fetchedAttendance);
 
       // Surface critical failures instead of silently rendering empty modules.
+      // Order matters: a privacy refusal is diagnosed FIRST, so an ended Support
+      // Session is never mislabelled as a backend outage.
       const critical = failed.filter(n => n === 'companies' || n === 'employees');
       setLoadError(
         critical.length
           ? `Couldn't load ${critical.join(' & ')} from the server. The records still exist — this is a connection/backend error, not deleted data.`
           : null
       );
+      if (denied.length) setSupportNotice(SUPPORT_SESSION_ENDED_MSG);
 
       // Live Super Admin KPI counts straight from MySQL.
       // Only fetch for Super Admin — other roles are denied by the backend.
-      // Read role directly from localStorage so we don't reference authProfile
-      // before it is declared (authProfile useMemo is defined further below).
-      const storedRole = (() => {
-        try { return JSON.parse(authStorage.get('hrms_profile') || '{}').role; } catch { return null; }
-      })();
-      if (storedRole === 'Super Admin') {
+      if (isPlatformAdmin) {
         try {
           const stats = await api.statistics.getSuperAdmin();
           setSuperAdminStats(stats);
@@ -899,6 +939,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     localStorage.setItem('hrms_current_page', 'dashboard');
     setIsMasquerading(false);
     localStorage.setItem('hrms_is_masquerading', 'false');
+    setSupportNotice(null);
   };
 
   // Single exit path for ending a session — manual logout, inactivity timeout,
@@ -927,6 +968,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
 
     setStoredAuthProfile(null);
     setIsMasquerading(false);
+    setSupportNotice(null);
     setSessionMessage(
       reason === 'inactivity' ? 'Your session has expired due to inactivity. Please login again.'
         : reason === 'expired' ? 'Your session has expired. Please login again.'
@@ -1217,12 +1259,47 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     setActiveCompanyId(wsId);
     localStorage.setItem('hrms_active_company_id', wsId);
     persistWorkspaceKind(wsId, kind);
+    setSupportNotice(null); // a fresh session supersedes any "session ended" notice
     setIsMasquerading(true);
     localStorage.setItem('hrms_is_masquerading', 'true');
     setRole('Company Head');
     setCurrentPage(targetPage);
     localStorage.setItem('hrms_current_page', targetPage);
   };
+
+  // A Support Session that the SERVER no longer honours (hard expiry, or ended
+  // from another tab). Unlike handleExitMasquerade this calls no end-session API —
+  // there is nothing left to end — and it leaves the user on the platform view
+  // instead of a Company Head shell that can't load a single record. Idempotent:
+  // a burst of parallel 403s must collapse into one exit.
+  const endExpiredSupportSession = () => {
+    if (localStorage.getItem('hrms_is_masquerading') !== 'true') return;
+    localStorage.setItem('hrms_is_masquerading', 'false');
+    setIsMasquerading(false);
+    setRole('Super Admin');
+    setActiveCompanyId('1');
+    localStorage.setItem('hrms_active_company_id', '1');
+    localStorage.setItem('hrms_active_workspace_kind', 'company');
+    setActiveWorkspaceKind('company');
+    setCurrentPage('companies');
+    localStorage.setItem('hrms_current_page', 'companies');
+    // Purge the assisted company's data from memory — the session that authorised
+    // reading it is over.
+    setEmployees([]);
+    setPayroll([]);
+    setDocuments([]);
+    setLeaves([]);
+    setAttendance([]);
+    setSupportNotice(SUPPORT_SESSION_ENDED_MSG);
+  };
+
+  // Any screen (not just hydration) can hit the privacy gate — apiClient raises
+  // this the moment the backend answers SUPPORT_SESSION_REQUIRED.
+  useEffect(() => {
+    const onExpired = () => endExpiredSupportSession();
+    window.addEventListener('hrms:support-session-expired', onExpired);
+    return () => window.removeEventListener('hrms:support-session-expired', onExpired);
+  }, []);
 
   const handleExitMasquerade = () => {
     // End (and audit the close of) the backend Support Session. Fire-and-forget —
@@ -1585,6 +1662,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         // Super Admin Subscription Management (redesigned) — replaces the old
         // Billing / SaaS Subscriptions page.
         return <SubscriptionManagement onManage={handleManageSubscription} onOpenInvoice={handleOpenInvoice} />;
+      case 'verification-credits':
+        if (permissionRole !== 'Super Admin') {
+          return (
+            <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+              <ShieldAlert className="w-12 h-12 mb-4" style={{ color: '#dc2626' }} />
+              <h2 className="text-2xl font-bold mb-2 text-slate-900">Access Denied</h2>
+              <p className="max-w-md text-slate-500">Bank Verification Credit Management is available to Super Admin accounts only.</p>
+            </div>
+          );
+        }
+        return <SuperAdminVerificationCredits />;
       case 'subscription-invoice':
         // Dedicated full-page Subscription Invoice (never a modal/popup).
         if (permissionRole !== 'Super Admin') {
@@ -1892,6 +1980,16 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             {isHydrating ? 'Retrying…' : 'Retry'}
           </button>
           <button onClick={() => setLoadError(null)} className="px-2 font-bold hover:text-rose-200" title="Dismiss">✕</button>
+        </div>
+      )}
+
+      {/* Not an error — an authorization boundary working as designed. Amber, and
+          with no Retry, because retrying can never help: only a NEW audited
+          Support Session restores access. */}
+      {!loadError && supportNotice && (
+        <div className="fixed top-0 inset-x-0 z-[60] bg-amber-500 text-white text-xs sm:text-sm font-semibold px-4 py-2 flex items-center justify-center gap-3 shadow-lg">
+          <span>🔒 {supportNotice}</span>
+          <button onClick={() => setSupportNotice(null)} className="px-2 font-bold hover:text-amber-100" title="Dismiss">✕</button>
         </div>
       )}
 

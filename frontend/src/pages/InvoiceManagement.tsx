@@ -19,6 +19,7 @@ import { useIssuerCompany } from '@/components/invoicing/invoiceIdentity';
 // One definition of each master form, shared with the Create-Invoice pickers.
 import { CustomerModal, ProductModal } from '@/components/invoicing/MasterModals';
 import { CustomerProfile } from '@/components/invoicing/CustomerProfile';
+import { PaymentReminderCenterModal } from '@/components/invoicing/PaymentReminderCenterModal';
 
 // The renderer decision now lives in invoiceRender.ts so the Template Gallery
 // preview, the Create-Invoice preview and the print/PDF path are provably ONE
@@ -37,7 +38,7 @@ import {
   LayoutDashboard, FilePlus2, ReceiptText, Users, Package, Wallet, Settings as SettingsIcon,
   Plus, Trash2, Search, Eye, Edit, Copy, Printer, IndianRupee, X, Save, RefreshCw, Ban,
   CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette, Maximize2,
-  ZoomIn, ZoomOut, Download,
+  ZoomIn, ZoomOut, Download, Bell,
 } from 'lucide-react';
 
 interface Props { role: Role; activeCompanyId?: string; companies?: any[]; }
@@ -350,6 +351,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const [transactionType, setTransactionType] = useState('Collect Payment');
   const [view, setView] = useState<any>(null); // invoice detail (with items/payments)
   const [payFor, setPayFor] = useState<any>(null); // record-payment target
+  const [remindId, setRemindId] = useState<number | null>(null); // reminder center target
   const [design, setDesign] = useState<InvoiceDesign>(() => resolveDesign(null));
   const [settings, setSettings] = useState<any>(null); // raw Template Settings (logo/GSTIN/bank/signature/footer)
   const [activeLayout, setActiveLayout] = useState<InvoiceLayout | null>(null);
@@ -501,6 +503,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-0.5">
                       <IconBtn title="View" onClick={() => openView(i.id)}><Eye size={14} /></IconBtn>
+                      <IconBtn title="Payment Reminder Center" tone="indigo" onClick={() => setRemindId(i.id)}><Bell size={14} /></IconBtn>
                       <IconBtn title="Print / PDF" onClick={() => print(i)}><Printer size={14} /></IconBtn>
                       <IconBtn title="Email to customer" tone="emerald" onClick={() => emailInvoice(i)}><Send size={14} /></IconBtn>
                       {canEdit && i.balanceDue > 0 && i.status !== 'Cancelled' && <IconBtn title="Record Payment" tone="emerald" onClick={() => setPayFor(i)}><IndianRupee size={14} /></IconBtn>}
@@ -517,8 +520,9 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
         </div>
       </div>
 
-      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} settings={settings} activeLayout={activeLayout} onEmail={() => emailInvoice(view)} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
+      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} settings={settings} activeLayout={activeLayout} onRemind={() => setRemindId(view.id)} onEmail={() => emailInvoice(view)} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
       {payFor && <RecordPaymentModal invoice={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); if (view) openView(view.id); }} />}
+      {remindId !== null && <PaymentReminderCenterModal invoiceId={remindId} onClose={() => setRemindId(null)} onChanged={load} onViewInvoice={() => { const id = remindId; setRemindId(null); openView(id); }} />}
     </div>
   );
 };
@@ -529,7 +533,7 @@ const IconBtn: React.FC<{ title: string; tone?: string; onClick: (e?: any) => vo
 };
 
 // ── Invoice detail modal ──────────────────────────────────────────────────────
-const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; settings?: any; activeLayout?: InvoiceLayout | null; onEmail?: () => void; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, settings, activeLayout, onEmail, onClose, onPay, onChanged }) => {
+const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; settings?: any; activeLayout?: InvoiceLayout | null; onRemind?: () => void; onEmail?: () => void; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, settings, activeLayout, onRemind, onEmail, onClose, onPay, onChanged }) => {
   const intra = invoice.cgst > 0;
   return (
     <Modal open onClose={onClose} title={`${invoice.invoiceNumber}`} size="lg"
@@ -539,6 +543,7 @@ const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolea
             .then(() => api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}))
             .catch((e) => ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')));
         }}>Print / PDF</Button>
+        {onRemind && <Button variant="outline" icon={<Bell size={14} />} onClick={onRemind} className="border-brand-300 text-brand-700 hover:bg-brand-50 font-bold">Send Reminder</Button>}
         {onEmail && <Button variant="outline" icon={<Send size={14} />} onClick={onEmail}>Email</Button>}
         {canEdit && invoice.balanceDue > 0 && invoice.status !== 'Cancelled' && <Button icon={<IndianRupee size={14} />} onClick={onPay}>Record Payment</Button>}
         <Button variant="ghost" onClick={onClose}>Close</Button>

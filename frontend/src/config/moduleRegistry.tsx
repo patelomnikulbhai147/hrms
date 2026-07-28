@@ -22,13 +22,10 @@ import type { AppModules } from '@/pages/Login';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
+  | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'verification-credits' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
   | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
-  // Dedicated full-page Subscription Invoice (/subscription-invoice/:invoiceId).
-  // Super-Admin billing route — never rendered as a modal.
   | 'subscription-invoice'
-  // Company-facing View Plans / upgrade screen (not a sidebar/matrix module).
   | 'plans';
 
 export interface ModuleRegistryEntry {
@@ -57,7 +54,7 @@ export interface ModuleRegistryEntry {
   platformOnly?: boolean;
   /**
    * When true, the module is NOT rendered as its own sidebar item. Used for
-   * modules that have been folded into a parent sidebar entry but must remain a
+   * modules that have been folded into a parent sidebar item but must remain a
    * permission-matrix row so their access is still governed independently
    * (e.g. Loans & Compliance now live under the "Finance & Compliance" item).
    */
@@ -85,6 +82,7 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: true },
   { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'], permission: 'companies', inMatrix: true, platformOnly: true },
   { id: 'billing', label: 'Subscription Management', icon: <CreditCard size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: true, platformOnly: true },
+  { id: 'verification-credits', label: 'Bank Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: false, platformOnly: true },
   { id: 'employees', label: 'Employees', icon: <UsersIcon size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'employees', inMatrix: true },
   // Employee Cards is a sub-feature of Employees — it is governed by the
   // `employees` permission everywhere in the app, so it shares that key here.

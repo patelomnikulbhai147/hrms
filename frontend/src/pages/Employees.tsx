@@ -7,7 +7,7 @@ import {
   Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
   Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle, Trash2,
-  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2, Printer, ArrowLeft
+  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2, Printer, ArrowLeft, ChevronLeft
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -45,6 +45,7 @@ import { byEmployeeCode } from '@/utils/employeeSort';
 import { isActiveEmployee, isOffboarded, isRecordLocked, LOCKED_RECORD_MESSAGE } from '@/utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '@/utils/idFormat';
 import { BankDetails } from '@/components/employee/BankDetails';
+import { EmployeeBankVerificationPanel } from '@/components/bank/EmployeeBankVerificationPanel';
 import { BonusConfigSection } from '@/components/employee/BonusConfigSection';
 import { MinimumWageAdvisory } from '@/components/employee/MinimumWageAdvisory';
 import { usePermissions } from '@/context/PermissionContext';
@@ -263,8 +264,64 @@ export const Employees: React.FC<EmployeesProps> = ({
     } catch { /* ignore — list stays as-is */ }
   };
 
-  // Drawer & Modals state
+  // Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
+
+  // ── Employee Profile = a real PAGE at /employees/:id ────────────────────────
+  // It is never a drawer, modal or overlay: it renders in the normal document
+  // flow in place of the list (below), so it always gets the full content width
+  // and the page's own scrollbar. The URL carries the employee id, which is what
+  // makes Back, refresh and link-sharing work; every entry point in the app goes
+  // through openProfile() so there is exactly one behaviour everywhere.
+  const profilePushedRef = useRef(false);
+  const readProfileIdFromUrl = () => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    return seg[0] === 'employees' && seg[1] ? decodeURIComponent(seg[1]) : null;
+  };
+
+  const openProfile = (emp: Employee, tab?: string) => {
+    setViewEmp(emp);
+    if (tab) setActiveTab(tab as any);
+    if (readProfileIdFromUrl() !== String(emp.id)) {
+      // pushState (not replace) so Back returns to the list, as any page would.
+      window.history.pushState({ page: 'employees', employeeId: String(emp.id) }, '', `/employees/${encodeURIComponent(String(emp.id))}`);
+      profilePushedRef.current = true;
+    }
+  };
+
+  const closeProfile = () => {
+    setViewEmp(null);
+    if (!readProfileIdFromUrl()) return;
+    if (profilePushedRef.current) {
+      profilePushedRef.current = false;
+      window.history.back();          // consumes the entry we added
+    } else {
+      // Arrived by deep link / refresh — there is no entry of ours to pop, so
+      // going Back would leave the app entirely.
+      window.history.replaceState({ page: 'employees' }, '', '/employees');
+    }
+  };
+
+  // Back / Forward: the profile follows the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const id = readProfileIdFromUrl();
+      if (!id) { profilePushedRef.current = false; setViewEmp(null); return; }
+      const target = employees.find(e => String(e.id) === String(id));
+      if (target) setViewEmp(target);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [employees]);
+
+  // Deep link / hard refresh on /employees/:id — open once the list has loaded.
+  useEffect(() => {
+    const id = readProfileIdFromUrl();
+    if (!id || viewEmp) return;
+    const target = employees.find(e => String(e.id) === String(id));
+    if (target) setViewEmp(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
   // True when the profile currently open belongs to a PREVIOUS employee whose
   // record is locked for this user. Every write affordance inside the profile
   // (bonus, document upload/replace) is gated on this in addition to `canEdit`;
@@ -276,12 +333,13 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Deep-link from Employee Cards → "View Profile". Opens the real profile modal
   // once the employee list has loaded, then clears the request so closing the
-  // modal does not immediately reopen it.
+  // page does not immediately reopen it. Goes through openProfile so a deep link
+  // from another module lands on the same URL as a click in the list.
   useEffect(() => {
     if (!focusEmployeeId) return;
     const target = employees.find(e => String(e.id) === String(focusEmployeeId));
     if (!target) return;
-    setViewEmp(target);
+    openProfile(target);
     onFocusHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEmployeeId, employees]);
@@ -1034,7 +1092,7 @@ export const Employees: React.FC<EmployeesProps> = ({
     setActiveTab('personal');
     setAddStepsSaved([]);          // re-onboarding walks the same gated steps
     setReOnboardSource(emp);
-    setViewEmp(null);
+    closeProfile();
     setAddOpen(true);
   };
 
@@ -1809,6 +1867,21 @@ export const Employees: React.FC<EmployeesProps> = ({
         : await api.employees.create(newEmp);
       onUpdateEmployees([savedEmp, ...employees]);
 
+      // Step 1b — file the bank verification against the employee that now exists.
+      // The verification ran before this row did, so its record was written with no
+      // employee id; linking it here is what makes the employee's verification
+      // history findable. Linkage only — the verification result is not re-run and
+      // no credit is charged. A failure here costs nothing but the link, so it must
+      // never fail the registration that already succeeded.
+      const verificationRef = (form as any).verificationReferenceId;
+      if (verificationRef && savedEmp?.id) {
+        try {
+          await api.bank.linkVerification({ referenceId: verificationRef, employeeId: savedEmp.id });
+        } catch (linkErr) {
+          console.warn('[Employees] Could not link the bank verification record:', linkErr);
+        }
+      }
+
       // Step 2 — save the staged nominees together, in a single transaction (all-or-none).
       let nomineeNote = '';
       if (wizardNominees.length) {
@@ -1827,8 +1900,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       );
       // Open the profile on the Nominees tab so the saved nominees are visible and
       // any remaining ones can be completed.
-      setActiveTab('nominees');
-      setViewEmp(savedEmp);
+      openProfile(savedEmp, 'nominees');
       setWizardNominees([]);
       // Land on Active: the person now lives there, and leaving the user on the
       // Previous tab would make the re-onboarding look like it did nothing.
@@ -2447,6 +2519,11 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   return (
     <div className="space-y-3 font-sans text-left">
+      {/* Employee Management list. Hidden — not unmounted — while the profile
+          page is open, so list state (filters, paging, scroll) survives the trip
+          and Back returns you exactly where you were. Dialog-variant modals
+          nested here still portal to <body>, so none of them are affected. */}
+      <div className={viewEmp ? 'hidden' : 'space-y-3'}>
       {/* Compact single-row enterprise toolbar: title + counters + actions all on
           one line on desktop; wraps only on tablet/mobile. */}
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -2752,7 +2829,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * limit + idx + 1}</span></Td>
                     <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
                     <Td className="px-2 py-1">
-                      <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
+                      <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => openProfile(emp)}>
                         <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 ring-1 ring-slate-200 shrink-0">
                           {emp.avatar || 'EM'}
                         </div>
@@ -2770,7 +2847,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Td className="px-2 py-1 w-24">
                       <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                         <button
-                          onClick={() => setViewEmp(emp)}
+                          onClick={() => openProfile(emp)}
                           className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
                           title="View Master File"
                         >
@@ -2802,7 +2879,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                         {isOffboarded(emp.status) && (
                           <>
                             <button
-                              onClick={() => { setViewEmp(emp); setActiveTab('documents'); }}
+                              onClick={() => openProfile(emp, 'documents')}
                               className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
                               title="View / Download Documents"
                             >
@@ -3105,42 +3182,57 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
-      {/* View Master Drawer/Modal */}
-      {/* ── Full-page Employee Profile (replaces the old popup) ── */}
-      <Modal
-        open={!!viewEmp}
-        onClose={() => setViewEmp(null)}
-        variant="page"
-        title="Employee Profile"
-        subtitle={viewEmp ? `${viewEmp.name} · ${viewEmp.employeeId || '—'}` : undefined}
-        breadcrumbs={[
-          { label: 'Employee Management', onClick: () => setViewEmp(null) },
-          { label: 'Profile' },
-          { label: viewEmp?.name || 'Employee' },
-        ]}
-        context={currentComp?.name || undefined}
-        footer={viewEmp && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setViewEmp(null)}>Back</Button>
-            {/* A locked record offers Re-Onboard where an active one offers Edit —
-                the two are mutually exclusive by design. */}
-            {isOffboarded(viewEmp.status) ? (
-              canCreate && (
-                <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => handleStartReOnboard(viewEmp)}>Re-Onboard Employee</Button>
-              )
-            ) : (
-              canEdit && (
-                <Button size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Employee</Button>
-              )
-            )}
-            {isOffboarded(viewEmp.status) && role === 'Super Admin' && (
-              <Button variant="outline" size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit (Super Admin)</Button>
-            )}
-            <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={() => printEmployeeProfile(viewEmp, currentComp?.name || 'Company')}>Print Profile</Button>
-            <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={() => downloadEmployeeProfilePdf(viewEmp, currentComp?.name || 'Company')}>Download PDF</Button>
+      </div>
+      {/* ── EMPLOYEE PROFILE PAGE ───────────────────────────────────────────────
+          A page, not an overlay. It renders in the normal flow at /employees/:id,
+          takes the full content width, and scrolls with the page — there is no
+          portal, no absolute/fixed positioning and no nested scroll region, so it
+          cannot be clipped or compressed by whatever container it happens to sit
+          in. The header/action bar below replicate what the old page-variant
+          Modal chrome provided; the profile body itself is unchanged. */}
+      {viewEmp && (
+        <section className="space-y-3" aria-label="Employee Profile">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+            <div className="px-4 pt-3 pb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 flex-wrap">
+              <button onClick={closeProfile} className="hover:text-brand-600 transition-colors">Employee Management</button>
+              <ChevronRight size={11} className="text-slate-300" />
+              <span>Profile</span>
+              <ChevronRight size={11} className="text-slate-300" />
+              <span className="text-slate-700">{viewEmp.name}</span>
+            </div>
+            <div className="px-4 pb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button onClick={closeProfile} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-brand-600 transition shrink-0">
+                  <ChevronLeft size={16} /> Back
+                </button>
+                <div className="border-l border-slate-200 pl-3">
+                  <h2 className="text-base font-extrabold text-slate-800 leading-tight">Employee Profile</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{viewEmp.name} · {viewEmp.employeeId || '—'}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {currentComp?.name && (
+                  <span className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">{currentComp.name}</span>
+                )}
+                {/* A locked record offers Re-Onboard where an active one offers Edit —
+                    the two are mutually exclusive by design. */}
+                {isOffboarded(viewEmp.status) ? (
+                  canCreate && (
+                    <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => handleStartReOnboard(viewEmp)}>Re-Onboard Employee</Button>
+                  )
+                ) : (
+                  canEdit && (
+                    <Button size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit Employee</Button>
+                  )
+                )}
+                {isOffboarded(viewEmp.status) && role === 'Super Admin' && (
+                  <Button variant="outline" size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit (Super Admin)</Button>
+                )}
+                <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={() => printEmployeeProfile(viewEmp, currentComp?.name || 'Company')}>Print Profile</Button>
+                <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={() => downloadEmployeeProfilePdf(viewEmp, currentComp?.name || 'Company')}>Download PDF</Button>
+              </div>
+            </div>
           </div>
-        )}
-      >
         {viewEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
             {isOffboarded(viewEmp.status) && (
@@ -3277,7 +3369,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 {canEdit && !isViewLocked && (
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" icon={<Plus size={13} />} onClick={() => setAddBonusOpen(true)}>Add Bonus</Button>
-                    <Button size="sm" variant="outline" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Bonus</Button>
+                    <Button size="sm" variant="outline" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit Bonus</Button>
                     <Button size="sm" variant="outline" icon={<XCircle size={13} />} onClick={handleDisableBonus} disabled={!viewEmp.bonusApplicable}>Disable Bonus</Button>
                   </div>
                 )}
@@ -3319,6 +3411,25 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {activeTab === 'banking' && (
               <div className="space-y-3.5 p-1">
+                {/* Permanent bank verification state (§11). Reads the stored
+                    record — opening a profile never calls the provider or spends
+                    a credit. Reverify hands off to the editor, which is the only
+                    place in the app that can run a paid verification. */}
+                <EmployeeBankVerificationPanel
+                  employee={{
+                    id: viewEmp.id,
+                    code: viewEmp.employeeId,
+                    name: viewEmp.name,
+                    bankVerificationStatus: (viewEmp as any).bankVerificationStatus,
+                    bankVerificationRefId: (viewEmp as any).bankVerificationRefId,
+                    bankVerifiedAt: (viewEmp as any).bankVerifiedAt,
+                    bankVerifiedBy: (viewEmp as any).bankVerifiedBy,
+                    bankVerificationProvider: (viewEmp as any).bankVerificationProvider,
+                  }}
+                  companyName={currentComp?.name || null}
+                  onReverify={canEdit ? () => { setViewEmp(null); openEditorById(viewEmp.id, viewEmp); setActiveTab('banking'); } : undefined}
+                />
+
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-400">Bank Name</p>
@@ -3660,7 +3771,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             )}
           </div>
         )}
-      </Modal>
+        </section>
+      )}
 
       {/* Add one-time bonus (festival / performance / custom) to an employee's history */}
       <Modal
@@ -4171,10 +4283,22 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={form.wcPolicyNumber} onChange={e => setForm({ ...form, wcPolicyNumber: e.target.value.slice(0, 100) })} error={addErrors.wcPolicyNumber} />
               </div>
               <BankDetails
-                data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState }}
+                data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState, micr: (form as any).micr, swift: (form as any).swift, verificationStatus: (form as any).verificationStatus, verificationReferenceId: (form as any).verificationReferenceId, verifiedAt: (form as any).verifiedAt, manualOverride: (form as any).manualOverride }}
                 onChange={patch => setForm((f: any) => ({ ...f, ...patch }))}
                 errors={errors}
                 disabled={!canEdit}
+                /* No employee row exists yet during registration — the name is
+                   what the bank name-match needs, and the record is linked to the
+                   employee id after the employee is created. */
+                employee={{
+                  name: [form.firstName, (form as any).middleName, form.lastName].filter(Boolean).join(' ').trim() || (form as any).name || null,
+                  email: form.email || null,
+                  phone: form.mobileNumber || null,
+                  department: form.department || null,
+                  designation: form.designation || null,
+                  branch: (form as any).branchLocation || null,
+                }}
+                companyName={currentComp?.name || null}
               />
             </div>
           )}
@@ -4272,7 +4396,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Button size="sm" variant="outline" icon={<ArrowLeft size={13} />} onClick={closeEditor}>Back to Employees</Button>
                   {/* Switching to the read-only profile also leaves the editor,
                       so it goes through the same unsaved-changes guard. */}
-                  <Button size="sm" variant="outline" onClick={async () => { const emp = editEmp; if (isEditDirty() && !(await ui.confirm({ title: 'Unsaved changes', message: 'You have unsaved changes. Leave without saving?', confirmText: 'Leave', cancelText: 'Stay', variant: 'warning' }))) return; exitEditor(); setViewEmp(emp); setActiveTab('personal'); }}>View Employee</Button>
+                  <Button size="sm" variant="outline" onClick={async () => { const emp = editEmp; if (isEditDirty() && !(await ui.confirm({ title: 'Unsaved changes', message: 'You have unsaved changes. Leave without saving?', confirmText: 'Leave', cancelText: 'Stay', variant: 'warning' }))) return; exitEditor(); openProfile(emp, 'personal'); }}>View Employee</Button>
                 </div>
               </div>
             )}
@@ -4408,10 +4532,23 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={(editEmp as any).wcPolicyNumber || ''} onChange={e => setEditEmp({ ...editEmp, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
                 </div>
                 <BankDetails
-                  data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState }}
+                  data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState, micr: (editEmp as any).micr, swift: (editEmp as any).swift, verificationStatus: (editEmp as any).bankVerificationStatus || (editEmp as any).verificationStatus, verificationReferenceId: (editEmp as any).bankVerificationRefId || (editEmp as any).verificationReferenceId, verifiedAt: (editEmp as any).bankVerifiedAt || (editEmp as any).verifiedAt, manualOverride: (editEmp as any).manualOverride }}
                   onChange={patch => setEditEmp((e: any) => ({ ...e, ...patch }))}
                   errors={errors}
                   disabled={!canEdit}
+                  /* An existing employee: the stored verification record is looked
+                     up by this id, so the full report opens without re-verifying. */
+                  employee={{
+                    id: (editEmp as any).id ?? null,
+                    code: editEmp.employeeId || null,
+                    name: editEmp.name || null,
+                    email: editEmp.email || null,
+                    phone: editEmp.phone || null,
+                    department: editEmp.department || null,
+                    designation: editEmp.designation || null,
+                    branch: (editEmp as any).branchLocation || null,
+                  }}
+                  companyName={currentComp?.name || null}
                 />
               </div>
             )}
