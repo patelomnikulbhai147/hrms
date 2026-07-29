@@ -100,7 +100,9 @@ class VerificationCreditService {
         data: {
           companyId: cid,
           verificationMode: byo?.verificationMode || 'Manual',
-          provider: byo?.provider || 'Cashfree Sandbox API',
+          // Provider label follows the PLATFORM configuration (Production when
+          // CASHFREE_PROD_* credentials are set) — never a hardcoded sandbox tag.
+          provider: byo?.provider || BankVerificationService.globalProviderConfig().provider || 'Cashfree',
           status: 'Connected',
           // Persisted for schema compatibility only — 1 credit = 1 verification.
           costPerVerification: CREDITS_PER_VERIFICATION
@@ -151,7 +153,9 @@ class VerificationCreditService {
         verificationMode: settings.verificationMode,
         provider: settings.provider,
         isEnabled: isApiMode(settings.verificationMode),
-        environment: 'Sandbox'
+        // Environment follows where the platform credentials actually live
+        // (Production when CASHFREE_PROD_* is configured), not a sandbox default.
+        environment: BankVerificationService.globalProviderConfig().environment || 'Sandbox'
       }
     }).catch(() => {});
 
@@ -467,6 +471,77 @@ class VerificationCreditService {
         transaction: txRecord
       };
     });
+  }
+
+  /**
+   * Self-service recharge settlement: add PURCHASED credits inside the
+   * caller's already-open transaction (`tx`), so the wallet update, the ledger
+   * row and the payment-order settlement flag commit or roll back together.
+   *
+   * Uses RELATIVE increments (never an absolute write) so a concurrent
+   * verification debit between read and write cannot be lost. The ledger's
+   * opening balance is derived from the authoritative post-update row.
+   *
+   * `referenceId` is the payment orderId — the caller guarantees single
+   * invocation per order via its conditional settlement-flag update.
+   */
+  static async purchaseCredits(
+    { companyId, credits, referenceId, remarks = '', createdBy = 'Online Recharge', provider = 'Cashfree Payment Gateway', serviceType = 'BANK_VERIFICATION' },
+    tx
+  ) {
+    if (!tx) throw new Error('purchaseCredits must run inside a transaction.');
+    const cid = parseInt(companyId, 10);
+    const amount = parseInt(credits, 10) || 0;
+    if (!cid) throw new Error('Valid companyId is required.');
+    if (amount < 1) throw new Error('Purchased credits must be at least 1.');
+
+    let wallet = await tx.verificationCreditWallet.findUnique({
+      where: { companyId_serviceType: { companyId: cid, serviceType } }
+    });
+    if (!wallet) {
+      wallet = await tx.verificationCreditWallet.create({
+        data: { companyId: cid, serviceType, totalCredits: 0, usedCredits: 0, remainingCredits: 0, expiredCredits: 0, status: 'Active' }
+      });
+    }
+
+    const updatedWallet = await tx.verificationCreditWallet.update({
+      where: { id: wallet.id },
+      data: {
+        totalCredits: { increment: amount },
+        remainingCredits: { increment: amount },
+        // A purchase reactivates an Exhausted wallet but never lifts a
+        // deliberate Super Admin suspension.
+        ...(wallet.status !== 'Suspended' ? { status: 'Active' } : {})
+      }
+    });
+
+    // Purchased credits restore a connection dropped for lack of them —
+    // same rule as manual allocation.
+    if (updatedWallet.status !== 'Suspended') {
+      await tx.verificationSettings.updateMany({
+        where: { companyId: cid, status: 'Disconnected' },
+        data: { status: 'Connected' }
+      });
+    }
+
+    const closingBalance = updatedWallet.remainingCredits;
+    const txRecord = await tx.verificationCreditTransaction.create({
+      data: {
+        transactionId: VerificationCreditService.generateTxId(),
+        companyId: cid,
+        serviceType,
+        transactionType: 'Credit', // renders as "Credits Added" in the tenant ledger
+        credits: amount,
+        openingBalance: closingBalance - amount,
+        closingBalance,
+        provider,
+        referenceId: referenceId || null,
+        remarks: remarks || `Online recharge: ${amount} credits`,
+        createdBy: String(createdBy || 'Online Recharge')
+      }
+    });
+
+    return { success: true, wallet: updatedWallet, transaction: txRecord };
   }
 
   /**

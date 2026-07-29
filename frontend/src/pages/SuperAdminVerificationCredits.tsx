@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ShieldCheck, Building2, CheckCircle2, AlertTriangle, Ticket,
   PlusCircle, MinusCircle, RotateCcw, FileText, Download, Search,
-  RefreshCw, Activity, BarChart3
+  RefreshCw, Activity, BarChart3, CreditCard
 } from 'lucide-react';
+import { RechargeAdminPanel } from '@/components/verification/RechargeAdminPanel';
 import { api } from '@/api/apiClient';
 import { ui } from '@/components/ui/feedback';
 // The shared HRMS pagination control — the same bar the Employee list, Reports
@@ -124,7 +125,7 @@ interface ReportRow {
 }
 
 export const SuperAdminVerificationCredits: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'companies' | 'ledger' | 'audits' | 'reports'>('companies');
+  const [activeTab, setActiveTab] = useState<'companies' | 'ledger' | 'audits' | 'reports' | 'payments'>('companies');
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [companies, setCompanies] = useState<CompanyCreditRow[]>([]);
   const [ledger, setLedger] = useState<LedgerTransaction[]>([]);
@@ -361,7 +362,15 @@ export const SuperAdminVerificationCredits: React.FC = () => {
 
   const handleToggleStatus = async (companyId: number, currentStatus: string) => {
     const nextStatus = currentStatus === 'Suspended' ? 'Active' : 'Suspended';
-    if (!window.confirm(`Are you sure you want to change this company's verification API status to ${nextStatus}?`)) return;
+    const confirmed = await ui.confirm({
+      title: nextStatus === 'Suspended' ? 'Suspend verification API?' : 'Resume verification API?',
+      message: nextStatus === 'Suspended'
+        ? 'This company will no longer be able to run API verifications. Their credits are untouched and access can be resumed at any time.'
+        : 'This company will be able to run API verifications again, using their existing credits.',
+      confirmText: nextStatus === 'Suspended' ? 'Suspend' : 'Resume',
+      variant: nextStatus === 'Suspended' ? 'danger' : 'primary',
+    });
+    if (!confirmed) return;
 
     try {
       await api.put('/super-admin/verification-credits/company-status', { companyId, status: nextStatus });
@@ -548,10 +557,24 @@ export const SuperAdminVerificationCredits: React.FC = () => {
           <BarChart3 className="w-4 h-4" />
           <span>Verification Usage Reports</span>
         </button>
+        <button
+          onClick={() => setActiveTab('payments')}
+          className={`flex items-center space-x-2 py-4 px-6 border-b-2 font-semibold text-sm transition ${
+            activeTab === 'payments'
+              ? 'border-[#C77E52] text-[#C77E52] font-bold'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>Payments & Pricing</span>
+        </button>
       </div>
 
       {/* Tab Content */}
       <div className="bg-white rounded-b-2xl p-6 border border-t-0 border-slate-200 shadow-sm">
+        {/* PAYMENTS & PRICING TAB — self-service recharge administration */}
+        {activeTab === 'payments' && <RechargeAdminPanel />}
+
         {/* COMPANIES TAB */}
         {activeTab === 'companies' && (
           <div className="space-y-4">

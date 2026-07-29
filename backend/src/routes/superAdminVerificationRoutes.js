@@ -8,6 +8,7 @@ const express = require('express');
 const router = express.Router();
 const { protect } = require('../middleware/authMiddleware');
 const controller = require('../controllers/verificationCreditController');
+const rechargeController = require('../controllers/paymentGatewayController');
 
 // Super Admin RBAC Middleware
 const requireSuperAdmin = (req, res, next) => {
@@ -28,5 +29,22 @@ router.get('/transactions', controller.getGlobalLedger);
 router.get('/audit-logs', controller.getGlobalAuditLogs);
 router.get('/reports', controller.getReports);
 router.get('/export', controller.exportReports);
+
+// ── Self-service recharge administration (pricing, packages, payments) ───────
+// Provider cost / margin figures are Super-Admin-only and exist ONLY under
+// this hard-gated router.
+router.get('/recharge/settings', rechargeController.adminGetSettings);
+router.put('/recharge/settings', rechargeController.adminUpdateSettings);
+router.get('/recharge/packages', rechargeController.adminListPackages);
+router.post('/recharge/packages', rechargeController.adminSavePackage);
+router.put('/recharge/packages/:id', rechargeController.adminSavePackage);
+router.delete('/recharge/packages/:id', rechargeController.adminDeletePackage);
+router.get('/recharge/orders', rechargeController.adminListOrders);
+router.post('/recharge/orders/:orderId/approve', rechargeController.adminApproveOrder);
+router.post('/recharge/orders/:orderId/reverify', rechargeController.adminReverifyOrder);
+router.post('/recharge/orders/:orderId/regenerate-invoice', rechargeController.adminRegenerateInvoice);
+router.get('/recharge/refunds', rechargeController.adminListRefunds);
+router.put('/recharge/refunds/:id/mark-adjusted', rechargeController.adminMarkRefundAdjusted);
+router.get('/recharge/dashboard', rechargeController.adminDashboard);
 
 module.exports = router;
