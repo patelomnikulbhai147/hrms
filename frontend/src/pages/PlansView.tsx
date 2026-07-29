@@ -50,13 +50,10 @@ export const PlansView: React.FC<Props> = ({ onBack }) => {
   const currentPlan = data?.currentPlan || 'Free';
   const plans: any[] = useMemo(() => Array.isArray(data?.plans) ? data.plans : [], [data]);
 
-  const requestUpgrade = (p: any) => {
-    ui.alert({
-      title: `Upgrade to ${p.name}`,
-      message: `To move your workspace to the ${p.name} plan, your account administrator can apply the upgrade from Subscription Management — it takes effect immediately with no logout. For assistance, contact sales@zeniahr.com.`,
-      variant: 'info',
-      confirmText: 'Got it',
-    });
+  // Opens the global self-service purchase wizard (plan → cycle → employees →
+  // server-priced summary → Cashfree checkout). The wizard enforces who can pay.
+  const requestUpgrade = (_p: any) => {
+    window.dispatchEvent(new CustomEvent('hrms:upgrade-plan'));
   };
 
   return (

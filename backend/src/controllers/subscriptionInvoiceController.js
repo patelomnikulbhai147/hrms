@@ -282,6 +282,38 @@ exports.payments = async (req, res) => {
   } catch (e) { console.error('[subInvoice.payments]', e); return res.status(500).json({ error: 'Failed to load payments.' }); }
 };
 
+// ── GET /payments — every payment received, newest first (READ-ONLY) ──────────
+// Backs the Billing → Payments register. Purely a projection of rows that already
+// exist: each SubscriptionInvoicePayment is stamped with its invoice's number,
+// company and total so the list needs no N+1 lookups. Nothing is computed or
+// changed here — recording a payment still goes exclusively through addPayment.
+exports.allPayments = async (req, res) => {
+  try {
+    const take = Math.min(Number(req.query.limit) || 500, 1000);
+    const payments = await prisma.subscriptionInvoicePayment.findMany({ orderBy: { id: 'desc' }, take });
+    const invIds = [...new Set(payments.map((p) => p.invoiceId))];
+    const invoices = invIds.length
+      ? await prisma.subscriptionInvoice.findMany({
+        where: { id: { in: invIds } },
+        // dueDate is required — effectiveStatus() derives "Overdue" from it.
+        select: { id: true, invoiceNo: true, companyId: true, companyName: true, plan: true, grandTotal: true, amountPaid: true, status: true, dueDate: true },
+      })
+      : [];
+    const byId = new Map(invoices.map((i) => [i.id, i]));
+    return res.json(payments.map((p) => {
+      const inv = byId.get(p.invoiceId);
+      return {
+        ...p,
+        invoiceNo: inv?.invoiceNo || `#${p.invoiceId}`,
+        companyName: inv?.companyName || `Company #${p.companyId}`,
+        plan: inv?.plan || null,
+        invoiceTotal: inv?.grandTotal ?? null,
+        invoiceStatus: inv ? effectiveStatus(inv) : null,
+      };
+    }));
+  } catch (e) { console.error('[subInvoice.allPayments]', e); return res.status(500).json({ error: 'Failed to load payments.' }); }
+};
+
 // ── POST /:id/duplicate — copy as a new Draft ────────────────────────────────
 exports.duplicate = async (req, res) => {
   try {

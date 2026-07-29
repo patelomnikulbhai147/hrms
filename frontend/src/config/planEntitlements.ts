@@ -14,7 +14,7 @@ import type { AppModules } from '@/pages/Login';
 // Synthetic gate keys (not real AppModules permissions) used to lock modules that
 // share an otherwise-unlocked permission key — e.g. Custom Report Builder rides on
 // the `reports` permission, which is unlocked for FREE.
-type LockKey = AppModules | 'custom-reports';
+type LockKey = AppModules | 'custom-reports' | 'custom-domain';
 
 export interface PlanEntitlements {
   locked: LockKey[];
@@ -40,10 +40,11 @@ const FREE_LOCKED: LockKey[] = [
   'loans',           // Employee Loans (Finance & Compliance)
   'compliance',      // Statutory Compliance (Finance & Compliance)
   'custom-reports',  // Custom Report Builder (synthetic key; shares `reports` perm)
+  'custom-domain',   // White Label & Custom Domain (synthetic key; shares `settings` perm)
 ];
 
 // Sidebar page ids locked for FREE that a permission key can't express.
-const FREE_LOCKED_PAGES = ['custom-report-builder'];
+const FREE_LOCKED_PAGES = ['custom-report-builder', 'custom-domain'];
 
 // ⚠️  MIRROR of backend FREE_ALLOWED_REPORTS — the ONLY compliance reports a FREE
 //     plan may generate. Keys are the literal report catalog keys. Keep in sync.
@@ -60,6 +61,8 @@ const FREE_ALLOWED_REPORTS = [
 
 export const PLAN_ENTITLEMENTS: Record<string, PlanEntitlements> = {
   Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },
+  // Custom Domain is available on EVERY paid plan (only Free locks it); the SA
+  // can still disable it per-plan in the editor — the backend lists then win.
   Starter: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 3, storageMB: 5120 } },
   Professional: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: 1000, maxBranches: 5, maxAdminUsers: 15, storageMB: 51200 } },
   Enterprise: { locked: [], lockedPages: [], allowedReports: null, limits: { maxEmployees: -1, maxBranches: 999, maxAdminUsers: -1, storageMB: -1 } },

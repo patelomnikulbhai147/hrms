@@ -22,6 +22,7 @@ const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
 const AuditService = require('./auditService');
 const { pickCompanyData, applyRegistrationDefaults } = require('../controllers/companyController');
 const { defaultPermissionsForRole } = require('../controllers/userController');
+const { normalizeBillingCycle } = require('../utils/billingCycle');
 
 const FREE_PLAN = 'Free';
 
@@ -44,10 +45,13 @@ async function uniqueUsername(email) {
  * @param {object} input.company  { name, email, phone, industry, country, state, city }
  * @param {object} input.head     { name, email, mobile, passwordHash }  (password already bcrypt-hashed)
  * @param {object} input.branch   { branchName, address }
+ * @param {string} [input.billingCycle]  'Quarterly' | 'Yearly' — chosen at
+ *        onboarding and stored on the subscription. Every later slot purchase
+ *        inherits it. Unrecognised → 'Quarterly'.
  * @returns {Promise<{ company, branch, head }>}  the created rows.
  * @throws  Error with `.code` 'DUPLICATE' | 'REQUIRED_MISSING' on a caller error.
  */
-async function provisionFreeCompany({ company = {}, head = {}, branch = {} }) {
+async function provisionFreeCompany({ company = {}, head = {}, branch = {}, billingCycle } = {}) {
   const companyName = String(company.name || '').trim();
   const headName = String(head.name || '').trim();
   const headEmail = String(head.email || '').trim().toLowerCase();
@@ -99,14 +103,22 @@ async function provisionFreeCompany({ company = {}, head = {}, branch = {} }) {
   companyData.employeeCount = 0;
   // Default department (data-only, matches the customDepartments pattern).
   companyData.customDepartments = ['General'];
+  // Billing cycle chosen during onboarding. Mirrored onto the Company row so the
+  // legacy column can never disagree with the subscription that owns it.
+  const cycle = normalizeBillingCycle(billingCycle);
+  companyData.billingCycle = cycle;
 
   const createdCompany = await prisma.company.create({
     data: { ...companyData, id: await nextEntityId() },
   });
 
-  // FREE subscription record (mirrors Company.plan) — best-effort.
-  prisma.companySubscription.create({
-    data: { companyId: createdCompany.id, plan: 'Free', billingCycle: 'Quarterly', status: 'Active' },
+  // FREE subscription record (mirrors Company.plan) — best-effort. This row is
+  // the source of truth for the billing cycle that slot purchases inherit; if
+  // the write fails it is recreated lazily FROM Company.billingCycle, so the
+  // tenant's choice survives either way. Awaited so the auto-login that follows
+  // can never outrun it. Still .catch()-guarded — provisioning must not fail here.
+  await prisma.companySubscription.create({
+    data: { companyId: createdCompany.id, plan: 'Free', billingCycle: cycle, status: 'Active' },
   }).catch(() => {});
 
   // From here on, roll back the company on any failure so a half-provisioned
@@ -153,6 +165,18 @@ async function provisionFreeCompany({ company = {}, head = {}, branch = {} }) {
         permissions: permBlob,
       },
     });
+
+    // ── 3b. Employee profile for the Company Head ────────────────────────────
+    // The head is a member of staff: they appear in the Employee Directory with
+    // a standard employee code and consume the first slot of their own plan.
+    // Best-effort — a failure here must not abort registration (the limit
+    // service's unlinked-user safety net still counts them).
+    try {
+      const { ensureEmployeeProfileForUser } = require('./userEmployeeProfileService');
+      await ensureEmployeeProfileForUser(createdHead);
+    } catch (e) {
+      console.error('[provision] Company Head employee profile failed (non-fatal):', e.message);
+    }
 
     // ── 4. Audit trail (attributed to the new Company Head — a real User.id, so
     //       the non-nullable AuditLog.userId FK is satisfied). ────────────────

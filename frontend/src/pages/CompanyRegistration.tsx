@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Building2, Mail, Phone, Briefcase, Globe, MapPin, User, Lock, Smartphone,
   Eye, EyeOff, ShieldCheck, RefreshCw, ArrowRight, ArrowLeft, CheckCircle2, PartyPopper, Sparkles, Rocket,
+  CalendarDays,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api } from '@/api/apiClient';
@@ -51,6 +52,10 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
   const [company, setCompany] = useState({ name: '', email: '', phone: '', industry: '', country: 'India', state: '', city: '' });
   const [head, setHead] = useState({ name: '', email: '', mobile: '', password: '', confirmPassword: '' });
   const [branch, setBranch] = useState({ branchName: 'Head Office', address: '' });
+  // Billing cycle is chosen ONCE, here. It is stored on the company's
+  // subscription and every later purchase (employee slots, renewals) inherits it
+  // from the server — this is the only screen in the signup flow that sets it.
+  const [billingCycle, setBillingCycle] = useState<'Quarterly' | 'Yearly'>('Quarterly');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
 
@@ -138,6 +143,7 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
         company, head: { name: head.name, email: head.email, mobile: head.mobile, password: head.password },
         confirmPassword: head.confirmPassword,
         branch,
+        billingCycle,
         acceptedTerms, acceptedPrivacy,
         captchaId, captchaAnswer,
       });
@@ -277,7 +283,43 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
 
               {step === 4 && (
                 <div className="space-y-4">
-                  <h2 className="text-[16px] font-bold text-slate-900 mb-1">Almost done</h2>
+                  <h2 className="text-[16px] font-bold text-slate-900 mb-1">Plan &amp; Billing</h2>
+
+                  {/* Plan is fixed for self-signup; the CYCLE is the tenant's choice
+                      and is what every later purchase inherits. */}
+                  <div className="rounded-2xl border border-[#E9E9EC] bg-slate-50/70 px-4 py-3 flex items-center justify-between">
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Plan</p>
+                      <p className="text-[14px] font-bold text-slate-900 mt-0.5">Free</p>
+                    </div>
+                    <span className="text-[11.5px] font-semibold text-slate-500">Upgrade any time</span>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Billing Cycle</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(['Quarterly', 'Yearly'] as const).map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setBillingCycle(c)}
+                          aria-pressed={billingCycle === c}
+                          className="h-12 rounded-2xl border text-[14px] font-bold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                          style={billingCycle === c
+                            ? { borderColor: BROWN, backgroundColor: '#F8F1EB', color: BROWN }
+                            : { borderColor: '#E9E9EC', backgroundColor: '#fff', color: '#475569' }}
+                        >
+                          <CalendarDays size={16} />{c}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[12px] text-slate-500 mt-2">
+                      This becomes your billing cycle for the workspace. Any employee slots you buy later
+                      use the same cycle automatically.
+                    </p>
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-4" />
                   <label className="flex items-start gap-2.5 cursor-pointer">
                     <input type="checkbox" checked={acceptedTerms} onChange={e => setAcceptedTerms(e.target.checked)} className="mt-0.5 accent-[#16284A] w-4 h-4" />
                     <span className="text-[13px] text-slate-600">I agree to the <a href="#" className="font-bold" style={{ color: BROWN }}>Terms &amp; Conditions</a>.</span>
@@ -331,6 +373,7 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
                 <h2 className="text-[22px] font-extrabold text-slate-900 flex items-center justify-center gap-2">🎉 Welcome to ZeniaHR</h2>
                 <p className="text-[14px] text-slate-500 mt-1.5">Your <b>Free</b> workspace has been created successfully.</p>
                 <p className="text-[12.5px] text-slate-400 mt-1">Free plan · up to 100 active employees · 1 branch</p>
+                <p className="text-[12.5px] text-slate-400 mt-0.5">Billing cycle: <b className="text-slate-500">{billingCycle}</b></p>
               </div>
               <div className="flex flex-col gap-2.5 pt-1">
                 <button onClick={enterApp} className={`${primaryBtn} w-full`}><Rocket size={17} />Go to Dashboard</button>

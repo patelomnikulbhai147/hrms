@@ -328,6 +328,9 @@ export const Companies: React.FC<CompaniesProps> = ({
     adminEmail: '',
     // Plan & branding
     plan: 'Starter' as 'Starter' | 'Professional' | 'Enterprise',
+    // Chosen once at onboarding and stored on the company's subscription. Every
+    // later purchase (employee slots, renewals) inherits it server-side.
+    billingCycle: 'Quarterly' as 'Quarterly' | 'Yearly',
     pfRate: '12',
     esicRate: '3.25',
     logo: '',
@@ -510,7 +513,10 @@ export const Companies: React.FC<CompaniesProps> = ({
       gstNumber: newCompany.gstNumber,
       billingAddress: newCompany.address,
       subscriptionPrice: price,
-      billingCycle: 'Monthly',
+      // The cycle picked on this form. The server normalises it and writes it to
+      // the CompanySubscription row that slot purchases inherit from — it is no
+      // longer a hardcoded 'Monthly', which was not even a valid cycle.
+      billingCycle: newCompany.billingCycle,
       accountStatus: 'Active',
 
       // Child records seeded alongside the company (all optional).
@@ -1753,17 +1759,34 @@ export const Companies: React.FC<CompaniesProps> = ({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 border-t border-gray-150 pt-3">
-            <Select
-              label="Pricing Plan"
-              value={newCompany.plan}
-              onChange={e => setNewCompany({ ...newCompany, plan: e.target.value as any })}
-              options={[
-                { value: 'Starter', label: 'Starter' },
-                { value: 'Professional', label: 'Professional' },
-                { value: 'Enterprise', label: 'Enterprise' }
-              ]}
-            />
+          <div className="border-t border-gray-150 pt-3 space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <Select
+                label="Pricing Plan"
+                value={newCompany.plan}
+                onChange={e => setNewCompany({ ...newCompany, plan: e.target.value as any })}
+                options={[
+                  { value: 'Starter', label: 'Starter' },
+                  { value: 'Professional', label: 'Professional' },
+                  { value: 'Enterprise', label: 'Enterprise' }
+                ]}
+              />
+              {/* Stored on the company's subscription. Every later purchase —
+                  employee slots above all — inherits it from there, so it is
+                  chosen here and nowhere else. */}
+              <Select
+                label="Billing Cycle"
+                value={newCompany.billingCycle}
+                onChange={e => setNewCompany({ ...newCompany, billingCycle: e.target.value as any })}
+                options={[
+                  { value: 'Quarterly', label: 'Quarterly' },
+                  { value: 'Yearly', label: 'Yearly' }
+                ]}
+              />
+            </div>
+            <p className="text-[10px] text-gray-400 -mt-1">
+              The billing cycle is saved on the company's subscription. Future employee slot purchases inherit it automatically.
+            </p>
             <Select
               label="Brand Primary Color Theme"
               value={newCompany.primaryColor}

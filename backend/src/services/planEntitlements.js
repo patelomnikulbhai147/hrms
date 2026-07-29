@@ -25,7 +25,7 @@ const { PREMIUM_MODULES, PAGE_FOR_MODULE, FREE_ALLOWED_REPORTS } = store;
 
 // ── Static seed/fallback (used only if the store is unreadable) ───────────────
 const FREE_LOCKED = PREMIUM_MODULES.slice(); // FREE unlocks none of the premium set
-const FREE_LOCKED_PAGES = ['custom-report-builder'];
+const FREE_LOCKED_PAGES = ['custom-report-builder', 'custom-domain'];
 
 const PLAN_ENTITLEMENTS = {
   Free: { locked: FREE_LOCKED, lockedPages: FREE_LOCKED_PAGES, allowedReports: FREE_ALLOWED_REPORTS, limits: { maxEmployees: 100, maxBranches: 1, maxAdminUsers: 1, storageMB: 500 } },

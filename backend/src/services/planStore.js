@@ -46,6 +46,7 @@ const MODULE_CATALOG = [
   { key: 'tasks', label: 'Task Manager', premium: true },
   { key: 'tenders', label: 'Tender Management', premium: true },
   { key: 'contracts', label: 'Contract Management', premium: true },
+  { key: 'custom-domain', label: 'Custom Domain (Beta)', premium: true },
 ];
 
 // The plan-GATEABLE (premium) module keys — the ONLY ones a plan can lock/unlock.
@@ -54,7 +55,7 @@ const PREMIUM_MODULES = MODULE_CATALOG.filter((m) => m.premium).map((m) => m.key
 // Sidebar page ids that ride an otherwise-unlocked permission key and therefore
 // need their own lock. custom-report-builder rides on the `reports` perm, so it
 // is locked whenever the synthetic 'custom-reports' module is not enabled.
-const PAGE_FOR_MODULE = { 'custom-reports': 'custom-report-builder' };
+const PAGE_FOR_MODULE = { 'custom-reports': 'custom-report-builder', 'custom-domain': 'custom-domain' };
 
 // FREE plan's default allow-list of generatable reports (keys are the literal
 // report catalog keys in complianceReportController). Seed value only — editable.
@@ -112,6 +113,7 @@ function seedPlans() {
       key: 'Starter', name: 'Starter', description: 'Everything unlocked for growing teams.',
       status: 'Active', isSystem: true, color: '#3b82f6', displayOrder: 2,
       employeeMin: 0, employeeMax: 100, priceQuarterly: 25, priceYearly: 20, discountPercent: 0,
+      includedVerificationCredits: 100,
       enabledModules: PREMIUM_MODULES.slice(), enabledReports: 'all',
       limits: { employeeLimit: 100, branchLimit: 1, adminUserLimit: 3, storageMB: 5120, apiCalls: -1, whatsappMessages: 1000, documents: -1, mobileUsers: 100 },
       features: allFeaturesOn(),
@@ -120,6 +122,7 @@ function seedPlans() {
       key: 'Professional', name: 'Professional', description: 'Multi-branch, higher limits, full compliance.',
       status: 'Active', isSystem: true, color: '#8b5cf6', displayOrder: 3,
       employeeMin: 101, employeeMax: 500, priceQuarterly: 20, priceYearly: 16, discountPercent: 0,
+      includedVerificationCredits: 250,
       enabledModules: PREMIUM_MODULES.slice(), enabledReports: 'all',
       limits: { employeeLimit: 1000, branchLimit: 5, adminUserLimit: 15, storageMB: 51200, apiCalls: -1, whatsappMessages: -1, documents: -1, mobileUsers: 1000 },
       features: allFeaturesOn(),
@@ -128,6 +131,7 @@ function seedPlans() {
       key: 'Enterprise', name: 'Enterprise', description: 'Unlimited scale, white-label and every feature.',
       status: 'Active', isSystem: true, color: '#4f46e5', displayOrder: 4,
       employeeMin: 500, employeeMax: -1, priceQuarterly: 15, priceYearly: 12, discountPercent: 0,
+      includedVerificationCredits: 500,
       enabledModules: PREMIUM_MODULES.slice(), enabledReports: 'all',
       limits: { employeeLimit: -1, branchLimit: -1, adminUserLimit: -1, storageMB: -1, apiCalls: -1, whatsappMessages: -1, documents: -1, mobileUsers: -1 },
       features: allFeaturesOn(),
@@ -154,6 +158,15 @@ const DEFAULT_SETTINGS = {
   renewalReminderDays: 7,
   gracePeriodDays: 7,
   autoSuspendOnExpiry: false,
+  // Employee slot add-on pricing matrix (per slot, per billing cycle). The
+  // applicable tier is chosen by the company's employee limit AFTER adding the
+  // requested slots; `upTo: null` = the open-ended top tier. Editable via the
+  // Plan Settings endpoint — never hardcode these rates in business logic.
+  slotPricingTiers: [
+    { upTo: 100, quarterly: 25, yearly: 20 },
+    { upTo: 500, quarterly: 20, yearly: 16 },
+    { upTo: null, quarterly: 15, yearly: 12 },
+  ],
 };
 
 // ── File IO + cache ──────────────────────────────────────────────────────────
@@ -175,6 +188,8 @@ function normalizePlan(p) {
     priceQuarterly: Number(p.priceQuarterly) || 0,
     priceYearly: Number(p.priceYearly) || 0,
     discountPercent: Number(p.discountPercent) || 0,
+    // Verification credits granted on every paid subscription purchase/renewal.
+    includedVerificationCredits: Math.max(0, Number(p.includedVerificationCredits) || 0),
     // Only premium keys are meaningful; keep the intersection so a stale/edited
     // list can never accidentally "enable" a non-gateable key.
     enabledModules: Array.isArray(p.enabledModules) ? p.enabledModules.filter((k) => PREMIUM_MODULES.includes(k)) : [],
