@@ -1370,12 +1370,21 @@ model Notification {
 model AuditLog {
   id        Int      @id @default(autoincrement())
   userId    Int
+  // Denormalised tenant. The trail previously had no company column at all, so
+  // scoping it to a tenant meant joining through `user` — and the table (25k rows
+  // and growing) was indexed only on id and userId, so every such read scanned.
+  // Nullable because platform-level and system actions genuinely belong to no
+  // single company. Added by ALTER, not db push (that would drop columns).
+  companyId Int?
   action    String
   module    String
   targetId  String
   details   String?  @db.Text
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id])
+
+  @@index([companyId])
+  @@index([createdAt])
 }
 
 model SubscriptionPlan {
@@ -1463,8 +1472,54 @@ model CompanySubscription {
   customModules    Json? // Custom: allowed module permission keys
   customReports    Json? // Custom: allowed report keys (or "all")
   customFeatures   Json? // Custom: forward-looking feature flags
+  // Purchased add-on employee slots. Stacks ON TOP of the plan's base limit
+  // (effective limit = plan limit + extraEmployeeSlots) and never overwrites
+  // the plan. Written ONLY by a settled slot-pack payment or a Super Admin.
+  extraEmployeeSlots Int     @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
+}
+
+// ── Employee slot add-on packs (Super-Admin configurable) ────────────────────
+// A pack = "+N employee slots for ₹price". Packs under the online-payment
+// minimum are sold through the contact-sales path, not the gateway.
+model EmployeeSlotPack {
+  id        Int      @id @default(autoincrement())
+  name      String
+  slots     Int
+  price     Float
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("employee_slot_packs")
+}
+
+// Append-only history of every slot change: online purchases, manual requests
+// from Company Heads, Super Admin grants/adjustments. old/new limits recorded
+// so the audit requirement (who, when, from what, to what, why) is met.
+model EmployeeSlotTransaction {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  type        String // ONLINE_PURCHASE / MANUAL_REQUEST / MANUAL_GRANT / MANUAL_ADJUST
+  status      String   @default("COMPLETED") // REQUESTED / APPROVED / REJECTED / COMPLETED
+  packId      Int?
+  packName    String?
+  slots       Int // negative allowed for Super Admin decreases
+  amount      Float?
+  orderId     String?  @unique // payment_orders.orderId for online purchases
+  oldLimit    Int?
+  newLimit    Int?
+  requestedBy String?
+  actionedBy  String?
+  reason      String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([status])
+  @@map("employee_slot_transactions")
 }
 
 // Append-only history of subscription/plan changes (Super Admin audit trail).
@@ -3033,6 +3088,186 @@ model VerificationCreditTransaction {
   @@map("verification_credit_transactions")
 }
 
+// ── Payment Gateway (Cashfree PG) — reusable self-service payment spine ──────
+// One row per merchant order. Tenant identity (companyId/branchId/userId) is
+// written ONCE at order creation from the authenticated session and is the ONLY
+// source of truth for settlement — webhook/client payloads never override it.
+// The pricing snapshot (sellingPriceSnapshot/gst/creditsPurchased) is frozen at
+// creation; settlement must never recalculate from live settings.
+model PaymentOrder {
+  id                   Int       @id @default(autoincrement())
+  orderId              String    @unique // our merchant order id (PGO-…)
+  provider             String    @default("CASHFREE_PG")
+  purpose              String    @default("VERIFICATION_CREDIT_RECHARGE")
+  cfOrderId            String?
+  paymentSessionId     String?   @db.Text
+  companyId            Int
+  branchId             Int?
+  workspaceId          Int?
+  workspaceKind        String?
+  userId               Int?
+  userName             String?
+  userRole             String?
+  serviceType          String    @default("BANK_VERIFICATION")
+  baseAmount           Float
+  gstEnabled           Boolean   @default(false)
+  gstPercent           Float     @default(0)
+  gstAmount            Float     @default(0)
+  totalAmount          Float
+  currency             String    @default("INR")
+  sellingPriceSnapshot Float // per-credit selling price at order creation
+  providerCostSnapshot Float     @default(0) // internal margin input — never sent to tenants
+  creditsPurchased     Int
+  packageId            Int?
+  packageName          String?
+  status               String    @default("CREATED") // CREATED / ACTIVE / PAID / FAILED / CANCELLED / EXPIRED / USER_DROPPED / REFUNDED / FLAGGED
+  settlementStatus     String    @default("PENDING") // PENDING / AWAITING_APPROVAL / CREDITED / REJECTED
+  flagReason           String?   @db.Text
+  cfPaymentId          String?
+  paymentMethod        String?
+  bankReference        String?
+  paymentTime          DateTime?
+  creditedAt           DateTime?
+  creditLedgerTxId     String?
+  invoiceId            Int?
+  approvedBy           String?
+  approvedAt           DateTime?
+  rawOrderResponse     Json?
+  rawPaymentResponse   Json?
+  failureReason        String?   @db.Text
+  notes                String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([companyId])
+  @@index([companyId, status])
+  @@index([status, settlementStatus])
+  @@index([cfOrderId])
+  @@index([createdAt])
+  @@map("payment_orders")
+}
+
+// Every webhook delivery, valid or not — the system of record for gateway
+// callbacks (AuditService intentionally drops writes with no authenticated
+// user, which a webhook never has). eventKey is the dedupe constraint.
+model PaymentWebhookEvent {
+  id               Int       @id @default(autoincrement())
+  provider         String    @default("CASHFREE_PG")
+  eventKey         String    @unique // idempotency key header or payload hash
+  eventType        String?
+  orderId          String?
+  cfPaymentId      String?
+  signatureValid   Boolean   @default(false)
+  processed        Boolean   @default(false)
+  processedAt      DateTime?
+  processingResult String?   @db.Text
+  rawPayload       Json?
+  receivedAt       DateTime  @default(now())
+
+  @@index([orderId])
+  @@index([receivedAt])
+  @@map("payment_webhook_events")
+}
+
+// A gateway-reported refund NEVER auto-removes credits (they may be spent).
+// It creates this record, flags the order, notifies Super Admin — who decides
+// whether to deduct credits manually (creditsAdjusted trail).
+model PaymentRefund {
+  id              Int       @id @default(autoincrement())
+  orderId         String
+  cfRefundId      String?   @unique
+  companyId       Int
+  amount          Float
+  status          String    @default("PENDING")
+  reason          String?   @db.Text
+  creditsAdjusted Boolean   @default(false)
+  adjustedBy      String?
+  adjustedAt      DateTime?
+  rawPayload      Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([orderId])
+  @@index([companyId])
+  @@map("payment_refunds")
+}
+
+// Super-Admin-only pricing configuration (single GLOBAL row). providerCost is
+// internal-only: it exists for margin reporting and must never reach a tenant
+// response — company users see only "amount → credits".
+model VerificationRechargeSettings {
+  id                    Int      @id @default(autoincrement())
+  scope                 String   @unique @default("GLOBAL")
+  enableOnlineRecharge  Boolean  @default(false)
+  sellingPricePerCredit Float    @default(4.0)
+  providerCostPerCredit Float    @default(2.5)
+  minRechargeAmount     Float    @default(500)
+  maxRechargeAmount     Float    @default(100000)
+  gstEnabled            Boolean  @default(false)
+  gstPercent            Float    @default(18)
+  currency              String   @default("INR")
+  autoCreditAllocation  Boolean  @default(true) // false = Super Admin approves each settlement
+  roundOffPolicy        String   @default("FLOOR") // FLOOR / ROUND
+  updatedBy             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@map("verification_recharge_settings")
+}
+
+// Quick-pick recharge packages. Credits are always computed from the CURRENT
+// selling price at quote/order time — a package stores only the amount, so a
+// price change updates every package consistently.
+model VerificationRechargePackage {
+  id          Int      @id @default(autoincrement())
+  name        String
+  amount      Float
+  description String?
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("verification_recharge_packages")
+}
+
+// Recharge tax invoice — created AFTER the settlement commit (an invoice
+// failure must never roll back credits; regenerate instead). orderId is unique:
+// one settled order can never produce two invoices.
+model VerificationRechargeInvoice {
+  id               Int       @id @default(autoincrement())
+  invoiceNo        String    @unique // VCR-YYYY-0001 (credits) / ESP-YYYY-0001 (slots)
+  orderId          String    @unique
+  // Which paid product this invoice bills — drives the line-item label and
+  // number prefix. The table serves all self-service purchases.
+  purpose          String    @default("VERIFICATION_CREDIT_RECHARGE")
+  companyId        Int
+  companyName      String?
+  companyEmail     String?
+  billingAddress   String?   @db.Text
+  gstin            String?
+  creditsPurchased Int
+  baseAmount       Float
+  gstPercent       Float     @default(0)
+  gstAmount        Float     @default(0)
+  cgst             Float     @default(0)
+  sgst             Float     @default(0)
+  igst             Float     @default(0)
+  interState       Boolean   @default(false)
+  totalAmount      Float
+  currency         String    @default("INR")
+  cfPaymentId      String?
+  paymentMethod    String?
+  paymentDate      DateTime?
+  status           String    @default("Paid")
+  createdBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([companyId])
+  @@map("verification_recharge_invoices")
+}
+
 // Lightweight tenant verification settings for mode and provider selection.
 model VerificationSettings {
   id                  Int      @id @default(autoincrement())
@@ -3049,4 +3284,67 @@ model VerificationSettings {
   updatedAt           DateTime @updatedAt
 
   @@map("verification_settings")
+}
+
+// ── White Label & Custom Domain (Beta) ───────────────────────────────────────
+// One domain ↔ one company (both unique). Status machine:
+// PENDING_DNS → DNS_VERIFIED → SSL_PENDING → SSL_ISSUED → ACTIVE, plus
+// FAILED / DISABLED. Never hardcode mappings — this table is the router.
+model DomainMapping {
+  id            Int       @id @default(autoincrement())
+  uuid          String?   @unique // stable public identifier
+  companyId     Int       @unique
+  domain        String    @unique // lowercased FQDN, e.g. hr.company.com
+  subdomain     String? // first label, e.g. "hr"
+  status        String    @default("PENDING_DNS")
+  sslStatus     String    @default("NONE") // NONE / PENDING / ISSUED / RENEWAL_FAILED
+  sslProvider   String? // certbot / manual / mock (frozen at issue time)
+  healthStatus  String    @default("UNKNOWN") // UNKNOWN / HEALTHY / DEGRADED / DOWN
+  healthDetail  String?   @db.Text // JSON of the last health probe
+  dnsType       String    @default("CNAME") // CNAME / A
+  dnsTarget     String // what the customer must point at
+  dnsProvider   String? // customer-declared provider (informational)
+  cnameHost     String? // frozen instruction snapshot
+  cnameValue    String?
+  txtHost       String?
+  txtValue      String?
+  verificationMethod String @default("DNS")
+  verifyToken   String // TXT token (_zenia-verify) for ownership proof
+  dnsCheckedAt  DateTime?
+  dnsVerifiedAt DateTime?
+  sslIssuedAt   DateTime?
+  sslExpiresAt  DateTime?
+  activatedAt   DateTime?
+  lastError     String?   @db.Text
+  failCount     Int       @default(0)
+  disabledBy    String?
+  disabledAt    DateTime?
+  createdBy     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@map("domain_mappings")
+}
+
+// Per-company white-label branding shown on the custom-domain login page and
+// used by outgoing email links. Company table is at its row-size limit, so
+// this lives in its own table (long values as TEXT).
+model WhiteLabelSettings {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  enabled           Boolean  @default(false)
+  logoUrl           String?  @db.Text
+  faviconUrl        String?  @db.Text
+  primaryColor      String?
+  secondaryColor    String?
+  loginBackground   String?  @db.Text
+  supportEmail      String?
+  supportPhone      String?
+  footerText        String?  @db.Text
+  hideZeniaBranding Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("white_label_settings")
 }

@@ -22,6 +22,37 @@ exports.protect = async (req, res, next) => {
       return res.status(401).json({ error: 'User not found' });
     }
 
+    // ---- Account and tenant must both still be live --------------------------
+    // A deactivated user, or a user belonging to an ARCHIVED company, previously
+    // kept a fully working session: their token still authenticated and every
+    // endpoint answered 200 (with empty results, so nothing leaked — but the
+    // session should not exist at all). Super Admin is exempt: the platform owner
+    // must still be able to administer an archived tenant.
+    if (user.role !== 'Super Admin') {
+      if (user.status && String(user.status).toLowerCase() !== 'active') {
+        return res.status(401).json({ error: 'This account is no longer active.', code: 'ACCOUNT_INACTIVE' });
+      }
+      if (user.companyId != null) {
+        // companyId may hold a COMPANY or a BRANCH id (one shared sequence), so
+        // check both, and treat "not found" as live rather than locking someone
+        // out on a lookup miss.
+        const [co, br] = await Promise.all([
+          prisma.company.findUnique({ where: { id: user.companyId }, select: { status: true, isArchived: true } }).catch(() => null),
+          prisma.branch.findUnique({ where: { id: user.companyId }, select: { isArchived: true, companyId: true } }).catch(() => null),
+        ]);
+        const parent = br
+          ? await prisma.company.findUnique({ where: { id: br.companyId }, select: { status: true, isArchived: true } }).catch(() => null)
+          : null;
+        const dead = (c) => !!c && (c.isArchived === true || String(c.status || '').toLowerCase() === 'archived');
+        if (dead(co) || (br && br.isArchived === true) || dead(parent)) {
+          return res.status(403).json({
+            error: 'This workspace has been archived. Please contact your administrator.',
+            code: 'WORKSPACE_ARCHIVED',
+          });
+        }
+      }
+    }
+
     // ---- Branch-aware RBAC scope --------------------------------------------
     // A user's grant set (companyId + accessibleCompanyIds) mixes COMPANY and
     // BRANCH ids (they share an id space). resolveAccess turns it into:
@@ -58,6 +89,17 @@ exports.protect = async (req, res, next) => {
       user.accessibleBranchIds = [];
       user.accessibleCompanyIds = [];
       user.branchCompanyMap = {};
+    }
+
+    // Custom-domain isolation: a request arriving on a mapped tenant host may
+    // only be served to users of THAT company (Super Admin exempt). The host
+    // → company mapping was resolved by customDomainHost middleware.
+    if (req.customDomain && user.role !== 'Super Admin') {
+      const { resolveHead } = require('../services/employeeLimitService');
+      const head = await resolveHead(user.companyId).catch(() => null);
+      if (!head || head.id !== req.customDomain.companyId) {
+        return res.status(403).json({ error: 'This account does not belong to this workspace domain.' });
+      }
     }
 
     req.user = user;

@@ -33,7 +33,7 @@ import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { Card, StatCard } from '@/components/ui/Card';
 import { VerificationCreditsCard } from '@/components/verification/VerificationCreditsCard';
-import { WalletModal } from '@/components/verification/WalletModal';
+import { EmployeeSlotsCard } from '@/components/subscription/EmployeeSlotsCard';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
 import { RecentActivityFeed } from '@/components/activity/RecentActivityFeed';
@@ -147,10 +147,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Loose (String) compare: activeCompanyId may arrive as a number (fresh click)
   // or a string (rehydrated from localStorage) — both must resolve the same
   // workspace, otherwise a branch loses its context after a reload.
-  // Verification credits dialog — opened in place by "View Verification Credits"
-  // so the action never navigates or opens a second tab.
-  const [walletOpen, setWalletOpen] = useState(false);
-
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId) || companies.find(c => String(c.id) === String(activeCompanyId));
   // Branch context: the active workspace is a branch when it has a parent
   // company. Used to scope the dashboard and render the "Company → Branch"
@@ -1217,17 +1213,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Remaining verification credits — a quota of API verification requests,
             never money. Hides itself when the figure can't be read, so a lookup
             failure never shows a false zero.
-            The link opens a dialog IN PLACE. It used to navigate to Settings —
-            which is not a credits screen, and the only credits page in this app is
-            registered platformOnly/Super Admin, so a Company Head or HR had
-            nowhere legitimate to be sent. Employees get no credits view at all. */}
-        <VerificationCreditsCard onViewWallet={() => setWalletOpen(true)} />
-        <WalletModal
-          open={walletOpen}
-          onClose={() => setWalletOpen(false)}
-          role={role}
-          companyName={currentCompany?.name || null}
-        />
+            The link navigates to the dedicated Verification Credits page
+            (company-facing 'verification-wallet' route — the old wallet popup
+            is gone). Employees get no credits view at all. */}
+        <VerificationCreditsCard onViewWallet={() => window.dispatchEvent(new CustomEvent('hrms:view-verification-credits'))} />
+        {/* Employee slot usage — every active user (head/HR/employee) is one
+            slot; the card opens the slot history page / purchase dialog. */}
+        <EmployeeSlotsCard />
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
         {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}

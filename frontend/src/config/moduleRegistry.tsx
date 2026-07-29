@@ -26,7 +26,7 @@ export type PageId =
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
   | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
   | 'subscription-invoice'
-  | 'plans';
+  | 'plans' | 'custom-domain' | 'employee-slot-history' | 'verification-wallet';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -128,6 +128,14 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },
   { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'], permission: 'contracts', inMatrix: true },
   { id: 'company-profile', label: 'Company Profile', icon: <Building2 size={15} />, roles: ['Company Head'], permission: 'company-profile', inMatrix: true },
+  // Premium page riding the `settings` permission (same pattern as the Custom
+  // Report Builder on `reports`); the plan lock is by PAGE ID 'custom-domain'.
+  { id: 'custom-domain', label: '🧪 Custom Domain (Beta)', icon: <PlugZap size={15} />, roles: ['Company Head'], permission: 'settings', inMatrix: false, beta: true },
+  // Company-facing Verification Credits page (quota, analytics, verification +
+  // recharge history). Distinct from the platform-only 'verification-credits'
+  // Super-Admin portal above. Rides the dashboard permission (no matrix row);
+  // the page + backend both refuse the Employee role themselves.
+  { id: 'verification-wallet', label: 'Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: false },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'settings', inMatrix: true },
   { id: 'users', label: 'User Management', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'users', inMatrix: true },
   { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'], permission: 'audit', inMatrix: true, platformOnly: true },

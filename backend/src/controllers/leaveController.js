@@ -86,7 +86,21 @@ exports.getAll = async (req, res) => {
       console.warn(`[leaves:getAll] REJECTED ${scoped.status} by=${req.user?.id} companyId=${req.query.companyId}`);
       return res.status(scoped.status).json(scoped.body);
     }
-    const data = await prisma.leaveRequest.findMany({ where: scoped.where });
+    // Row filters were accepted and silently discarded here, so `?status=Approved`
+    // returned every leave request in the workspace. `paginated` below honours
+    // them; this aggregate endpoint now does too. ANDed onto the tenant scope, so
+    // a filter can only ever narrow what the caller may already see.
+    const filters = [];
+    if (req.query.status) filters.push({ status: String(req.query.status) });
+    if (req.query.leaveType) filters.push({ leaveType: String(req.query.leaveType) });
+    if (req.query.department) filters.push({ department: String(req.query.department) });
+    const employeeId = idParam(req.query.employeeId);
+    if (employeeId) filters.push({ employeeId });
+    if (req.query.from) filters.push({ toDate: { gte: String(req.query.from) } });
+    if (req.query.to) filters.push({ fromDate: { lte: String(req.query.to) } });
+
+    const where = filters.length ? { AND: [scoped.where, ...filters] } : scoped.where;
+    const data = await prisma.leaveRequest.findMany({ where });
     res.json(data);
   } catch (error) {
     console.error('Error fetching', error);

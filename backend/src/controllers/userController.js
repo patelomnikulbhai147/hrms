@@ -387,6 +387,21 @@ exports.createCompanyUser = async (req, res) => {
     const status = (b.enableLogin === false) ? 'Inactive' : (['Active', 'Inactive'].includes(b.status) ? b.status : 'Active');
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // ── Employee slot enforcement ────────────────────────────────────────────
+    // Every company user (Company Head, HR, …) is a member of staff and
+    // consumes one employee slot. If this user will LINK to an existing
+    // employee (same email / explicit employee code) no new slot is needed;
+    // otherwise the tenant must have capacity BEFORE the account is created.
+    const { findLinkableEmployee, ensureEmployeeProfileForUser } = require('../services/userEmployeeProfileService');
+    const linkTarget = await findLinkableEmployee({
+      companyId, email, permissions: { profile: { employeeCode: String(b.employeeId || '').trim() || null } },
+    }).catch(() => null);
+    if (!linkTarget) {
+      const { assertCapacity } = require('../services/employeeLimitService');
+      const seat = await assertCapacity(companyId, 1);
+      if (!seat.ok) return res.status(seat.status).json(seat.body);
+    }
+
     const newUser = await prisma.user.create({
       data: {
         name, email, username, passwordHash, role, companyId,
@@ -396,6 +411,16 @@ exports.createCompanyUser = async (req, res) => {
         permissions: permBlob,
       },
     });
+
+    // Create/link the Employee profile (same code generator as every employee,
+    // appears in the directory + reports). Failure never destroys the account —
+    // the limit service's unlinked-user safety net keeps counting it meanwhile.
+    let employeeProfile = null;
+    try {
+      employeeProfile = await ensureEmployeeProfileForUser(newUser);
+    } catch (e) {
+      console.error(`[users] employee profile for user ${newUser.id} failed (safety net still counts them):`, e.message);
+    }
 
     // Best-effort welcome email (never blocks creation; logs in dev when SMTP is off).
     if (b.sendWelcomeEmail) {
@@ -418,6 +443,9 @@ exports.createCompanyUser = async (req, res) => {
     res.status(201).json({
       id: newUser.id, name: newUser.name, email: newUser.email, username: newUser.username,
       role: newUser.role, companyId, branchId: newUser.branchId, status: newUser.status,
+      employeeProfile: employeeProfile?.employee
+        ? { id: employeeProfile.employee.id, employeeId: employeeProfile.employee.employeeId, action: employeeProfile.action }
+        : null,
     });
   } catch (error) {
     return respondError(res, error, { action: 'create user', resource: 'user' });
@@ -453,7 +481,11 @@ exports.getAllUsers = async (req, res) => {
     // truth used only server-side by bcrypt.compare. Passwords are write-only via
     // the reset endpoint; they are never readable through the API.
     const safeUsers = users.map(u => {
-      const { passwordHash, permissions: rawPermissions, ...rest } = u;
+      // `password` (the legacy column) is destructured out here too. The comment
+      // above always claimed both were stripped, but only passwordHash was — so
+      // every /api/users response carried a `password` key. It is null on every
+      // current row, so nothing leaked, but the key must not reach the wire at all.
+      const { passwordHash, password, permissions: rawPermissions, ...rest } = u;
       const parsedPerms = rawPermissions || {};
       return {
         ...rest,

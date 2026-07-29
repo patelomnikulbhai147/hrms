@@ -48,6 +48,13 @@ exports.getEmployees = async (req, res) => {
     else if (status) tableWhere = withStatus(null); // explicit status filter defines the set
     else tableWhere = includeAll ? withStatus(null) : withStatus(NOT_OFF);
 
+    // `?branchId=` was accepted and silently discarded, so a request for one
+    // branch returned every employee in the workspace. It NARROWS the scoped set
+    // (AND, never a substitute), so it can only ever show fewer employees than
+    // the caller is already entitled to see.
+    const branchFilter = idParam(req.query.branchId);
+    if (branchFilter) tableWhere = { AND: [tableWhere, { branchId: branchFilter }] };
+
     let orderBy = {};
     if (sortField) {
       orderBy[sortField] = sortOrder === 'desc' ? 'desc' : 'asc';

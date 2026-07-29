@@ -36,7 +36,11 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
  * only specific branches. Company and branch ids share one sequence, so the
  * workspace is looked up in `Branch` rather than guessed from its value.
  */
-exports.scopeWhere = async function scopeWhere(req) {
+// Declared, then exported — NOT `exports.scopeWhere = async function scopeWhere()`.
+// A named function EXPRESSION binds its name only inside its own body, never in
+// module scope, so the bare calls in list() and filterOptions() below threw
+// "scopeWhere is not defined" and both endpoints 500'd for every role.
+async function scopeWhere(req) {
   const raw = req.query.companyId ?? req.body.companyId ?? req.headers['x-workspace-id'] ?? req.user?.companyId;
   const workspaceId = Number(raw);
   if (!Number.isFinite(workspaceId) || !workspaceId) {
@@ -63,6 +67,8 @@ exports.scopeWhere = async function scopeWhere(req) {
   }
   return { ok: true, where, companyId: branch ? branch.companyId : workspaceId };
 }
+// leaveAdminController imports this symbol, so it must stay on exports too.
+exports.scopeWhere = scopeWhere;
 
 exports.list = async (req, res) => {
   const tag = `[leave-admin] by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'})`;

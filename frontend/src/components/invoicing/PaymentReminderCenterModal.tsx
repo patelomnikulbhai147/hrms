@@ -149,7 +149,13 @@ export const PaymentReminderCenterModal: React.FC<PaymentReminderCenterModalProp
       setActiveTab('reminder-history');
     } catch (e: any) {
       if (e?.status === 429 || e?.requiresConfirmation || e?.message?.includes('recently')) {
-        const confirmResend = window.confirm('A reminder was sent for this invoice less than 10 minutes ago. Are you sure you want to send another reminder right now?');
+        const confirmResend = await ui.confirm({
+          title: 'Send another reminder?',
+          message: 'A reminder for this invoice went out less than 10 minutes ago. Sending again now means the customer receives two.',
+          confirmText: 'Send anyway',
+          cancelText: 'Cancel',
+          variant: 'primary',
+        });
         if (confirmResend) {
           await handleSendReminder(true);
         }

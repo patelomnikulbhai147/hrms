@@ -6,6 +6,7 @@ const { coerceEntityIds } = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { normalizeBillingCycle } = require('../utils/billingCycle');
 
 // ── Company Branding Management ───────────────────────────────────────────────
 // A dedicated, permission-gated endpoint so Company Admins / HR can manage their
@@ -477,13 +478,25 @@ exports.createCompany = async (req, res) => {
     // (the DB default is also 'Free', but set it here so it's unambiguous + audited).
     if (isBlank(companyData.plan)) companyData.plan = 'Free';
 
+    // Billing cycle is chosen alongside the plan at onboarding. `billingCycle`
+    // is already in COMPANY_FIELDS, so pickCompanyData may have carried a raw
+    // value through — normalise it here so a legacy/junk value ('Monthly', '')
+    // can never reach the subscription that slot purchases inherit from.
+    const billingCycle = normalizeBillingCycle(companyData.billingCycle);
+    companyData.billingCycle = billingCycle;
+
     const company = await prisma.company.create({
       data: { ...companyData, id: await nextEntityId() }
     });
 
-    // Subscription record (FREE / Active) — best-effort, mirrors Company.plan.
-    prisma.companySubscription.create({
-      data: { companyId: company.id, plan: company.plan || 'Free', billingCycle: 'Quarterly', status: 'Active' },
+    // Subscription record (Active) — best-effort, mirrors Company.plan and the
+    // chosen cycle. If this write fails the row is recreated lazily FROM the
+    // Company row, so the chosen cycle is not lost.
+    // AWAITED: unawaited, the response could beat the insert and the very next
+    // read (subscription detail, slot quote) would find no row yet. Still
+    // .catch()-guarded, so a failure here never fails the company creation.
+    await prisma.companySubscription.create({
+      data: { companyId: company.id, plan: company.plan || 'Free', billingCycle, status: 'Active' },
     }).catch(() => { /* lazily created later by the subscription controller if this fails */ });
 
     // The company row is authoritative. Everything below enriches the profile and
@@ -660,7 +673,20 @@ exports.updateCompany = async (req, res) => {
     }
 
     const payload = pickCompanyData(req.body);
+    // The billing cycle belongs to the SUBSCRIPTION, not the company profile.
+    // `Company.billingCycle` is only a mirror, so this route must not be a second
+    // (unaudited) way to change it — that would let the mirror drift away from
+    // the value slot purchases actually inherit. Changing it goes through
+    // Subscription Management, which writes both rows and records the history.
+    const askedToChangeCycle = Object.prototype.hasOwnProperty.call(payload, 'billingCycle');
+    delete payload.billingCycle;
     if (Object.keys(payload).length === 0) {
+      if (askedToChangeCycle) {
+        return res.status(400).json({
+          error: 'The billing cycle is part of the subscription. Change it from Subscription Management.',
+          code: 'BILLING_CYCLE_READONLY',
+        });
+      }
       return res.status(400).json({ error: 'No valid company fields supplied to update.' });
     }
     const company = await prisma.company.update({

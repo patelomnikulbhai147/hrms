@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { type UserAccount, type AppModules, type ModulePermissions } from '@/pages/Login';
 import { getPlatformMatrixModules } from '@/config/moduleRegistry';
 import { foldPermissions } from '@/utils/permissionFold';
-import { formatDateTime } from '@/utils/formatDate';
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 import { type Company } from '@/data/mockData';
 import { buildCompanyBranchGroups, type CompanyBranchGroup } from '@/utils/workspaceUtils';
 import { Badge } from '@/components/ui/Badge';
@@ -555,7 +555,7 @@ export const Users: React.FC<UsersProps> = ({ userAccounts, companies, onUpdateA
       doc.text('ZeniaHR User Management Report', 14, 22);
       doc.setFontSize(11);
       const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
-      doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 30);
+      doc.text(`Generated: ${formatDate(new Date())}`, 14, 30);
       
       const tableData = dataToExport.map(u => [
         u.name,

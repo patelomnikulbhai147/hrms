@@ -66,7 +66,11 @@ async function wipe() {
     const g101 = await assertCapacity(CID, 1);
     ok(g101.ok === false && g101.body.code === 'EMPLOYEE_LIMIT_REACHED' && g101.status === 403,
       `employee #101 blocked → ${g101.ok === false ? `${g101.status} ${g101.body.code}` : 'ALLOWED — WRONG'}`);
-    ok(/100 active employees/.test(g101.body?.error || ''), `block message states the cap: "${g101.body?.error || ''}"`);
+    // Message changed with the Slot Management feature (2026-07-29): the block
+    // now directs users to purchase slot packs / contact sales, and the body
+    // carries the cap breakdown as structured fields instead of prose.
+    ok(/purchase additional employee slots/i.test(g101.body?.error || '') && g101.body?.limit === 100,
+      `block message + structured limit: "${g101.body?.error || ''}" (limit=${g101.body?.limit})`);
 
     // ── T4: import of 30 with 85 on file → blocked, 15 slots available ───────
     await prisma.employee.deleteMany({ where: { companyId: CID, employeeId: { gte: `${PREFIX}0086` } } });

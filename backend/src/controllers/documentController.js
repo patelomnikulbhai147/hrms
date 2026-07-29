@@ -107,8 +107,32 @@ exports.getAll = async (req, res) => {
       whereClause = { OR: [{ companyId: companyId }, { branchId: companyId }] };
     }
 
+    // ── Row filters ──────────────────────────────────────────────────────────
+    // `?employeeId=` and `?type=` were accepted and silently discarded, so a
+    // request for one employee's documents returned the whole workspace's.
+    // They are ANDed onto the tenant scope above, never substituted for it, so a
+    // foreign employeeId yields nothing rather than that employee's documents.
+    const rowFilters = [];
+    const employeeId = idParam(req.query.employeeId);
+    if (employeeId) rowFilters.push({ employeeId });
+    if (req.query.type) rowFilters.push({ type: String(req.query.type) });
+    if (req.query.category) rowFilters.push({ category: String(req.query.category) });
+    if (req.query.status) rowFilters.push({ status: String(req.query.status) });
+    const search = String(req.query.search || '').trim();
+    if (search) {
+      rowFilters.push({
+        OR: [
+          { name: { contains: search } },
+          { employeeName: { contains: search } },
+          { documentNumber: { contains: search } },
+        ],
+      });
+    }
+
+    const finalWhere = rowFilters.length ? { AND: [whereClause, ...rowFilters] } : whereClause;
+
     const data = await prisma.document.findMany({
-      where: whereClause,
+      where: finalWhere,
       orderBy: { id: 'asc' },
     });
 

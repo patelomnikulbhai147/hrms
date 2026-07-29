@@ -1082,6 +1082,119 @@ export const api = {
     }
   },
 
+  // Verification Credit Recharge (self-service, Cashfree PG). Tenant endpoints
+  // are company-resolved on the backend; responses never include internal
+  // pricing. The admin.* group is Super-Admin-only (hard-gated server-side).
+  recharge: {
+    config: async () => apiFetch(`${BASE_URL}/verification-credits/recharge/config`, { headers: getHeaders() }),
+    quote: async (amount: number) => apiFetch(`${BASE_URL}/verification-credits/recharge/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ amount }) }),
+    createOrder: async (data: { amount?: number; packageId?: number }) => apiFetch(`${BASE_URL}/verification-credits/recharge/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    history: async (params?: { page?: number; pageSize?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+      return apiFetch(`${BASE_URL}/verification-credits/recharge/history${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+    },
+    /** Downloads the invoice PDF as a Blob (authenticated fetch, not a bare link). */
+    downloadInvoice: async (invoiceId: number): Promise<Blob> => {
+      const res = await fetch(`${BASE_URL}/verification-credits/recharge/invoices/${invoiceId}/download`, { headers: getHeaders() });
+      if (!res.ok) {
+        let msg = 'Could not download the invoice.';
+        try { msg = (await res.json())?.error || msg; } catch { /* keep default */ }
+        throw new Error(msg);
+      }
+      return res.blob();
+    },
+    admin: {
+      settings: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/settings`, { headers: getHeaders() }),
+      updateSettings: async (data: any) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      packages: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages`, { headers: getHeaders() }),
+      savePackage: async (data: any) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages${data?.id ? `/${data.id}` : ''}`, { method: data?.id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      deletePackage: async (id: number) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      orders: async (params?: Record<string, any>) => {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+        return apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      approveOrder: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/approve`, { method: 'POST', headers: getHeaders() }),
+      reverifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/reverify`, { method: 'POST', headers: getHeaders() }),
+      regenerateInvoice: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/regenerate-invoice`, { method: 'POST', headers: getHeaders() }),
+      refunds: async (params?: { page?: number; pageSize?: number }) => {
+        const q = new URLSearchParams();
+        if (params?.page) q.set('page', String(params.page));
+        if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+        return apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/refunds${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      markRefundAdjusted: async (id: number) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/refunds/${id}/mark-adjusted`, { method: 'PUT', headers: getHeaders() }),
+      dashboard: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/dashboard`, { headers: getHeaders() }),
+    },
+  },
+
+  // White Label & Custom Domain (Beta). Company endpoints are plan-gated
+  // server-side (custom-domain module); writes are Company Head only.
+  customDomain: {
+    overview: async () => apiFetch(`${BASE_URL}/custom-domain/overview`, { headers: getHeaders() }),
+    addDomain: async (domain: string) => apiFetch(`${BASE_URL}/custom-domain/domains`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ domain }) }),
+    verify: async () => apiFetch(`${BASE_URL}/custom-domain/domains/verify`, { method: 'POST', headers: getHeaders() }),
+    refresh: async () => apiFetch(`${BASE_URL}/custom-domain/domains/refresh`, { method: 'POST', headers: getHeaders() }),
+    remove: async () => apiFetch(`${BASE_URL}/custom-domain/domains`, { method: 'DELETE', headers: getHeaders() }),
+    saveWhiteLabel: async (data: any) => apiFetch(`${BASE_URL}/custom-domain/white-label`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    status: async () => apiFetch(`${BASE_URL}/custom-domain/status`, { headers: getHeaders() }),
+    health: async () => apiFetch(`${BASE_URL}/custom-domain/health`, { headers: getHeaders() }),
+    // Public (pre-login): login-page branding for the current host.
+    hostBranding: async (host: string) => apiFetch(`${BASE_URL}/public/host-branding?host=${encodeURIComponent(host)}`, { headers: getHeaders() }),
+    admin: {
+      mappings: async () => apiFetch(`${BASE_URL}/super-admin/white-label/mappings`, { headers: getHeaders() }),
+      disable: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/disable`, { method: 'POST', headers: getHeaders() }),
+      enable: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/enable`, { method: 'POST', headers: getHeaders() }),
+      reverify: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/reverify`, { method: 'POST', headers: getHeaders() }),
+      remove: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      renewSweep: async () => apiFetch(`${BASE_URL}/super-admin/white-label/ssl/renew-sweep`, { method: 'POST', headers: getHeaders() }),
+    },
+  },
+
+  // Subscription Purchase — the self-service upgrade/renewal wizard. The
+  // client only ever sends { planKey, billingCycle, employeeCount }; price,
+  // discount, GST and limits are computed server-side and frozen on the order.
+  subscriptionPurchase: {
+    context: async () => apiFetch(`${BASE_URL}/subscription-purchase/context`, { headers: getHeaders() }),
+    quote: async (data: { planKey: string; billingCycle: string; employeeCount: number }) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    createOrder: async (data: { planKey: string; billingCycle: string; employeeCount: number }) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    history: async () => apiFetch(`${BASE_URL}/subscription-purchase/history`, { headers: getHeaders() }),
+  },
+
+  // Employee Slot Management — plan-limit add-ons. Company endpoints resolve
+  // the tenant server-side; only a settled payment or a Super Admin can raise
+  // a limit. Slot invoices share the recharge invoice download endpoint.
+  employeeSlots: {
+    overview: async () => apiFetch(`${BASE_URL}/employee-slots/overview`, { headers: getHeaders() }),
+    quote: async (slots: number) => apiFetch(`${BASE_URL}/employee-slots/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ slots }) }),
+    createOrder: async (data: { slots?: number; packId?: number }) => apiFetch(`${BASE_URL}/employee-slots/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/employee-slots/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    request: async (data: { packId?: number; slots?: number; note?: string }) => apiFetch(`${BASE_URL}/employee-slots/request`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    history: async () => apiFetch(`${BASE_URL}/employee-slots/history`, { headers: getHeaders() }),
+    admin: {
+      packs: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs`, { headers: getHeaders() }),
+      savePack: async (data: any) => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs${data?.id ? `/${data.id}` : ''}`, { method: data?.id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      deletePack: async (id: number) => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      requests: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests`, { headers: getHeaders() }),
+      approveRequest: async (id: number) => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests/${id}/approve`, { method: 'POST', headers: getHeaders() }),
+      rejectRequest: async (id: number, reason?: string) => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests/${id}/reject`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }),
+      adjust: async (data: { companyId: number; delta: number; reason: string }) => apiFetch(`${BASE_URL}/super-admin/employee-slots/adjust`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      transactions: async (params?: Record<string, any>) => {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+        return apiFetch(`${BASE_URL}/super-admin/employee-slots/transactions${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      usage: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/usage`, { headers: getHeaders() }),
+    },
+  },
+
   // Communication Center (Phase 1 — storage only, no sending). Scoped to caller's
   // company; gated to Super Admin + Company Head on the backend.
   communication: {
@@ -1300,6 +1413,8 @@ export const api = {
     remove: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     setStatus: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     payments: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { headers: getHeaders() }); },
+    /** Every payment received across all invoices (Billing → Payments register). */
+    allPayments: async (limit = 500) => { return await apiFetch(`${BASE_URL}/subscription-invoices/payments?limit=${limit}`, { headers: getHeaders() }); },
     addPayment: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     duplicate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders() }); },
     regenerate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/regenerate`, { method: 'POST', headers: getHeaders() }); },

@@ -27,7 +27,10 @@ const CommunicationCenter = React.lazy(() => import('@/pages/CommunicationCenter
 const Settings = React.lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })));
 const SubscriptionManagement = React.lazy(() => import('@/pages/SubscriptionManagement').then(m => ({ default: m.SubscriptionManagement })));
 const SuperAdminVerificationCredits = React.lazy(() => import('@/pages/SuperAdminVerificationCredits').then(m => ({ default: m.SuperAdminVerificationCredits })));
-const SubscriptionManage = React.lazy(() => import('@/pages/SubscriptionManage').then(m => ({ default: m.SubscriptionManage })));
+// Full Company Subscription Details (Subscription · Slots · Credits · Billing ·
+// Invoices · Payments · Usage · Audit) — opened from Subscription Management →
+// Companies. Replaces the old single-purpose "Manage Subscription" screen.
+const SubscriptionManage = React.lazy(() => import('@/pages/SubscriptionCompanyDetails').then(m => ({ default: m.SubscriptionCompanyDetails })));
 const SubscriptionInvoicePage = React.lazy(() => import('@/pages/SubscriptionInvoicePage').then(m => ({ default: m.SubscriptionInvoicePage })));
 const Users = React.lazy(() => import('@/pages/Users').then(m => ({ default: m.Users })));
 const AuditTrail = React.lazy(() => import('@/pages/AuditTrail').then(m => ({ default: m.AuditTrail })));
@@ -40,10 +43,15 @@ const Login = React.lazy(() => import('@/pages/Login').then(m => ({ default: m.L
 const CompanyRegistration = React.lazy(() => import('@/pages/CompanyRegistration').then(m => ({ default: m.CompanyRegistration })));
 const OnboardingWelcome = React.lazy(() => import('@/pages/OnboardingWelcome').then(m => ({ default: m.OnboardingWelcome })));
 const PlansView = React.lazy(() => import('@/pages/PlansView').then(m => ({ default: m.PlansView })));
+const CustomDomain = React.lazy(() => import('@/pages/CustomDomain').then(m => ({ default: m.CustomDomain })));
+const EmployeeSlotHistory = React.lazy(() => import('@/pages/EmployeeSlotHistory').then(m => ({ default: m.EmployeeSlotHistory })));
+const VerificationCreditsPage = React.lazy(() => import('@/pages/VerificationCredits').then(m => ({ default: m.VerificationCredits })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { moduleLockedFor, pageLockedFor } from '@/config/planEntitlements';
 import { PremiumRequiredScreen } from '@/components/subscription/PremiumLock';
 import { EmployeeLimitDialog } from '@/components/subscription/EmployeeLimitDialog';
+const EmployeeSlotsModal = React.lazy(() => import('@/components/subscription/EmployeeSlotsModal').then(m => ({ default: m.EmployeeSlotsModal })));
+const SubscriptionPurchaseWizard = React.lazy(() => import('@/components/subscription/SubscriptionPurchaseWizard').then(m => ({ default: m.SubscriptionPurchaseWizard })));
 import { authStorage } from '@/utils/authStorage';
 import { safeSetJSON, pruneLargeLegacyCaches } from '@/utils/safeStorage';
 import { PermissionProvider, checkCanView, checkCanEdit } from '@/context/PermissionContext';
@@ -91,10 +99,13 @@ const pageTitles: Record<PageId, string> = {
   documents: 'Employee Documents',
   reports: 'Reports',
   'custom-report-builder': 'Custom Report Builder',
+  'custom-domain': 'Custom Domain (Beta)',
   settings: 'Settings',
   billing: 'Subscription Management',
   'verification-credits': 'Bank Verification Credits',
-  'subscription-manage': 'Manage Subscription',
+  'verification-wallet': 'Verification Credits',
+  'subscription-manage': 'Company Subscription',
+  'employee-slot-history': 'Employee Slot History',
   plans: 'Subscription Plans',
   users: 'User Management',
   tasks: 'Task Manager',
@@ -112,8 +123,9 @@ const pageTitles: Record<PageId, string> = {
 // routing: refresh, deep links and the browser Back button all work.
 const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
-  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'settings', 'billing', 'verification-credits', 'users', 'tasks', 'tenders', 'contracts', 'audit',
+  'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'custom-domain', 'settings', 'billing', 'verification-credits', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'company-edit', 'subscription-manage', 'subscription-invoice', 'communication', 'notifications', 'select-workspace',
+  'employee-slot-history', 'verification-wallet',
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -568,6 +580,8 @@ export default function App() {
   // Employee-limit upgrade dialog — populated by the global 'hrms:employee-limit'
   // event that apiClient fires on any create hitting the plan cap.
   const [limitInfo, setLimitInfo] = useState<any | null>(null);
+  const [slotsModalOpen, setSlotsModalOpen] = useState(false);
+  const [upgradeWizardOpen, setUpgradeWizardOpen] = useState(false);
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1164,9 +1178,12 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     };
     const onFocus = () => refresh();
     window.addEventListener('focus', onFocus);
+    // Fired by the purchase wizard right after a settled payment so the new
+    // plan's modules/limits appear immediately — same merge, no logout.
+    window.addEventListener('hrms:plan-updated', onFocus);
     const timer = setInterval(refresh, 120000);
     refresh();
-    return () => { cancelled = true; window.removeEventListener('focus', onFocus); clearInterval(timer); };
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); window.removeEventListener('hrms:plan-updated', onFocus); clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, storedAuthProfile?.id]);
 
@@ -1179,6 +1196,49 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     return () => window.removeEventListener('hrms:employee-limit', onLimit as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authProfile]);
+
+  // Employee Slots purchase dialog — opened by the limit dialog's "Purchase
+  // Additional Slots" button and by any Dashboard/Settings entry point.
+  useEffect(() => {
+    const onOpenSlots = () => setSlotsModalOpen(true);
+    // Slot HISTORY is a full page, not a dialog view — the dashboard card and
+    // the purchase dialog's history buttons both navigate here.
+    const onViewSlotHistory = () => {
+      setSlotsModalOpen(false);
+      setCurrentPage('employee-slot-history');
+      localStorage.setItem('hrms_current_page', 'employee-slot-history');
+      const path = '/employee-slot-history';
+      if (window.location.pathname !== path) {
+        window.history.pushState({ page: 'employee-slot-history' }, '', path);
+      }
+    };
+    // Verification Credits is a full page too — "View Verification Credits"
+    // navigates instead of opening the removed wallet popup.
+    const onViewVerificationCredits = () => {
+      setCurrentPage('verification-wallet');
+      localStorage.setItem('hrms_current_page', 'verification-wallet');
+      const path = '/verification-wallet';
+      if (window.location.pathname !== path) {
+        window.history.pushState({ page: 'verification-wallet' }, '', path);
+      }
+    };
+    window.addEventListener('hrms:purchase-slots', onOpenSlots);
+    window.addEventListener('hrms:view-slot-history', onViewSlotHistory);
+    window.addEventListener('hrms:view-verification-credits', onViewVerificationCredits);
+    return () => {
+      window.removeEventListener('hrms:purchase-slots', onOpenSlots);
+      window.removeEventListener('hrms:view-slot-history', onViewSlotHistory);
+      window.removeEventListener('hrms:view-verification-credits', onViewVerificationCredits);
+    };
+  }, []);
+
+  // Subscription purchase wizard — opened by every "Upgrade Plan" entry point
+  // (locked-module dialog/screen, limit dialog, Plans page).
+  useEffect(() => {
+    const onOpenUpgrade = () => setUpgradeWizardOpen(true);
+    window.addEventListener('hrms:upgrade-plan', onOpenUpgrade);
+    return () => window.removeEventListener('hrms:upgrade-plan', onOpenUpgrade);
+  }, []);
 
   // Record whether the entered workspace is a company or a branch. Branch ids
   // overlap company ids in the DB, so this hint is what lets the scoping layer
@@ -1379,9 +1439,16 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         : currentPage === 'invoice-management' ? 'invoicing'
         // Custom Report Builder rides on the Reports permission (no matrix row).
         : currentPage === 'custom-report-builder' ? 'reports'
+        // Custom Domain (Beta) rides on the Settings permission (plan-locked by page id).
+        : currentPage === 'custom-domain' ? 'settings'
         // Notifications is a cross-cutting page reached from the Dashboard / bell;
         // it rides on the Dashboard permission (anyone who can see the dashboard).
         : currentPage === 'notifications' ? 'dashboard'
+        // Slot history rides on Dashboard too (reached from its slots card); the
+        // page + backend both deny the Employee role themselves.
+        : currentPage === 'employee-slot-history' ? 'dashboard'
+        // Verification Credits (company wallet page) likewise rides Dashboard.
+        : currentPage === 'verification-wallet' ? 'dashboard'
         // Finance & Compliance aggregates loans + compliance: allow if the user
         // can view EITHER (resolve to whichever key they actually hold).
         : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1482,8 +1549,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'invoice-management' ? 'invoicing'
       // Custom Report Builder rides on the Reports permission (no matrix row).
       : currentPage === 'custom-report-builder' ? 'reports'
+      // Custom Domain (Beta) rides on the Settings permission (plan-locked by page id).
+      : currentPage === 'custom-domain' ? 'settings'
       // Notifications rides on the Dashboard permission (cross-cutting page).
       : currentPage === 'notifications' ? 'dashboard'
+      // Slot history rides on Dashboard (page + backend deny the Employee role).
+      : currentPage === 'employee-slot-history' ? 'dashboard'
+      // Verification Credits (company wallet page) likewise rides Dashboard.
+      : currentPage === 'verification-wallet' ? 'dashboard'
       // Finance & Compliance aggregates loans + compliance: allow if the user
       // can view EITHER (resolve to whichever key they actually hold).
       : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
@@ -1516,7 +1589,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       return (
         <PremiumRequiredScreen
           moduleLabel={pageTitles[currentPage] || currentPage}
-          onUpgrade={() => handleNavigate('settings')}
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('hrms:upgrade-plan'))}
           onBack={() => handleNavigate('dashboard')}
         />
       );
@@ -1697,8 +1770,8 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           );
         }
         return manageSubId
-          ? <SubscriptionManage companyId={manageSubId} onBack={() => handleNavigate('billing')} onSaved={hydrateAll} />
-          : <SubscriptionManagement onManage={handleManageSubscription} />;
+          ? <SubscriptionManage companyId={manageSubId} onBack={() => handleNavigate('billing')} onSaved={hydrateAll} onOpenInvoice={handleOpenInvoice} />
+          : <SubscriptionManagement onManage={handleManageSubscription} onOpenInvoice={handleOpenInvoice} />;
       case 'employees':
         return (
           <Employees
@@ -1904,6 +1977,17 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             authProfile={authProfile}
           />
         );
+      case 'custom-domain':
+        return <CustomDomain role={resolvedRole} />;
+      case 'employee-slot-history':
+        return <EmployeeSlotHistory role={resolvedRole} />;
+      case 'verification-wallet':
+        return (
+          <VerificationCreditsPage
+            role={resolvedRole}
+            companyName={companies.find(c => String(c.id) === String(activeCompanyId))?.name || null}
+          />
+        );
       case 'communication':
         return <CommunicationCenter role={resolvedRole} />;
       case 'settings':
@@ -2083,9 +2167,31 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         limit={limitInfo?.limit}
         current={limitInfo?.current}
         onClose={() => setLimitInfo(null)}
-        onUpgrade={() => { setLimitInfo(null); handleNavigate('plans'); }}
+        onUpgrade={() => { setLimitInfo(null); window.dispatchEvent(new CustomEvent('hrms:upgrade-plan')); }}
         onViewPlans={() => { setLimitInfo(null); handleNavigate('plans'); }}
       />
+
+      {/* Employee slot purchase dialog (global — opened via 'hrms:purchase-slots'). */}
+      {slotsModalOpen && (
+        <React.Suspense fallback={null}>
+          <EmployeeSlotsModal
+            open={slotsModalOpen}
+            onClose={() => setSlotsModalOpen(false)}
+            role={(authProfile as any)?.role}
+          />
+        </React.Suspense>
+      )}
+
+      {/* Subscription purchase wizard (global — opened via 'hrms:upgrade-plan'). */}
+      {upgradeWizardOpen && (
+        <React.Suspense fallback={null}>
+          <SubscriptionPurchaseWizard
+            open={upgradeWizardOpen}
+            onClose={() => setUpgradeWizardOpen(false)}
+            role={(authProfile as any)?.role}
+          />
+        </React.Suspense>
+      )}
 
     </div>
     </PermissionProvider>
