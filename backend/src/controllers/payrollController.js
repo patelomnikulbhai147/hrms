@@ -664,6 +664,28 @@ exports.generate = async (req, res) => {
       periodCompanyId = branchRow.companyId;
     }
 
+    // ── The workspace id may be a BRANCH id ──────────────────────────────────
+    // Company.id and Branch.id share ONE sequence, and the workspace switcher
+    // hands non-Super-Admins a branch — so `companyId` here is routinely a branch
+    // id (e.g. OMNIEX is company 18, its Head Office is branch 19, and the client
+    // sends 19). The employee filter below already copes with that via
+    // `{ branchId: companyId }`, but CompanyPayroll.companyId is a FOREIGN KEY to
+    // Company, so a branch id there fails with
+    //   "Foreign key constraint violated: `companyId`".
+    // Resolve it to the owning company. The payroll rows themselves are already
+    // keyed on each employee's real companyId, so this makes the period row agree
+    // with its own children instead of pointing at a company that cannot exist.
+    if (periodCompanyId !== undefined) {
+      const asCompany = await prisma.company.findUnique({ where: { id: periodCompanyId }, select: { id: true } });
+      if (!asCompany) {
+        const asBranch = await prisma.branch.findUnique({ where: { id: periodCompanyId }, select: { companyId: true } });
+        if (!asBranch) {
+          return res.status(404).json({ error: 'Workspace not found.', code: 'WORKSPACE_NOT_FOUND' });
+        }
+        periodCompanyId = asBranch.companyId;
+      }
+    }
+
     // Selective generation: when employeeIds is provided, generate ONLY for those
     // employees (still scoped to the workspace below). No employeeIds = every
     // active employee in the workspace (the original bulk behaviour). We no longer
@@ -801,10 +823,11 @@ exports.generate = async (req, res) => {
       payrollRecordsToCreate.forEach(record => { record.branchPayrollId = String(result.id); });
     } else {
       result = await prisma.companyPayroll.upsert({
-        where: { companyId_payrollMonth_payrollYear: { companyId, payrollMonth: month, payrollYear: year } },
+        // periodCompanyId, not the raw workspace id — the latter may be a branch.
+        where: { companyId_payrollMonth_payrollYear: { companyId: periodCompanyId, payrollMonth: month, payrollYear: year } },
         update: { generatedBy: req.user?.name || 'System' },
         create: {
-          companyId,
+          companyId: periodCompanyId,
           payrollMonth: month,
           payrollYear: year,
           totalEmployees: 0,

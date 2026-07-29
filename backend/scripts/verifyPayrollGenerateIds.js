@@ -136,6 +136,27 @@ async function main() {
   check('unknown branch → clean 404, not a Prisma crash',
     missing.statusCode === 404 && missing.body?.code === 'BRANCH_NOT_FOUND', `${missing.statusCode} ${missing.body?.code}`);
 
+  // A BRANCH id arriving as companyId — Company.id and Branch.id share one
+  // sequence and the workspace switcher hands a Company Head their branch, so
+  // this is the NORMAL production shape, not an edge case. CompanyPayroll.companyId
+  // is a FK to Company, so the raw branch id used to fail with
+  // "Foreign key constraint violated: `companyId`".
+  const BRMONTH = 'March';
+  const asBranchWorkspace = await gen({ companyId: BR, month: BRMONTH, year: YEAR, role: 'Company Head' });
+  check('branch id passed as companyId → 201 (no FK violation)',
+    asBranchWorkspace.statusCode === 201, `${asBranchWorkspace.statusCode} ${asBranchWorkspace.body?.error || ''}`);
+  check('no foreign-key error surfaced',
+    !/Foreign key constraint|companyPayroll\.upsert/i.test(String(asBranchWorkspace.body?.error || '')));
+  const cpBr = await prisma.companyPayroll.findFirst({ where: { payrollMonth: BRMONTH, payrollYear: YEAR, companyId: CO } });
+  check('period row points at the OWNING company, not the branch',
+    !!cpBr && cpBr.companyId === CO, `companyId=${cpBr?.companyId}, expected ${CO} (branch was ${BR})`);
+  const brRows = await prisma.payroll.findMany({ where: { month: BRMONTH, year: YEAR, companyId: CO }, select: { companyId: true } });
+  check('payroll rows agree with their period row',
+    brRows.length > 0 && brRows.every((r) => r.companyId === cpBr.companyId), `${brRows.length} rows`);
+  const ghost = await gen({ companyId: 987654321, month: BRMONTH, year: YEAR, role: 'Company Head' });
+  check('unknown workspace id → clean 404',
+    ghost.statusCode === 404 && ghost.body?.code === 'WORKSPACE_NOT_FOUND', `${ghost.statusCode} ${ghost.body?.code}`);
+
   // ── §3 Roles ──────────────────────────────────────────────────────────────
   console.log('\n§3 Roles');
   const ch = await gen({ companyId: String(CO), branchId: String(BR), month: MONTH, year: YEAR, role: 'Company Head' },
