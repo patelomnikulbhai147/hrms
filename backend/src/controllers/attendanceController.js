@@ -3,6 +3,7 @@ const idParam = require('../utils/idParam');
 const otPay = require('../utils/overtimePay');
 const { deriveOvertimeHours } = require('../utils/overtimeDerivation');
 const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
+const { canEnterWorkspace, companyScopeFor, isSuperAdmin } = require('../utils/workspaceScope');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -103,14 +104,53 @@ exports.getAll = async (req, res) => {
       empWhere = { OR: [{ companyId }, { branchId: companyId }] };
     }
 
+    // ── Row filters ──────────────────────────────────────────────────────────
+    // These were accepted and silently DISCARDED: `?employeeId=7` and a date
+    // range both returned the entire scoped table, so a caller asking for one
+    // employee (or for the year 2099) still received every row — 28,861 of them,
+    // 9.8 MB. A filter that is ignored is worse than one that is rejected: the
+    // screen looks filtered and is not.
+    const rowWhere = {};
+    const employeeId = idParam(req.query.employeeId);
+    if (employeeId) rowWhere.employeeId = employeeId;
+
+    const startDate = String(req.query.startDate || req.query.from || '').trim();
+    const endDate = String(req.query.endDate || req.query.to || '').trim();
+    if (startDate || endDate) {
+      rowWhere.date = {};
+      if (startDate) rowWhere.date.gte = startDate;
+      if (endDate) rowWhere.date.lte = endDate;
+    }
+    if (req.query.status) rowWhere.status = String(req.query.status);
+    if (req.query.department) rowWhere.department = String(req.query.department);
+    if (req.query.branch) rowWhere.branch = String(req.query.branch);
+
+    // Optional cap. Unbounded by DEFAULT so existing callers are unaffected —
+    // `take` must stay undefined unless the caller actually asked for a limit.
+    // (Math.max(1, …) here would have silently capped every request at 1 row.)
+    const limitRaw = parseInt(req.query.limit, 10);
+    const take = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(5000, limitRaw) : undefined;
+
     let data;
     if (empWhere) {
       const scopedEmps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
       const empIds = scopedEmps.map(e => e.id);
-      data = await prisma.attendance.findMany({ where: { employeeId: { in: empIds.length ? empIds : [-1] } } });
+      // `?employeeId=` NARROWS the scoped set — it never replaces it. Asking for
+      // an employee outside the caller's workspace must return nothing, not that
+      // employee's attendance.
+      const scopedEmployeeId = rowWhere.employeeId
+        ? (empIds.includes(rowWhere.employeeId) ? rowWhere.employeeId : -1)
+        : { in: empIds.length ? empIds : [-1] };
+      data = await prisma.attendance.findMany({
+        where: { ...rowWhere, employeeId: scopedEmployeeId },
+        ...(take ? { take, orderBy: { date: 'desc' } } : {}),
+      });
       console.log('[attendance.getAll] workspace=', companyId, 'role=', req.user?.role, 'scopedEmployees=', empIds.length, 'attendanceRows=', data.length);
     } else {
-      data = await prisma.attendance.findMany({});
+      data = await prisma.attendance.findMany({
+        where: rowWhere,
+        ...(take ? { take, orderBy: { date: 'desc' } } : {}),
+      });
       console.log('[attendance.getAll] role=', req.user?.role, 'no workspace filter, attendanceRows=', data.length);
     }
     res.json(data);
@@ -364,6 +404,11 @@ exports.syncPayroll = async (req, res) => {
       allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined);
     }
 
+    // A named workspace is only honoured if the caller may actually enter it.
+    if (companyId !== undefined && !isSuperAdmin(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You are not authorised to sync payroll for this workspace.' });
+    }
+
     empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
     if (scopeIds.length > 0) {
       empWhere.OR = [{ companyId: { in: scopeIds } }, { branchId: { in: scopeIds } }, { id: { in: scopeIds } }];
@@ -371,6 +416,22 @@ exports.syncPayroll = async (req, res) => {
       empWhere.OR = [{ companyId }, { branchId: companyId }];
     } else if (allowedIds && allowedIds.length) {
       empWhere.OR = [{ companyId: { in: allowedIds } }, { branchId: { in: allowedIds } }];
+    }
+
+    // ── Hard tenant fence ────────────────────────────────────────────────────
+    // `allowedIds` above was computed and then only ever used as a FALLBACK, so
+    // naming `companyId` (or any `scopeIds`) replaced the caller's scope instead
+    // of narrowing it: a Company Head of one tenant could read — and with
+    // dryRun:false WRITE payroll rows for — another tenant's employees simply by
+    // naming their id. The scope the client asks for is now intersected with the
+    // scope the caller actually holds, so a named id can only ever narrow.
+    // `scopeIds` also matches raw employee PKs, which this fence contains too.
+    if (!isSuperAdmin(req)) {
+      const allowedCompanies = companyScopeFor(req); // branch-aware, numeric
+      empWhere.AND = [
+        ...(empWhere.AND || []),
+        { companyId: { in: allowedCompanies.length ? allowedCompanies : [-1] } },
+      ];
     }
 
     console.log('[syncPayroll] employee.findMany query', { role: req.user?.role, companyId, scopeIds, allowedIds, status: 'notIn OFFBOARDED_STATUSES', empWhere: JSON.stringify(empWhere) });
@@ -631,10 +692,22 @@ exports.pushToPayroll = async (req, res) => {
       allowedCompanyIds = new Set([req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined));
       allowedBranchIds = new Set([...(req.user.accessibleBranchIds || [])].map(toIntId).filter(v => v !== undefined));
     }
+    // A named workspace must be one the caller may enter — otherwise the check
+    // below ("is this employee in the company the CLIENT named?") is satisfied by
+    // simply naming the victim's company, which let a Company Head push payroll
+    // for another tenant's employees. Authorise the id first, then keep the
+    // narrowing behaviour it was written for.
+    if (companyId !== undefined && !isSuper && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You are not authorised to push payroll for this workspace.' });
+    }
     const inScope = (e) => {
       if (isSuper) return true;
+      // The caller's real grants are ALWAYS required; a named companyId can only
+      // narrow further, never substitute for them.
+      const granted = allowedCompanyIds.has(e.companyId) || allowedBranchIds.has(e.branchId);
+      if (!granted) return false;
       if (companyId !== undefined) return e.companyId === companyId || e.branchId === companyId;
-      return allowedCompanyIds.has(e.companyId) || allowedBranchIds.has(e.branchId);
+      return true;
     };
     for (const r of rows) {
       const e = empById.get(toIntId(r.employeeId));

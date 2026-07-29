@@ -1,5 +1,6 @@
 const prisma = require('../config/prisma');
 const otPay = require('../utils/overtimePay');
+const { toPositiveInt, toPositiveIntList, wasSupplied } = require('../utils/numericId');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The employee fields the payroll LIST needs to embed.
@@ -23,6 +24,11 @@ const PAYROLL_EMPLOYEE_FIELDS = {
 // below; previously only require()'d inline in one spot, leaving `idParam` undefined
 // in the rest of the file (payroll edit/delete 500'd with "idParam is not defined").
 const idParam = require('../utils/idParam');
+// Branch-aware workspace authorisation. Company ids and branch ids share ONE
+// sequence, and `protect` keeps branch grants in a separate list — so a workspace
+// can only be authorised through this helper, never through a local array of
+// accessibleCompanyIds (see utils/workspaceScope.js).
+const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
 // Loan → payroll integration: auto-deduct an active loan's EMI when a payroll row
@@ -64,10 +70,58 @@ function sanitizePayrollMoney(payload, existing = null) {
     // A component edit that leaves the stored net negative → repair it in-place.
     payload.netSalary = 0;
   }
+  assertPayrollIdentity(payload, existing);
   return payload;
 }
 
+/**
+ * THE payslip invariant:  netSalary === basicSalary + allowances + bonus − deductions
+ *
+ * Every payslip, register and statutory report reads these four columns, so a row
+ * that breaks the identity is a document whose own figures contradict each other.
+ * 5,032 historical rows did exactly that — Basic was stored as a per-DAY rate
+ * (monthly ÷ 24) while deductions and net were monthly, which is how payslips
+ * ended up showing a net LARGER than the gross on the same row.
+ *
+ * This deliberately does NOT rewrite the amounts. Silently "correcting" salary is
+ * how a reporting bug becomes a payment bug. It records the violation loudly with
+ * the row's identity so it is caught in the log on the day it happens, instead of
+ * being discovered months later across thousands of finalised records.
+ */
+function assertPayrollIdentity(payload, existing = null) {
+  const pick = (f) => {
+    const v = payload[f] !== undefined && payload[f] !== null && payload[f] !== '' ? payload[f] : existing?.[f];
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const basic = pick('basicSalary'), allow = pick('allowances');
+  const ded = pick('deductions'), net = pick('netSalary');
+  // Only assert when every component is known; a partial edit has nothing to check.
+  if ([basic, allow, ded, net].some((v) => v === null)) return;
+  const bonus = pick('bonus') || 0;
+  const expected = basic + allow + bonus - ded;
+  // Net is clamped at 0, so a legitimately negative result is not a violation.
+  if (expected < 0 && net === 0) return;
+  if (Math.abs(expected - net) > 1) {
+    console.error(
+      '[payroll] INVARIANT VIOLATED — netSalary does not equal basic + allowances + bonus − deductions.',
+      JSON.stringify({
+        payrollId: existing?.id ?? payload.id ?? null,
+        employeeId: existing?.employeeId ?? payload.employeeId ?? null,
+        period: `${existing?.month ?? payload.month ?? '?'} ${existing?.year ?? payload.year ?? '?'}`,
+        basicSalary: basic, allowances: allow, bonus, deductions: ded,
+        netSalary: net, expectedNet: expected, difference: round2(net - expected),
+      })
+    );
+  }
+}
+exports.assertPayrollIdentity = assertPayrollIdentity;
+
 // Helper to sync payroll for missing employees
+// UNUSED — deliberately. This creates payroll rows, and its only caller was the
+// GET list handler, which meant a read request wrote records for whatever period
+// the query string named. It is kept (not deleted) because `generate` may want
+// this logic, but it must NEVER be called from a read path again.
 const syncPayrollForEmployees = async (companyWhere, month, year) => {
   // Offboarded employees are excluded from payroll generation.
   const employeeWhere = { status: { notIn: OFFBOARDED_STATUSES } };
@@ -213,6 +267,15 @@ async function recalcOne(payroll, summary, emp, company) {
   // row without attendance is not silently zeroed; the sync gate blocks actions.
   const payableDays = summary ? (summary.payableDays || 0) : workingDays;
 
+  // A month cannot pay for more days than it contains. Half-day rounding in the
+  // attendance summary pushed payableDays past the calendar on 148 rows — e.g.
+  // 31.5 payable days against a 30-day June. Pay was never affected (the ratio
+  // below is capped at 1), but the payslip PRINTS this figure, so it is clamped
+  // to the days the month actually has. The AttendanceSummary itself is left
+  // untouched: it is the attendance record, this is the payslip figure.
+  const calendarDays = workingDays + weeklyOff + holiday;
+  const payableForSlip = calendarDays > 0 ? Math.min(payableDays, calendarDays) : payableDays;
+
   const dailyRate = workingDays > 0 ? monthlyGross / workingDays : 0;
   const ratio = workingDays > 0 ? Math.min(1, Math.max(0, payableDays / workingDays)) : 0;
   const grossPay = Math.round(monthlyGross * ratio); // = dailyRate × payableDays (capped at full)
@@ -265,7 +328,7 @@ async function recalcOne(payroll, summary, emp, company) {
       // Mirror the full synced attendance snapshot onto the payroll row so the
       // slip / register / reports show the exact synchronized figures.
       presentDays: present, clDays: cl, plDays: pl, slDays: sl, lwpDays: lwp,
-      halfDays: half, otHours: ot, payableDays,
+      halfDays: half, otHours: ot, payableDays: payableForSlip,
       workingDays, weeklyOffDays: weeklyOff, holidayDays: holiday,
       attendanceSyncedAt: summary?.syncedAt || null,
       attendanceSource: summary?.attendanceSource || null,
@@ -305,6 +368,9 @@ async function recalcForEmployeeMonth(employeeId, month, year) {
   return n;
 }
 exports.recalcForEmployeeMonth = recalcForEmployeeMonth;
+// Exported so one-off data-repair scripts can drive THE engine itself rather than
+// reimplementing its arithmetic (which is how the two diverged in the first place).
+exports.recalcOne = recalcOne;
 
 // POST /api/payroll/recalculate  { ids?, month?, year?, companyId? }
 // Re-syncs payroll from AttendanceSummary. Without ids, recalculates every
@@ -315,11 +381,28 @@ exports.recalculate = async (req, res) => {
     // Company Head has override authority over locked payroll (corrections);
     // Super Admin too. HR cannot recalc locked records.
     const canOverrideLock = isSuper || req.user?.role === 'Company Head';
-    const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+    // Same normalisation as generate: these ids go into `{ in: [...] }` alongside
+    // an OR clause, and a mixed number/string array (or one containing NaN/null)
+    // is rejected outright by Prisma.
+    const ids = Array.isArray(req.body.ids) ? toPositiveIntList(req.body.ids).ids : null;
+    if (Array.isArray(req.body.ids) && req.body.ids.length > 0 && ids.length === 0) {
+      return res.status(400).json({ error: 'No valid payroll record ids were supplied.', code: 'NO_VALID_IDS' });
+    }
 
     let where;
     if (ids && ids.length) {
       where = { id: { in: ids } };
+      // A list of ids is NOT a permission. Without this clause any payroll:edit
+      // user could recalculate — that is, OVERWRITE — another company's payroll
+      // rows simply by naming their ids. Same scope rule as the branch below.
+      if (!isSuper) {
+        const allowed = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+        where.OR = [
+          { companyId: { in: allowed } },
+          { employee: { branchId: { in: allowed } } },
+          { employee: { companyId: { in: allowed } } },
+        ];
+      }
     } else {
       where = { isOutdated: true };
       if (req.body.month) where.month = req.body.month;
@@ -327,8 +410,13 @@ exports.recalculate = async (req, res) => {
       if (!isSuper) {
         const allowed = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
         where.OR = [{ companyId: { in: allowed } }, { employee: { branchId: { in: allowed } } }];
-      } else if (req.body.companyId) {
-        where.companyId = Number(req.body.companyId);
+      } else if (wasSupplied(req.body.companyId)) {
+        // Number('abc') is NaN, which Prisma rejects — validate instead of relaying it.
+        const cid = toPositiveInt(req.body.companyId);
+        if (cid === undefined) {
+          return res.status(400).json({ error: 'companyId must be a positive whole number.', code: 'INVALID_COMPANY_ID' });
+        }
+        where.companyId = cid;
       }
     }
 
@@ -395,49 +483,43 @@ exports.getAll = async (req, res) => {
     const companyId = require('../utils/idParam')(req.query.companyId || req.headers['x-workspace-id']);
     let whereClause = {};
 
-    if (req.user && req.user.role !== 'Super Admin') {
-      const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      whereClause = {
-        OR: [
-          { companyId: { in: allowedIds } },
-          { employee: { branchId: { in: allowedIds } } },
-          { employee: { companyId: { in: allowedIds } } }
-        ]
-      };
-      if (companyId) {
-        if (!allowedIds.includes(companyId) && companyId !== 'c-gcri') {
-           // Allow viewing if it's within their accessible companies
-        }
-        whereClause = {
-          OR: [
-            { companyId },
-            { employee: { branchId: companyId } },
-            { employee: { companyId: companyId } }
-          ]
-        };
-      }
-    } else if (companyId) {
-      whereClause = {
-        OR: [
-          { companyId },
-          { employee: { branchId: companyId } },
-          { employee: { companyId: companyId } }
-        ]
-      };
+    // ── Authorisation ────────────────────────────────────────────────────────
+    // A caller-supplied workspace is only honoured if the caller may actually
+    // enter it. This check previously existed but had an EMPTY body, and the
+    // scoped clause below it was then overwritten unconditionally — so any
+    // authenticated user could read any company's payroll by naming its id in
+    // `?companyId=` or `x-workspace-id`. Every other module refuses this; payroll
+    // now refuses it the same way, through the branch-aware shared helper.
+    if (companyId != null && !isSuperAdmin(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You are not authorised to view payroll for this workspace.' });
     }
 
-    const targetMonth = month || 'June';
-    const targetYear = 2026;
-    
-    let syncCompanyWhere = undefined;
-    if (companyId) {
-      syncCompanyWhere = companyId;
-    } else if (req.user && req.user.role !== 'Super Admin') {
+    const scopeFor = (ids) => ({
+      OR: [
+        { companyId: { in: ids } },
+        { employee: { branchId: { in: ids } } },
+        { employee: { companyId: { in: ids } } },
+      ],
+    });
+
+    if (companyId != null) {
+      // Authorised above. Narrow to the one workspace, matching it as a company
+      // id or as a branch id — the two share a sequence.
+      whereClause = scopeFor([companyId]);
+    } else if (req.user && !isSuperAdmin(req)) {
+      // No workspace named → everything the caller can reach.
       const allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
-      syncCompanyWhere = { in: allowedIds };
+      whereClause = scopeFor(allowedIds);
     }
-    
-    await syncPayrollForEmployees(syncCompanyWhere, targetMonth, targetYear);
+
+    // NOTE: this handler deliberately performs NO writes.
+    //
+    // It used to call syncPayrollForEmployees(companyId, month || 'June', 2026),
+    // which ends in prisma.payroll.create() — so a GET created payroll records,
+    // for a period taken verbatim from the query string. `?month=Zzzz` minted a
+    // whole payroll cycle named "Zzzz", and `payroll:view` (a read-only grant)
+    // was effectively a write permission. Draft creation belongs to the explicit
+    // POST /api/payroll/generate, which is permissioned `payroll:create`.
 
     // Pagination & Filters
     const { page, limit, search, department, status, branch } = req.query;
@@ -473,8 +555,11 @@ exports.getAll = async (req, res) => {
       });
     }
 
+    // The payroll table has no `status` column — it has payrollStatus and
+    // paymentStatus. Filtering on `status` made Prisma throw, so `?status=` was a
+    // 500 rather than a filter.
     if (status) {
-      whereClause.status = status;
+      whereClause.payrollStatus = status;
     }
 
     if (branch) {
@@ -482,6 +567,15 @@ exports.getAll = async (req, res) => {
       whereClause.AND.push({
         employee: { branchLocation: branch }
       });
+    }
+
+    // `?employeeId=` was accepted and silently discarded — a request for one
+    // employee's payslips returned all 3,342 rows in the workspace. ANDed onto
+    // the tenant scope, so naming a foreign employee returns nothing.
+    const employeeFilter = idParam(req.query.employeeId);
+    if (employeeFilter) {
+      whereClause.AND = whereClause.AND || [];
+      whereClause.AND.push({ employeeId: employeeFilter });
     }
 
     if (page && limit) {
@@ -523,13 +617,52 @@ exports.getAll = async (req, res) => {
 
 exports.generate = async (req, res) => {
   try {
-    const { companyId, branchId, month, year, role, employeeIds } = req.body;
+    const { month, year, role, employeeIds } = req.body;
+
+    // ── Ids: normalise BEFORE they reach Prisma ──────────────────────────────
+    // companyId/branchId arrive over JSON and the client types activeCompanyId
+    // as a string, so they land here as e.g. "1". Employee.companyId is `Int` and
+    // Employee.branchId is `Int?` (plain scalar FK columns — the `company` /
+    // `branch` relations are separate fields, so a scalar filter is correct).
+    // Prisma coerces a numeric string at the TOP level of a where, but NOT inside
+    // an OR/AND block — and the company path below builds an OR. That mismatch is
+    // what made "generate by company" throw a PrismaClientValidationError while
+    // "generate by branch" (a top-level filter) quietly worked.
+    const companyId = toPositiveInt(req.body.companyId);
+    const branchId = toPositiveInt(req.body.branchId);
+
+    // A value that was SENT but is not a usable id is a caller error. Answer with
+    // a clear 400 rather than letting Prisma raise a raw validation error — or,
+    // worse, dropping the filter and generating payroll for a wider scope.
+    if (wasSupplied(req.body.companyId) && companyId === undefined) {
+      return res.status(400).json({ error: 'companyId must be a positive whole number.', code: 'INVALID_COMPANY_ID' });
+    }
+    if (wasSupplied(req.body.branchId) && branchId === undefined) {
+      return res.status(400).json({ error: 'branchId must be a positive whole number.', code: 'INVALID_BRANCH_ID' });
+    }
 
     if ((!companyId && !branchId) || !month || !year) {
       return res.status(400).json({ error: 'Missing required parameters.' });
     }
 
     const isBranch = !!branchId && role !== 'Company Head';
+
+    // ── Branch-only generation ───────────────────────────────────────────────
+    // BranchPayroll.companyId is a REQUIRED column, so creating a brand-new
+    // branch period without a companyId used to fail inside Prisma with
+    // "Argument `companyId` is missing" — but only for the FIRST run of a period
+    // (a re-run took the upsert's `update` path, which needs no companyId), which
+    // is why it stayed hidden. The branch already knows which company it belongs
+    // to, so resolve it from the Branch row instead of demanding it from the
+    // caller. An explicitly supplied companyId still wins.
+    let periodCompanyId = companyId;
+    if (isBranch && periodCompanyId === undefined) {
+      const branchRow = await prisma.branch.findUnique({ where: { id: branchId }, select: { companyId: true } });
+      if (!branchRow) {
+        return res.status(404).json({ error: 'Branch not found.', code: 'BRANCH_NOT_FOUND' });
+      }
+      periodCompanyId = branchRow.companyId;
+    }
 
     // Selective generation: when employeeIds is provided, generate ONLY for those
     // employees (still scoped to the workspace below). No employeeIds = every
@@ -549,8 +682,31 @@ exports.generate = async (req, res) => {
         { branchId: companyId } // fallback in case branch is passed as companyId
       ];
     }
-    if (Array.isArray(employeeIds) && employeeIds.length > 0) {
-      employeeWhere.id = { in: employeeIds.map(Number).filter(Boolean) };
+    // Both ids are numbers by construction above, so this OR can no longer throw.
+    // ── Selective generation ─────────────────────────────────────────────────
+    // Omitting employeeIds means "every employee in the workspace" (bulk mode).
+    // SUPPLYING it means "only these" — so an empty or all-invalid list must not
+    // fall through to bulk mode: that would silently generate payroll for the
+    // whole company when the caller asked for nobody. It must not reach Prisma as
+    // `id: { in: [] }` either — that returns zero rows and surfaces as the
+    // misleading "No active employees found".
+    if (employeeIds !== undefined && employeeIds !== null) {
+      if (!Array.isArray(employeeIds)) {
+        return res.status(400).json({ error: 'employeeIds must be an array of employee ids.', code: 'INVALID_EMPLOYEE_IDS' });
+      }
+      const { ids, rejected } = toPositiveIntList(employeeIds);
+      // A dropped id is an employee that was asked for and will NOT be paid, so
+      // it is never silently swallowed.
+      if (rejected.length && process.env.NODE_ENV !== 'production') {
+        console.warn('[payroll.generate] ignoring %d invalid employee id(s): %j', rejected.length, rejected.slice(0, 20));
+      }
+      if (ids.length === 0) {
+        return res.status(400).json({
+          error: 'No valid employees were selected for payroll generation.',
+          code: 'NO_VALID_EMPLOYEE_IDS',
+        });
+      }
+      employeeWhere.id = { in: ids };
     }
 
     const employeesRaw = await prisma.employee.findMany({
@@ -631,7 +787,7 @@ exports.generate = async (req, res) => {
         update: { generatedBy: req.user?.name || 'System' },
         create: {
           branchId,
-          companyId,
+          companyId: periodCompanyId, // resolved from the branch when not supplied
           payrollMonth: month,
           payrollYear: year,
           totalEmployees: 0,

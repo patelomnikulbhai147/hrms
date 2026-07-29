@@ -1,4 +1,8 @@
 import * as XLSX from 'xlsx';
+// utils/formatDate.ts is the single date formatter — a bare toLocaleString()
+// stamps an export in the viewer's locale and time zone, so the same report
+// carried a different generated-on time for every person who ran it.
+import { formatDateTime } from '@/utils/formatDate';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { ui } from '@/components/ui/feedback';
@@ -149,7 +153,7 @@ export const downloadAttendanceReport = (
         tr:nth-child(even) td{background:#f8fafc}
       </style></head><body>
       <h1>${reportName}</h1>
-      <p>${subtitle ? subtitle + ' &middot; ' : ''}Generated on ${new Date().toLocaleString()} &middot; ${data.length} record(s)</p>
+      <p>${subtitle ? subtitle + ' &middot; ' : ''}Generated on ${formatDateTime(new Date())} &middot; ${data.length} record(s)</p>
       <table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
       <script>window.onload=function(){window.print();}</script>
       </body></html>`);
@@ -163,7 +167,7 @@ export const downloadAttendanceReport = (
 
     doc.setFontSize(10);
     doc.setTextColor(100, 100, 100);
-    doc.text(`${subtitle ? subtitle + '  |  ' : ''}Generated on: ${new Date().toLocaleString()}`, 14, 28);
+    doc.text(`${subtitle ? subtitle + '  |  ' : ''}Generated on: ${formatDateTime(new Date())}`, 14, 28);
 
     autoTable(doc, {
       startY: 35,

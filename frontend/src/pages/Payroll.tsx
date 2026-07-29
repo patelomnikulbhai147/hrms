@@ -497,7 +497,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, `Salary payment confirmed (Bank Transfer).`, 'Payment ledger updated via Quick Confirm.');
       setConfirmPaymentRecord(null);
 
-      await ui.alert({ title: 'Payment Marked Successfully', message: `Employee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${new Date().toLocaleString()}`, variant: 'success' });
+      await ui.alert({ title: 'Payment Marked Successfully', message: `Employee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${formatDateTime(new Date())}`, variant: 'success' });
 
       // Auto-refresh to hydrate all counts and dashboard widgets directly from DB
       window.location.reload();

@@ -1947,7 +1947,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Tr key={emp.id} className="hover:bg-slate-50 group">
                         <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]"><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
                         {periodDates.map(d => {
-                          const dateLabel = new Date(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+                          const dateLabel = new Date(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });
                           // Future dates are READ-ONLY: greyed "Upcoming" cell, no
                           // click / menu / keyboard / hover — never counted or saved.
                           if (isFutureLocked(d)) {

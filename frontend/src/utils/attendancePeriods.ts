@@ -37,7 +37,7 @@ export function getPeriodRange(
   const anchor = parseISO(anchorDate);
 
   if (mode === 'daily') {
-    return { start: anchorDate, end: anchorDate, label: anchor.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) };
+    return { start: anchorDate, end: anchorDate, label: anchor.toLocaleDateString('en-IN',{ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) };
   }
 
   if (mode === 'weekly') {
@@ -46,7 +46,7 @@ export function getPeriodRange(
     const diffToMonday = (day + 6) % 7;
     const start = new Date(anchor); start.setDate(anchor.getDate() - diffToMonday);
     const end = new Date(start); end.setDate(start.getDate() + 6);
-    return { start: toISO(start), end: toISO(end), label: `Week of ${start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` };
+    return { start: toISO(start), end: toISO(end), label: `Week of ${start.toLocaleDateString('en-IN',{ day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-IN',{ day: 'numeric', month: 'short', year: 'numeric' })}` };
   }
 
   if (mode === 'monthly') {
@@ -65,7 +65,7 @@ export function getPeriodRange(
   const s = customStart || anchorDate;
   const e = customEnd || anchorDate;
   const [start, end] = s <= e ? [s, e] : [e, s];
-  return { start, end, label: `${parseISO(start).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${parseISO(end).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` };
+  return { start, end, label: `${parseISO(start).toLocaleDateString('en-IN',{ day: 'numeric', month: 'short' })} – ${parseISO(end).toLocaleDateString('en-IN',{ day: 'numeric', month: 'short', year: 'numeric' })}` };
 }
 
 /** All YYYY-MM-DD dates in an inclusive range (capped to avoid runaway loops). */
