@@ -74,9 +74,10 @@ exports.list = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
     const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized workspace.' });
     const where = { ...base };
-    const { q, status, customerId, from, to } = req.query;
+    const { q, status, customerId, from, to, transactionType } = req.query;
     if (status && status !== 'All') where.status = status;
     if (customerId) where.customerId = idParam(customerId);
+    if (transactionType) where.transactionType = transactionType;
     if (q) where.OR = [{ invoiceNumber: { contains: String(q) } }, { billToName: { contains: String(q) } }];
     if (from || to) where.invoiceDate = { ...(from ? { gte: String(from) } : {}), ...(to ? { lte: String(to) } : {}) };
     const invoices = await prisma.invoice.findMany({ where, orderBy: { id: 'desc' }, take: 1000 });
@@ -133,6 +134,7 @@ async function buildInvoiceData(companyId, b, items) {
   const { lines, totals } = calc.computeInvoice(items, { intraState });
   const data = {
     companyId,
+    transactionType: b.transactionType || 'Collect Payment',
     customerId: b.customerId ? idParam(b.customerId) : null,
     billToName: String(b.billToName || '').trim() || 'Customer',
     billToGstin: b.billToGstin || null, billToAddress: b.billToAddress || null, billToShipAddress: b.billToShipAddress || null,
@@ -146,9 +148,58 @@ async function buildInvoiceData(companyId, b, items) {
     paymentTerms: b.paymentTerms || null, placeOfSupply: supply,
     notes: b.notes || null, termsConditions: b.termsConditions || null, paymentMode: b.paymentMode || null,
     bankDetails: b.bankDetails || null, upiId: b.upiId || null,
+    ...(await dispatchDestinationData(b, companyId, supply)),
     ...totals,
   };
   return { data, lines };
+}
+
+// ── Dispatch & Destination ───────────────────────────────────────────────────
+// Whatever the client sent wins; anything it left blank is derived, so an
+// invoice created through the API without these fields still carries sensible
+// logistics rather than empty labels.
+//
+//   Dispatch  → the issuing company/branch (where the goods leave from)
+//   Destination → the customer's shipping address, falling back to billing
+//                 ("If no shipping address exists, use the billing address")
+//
+// Every value is nullable: a service invoice leaves them blank and the sections
+// render nothing at all.
+async function dispatchDestinationData(b, companyId, supply) {
+  const t = (v, n) => { const s = String(v ?? '').trim(); return s ? s.slice(0, n) : null; };
+
+  // Only pay for the company read when something is actually missing.
+  const needsCompany = !b.dispatchFrom || !b.dispatchAddress || !b.dispatchCity || !b.dispatchState || !b.dispatchPincode;
+  let co = null;
+  if (needsCompany) {
+    co = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true, address: true, city: true, state: true, pincode: true },
+    }).catch(() => null);
+  }
+
+  return {
+    dispatchFrom:    t(b.dispatchFrom    ?? co?.name,    160),
+    dispatchAddress: t(b.dispatchAddress ?? co?.address, 65535),
+    dispatchCity:    t(b.dispatchCity    ?? co?.city,    100),
+    dispatchState:   t(b.dispatchState   ?? co?.state,   100),
+    dispatchPincode: t(b.dispatchPincode ?? co?.pincode, 12),
+    // Not derivable — these are per-consignment facts the user supplies.
+    dispatchDate:    t(b.dispatchDate, 10),
+    dispatchThrough: t(b.dispatchThrough, 160),
+    vehicleNumber:   t(b.vehicleNumber, 40),
+    lrNumber:        t(b.lrNumber, 60),
+
+    // Consignee fields are stored ONLY when supplied. Defaulting shipToName to
+    // billToName here would look harmless but would mark every invoice as having
+    // destination data, so the section could never hide on a services invoice —
+    // the renderer already falls back to the billing name for display.
+    shipToName:    t(b.shipToName, 160),
+    shipToCity:    t(b.shipToCity, 100),
+    shipToState:   t(b.shipToState, 100),
+    shipToPincode: t(b.shipToPincode, 12),
+    shipToCountry: t(b.shipToCountry, 100),
+  };
 }
 
 // Persist line items (delete + recreate — simplest correct approach for edits).
@@ -329,13 +380,33 @@ exports.dashboard = async (req, res) => {
     const monthPrefix = today.slice(0, 7);
     const byStatus = {};
     let totalRevenue = 0, outstanding = 0, thisMonthRevenue = 0, overdue = 0;
+    // Transaction type buckets
+    let accountsReceivable = 0, accountsPayable = 0;
+    let salesTotal = 0, purchaseTotal = 0;
+
+    // Billed value and the unpaid count, for the All Invoices summary cards.
+    // Cancelled invoices are excluded from every money figure — they were never
+    // owed — but they still appear in byStatus so the status breakdown is honest.
+    let totalInvoiced = 0, unpaid = 0, live = 0;
     for (const inv of invoices) {
       byStatus[inv.status] = (byStatus[inv.status] || 0) + 1;
       if (inv.status !== 'Cancelled') {
-        totalRevenue += inv.amountPaid;
-        outstanding += inv.balanceDue;
-        if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
-        if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
+        live++;
+        // Maintain legacy fields for "Collect Payment" & default fallback
+        if (!inv.transactionType || inv.transactionType === 'Collect Payment') {
+          totalInvoiced += inv.grandTotal;
+          totalRevenue += inv.amountPaid;
+          outstanding += inv.balanceDue;
+          if ((inv.invoiceDate || '').startsWith(monthPrefix)) thisMonthRevenue += inv.amountPaid;
+          if (inv.balanceDue > 0 && inv.dueDate && inv.dueDate < today) overdue++;
+          if (inv.amountPaid <= 0 && inv.balanceDue > 0) unpaid++;
+          
+          salesTotal += inv.grandTotal;
+          accountsReceivable += inv.balanceDue;
+        } else if (inv.transactionType === 'Pay Vendor') {
+          purchaseTotal += inv.grandTotal;
+          accountsPayable += inv.balanceDue;
+        }
       }
     }
     // Monthly revenue (last 6 months, from recorded payments).
@@ -349,8 +420,14 @@ exports.dashboard = async (req, res) => {
         total: invoices.length,
         draft: byStatus['Draft'] || 0, generated: byStatus['Generated'] || 0, sent: byStatus['Sent'] || 0,
         paid: byStatus['Paid'] || 0, partiallyPaid: byStatus['Partially Paid'] || 0, cancelled: byStatus['Cancelled'] || 0,
-        overdue,
+        overdue, unpaid, live,
+        // totalInvoiced − totalRevenue === outstanding, by construction: all three
+        // are accumulated in the same pass over the same rows, so the summary
+        // cards can never fail to reconcile.
+        totalInvoiced: calc.r2(totalInvoiced),
         totalRevenue: calc.r2(totalRevenue), outstanding: calc.r2(outstanding), thisMonthRevenue: calc.r2(thisMonthRevenue),
+        accountsReceivable: calc.r2(accountsReceivable), accountsPayable: calc.r2(accountsPayable),
+        salesTotal: calc.r2(salesTotal), purchaseTotal: calc.r2(purchaseTotal)
       },
       byStatus, monthly, recent, upcoming,
     });
@@ -408,4 +485,195 @@ exports.logAction = async (req, res) => {
     }
     res.json({ ok: true });
   } catch (e) { console.error('invoice.logAction', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.getReminderCenter = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const payments = await prisma.invoicePayment.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } });
+    const reminders = await prisma.invoiceReminder.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } }).catch(() => []);
+    const audits = await prisma.invoiceAudit.findMany({ where: { invoiceId: id }, orderBy: { id: 'desc' } });
+    const settings = await prisma.invoiceSettings.findUnique({ where: { companyId: invoice.companyId } }).catch(() => null);
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true, phone: true, contactEmail: true, adminEmail: true } }).catch(() => null);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    let autoStatus = invoice.status;
+    let overdueDays = 0;
+    if (!['Cancelled', 'Closed', 'Paid'].includes(autoStatus)) {
+      if (invoice.balanceDue <= 0) {
+        autoStatus = 'Paid';
+      } else if (invoice.dueDate && invoice.dueDate < todayStr) {
+        autoStatus = 'Overdue';
+        const dToday = new Date(todayStr);
+        const dDue = new Date(invoice.dueDate);
+        overdueDays = Math.max(0, Math.floor((dToday - dDue) / 86400000));
+      } else if (invoice.amountPaid > 0) {
+        autoStatus = 'Partially Paid';
+      } else if (['Sent', 'Viewed'].includes(invoice.status)) {
+        autoStatus = 'Pending Payment';
+      }
+    }
+
+    const progress = {
+      total: invoice.grandTotal || 0,
+      paid: invoice.amountPaid || 0,
+      remaining: invoice.balanceDue || 0,
+      percent: Math.min(100, Math.round(((invoice.amountPaid || 0) / (invoice.grandTotal || 1)) * 100))
+    };
+
+    const recentReminder = reminders.length > 0 ? reminders[0] : null;
+    let isRateLimited = false;
+    if (recentReminder && recentReminder.createdAt) {
+      const diffMins = (Date.now() - new Date(recentReminder.createdAt).getTime()) / 60000;
+      if (diffMins < 10) isRateLimited = true;
+    }
+
+    res.json({
+      invoice: { ...invoice, items },
+      payments,
+      reminders,
+      audits,
+      settings: settings || {},
+      companyName: company?.name || 'Company',
+      companyContact: { phone: company?.phone, email: company?.email },
+      autoStatus,
+      overdueDays,
+      progress,
+      isRateLimited
+    });
+  } catch (e) { console.error('invoice.getReminderCenter', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.sendReminder = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to send reminders.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    if (invoice.balanceDue <= 0 && invoice.status !== 'Draft') {
+      return res.status(400).json({ error: 'No reminder allowed for fully paid invoices.' });
+    }
+
+    const channels = Array.isArray(req.body.channels) ? req.body.channels : ['Email'];
+    const message = String(req.body.message || '').trim();
+    const subject = String(req.body.subject || `Payment Reminder - Invoice ${invoice.invoiceNumber}`).trim();
+    const attachments = Array.isArray(req.body.attachments) ? req.body.attachments : ['Attach Invoice PDF'];
+    const toEmail = String(req.body.toEmail || invoice.billToEmail || '').trim();
+    const toPhone = String(req.body.toPhone || invoice.billToPhone || '').trim();
+    const force = Boolean(req.body.force);
+
+    if (!force) {
+      const recent = await prisma.invoiceReminder.findFirst({ where: { invoiceId: id }, orderBy: { id: 'desc' } }).catch(() => null);
+      if (recent && recent.createdAt) {
+        const diffMins = (Date.now() - new Date(recent.createdAt).getTime()) / 60000;
+        if (diffMins < 10) {
+          return res.status(429).json({ error: 'A reminder was sent recently (less than 10 minutes ago). Confirm to resend.', requiresConfirmation: true });
+        }
+      }
+    }
+
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true } }).catch(() => null);
+    const actor = actorOf(req);
+    const ip = req.ip || req.connection?.remoteAddress || null;
+    const sentResults = [];
+
+    for (const channel of channels) {
+      let recipient = '';
+      let status = 'Delivered';
+      if (channel === 'Email') {
+        if (!toEmail) return res.status(400).json({ error: 'Customer email address is required for Email reminder.' });
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) return res.status(400).json({ error: `"${toEmail}" is not a valid email address.` });
+        recipient = toEmail;
+        if (req.body.html) {
+          try {
+            const { emailInvoicePdf } = require('../services/invoicePdfMailer');
+            const mailRes = await emailInvoicePdf({
+              to: toEmail, subject, message, html: req.body.html, invoice, companyName: company?.name
+            });
+            if (mailRes.error && !mailRes.delivered) status = 'Failed';
+          } catch (err) { status = 'Failed'; }
+        }
+      } else if (channel === 'WhatsApp' || channel === 'SMS') {
+        if (!toPhone) return res.status(400).json({ error: `Customer mobile number is required for ${channel} reminder.` });
+        recipient = toPhone;
+      } else {
+        recipient = invoice.billToName;
+      }
+
+      const rem = await prisma.invoiceReminder.create({
+        data: {
+          companyId: invoice.companyId,
+          invoiceId: id,
+          channel,
+          sentBy: actor,
+          status,
+          recipient,
+          message,
+          attachments: JSON.stringify(attachments),
+          ip
+        }
+      }).catch(() => null);
+      if (rem) sentResults.push(rem);
+    }
+
+    audit(invoice.companyId, id, 'REMINDER_SENT', actor, `Payment reminder sent via ${channels.join(', ')}`);
+
+    if (['Draft', 'Generated'].includes(invoice.status)) {
+      await prisma.invoice.update({ where: { id }, data: { status: 'Sent' } }).catch(() => {});
+    }
+
+    res.json({ ok: true, sentCount: sentResults.length, reminders: sentResults });
+  } catch (e) { console.error('invoice.sendReminder', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.rescheduleDueDate = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission to reschedule due date.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const newDate = String(req.body.dueDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) return res.status(400).json({ error: 'Invalid due date format (YYYY-MM-DD required).' });
+
+    await prisma.invoice.update({ where: { id }, data: { dueDate: newDate } });
+    audit(invoice.companyId, id, 'DUE_DATE_RESCHEDULED', actorOf(req), `Due date rescheduled from ${invoice.dueDate || 'none'} to ${newDate}`);
+
+    res.json({ ok: true, dueDate: newDate });
+  } catch (e) { console.error('invoice.rescheduleDueDate', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.sendThankYou = async (req, res) => {
+  try {
+    if (!canEdit(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const toEmail = String(req.body.toEmail || invoice.billToEmail || '').trim();
+    if (!toEmail) return res.status(400).json({ error: 'No email address found to send thank you note.' });
+
+    const subject = `Thank You for Your Payment - Invoice ${invoice.invoiceNumber}`;
+    const message = req.body.message || `Dear ${invoice.billToName},\n\nWe have received your payment in full for Invoice ${invoice.invoiceNumber}.\n\nThank you for your business!\n\nRegards,\nYour Company`;
+
+    if (req.body.html) {
+      try {
+        const { emailInvoicePdf } = require('../services/invoicePdfMailer');
+        await emailInvoicePdf({ to: toEmail, subject, message, html: req.body.html, invoice });
+      } catch (e) {}
+    }
+
+    audit(invoice.companyId, id, 'THANK_YOU_SENT', actorOf(req), `Thank you note sent to ${toEmail}`);
+    res.json({ ok: true });
+  } catch (e) { console.error('invoice.sendThankYou', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };

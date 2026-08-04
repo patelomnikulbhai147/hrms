@@ -11,7 +11,8 @@ const { DEFAULT_BRAND } = require('../services/emailBranding');
 const store = require('../services/planStore');
 const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const { pricePerEmployee } = require('../services/planEntitlements');
-const { computeInvoice, periodEndFor, nextInvoiceNo, r2 } = require('../services/subscriptionInvoiceEngine');
+const { computeInvoice, periodEndFor, nextInvoiceNo, createInvoiceWithUniqueNo, r2 } = require('../services/subscriptionInvoiceEngine');
+const { resolvePlaceOfSupply } = require('../utils/placeOfSupply');
 const { renderInvoiceHtml } = require('../services/subscriptionInvoiceHtml');
 const issuerStore = require('../services/invoiceIssuerStore');
 
@@ -81,7 +82,18 @@ async function buildBillingPayload(companyId, body = {}) {
   const employeeCount = body.employeeCount != null ? Number(body.employeeCount) : await countActive(companyId);
   const rate = body.pricePerEmployee != null ? Number(body.pricePerEmployee) : pricePerEmployee(plan, billingCycle);
   const gstPercent = body.gstPercent != null ? Number(body.gstPercent) : (Number(settings.taxPercent) || 0);
-  const interState = !!body.interState;
+  // ── Place of supply is DERIVED, never a checkbox ───────────────────────────
+  // This was `!!body.interState`, defaulting to false — so an out-of-state
+  // customer silently received CGST+SGST instead of IGST, and a regenerated
+  // invoice could disagree with the quote it came from. It now resolves through
+  // the same helper the payment-order path uses, from the issuer's state and the
+  // customer's state, so quote and invoice always agree.
+  const issuer = require('../services/invoiceIssuerStore').getIssuer();
+  const pos = resolvePlaceOfSupply(issuer.state, company.state);
+  const interState = pos.interState;
+  if (pos.warning) {
+    console.warn(`[subscription-invoice] company ${companyId}: ${pos.warning}`);
+  }
   const discountPercent = Number(body.discountPercent) || 0;
   const { taxable, ...money } = computeInvoice({ employeeCount, pricePerEmployee: rate, discountPercent, gstPercent, interState });
   const head = await findHead(companyId);
@@ -101,6 +113,16 @@ async function buildBillingPayload(companyId, body = {}) {
       gstin: company.gstNumber || null,
       plan, billingCycle, employeeCount, pricePerEmployee: rate,
       discountPercent, ...money,
+      // Surfaced so the UI/report can show WHY this split was applied, and flag
+      // the case where it could not be derived.
+      placeOfSupply: {
+        interState: pos.interState,
+        gstType: pos.gstType,
+        derivable: pos.derivable,
+        supplierState: pos.supplierState,
+        customerState: pos.customerState,
+        warning: pos.warning,
+      },
       periodStart, periodEnd, invoiceDate, dueDate,
       notes: body.notes ?? null, terms: body.terms ?? settings.invoiceTerms ?? null,
     },
@@ -175,12 +197,15 @@ exports.generate = async (req, res) => {
   try {
     const built = await buildBillingPayload(req.body.companyId, req.body);
     if (built.error) return res.status(404).json({ error: built.error });
-    const invoiceNo = (req.body.invoiceNo && String(req.body.invoiceNo).trim()) || await nextInvoiceNo(built.data.invoiceDate);
     const status = LIFECYCLE.includes(req.body.status) ? req.body.status : 'Pending';
-    const inv = await prisma.subscriptionInvoice.create({
-      data: { ...built.data, invoiceNo, status, createdBy: actorOf(req) },
-    });
-    audit(req, 'GENERATE_INVOICE', inv.id, { invoiceNo, company: inv.companyName, amount: inv.grandTotal });
+    // Collision-safe: the unique index arbitrates and a clash simply retries with
+    // the next number, so two simultaneous generates both succeed with distinct
+    // numbers instead of one 500'ing with no invoice created.
+    const inv = await createInvoiceWithUniqueNo(
+      (invoiceNo) => ({ ...built.data, invoiceNo, status, createdBy: actorOf(req) }),
+      { invoiceDate: built.data.invoiceDate, invoiceNo: req.body.invoiceNo }
+    );
+    audit(req, 'GENERATE_INVOICE', inv.id, { invoiceNo: inv.invoiceNo, company: inv.companyName, amount: inv.grandTotal });
     return res.status(201).json(withDerived(inv));
   } catch (e) { console.error('[subInvoice.generate]', e); return res.status(500).json({ error: 'Failed to generate invoice.' }); }
 };
@@ -282,15 +307,48 @@ exports.payments = async (req, res) => {
   } catch (e) { console.error('[subInvoice.payments]', e); return res.status(500).json({ error: 'Failed to load payments.' }); }
 };
 
+// ── GET /payments — every payment received, newest first (READ-ONLY) ──────────
+// Backs the Billing → Payments register. Purely a projection of rows that already
+// exist: each SubscriptionInvoicePayment is stamped with its invoice's number,
+// company and total so the list needs no N+1 lookups. Nothing is computed or
+// changed here — recording a payment still goes exclusively through addPayment.
+exports.allPayments = async (req, res) => {
+  try {
+    const take = Math.min(Number(req.query.limit) || 500, 1000);
+    const payments = await prisma.subscriptionInvoicePayment.findMany({ orderBy: { id: 'desc' }, take });
+    const invIds = [...new Set(payments.map((p) => p.invoiceId))];
+    const invoices = invIds.length
+      ? await prisma.subscriptionInvoice.findMany({
+        where: { id: { in: invIds } },
+        // dueDate is required — effectiveStatus() derives "Overdue" from it.
+        select: { id: true, invoiceNo: true, companyId: true, companyName: true, plan: true, grandTotal: true, amountPaid: true, status: true, dueDate: true },
+      })
+      : [];
+    const byId = new Map(invoices.map((i) => [i.id, i]));
+    return res.json(payments.map((p) => {
+      const inv = byId.get(p.invoiceId);
+      return {
+        ...p,
+        invoiceNo: inv?.invoiceNo || `#${p.invoiceId}`,
+        companyName: inv?.companyName || `Company #${p.companyId}`,
+        plan: inv?.plan || null,
+        invoiceTotal: inv?.grandTotal ?? null,
+        invoiceStatus: inv ? effectiveStatus(inv) : null,
+      };
+    }));
+  } catch (e) { console.error('[subInvoice.allPayments]', e); return res.status(500).json({ error: 'Failed to load payments.' }); }
+};
+
 // ── POST /:id/duplicate — copy as a new Draft ────────────────────────────────
 exports.duplicate = async (req, res) => {
   try {
     const inv = await prisma.subscriptionInvoice.findUnique({ where: { id: Number(req.params.id) } });
     if (!inv) return res.status(404).json({ error: 'Invoice not found.' });
     const { id, invoiceNo, amountPaid, status, createdAt, updatedAt, ...rest } = inv;
-    const copy = await prisma.subscriptionInvoice.create({
-      data: { ...rest, invoiceNo: await nextInvoiceNo(new Date()), status: 'Draft', amountPaid: 0, invoiceDate: new Date(), createdBy: actorOf(req) },
-    });
+    const copy = await createInvoiceWithUniqueNo(
+      (newNo) => ({ ...rest, invoiceNo: newNo, status: 'Draft', amountPaid: 0, invoiceDate: new Date(), createdBy: actorOf(req) }),
+      { invoiceDate: new Date() }
+    );
     audit(req, 'DUPLICATE_INVOICE', copy.id, { from: invoiceNo, to: copy.invoiceNo });
     return res.status(201).json(withDerived(copy));
   } catch (e) { console.error('[subInvoice.duplicate]', e); return res.status(500).json({ error: 'Failed to duplicate invoice.' }); }
@@ -318,7 +376,10 @@ exports.renew = async (req, res) => {
     const nextStart = inv.periodEnd ? new Date(inv.periodEnd) : new Date();
     const built = await buildBillingPayload(inv.companyId, { billingCycle: inv.billingCycle, discountPercent: inv.discountPercent, gstPercent: inv.gstPercent, interState: inv.interState, invoiceDate: new Date(), periodStart: nextStart });
     if (built.error) return res.status(404).json({ error: built.error });
-    const renewal = await prisma.subscriptionInvoice.create({ data: { ...built.data, invoiceNo: await nextInvoiceNo(new Date()), status: 'Pending', createdBy: actorOf(req) } });
+    const renewal = await createInvoiceWithUniqueNo(
+      (newNo) => ({ ...built.data, invoiceNo: newNo, status: 'Pending', createdBy: actorOf(req) }),
+      { invoiceDate: new Date() }
+    );
     // Push the company's subscription renewalDate forward too (best effort).
     await prisma.companySubscription.update({ where: { companyId: inv.companyId }, data: { renewalDate: renewal.periodEnd } }).catch(() => {});
     audit(req, 'RENEW_INVOICE', renewal.id, { from: inv.invoiceNo, to: renewal.invoiceNo, company: renewal.companyName });

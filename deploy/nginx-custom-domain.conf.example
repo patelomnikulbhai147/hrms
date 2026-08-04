@@ -1,0 +1,49 @@
+# ZeniaHR — Custom Domain (Beta) reverse-proxy configuration (EC2 / nginx).
+# NOT applied automatically. Install alongside the existing app vhost.
+#
+# 1. DNS: create  tenant.zeniahr.com  →  <app server IP>  (customers CNAME to it).
+# 2. This catch-all vhost accepts ANY host not matched by an earlier server_name
+#    (i.e. every customer custom domain) and forwards the Host header — the
+#    backend resolves the tenant from it (domain_mappings table).
+# 3. SSL: with CUSTOM_DOMAIN_SSL_PROVIDER=certbot the backend shells out to
+#    certbot --nginx per domain on verification; certbot injects the per-domain
+#    ssl server blocks and its systemd timer renews them.
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    # ACME HTTP-01 challenges (Let's Encrypt)
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+
+    # Everything else → HTTPS
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+
+    # Fallback certificate for unmatched hosts (certbot adds per-domain blocks).
+    ssl_certificate     /etc/letsencrypt/live/zeniahr.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/zeniahr.com/privkey.pem;
+
+    # Security headers (reported by the in-app Domain Health card)
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    # Frontend build
+    root /var/www/zeniahr/dist;
+    index index.html;
+    location / { try_files $uri $uri/ /index.html; }
+
+    # API → backend, PRESERVING the original Host for tenant resolution
+    location /api/ {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}

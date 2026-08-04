@@ -108,6 +108,8 @@ const PAYROLL_EXPORT_COLUMNS: ExportColumn[] = [
   { header: 'Status', key: 'payrollStatus', width: 14, format: (v, row) => v || row.status || '' },
 ];
 
+const MONTH_LIST = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
 export const Payroll: React.FC<PayrollProps> = ({
   role,
   activeCompanyId,
@@ -126,7 +128,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   // Attendance Synchronization → Push to Payroll Engine) is visible immediately,
   // instead of landing on a stale past month with zero-value rows.
   const [monthFilter, setMonthFilter] = useState(
-    () => ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][new Date().getMonth()]
+    () => MONTH_LIST[new Date().getMonth()]
   );
   // A payroll cycle is month + YEAR. Scoping by month name alone made the same
   // month across two years collapse into one view (e.g. July 2025 + July 2026),
@@ -136,6 +138,24 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [yearFilter] = useState(() => new Date().getFullYear());
   // Drives the Lock/Unlock Month button's loading state.
   const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
+  // §12 — whether this workspace requires a VERIFIED bank account before salary
+  // transfer. Off unless a Company Head has switched it on, so payroll behaves
+  // exactly as before for every tenant that has not opted in.
+  const [requireVerifiedBank, setRequireVerifiedBank] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res: any = await api.bank.payrollPolicy();
+        if (!cancelled) setRequireVerifiedBank(!!res?.data?.requireVerifiedBankForPayroll);
+      } catch {
+        // Policy unreadable → payroll is not gated. Failing open is deliberate:
+        // a settings lookup that times out must not stop payday.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Server-Side Pagination State
   const [page, setPage] = useState(() => Number(sessionStorage.getItem('payroll_emp_page')) || 1);
@@ -267,7 +287,7 @@ export const Payroll: React.FC<PayrollProps> = ({
     // includeComputed → for employees who have raw attendance but no materialized
     // summary yet, the API returns LIVE-computed figures (never a missing/empty
     // cache), so the Salary Worksheet's attendance matches the Attendance module.
-    api.attendanceSummary.getAll(monthFilter, 2026, true)
+    api.attendanceSummary.getAll(monthFilter, yearFilter, true)
       .then((rows: any[]) => {
         const map: Record<string, any> = {};
         (rows || []).forEach(r => { map[String(r.employeeId)] = r; });
@@ -353,28 +373,12 @@ export const Payroll: React.FC<PayrollProps> = ({
   // pending employee gets its first payroll).
   const isPendingPayrollId = (id: any): boolean => typeof id === 'string' && id.startsWith('PENDING::');
 
-  useEffect(() => {
-    const hasRealPayroll = payroll.some(p => p.companyId === activeCompanyId);
-    if (!hasRealPayroll && companyEmployees.length > 0 && activeCompanyId) {
-      console.log('Failsafe fetching payroll for:', activeCompanyId);
-      const token = localStorage.getItem('hrms_token');
-      if (!token) return;
-      fetch(`/api/payroll`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'x-workspace-id': activeCompanyId,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          onUpdatePayroll([...payroll.filter(p => p.companyId !== activeCompanyId && (p as any).employee?.branchId !== activeCompanyId), ...data]);
-        }
-      })
-      .catch(err => console.error('Failsafe fetch failed:', err));
-    }
-  }, [payroll.length, companyEmployees.length, activeCompanyId]);
+  // (Removed) A "failsafe" payroll fetch used to live here. It read a
+  // localStorage key that is never written, so it could never run; it also
+  // called a RELATIVE `/api/payroll`, which in dev hits the Vite server and
+  // returns index.html rather than JSON. Payroll is loaded through the shared
+  // api client (which resolves VITE_API_BASE_URL), so this duplicate path is not
+  // needed and only produced a JSON parse error when it did execute.
 
   const filtered = useMemo(() => scopedRecords.filter(r => {
     const currentStatus = r.payrollStatus || r.status;
@@ -479,7 +483,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog(record.id, `Salary payment confirmed (Bank Transfer).`, 'Payment ledger updated via Quick Confirm.');
       setConfirmPaymentRecord(null);
 
-      await ui.alert({ title: 'Payment Marked Successfully', message: `Employee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${new Date().toLocaleString()}`, variant: 'success' });
+      await ui.alert({ title: 'Payment Marked Successfully', message: `Employee: ${record.employeeName}\nAmount: ₹${record.netSalary.toLocaleString('en-IN')}\nPayment Date: ${formatDateTime(new Date())}`, variant: 'success' });
 
       // Auto-refresh to hydrate all counts and dashboard widgets directly from DB
       window.location.reload();
@@ -528,7 +532,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   };
 
   // Bank Transfer Sheet — NEFT/RTGS style export of net payable per employee.
-  const handleExportBankSheet = () => {
+  const handleExportBankSheet = async () => {
     const cols: ExportColumn[] = [
       { header: 'Sr No', key: 'srNo', width: 8 },
       { header: 'Employee Name', key: 'employeeName', width: 26 },
@@ -536,6 +540,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       { header: 'Bank Name', key: 'bankName', width: 22 },
       { header: 'Account Number', key: 'accountNumber', width: 22 },
       { header: 'IFSC', key: 'ifsc', width: 16 },
+      { header: 'Bank Verified', key: 'bankVerified', width: 14 },
       { header: 'Net Amount (INR)', key: 'netSalary', width: 18 },
     ];
     const rows = [...scopedRecords]
@@ -549,9 +554,32 @@ export const Payroll: React.FC<PayrollProps> = ({
         bankName: emp.bankName || '',
         accountNumber: emp.accountNumber || '',
         ifsc: emp.ifsc || '',
+        bankVerified: emp.bankVerificationStatus === 'VERIFIED' ? 'Yes' : 'No',
         netSalary: r.netSalary || 0,
       };
     });
+
+    // §12 — when the workspace requires verified accounts, an unverified employee
+    // on the transfer sheet is called out BEFORE the file is produced. It is a
+    // warning that must be acknowledged, not a silent block: the person running
+    // payroll is the one who decides whether to proceed or fix the accounts first.
+    const unverified = rows.filter((row) => row.bankVerified !== 'Yes');
+    if (requireVerifiedBank && unverified.length > 0) {
+      const names = unverified.slice(0, 8).map((row) => `• ${row.employeeName}${row.employeeId ? ` (${row.employeeId})` : ''}`).join('\n');
+      const more = unverified.length > 8 ? `\n…and ${unverified.length - 8} more.` : '';
+      const proceed = await ui.confirm({
+        title: 'Unverified bank accounts in this transfer',
+        message:
+          `This workspace requires a verified bank account before salary transfer. ` +
+          `${unverified.length} of ${rows.length} employee${rows.length === 1 ? '' : 's'} on this sheet ${unverified.length === 1 ? 'has' : 'have'} not been verified:\n\n${names}${more}\n\n` +
+          `Export the transfer sheet anyway?`,
+        confirmText: 'Export anyway',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      });
+      if (!proceed) return;
+    }
+
     exportRowsToExcel(`Bank_Transfer_${monthFilter}`, cols, rows, `Bank Transfer ${monthFilter}`);
   };
 
@@ -812,7 +840,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       // this ONE call. Scoped to the active workspace; server enforces isolation.
       const res: any = await api.attendance.syncPayroll({
         companyId: activeCompanyId ? String(activeCompanyId) : undefined,
-        month: monthNum, year: 2026, dryRun: false,
+        month: monthNum, year: yearFilter, dryRun: false,
       });
       clearInterval(timer);
 
@@ -821,7 +849,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       setSyncPhase(5);
       await refreshPayroll();
       try {
-        const sums = await api.attendanceSummary.getAll(monthFilter, 2026, true);
+        const sums = await api.attendanceSummary.getAll(monthFilter, yearFilter, true);
         const map: Record<string, any> = {};
         (sums || []).forEach((s: any) => { map[String(s.employeeId)] = s; });
         setDbSummaryByEmp(map);
@@ -852,7 +880,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       const info = { at: new Date().toISOString(), by: role, employees: synced, records: Math.round(agg.present + agg.lop) };
       setAttRecalc(info);
       try { localStorage.setItem(attRecalcKey(activeCompanyId, monthFilter), JSON.stringify(info)); } catch { /* non-fatal */ }
-      saveAuditLog('attendance-sync', `${roleAudit} (${role}) synchronized attendance → payroll for ${monthFilter} 2026 — ${synced}/${processed} employee(s) synced, ${failed} failed.`);
+      saveAuditLog('attendance-sync', `${roleAudit} (${role}) synchronized attendance → payroll for ${monthFilter} ${yearFilter} — ${synced}/${processed} employee(s) synced, ${failed} failed.`);
     } catch (e: any) {
       clearInterval(timer);
       console.error('Attendance synchronization failed:', e);
@@ -882,7 +910,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   const handleGenerateSelected = async (recs: PayrollRecord[]) => {
     const empIds = Array.from(new Set(recs.map(r => String((r as any).employeeId))));
     if (!empIds.length) { ui.toast.warning('Select employees first.'); return; }
-    if (!(await ui.confirm({ message: `Generate / regenerate payroll for ${empIds.length} selected employee(s) — ${monthFilter} 2026?\n\nExisting records are updated (no duplicates).` }))) return;
+    if (!(await ui.confirm({ message: `Generate / regenerate payroll for ${empIds.length} selected employee(s) — ${monthFilter} ${yearFilter}?\n\nExisting records are updated (no duplicates).` }))) return;
     handleGeneratePayroll(empIds);
   };
 
@@ -919,7 +947,7 @@ export const Payroll: React.FC<PayrollProps> = ({
       const now = new Date().toISOString();
       onUpdatePayroll(payroll.map(r => recs.find(x => x.id === r.id) ? { ...r, payslipGenerated: true, generatedAt: now } as any : r));
       saveAuditLog('bulk', `${roleAudit} generated ${recs.length} salary slip(s).`);
-      await handleDownloadZip(recs, `Salary_Slips_${monthFilter}_2026`);
+      await handleDownloadZip(recs, `Salary_Slips_${monthFilter}_${yearFilter}`);
       ui.toast.success(`Generated ${recs.length} salary slips (PDF paths stored). ZIP downloaded.`);
     } catch (e: any) {
       console.error('Generate slips failed:', e);
@@ -1306,7 +1334,7 @@ export const Payroll: React.FC<PayrollProps> = ({
             <Select
               value={monthFilter}
               onChange={e => setMonthFilter(e.target.value)}
-              options={[{ value: 'June', label: 'June 2026' }, { value: 'May', label: 'May 2026' }, { value: 'April', label: 'April 2026' }]}
+              options={MONTH_LIST.map(m => ({ value: m, label: `${m} ${yearFilter}` }))}
             />
             {canEdit && (
               <Button variant="outline" icon={<Gift size={14} />} onClick={() => setShowBonusModal(true)}>
@@ -1330,7 +1358,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         records={rosterRecords}
         company={currentCompany}
         getEmployee={getFullEmployee}
-        monthLabel={`${monthFilter} 2026`}
+        monthLabel={`${monthFilter} ${yearFilter}`}
         role={role}
         canEdit={canEdit}
         onGeneratePayroll={() => { setGenSelectedIds(new Set()); setGenSearch(''); setGenDept('All'); setGenDesig('All'); setShowPayrollModal(true); }}
@@ -1374,7 +1402,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         employees={companyEmployees as any[]}
         companyId={activeCompanyId}
         month={monthFilter}
-        year={2026}
+        year={yearFilter}
         onApplied={refreshPayroll}
       />
 
@@ -1384,7 +1412,7 @@ export const Payroll: React.FC<PayrollProps> = ({
         phase={syncPhase}
         result={syncResult}
         error={syncError}
-        monthLabel={`${monthFilter} 2026`}
+        monthLabel={`${monthFilter} ${yearFilter}`}
         onClose={() => { if (!syncBusy) setSyncOpen(false); }}
         onViewDetailedReport={onNavigate ? () => { setSyncOpen(false); onNavigate('attendance-sync'); } : undefined}
       />
@@ -1698,11 +1726,11 @@ export const Payroll: React.FC<PayrollProps> = ({
             return (
               <>
                 <p className="text-[13px] text-slate-600 mb-3">
-                  Period: <strong className="text-slate-900">{monthFilter} 2026</strong>. Select the employees to run payroll for — <strong>only the selected employees are generated</strong>. Salary uses attendance, leave &amp; overtime.
+                  Period: <strong className="text-slate-900">{monthFilter} {yearFilter}</strong>. Select the employees to run payroll for — <strong>only the selected employees are generated</strong>. Salary uses attendance, leave &amp; overtime.
                 </p>
                 {scopedRecords.length > 0 && (
                   <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
-                    <span><strong>Payroll already exists for {monthFilter} 2026</strong> ({scopedRecords.length} record{scopedRecords.length === 1 ? '' : 's'}). Regenerating <strong>updates</strong> existing records — no duplicates are created.</span>
+                    <span><strong>Payroll already exists for {monthFilter} {yearFilter}</strong> ({scopedRecords.length} record{scopedRecords.length === 1 ? '' : 's'}). Regenerating <strong>updates</strong> existing records — no duplicates are created.</span>
                     <Button size="xs" variant="outline" disabled={isPayrollGenerating}
                       onClick={() => { setShowPayrollModal(false); handleRecalculate(); }}>Recalculate instead</Button>
                   </div>

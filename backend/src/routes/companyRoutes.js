@@ -18,6 +18,9 @@ router.put('/:id/branding', companyController.updateBranding);
 // company, HR/Finance if granted Settings → Edit), NOT by branding rights.
 router.put('/:id/departments', companyController.updateDepartments);
 router.put('/:id', requireSuperAdmin, companyController.updateCompany);
+// Heavy branding artwork, fetched on demand (see getCompanies). Any authenticated
+// user of the company may read it — it is what their own documents print with.
+router.get('/:id/assets', companyController.getCompanyAssets);
 router.get('/:id/dependencies', requireSuperAdmin, companyController.getCompanyDependencies);
 router.delete('/:id', requireSuperAdmin, companyController.deleteCompany);
 router.put('/:id/archive', requireSuperAdmin, companyController.archiveCompany);

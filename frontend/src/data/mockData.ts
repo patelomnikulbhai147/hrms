@@ -214,8 +214,19 @@ export interface Employee {
   esic?: string;
 
   bankName?: string;
+  bankBranch?: string;
+  bankAddress?: string;
+  bankCity?: string;
+  bankDistrict?: string;
+  bankState?: string;
   accountNumber?: string;
   ifsc?: string;
+  micr?: string;
+  swift?: string;
+  accountHolderName?: string;
+  verificationStatus?: 'VERIFIED' | 'FAILED' | 'NETWORK_ERROR' | 'UNVERIFIED';
+  verificationReferenceId?: string;
+  verifiedAt?: string;
 
   presentAddress?: string;
   permanentAddress?: string;
@@ -343,11 +354,17 @@ export interface Document {
 export interface Notification {
   id: string;
   companyId?: string; 
-  type: 'leave' | 'payroll' | 'attendance' | 'company' | 'system';
+  type: 'leave' | 'payroll' | 'attendance' | 'company' | 'system' | 'broadcast';
   message: string;
   timestamp: string;
   read: boolean;
   priority: 'high' | 'medium' | 'low';
+  title?: string;
+  // Broadcast provenance — set only on type 'broadcast', and absent on rows
+  // created before those columns existed, so every field is optional.
+  senderName?: string | null;
+  senderRole?: string | null;
+  targetBranchName?: string | null;
 }
 
 export const PLAN_LIMITS = {

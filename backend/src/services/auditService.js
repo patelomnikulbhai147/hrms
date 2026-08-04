@@ -6,6 +6,12 @@ class AuditService {
    */
   static async logActivity(actorId, actorName, action, entityType, entityId, details) {
     try {
+      // There is no ActivityTimeline model in the Prisma schema, so this delegate
+      // is undefined and every call here threw (caught below, but noisy on every
+      // audited action). Skipped explicitly until the model exists — the durable
+      // audit trail is logAudit()/AuditLog, which is what the UI actually reads.
+      if (!prisma.activityTimeline) return;
+
       await prisma.activityTimeline.create({
         data: {
           actorId,
@@ -43,6 +49,15 @@ class AuditService {
       await prisma.auditLog.create({
         data: {
           userId,
+          // Stamp the tenant on the row itself. Without this the trail can only be
+          // scoped by joining through `user`, which both scans and gets the answer
+          // wrong the moment a user is moved between companies — the history would
+          // follow them instead of staying with the company it happened in.
+          // A caller may pass an explicit companyId in `details` (cross-tenant
+          // admin actions); otherwise it is the actor's own company.
+          companyId: (details && typeof details === 'object' && details.companyId != null)
+            ? Number(details.companyId)
+            : (userExists.companyId ?? null),
           action,
           module: moduleName,
           targetId,

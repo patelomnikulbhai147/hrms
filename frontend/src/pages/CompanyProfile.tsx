@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { normalizeField } from '@/utils/fieldFormats';
 import { createPortal } from 'react-dom';
 import {
   Building2, FileText, ShieldCheck, Palette, GitBranch, History,
@@ -708,7 +709,7 @@ const OwnersSection: React.FC<{ profile: any; editable: boolean; reload: () => P
           <div>
             <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-2">Contact Information</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input label="Mobile Number" value={draft.mobile} placeholder="Optional" autoComplete="off" onChange={e => setDraft({ ...draft, mobile: e.target.value })} />
+              <Input label="Mobile Number" value={draft.mobile} placeholder="Optional" autoComplete="off" inputMode="tel" maxLength={10} onChange={e => setDraft({ ...draft, mobile: normalizeField('mobile', e.target.value) })} />
               <Input label="Email Address" type="email" value={draft.email} placeholder="Optional" autoComplete="off" onChange={e => setDraft({ ...draft, email: e.target.value })} />
             </div>
           </div>
@@ -1437,33 +1438,185 @@ const CompanyBranches: React.FC<{
 };
 
 // ── Audit Timeline ───────────────────────────────────────────────────────────
+// ── Audit Timeline ───────────────────────────────────────────────────────────
+// The full activity log, and the destination of the dashboard's Recent Activities
+// "View All". The dashboard card is only a preview of these same rows.
+//
+// Search / module / date filters and paging run over the batch already fetched
+// from the EXISTING GET /company-profile/audit endpoint — no second endpoint and
+// no extra query per keystroke.
+const AUDIT_PAGE_SIZE = 20;
+const AUDIT_FETCH_LIMIT = 500;   // the server's own cap
+
+const AUDIT_RANGES = [
+  { key: '', label: 'All Time' },
+  { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
+  { key: 'last7', label: 'Last 7 Days' },
+  { key: 'last30', label: 'Last 30 Days' },
+];
+
+const rangeStart = (key: string): { from?: Date; to?: Date } => {
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  switch (key) {
+    case 'today': return { from: start };
+    case 'yesterday': {
+      const f = new Date(start); f.setDate(f.getDate() - 1);
+      return { from: f, to: start };
+    }
+    case 'last7': { const f = new Date(start); f.setDate(f.getDate() - 6); return { from: f }; }
+    case 'last30': { const f = new Date(start); f.setDate(f.getDate() - 29); return { from: f }; }
+    default: return {};
+  }
+};
+
 const CompanyAudit: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    api.companyProfile.audit().then((d: any) => setLogs(Array.isArray(d) ? d : [])).catch(() => setLogs([])).finally(() => setLoading(false));
+  const [query, setQuery] = useState('');
+  const [moduleFilter, setModuleFilter] = useState('');
+  const [range, setRange] = useState('');
+  const [sort, setSort] = useState<'newest' | 'oldest'>('newest');
+  const [page, setPage] = useState(1);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    api.companyProfile.audit(AUDIT_FETCH_LIMIT)
+      .then((d: any) => setLogs(Array.isArray(d) ? d : []))
+      .catch(() => setLogs([]))
+      .finally(() => setLoading(false));
   }, []);
-  if (loading) return <p className="text-sm text-slate-400 p-6">Loading timeline…</p>;
+  useEffect(() => { load(); }, [load]);
+
   const parse = (s: string) => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
+  const detailText = (l: any) => {
+    const d = parse(l.details);
+    return d.fields ? `Fields: ${(d.fields || []).join(', ')}` : (d.op || '—');
+  };
+
+  // Modules actually present, so the dropdown never offers an empty filter.
+  const modules = React.useMemo(
+    () => [...new Set(logs.map((l) => l.module).filter(Boolean))].sort(),
+    [logs]
+  );
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const { from, to } = rangeStart(range);
+    const rows = logs.filter((l) => {
+      if (moduleFilter && l.module !== moduleFilter) return false;
+      if (from || to) {
+        const t = new Date(l.createdAt).getTime();
+        if (from && t < from.getTime()) return false;
+        if (to && t >= to.getTime()) return false;
+      }
+      if (!q) return true;
+      return `${l.action} ${l.module} ${l.actorName} ${l.actorRole} ${l.details || ''}`.toLowerCase().includes(q);
+    });
+    return rows.sort((a, b) => {
+      const d = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      return sort === 'newest' ? -d : d;
+    });
+  }, [logs, query, moduleFilter, range, sort]);
+
+  // Any filter change returns to page 1 — otherwise a narrowed result set can
+  // leave the user staring at an empty page 8.
+  useEffect(() => { setPage(1); }, [query, moduleFilter, range, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / AUDIT_PAGE_SIZE));
+  const shown = filtered.slice((page - 1) * AUDIT_PAGE_SIZE, page * AUDIT_PAGE_SIZE);
+  const hasFilters = !!(query || moduleFilter || range);
+
   return (
-    <Table>
-      <Thead><Tr><Th>When</Th><Th>Action</Th><Th>Module</Th><Th>By</Th><Th>Details</Th></Tr></Thead>
-      <Tbody>
-        {logs.length === 0 && <Tr><Td colSpan={5}><span className="text-slate-400">No changes recorded yet.</span></Td></Tr>}
-        {logs.map(l => {
-          const d = parse(l.details);
-          return (
-            <Tr key={l.id}>
-              <Td><span className="flex items-center gap-1.5"><Clock size={12} className="text-slate-500" />{formatDateTime(l.createdAt)}</span></Td>
-              <Td className="!text-slate-200">{l.action}</Td>
-              <Td>{l.module}</Td>
-              <Td>{l.actorName}{l.actorRole ? ` (${l.actorRole})` : ''}</Td>
-              <Td>{d.fields ? `Fields: ${(d.fields || []).join(', ')}` : (d.op || '—')}</Td>
-            </Tr>
-          );
-        })}
-      </Tbody>
-    </Table>
+    <div>
+      {/* Toolbar */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-2.5 mb-3">
+        <div className="relative flex-1 min-w-0">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search the timeline…"
+            className="w-full h-9 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-[12px] text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={moduleFilter}
+            onChange={(e) => setModuleFilter(e.target.value)}
+            aria-label="Filter by module"
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] text-slate-700 focus:outline-none focus:border-brand-500"
+          >
+            <option value="">All Modules</option>
+            {modules.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <select
+            value={range}
+            onChange={(e) => setRange(e.target.value)}
+            aria-label="Filter by date"
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] text-slate-700 focus:outline-none focus:border-brand-500"
+          >
+            {AUDIT_RANGES.map((r) => <option key={r.key || 'all'} value={r.key}>{r.label}</option>)}
+          </select>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as 'newest' | 'oldest')}
+            aria-label="Sort order"
+            className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] text-slate-700 focus:outline-none focus:border-brand-500"
+          >
+            <option value="newest">Newest First</option>
+            <option value="oldest">Oldest First</option>
+          </select>
+          <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={load} disabled={loading}>Refresh</Button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2 p-1">
+          {[0, 1, 2, 3, 4].map((i) => <div key={i} className="h-10 rounded-lg shimmer-skeleton" />)}
+        </div>
+      ) : (
+        <>
+          {filtered.length > 0 && (
+            <p className="text-[11px] text-slate-500 mb-2">
+              Showing {(page - 1) * AUDIT_PAGE_SIZE + 1}–{Math.min(page * AUDIT_PAGE_SIZE, filtered.length)} of {filtered.length}
+              {logs.length >= AUDIT_FETCH_LIMIT && ' (most recent 500 entries)'}
+            </p>
+          )}
+          <Table>
+            <Thead><Tr><Th>When</Th><Th>Action</Th><Th>Module</Th><Th>By</Th><Th>Details</Th></Tr></Thead>
+            <Tbody>
+              {shown.length === 0 && (
+                <Tr><Td colSpan={5}>
+                  <span className="text-slate-400">
+                    {hasFilters ? 'No entries match these filters.' : 'No changes recorded yet.'}
+                  </span>
+                </Td></Tr>
+              )}
+              {shown.map(l => (
+                <Tr key={l.id}>
+                  <Td><span className="flex items-center gap-1.5"><Clock size={12} className="text-slate-500" />{formatDateTime(l.createdAt)}</span></Td>
+                  <Td className="!text-slate-200">{l.action}</Td>
+                  <Td>{l.module}</Td>
+                  <Td>{l.actorName}{l.actorRole ? ` (${l.actorRole})` : ''}</Td>
+                  <Td>{detailText(l)}</Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+
+          {totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+              <span className="text-[11px] text-slate-500">Page {page} of {totalPages}</span>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</Button>
+                <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Next</Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 };
 

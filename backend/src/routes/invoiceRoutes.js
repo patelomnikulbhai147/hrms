@@ -11,11 +11,14 @@ const layout = require('../controllers/invoiceLayoutController');
 router.use(protect);
 router.use(require('../middleware/readOnlyMiddleware'));
 
+const profile = require('../controllers/invoiceCustomerProfileController');
+
 // Dashboard
 router.get('/dashboard', inv.dashboard);
 
 // Customers
 router.get('/customers', master.listCustomers);
+router.get('/customers/:id/profile', profile.getCustomerProfile);
 router.post('/customers', master.saveCustomer);
 router.put('/customers/:id', master.saveCustomer);
 router.delete('/customers/:id', master.deleteCustomer);
@@ -47,6 +50,10 @@ router.post('/invoices/:id/duplicate', inv.duplicate);
 router.patch('/invoices/:id/status', inv.setStatus);
 router.post('/invoices/:id/log', inv.logAction);
 router.post('/invoices/:id/email', inv.emailInvoice); // additive — email the invoice with its PDF attached
+router.get('/invoices/:id/reminder-center', inv.getReminderCenter);
+router.post('/invoices/:id/remind', inv.sendReminder);
+router.patch('/invoices/:id/reschedule', inv.rescheduleDueDate);
+router.post('/invoices/:id/thank-you', inv.sendThankYou);
 router.delete('/invoices/:id', inv.remove);
 
 // Payments

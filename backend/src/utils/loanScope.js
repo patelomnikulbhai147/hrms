@@ -15,16 +15,18 @@ const canApprove = (req) => ['Company Head', 'Finance'].includes(req.user?.role)
 const canManage = (req) => ['Company Head', 'Finance'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])]
-  .map((c) => idParam(c)).filter(Boolean);
+// Branch-aware scope (see utils/workspaceScope.js): company grants PLUS the
+// parent company of every branch the user may enter.
+const ws = require('./workspaceScope');
+const companyScopeFor = (req) => ws.companyScopeFor(req);
 
 // Can the caller create/read data for this company? Super Admin → any; others →
-// only companies inside their scope (home + accessible).
+// only companies inside their scope (home + accessible + branch parents).
 const canAccessCompany = (req, companyId) => {
   const cid = idParam(companyId);
   if (!cid) return false;
   if (isSuperAdmin(req)) return true;
-  return companyScopeFor(req).includes(cid);
+  return ws.canEnterWorkspace(req, cid);
 };
 
 // Which company a WRITE targets. A non–Super-Admin who named a workspace they can
@@ -35,10 +37,7 @@ const canAccessCompany = (req, companyId) => {
 // workspace, so a loan a multi-company Company Head created in another accessible
 // company was saved under their home company and then vanished from the list.)
 function targetCompanyId(req, requested) {
-  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId || null;
-  if (workspaceId && companyScopeFor(req).includes(workspaceId)) return workspaceId;
-  return req.user?.companyId || null;
+  return ws.targetCompanyId(req, requested);
 }
 
 // The concrete company the CURRENT view/scope resolves to — i.e. the workspace
@@ -49,21 +48,13 @@ function targetCompanyId(req, requested) {
 // Without this, a multi-company user viewing company B would read B's (empty)
 // list while the seeder provisioned their home company A — an empty dropdown.
 function readCompanyId(req, requested) {
-  const workspaceId = idParam(requested || req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId || null;
-  const scope = companyScopeFor(req);
-  if (workspaceId && scope.includes(workspaceId)) return workspaceId;
-  return req.user?.companyId || null;
+  return ws.targetCompanyId(req, requested);
 }
 
-// Company-scoped WHERE for reads (null → unauthorised workspace).
-function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { companyId: workspaceId } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null;
-  return { companyId: workspaceId || { in: scope.length ? scope : [-1] } };
-}
+// Company-scoped WHERE for reads (null → unauthorised workspace). Loans are
+// COMPANY-level, so a branch workspace resolves to its parent company instead of
+// being refused — branch ids never appear in the company grant list.
+const scopedWhere = (req) => ws.scopedCompanyWhere(req);
 
 module.exports = {
   isSuperAdmin, isEmployee, canView, canEdit, canApprove, canManage,

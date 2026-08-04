@@ -17,18 +17,29 @@ const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const {
   calcAmount, pricePerEmployee, getPlanCatalog, PLAN_META, PREMIUM_MODULES,
 } = require('../services/planEntitlements');
+const { BILLING_CYCLES, normalizeBillingCycle } = require('../utils/billingCycle');
 
 const actorOf = (req) => req.user?.name || req.user?.email || 'Super Admin';
 const VALID_PLANS = ['Free', 'Starter', 'Professional', 'Enterprise', 'Custom'];
-const VALID_CYCLES = ['Quarterly', 'Yearly'];
+const VALID_CYCLES = BILLING_CYCLES;
 const HEAD_OFFICE_WHERE = { parentCompanyId: null }; // top-level companies only (branches excluded)
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-async function getOrCreateSubscription(companyId, companyPlan) {
+// Lazily materialise the subscription row. The cycle is SEEDED FROM the company
+// row (mirrored there at onboarding) rather than hardcoded, so a company that
+// signed up Yearly but whose best-effort subscription insert lost a race does
+// not silently reappear as Quarterly and start pricing slot packs at the
+// quarterly rate.
+async function getOrCreateSubscription(companyId, companyPlan, companyCycle) {
   let sub = await prisma.companySubscription.findUnique({ where: { companyId: Number(companyId) } });
   if (!sub) {
     sub = await prisma.companySubscription.create({
-      data: { companyId: Number(companyId), plan: companyPlan || 'Free', billingCycle: 'Quarterly', status: 'Active' },
+      data: {
+        companyId: Number(companyId),
+        plan: companyPlan || 'Free',
+        billingCycle: normalizeBillingCycle(companyCycle),
+        status: 'Active',
+      },
     });
   }
   return sub;
@@ -165,7 +176,7 @@ exports.getOne = async (req, res) => {
     const companyId = Number(req.params.companyId);
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) return res.status(404).json({ error: 'Company not found.' });
-    const sub = await getOrCreateSubscription(companyId, company.plan);
+    const sub = await getOrCreateSubscription(companyId, company.plan, company.billingCycle);
     const [activeCount, branchCount, head, history] = await Promise.all([
       countActiveEmployees(companyId), countUsedBranches(companyId), findCompanyHead(companyId),
       prisma.subscriptionHistory.findMany({ where: { companyId }, orderBy: { id: 'desc' }, take: 100 }),
@@ -203,7 +214,7 @@ exports.update = async (req, res) => {
     const billingCycle = VALID_CYCLES.includes(b.billingCycle) ? b.billingCycle : undefined;
     if (b.plan && !VALID_PLANS.includes(b.plan)) return res.status(400).json({ error: 'Invalid plan.' });
 
-    const before = await getOrCreateSubscription(companyId, company.plan);
+    const before = await getOrCreateSubscription(companyId, company.plan, company.billingCycle);
     const activeCount = await countActiveEmployees(companyId);
     const oldAmount = calcAmount(before.plan, before.billingCycle, activeCount, before.pricePerEmployee, before.discountPercent);
 
@@ -233,9 +244,17 @@ exports.update = async (req, res) => {
     // ── Mirror the plan onto the Company row (single enforcement source of truth).
     // paymentStatus stays "active" so the tenant keeps portal access: Free →
     // 'Trial Active', paid → 'Paid'. (Suspension is a separate action.)
+    // The billing cycle is mirrored too: the subscription owns it, but the legacy
+    // Company column feeds exports and reseeds a lost subscription row, so the two
+    // must never disagree. Switching Quarterly↔Yearly here is all it takes for
+    // FUTURE slot purchases to price on the new cycle — they read it live.
     await prisma.company.update({
       where: { id: companyId },
-      data: { plan: after.plan, paymentStatus: after.plan === 'Free' ? 'Trial Active' : 'Paid' },
+      data: {
+        plan: after.plan,
+        paymentStatus: after.plan === 'Free' ? 'Trial Active' : 'Paid',
+        billingCycle: after.billingCycle,
+      },
     });
 
     // ── History + audit ──
@@ -269,7 +288,7 @@ async function setStatus(req, res, status, accountStatus) {
     const companyId = Number(req.params.companyId);
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) return res.status(404).json({ error: 'Company not found.' });
-    await getOrCreateSubscription(companyId, company.plan);
+    await getOrCreateSubscription(companyId, company.plan, company.billingCycle);
     const sub = await prisma.companySubscription.update({ where: { companyId }, data: { status } });
     await prisma.company.update({ where: { id: companyId }, data: { accountStatus } });
     await prisma.subscriptionHistory.create({

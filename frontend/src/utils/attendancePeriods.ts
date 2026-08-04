@@ -37,7 +37,7 @@ export function getPeriodRange(
   const anchor = parseISO(anchorDate);
 
   if (mode === 'daily') {
-    return { start: anchorDate, end: anchorDate, label: anchor.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) };
+    return { start: anchorDate, end: anchorDate, label: anchor.toLocaleDateString('en-IN',{ weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }) };
   }
 
   if (mode === 'weekly') {
@@ -46,7 +46,7 @@ export function getPeriodRange(
     const diffToMonday = (day + 6) % 7;
     const start = new Date(anchor); start.setDate(anchor.getDate() - diffToMonday);
     const end = new Date(start); end.setDate(start.getDate() + 6);
-    return { start: toISO(start), end: toISO(end), label: `Week of ${start.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` };
+    return { start: toISO(start), end: toISO(end), label: `Week of ${start.toLocaleDateString('en-IN',{ day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-IN',{ day: 'numeric', month: 'short', year: 'numeric' })}` };
   }
 
   if (mode === 'monthly') {
@@ -65,7 +65,7 @@ export function getPeriodRange(
   const s = customStart || anchorDate;
   const e = customEnd || anchorDate;
   const [start, end] = s <= e ? [s, e] : [e, s];
-  return { start, end, label: `${parseISO(start).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${parseISO(end).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` };
+  return { start, end, label: `${parseISO(start).toLocaleDateString('en-IN',{ day: 'numeric', month: 'short' })} – ${parseISO(end).toLocaleDateString('en-IN',{ day: 'numeric', month: 'short', year: 'numeric' })}` };
 }
 
 /** All YYYY-MM-DD dates in an inclusive range (capped to avoid runaway loops). */
@@ -154,8 +154,34 @@ export interface EmployeePeriodSummary {
   payableDays: number; // present + half*0.5 + paid leave + weekly off + holiday + wfh
 }
 
+// ── Overtime counted by the Attendance Summary ───────────────────────────────
+// Only APPROVED overtime counts. Pending is a request, Rejected was refused;
+// neither is worked-and-owed, and neither is paid. This mirrors the backend
+// exactly — attendanceSummaryService queries `status: 'Approved'` — so the
+// Attendance Summary, the payroll engine, the payslip and the OT reports can
+// never disagree about how many hours an employee did.
+//
+// Anything that is not explicitly Approved is excluded, including a row with a
+// missing status: an unlabelled record is not evidence of approval.
+const isApprovedOt = (o: any) => /^approved$/i.test(String(o?.status ?? '').trim());
+
 const isOtRecord = (o: any, date?: string) =>
-  Number(o?.otHours ?? o?.overtimeHours ?? 0) > 0 && (!date || o?.date === date);
+  Number(o?.otHours ?? o?.overtimeHours ?? 0) > 0
+  && isApprovedOt(o)
+  && (!date || o?.date === date);
+
+// Employee ids arrive as NUMBERS from Prisma but `Employee.id` is typed (and
+// usually held) as a STRING, so `o.employeeId === emp.id` was `1477 === "1477"`
+// — always false. Every overtime row silently failed to match its employee and
+// the summary's OT column read 0.0 even with approved hours on record. Compare
+// as strings, the same way otHoursFor() in the Attendance page already did.
+const sameId = (a: any, b: any) =>
+  a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b);
+
+const otBelongsTo = (o: any, emp: Employee) =>
+  sameId(o?.employeeId, emp.id) || sameId(o?.empId, emp.id)
+  || (!!emp.employeeId && sameId(o?.empCode, emp.employeeId))
+  || (!!emp.employeeId && sameId(o?.employeeCode, emp.employeeId));
 
 /** Aggregate one employee across a set of dates. */
 export function summarizeEmployeePeriod(
@@ -187,10 +213,10 @@ export function summarizeEmployeePeriod(
     if ((record as any)?.lateMark === true || (Array.isArray(flags) && flags.some((f: any) => /late/i.test(String(f))))) s.lateMarks++;
   }
 
-  // Overtime hours over the period (employee may use id or code).
-  s.otHours = (overtime || [])
-    .filter(o => (o.empId === emp.id || o.employeeId === emp.id || o.empCode === emp.employeeId) && dates.includes(o.date) && isOtRecord(o))
-    .reduce((acc, o) => acc + Number(o.otHours ?? o.overtimeHours ?? 0), 0);
+  // APPROVED overtime hours over the period (employee may be keyed by id or code).
+  s.otHours = Math.round((overtime || [])
+    .filter(o => otBelongsTo(o, emp) && dates.includes(o.date) && isOtRecord(o))
+    .reduce((acc, o) => acc + Number(o.otHours ?? o.overtimeHours ?? 0), 0) * 100) / 100;
 
   s.lop = s.absent; // unpaid absence
   s.payableDays = s.present + s.half * 0.5 + s.leave + s.weeklyOff + s.holiday + s.wfh;

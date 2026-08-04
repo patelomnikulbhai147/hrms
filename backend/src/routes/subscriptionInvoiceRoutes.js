@@ -14,6 +14,7 @@ router.put('/settings', ctrl.updateSettings);          // save issuer config
 router.get('/dashboard', ctrl.dashboard);              // summary cards
 router.get('/reports', ctrl.reports);                  // revenue / outstanding / GST / register
 router.post('/preview', ctrl.preview);                 // compute totals without saving
+router.get('/payments', ctrl.allPayments);             // Billing → Payments register (read-only)
 router.get('/company/:companyId', ctrl.companyBilling); // per-company billing page
 router.get('/', ctrl.list);                            // invoice table (search + filters)
 router.post('/', ctrl.generate);                       // + Generate Invoice

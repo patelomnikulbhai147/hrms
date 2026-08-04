@@ -47,6 +47,9 @@ export function Paginated<T>({ items, pageSize = DEFAULT_PAGE_SIZE, resetKey, la
   );
 }
 
+/** Page-size choices offered by the "Rows per page" selector. */
+export const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+
 interface PaginationBarProps {
   page: number;
   totalPages: number;
@@ -54,11 +57,32 @@ interface PaginationBarProps {
   pageSize: number;
   label: string;
   onChange: (page: number) => void;
+  /** Supply to show the "Rows per page" selector. Omit to hide it. */
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
+  /** Renders "Rows per page" as "Rows" etc. — purely cosmetic. */
+  pageSizeLabel?: string;
 }
 
-const PaginationBar: React.FC<PaginationBarProps> = ({ page, totalPages, total, pageSize, label, onChange }) => {
+/**
+ * PaginationBar — the shared pagination control for the whole HRMS.
+ *
+ * Used two ways:
+ *  • through `<Paginated>` for client-side lists (it owns the slicing), and
+ *  • directly, driven by a server-side `{page, limit, total, totalPages}`
+ *    response — which is how the Employee Cards grid uses it.
+ *
+ * Responsive by design: numbered page buttons are the desktop affordance and are
+ * hidden below `sm`, where the bar collapses to Prev · "Page x of y" · Next. The
+ * First/Last jumps stay available on tablet and up.
+ */
+export const PaginationBar: React.FC<PaginationBarProps> = ({
+  page, totalPages, total, pageSize, label, onChange,
+  onPageSizeChange, pageSizeOptions = PAGE_SIZE_OPTIONS, pageSizeLabel = 'Rows per page',
+}) => {
   const go = (p: number) => onChange(Math.min(totalPages, Math.max(1, p)));
-  const from = (page - 1) * pageSize + 1;
+  // An empty result set should read "0 of 0", not "1 to 0".
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
 
   // A window of up to 5 page numbers centred on the current page.
@@ -70,28 +94,58 @@ const PaginationBar: React.FC<PaginationBarProps> = ({ page, totalPages, total, 
   for (let i = start; i <= end; i++) numbers.push(i);
 
   return (
-    <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 flex-wrap gap-3">
-      <span className="text-xs text-slate-500 font-medium">
-        Showing <span className="font-bold text-slate-700">{from}</span> to <span className="font-bold text-slate-700">{to}</span> of <span className="font-bold text-slate-700">{total}</span> {label}
-      </span>
-      <div className="flex items-center gap-1 flex-wrap">
-        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(1)} disabled={page === 1} title="First page">« First</Button>
-        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(page - 1)} disabled={page === 1} title="Previous page">‹ Prev</Button>
-        {start > 1 && <span className="px-1 text-xs text-slate-400 select-none">…</span>}
-        {numbers.map(n => (
-          <button
-            key={n}
-            onClick={() => go(n)}
-            aria-current={n === page ? 'page' : undefined}
-            className={`min-w-[28px] h-7 rounded-md text-xs font-semibold transition-colors ${n === page ? 'bg-brand-600 text-white' : 'text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
-          >
-            {n}
-          </button>
-        ))}
-        {end < totalPages && <span className="px-1 text-xs text-slate-400 select-none">…</span>}
-        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(page + 1)} disabled={page >= totalPages} title="Next page">Next ›</Button>
-        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(totalPages)} disabled={page >= totalPages} title="Last page">Last »</Button>
+    <nav
+      aria-label="Pagination"
+      className="px-4 py-3 border-t border-slate-100 flex items-center justify-between bg-slate-50 flex-wrap gap-3"
+    >
+      <div className="flex items-center gap-3 flex-wrap">
+        <span className="text-xs text-slate-500 font-medium">
+          Showing <span className="font-bold text-slate-700">{from}</span>–<span className="font-bold text-slate-700">{to}</span> of <span className="font-bold text-slate-700">{total}</span> {label}
+          {/* Page x of y is the only position indicator on mobile, where the
+              numbered buttons are hidden — so it is never itself hidden. */}
+          <span className="hidden sm:inline"> · Page <span className="font-bold text-slate-700">{page}</span> of <span className="font-bold text-slate-700">{totalPages}</span></span>
+        </span>
+        {onPageSizeChange && (
+          <label className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+            <span className="hidden sm:inline">{pageSizeLabel}:</span>
+            <select
+              value={pageSize}
+              onChange={e => onPageSizeChange(Number(e.target.value))}
+              aria-label={pageSizeLabel}
+              className="h-7 rounded-md border border-slate-200 bg-white px-1.5 text-xs font-semibold text-slate-700 cursor-pointer focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/15"
+            >
+              {pageSizeOptions.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
       </div>
-    </div>
+
+      <div className="flex items-center gap-1 flex-wrap">
+        <Button variant="outline" size="sm" className="hidden md:inline-flex text-xs py-1 px-2" onClick={() => go(1)} disabled={page === 1} title="First page">« First</Button>
+        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(page - 1)} disabled={page === 1} title="Previous page">‹ Prev</Button>
+
+        {/* Mobile: a single compact position readout replaces the numbers. */}
+        <span className="sm:hidden px-2 text-xs font-semibold text-slate-600 tabular-nums">Page {page} of {totalPages}</span>
+
+        <span className="hidden sm:flex items-center gap-1">
+          {start > 1 && <span className="px-1 text-xs text-slate-400 select-none">…</span>}
+          {numbers.map(n => (
+            <button
+              key={n}
+              onClick={() => go(n)}
+              aria-current={n === page ? 'page' : undefined}
+              aria-label={`Page ${n}`}
+              className={`min-w-[28px] h-7 rounded-md text-xs font-semibold transition-colors ${n === page ? 'bg-brand-600 text-white' : 'text-slate-600 border border-slate-200 hover:bg-slate-100'}`}
+            >
+              {n}
+            </button>
+          ))}
+          {end < totalPages && <span className="px-1 text-xs text-slate-400 select-none">…</span>}
+        </span>
+
+        <Button variant="outline" size="sm" className="text-xs py-1 px-2" onClick={() => go(page + 1)} disabled={page >= totalPages} title="Next page">Next ›</Button>
+        <Button variant="outline" size="sm" className="hidden md:inline-flex text-xs py-1 px-2" onClick={() => go(totalPages)} disabled={page >= totalPages} title="Last page">Last »</Button>
+      </div>
+    </nav>
   );
 };

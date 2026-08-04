@@ -18,6 +18,8 @@ import { ServiceInvoiceEditor } from '@/components/invoicing/ServiceInvoiceEdito
 import { useIssuerCompany } from '@/components/invoicing/invoiceIdentity';
 // One definition of each master form, shared with the Create-Invoice pickers.
 import { CustomerModal, ProductModal } from '@/components/invoicing/MasterModals';
+import { CustomerProfile } from '@/components/invoicing/CustomerProfile';
+import { PaymentReminderCenterModal } from '@/components/invoicing/PaymentReminderCenterModal';
 
 // The renderer decision now lives in invoiceRender.ts so the Template Gallery
 // preview, the Create-Invoice preview and the print/PDF path are provably ONE
@@ -36,7 +38,7 @@ import {
   LayoutDashboard, FilePlus2, ReceiptText, Users, Package, Wallet, Settings as SettingsIcon,
   Plus, Trash2, Search, Eye, Edit, Copy, Printer, IndianRupee, X, Save, RefreshCw, Ban,
   CheckCircle2, Clock, AlertTriangle, TrendingUp, FileText, Send, Palette, Maximize2,
-  ZoomIn, ZoomOut, Download,
+  ZoomIn, ZoomOut, Download, Bell,
 } from 'lucide-react';
 
 interface Props { role: Role; activeCompanyId?: string; companies?: any[]; }
@@ -92,8 +94,8 @@ const OPERATION_TABS = [
   { id: 'create', label: 'Create Invoice', icon: FilePlus2 },
   { id: 'invoices', label: 'All Invoices', icon: ReceiptText },
   { id: 'customers', label: 'Customers', icon: Users },
+  { id: 'vendors', label: 'Vendors', icon: Users },
   { id: 'products', label: 'Products & Services', icon: Package },
-  { id: 'payments', label: 'Payments', icon: Wallet },
 ] as const;
 // One-time company CONFIGURATION — an administrative setup area, opened once by
 // the Company Head / authorized admin, never part of the daily billing workflow.
@@ -115,8 +117,38 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   // unaffected: generated invoices always pick up the saved template automatically.
   const canBranding = ['Company Head', 'Super Admin'].includes(role);
   const [tab, setTab] = useState<TabId>('dashboard');
+  const [profileCustomerId, setProfileCustomerId] = useState<string | null>(null);
   const [editInvoiceId, setEditInvoiceId] = useState<number | null>(null); // when creating from an existing draft
+  const [preselectCustomerId, setPreselectCustomerId] = useState<string | null>(null); // when creating for a specific customer
   const propCompany = companies.find((c: any) => String(c.id) === String(activeCompanyId));
+
+  // Sync profile view with URL
+  useEffect(() => {
+    const checkUrl = () => {
+      const parts = window.location.pathname.replace(/^\/+/, '').split('/');
+      if (parts[0] === 'invoice-management' && parts[1] === 'customer' && parts[2]) {
+        setProfileCustomerId(parts[2]);
+      } else {
+        setProfileCustomerId(null);
+      }
+    };
+    checkUrl();
+    window.addEventListener('popstate', checkUrl);
+    return () => window.removeEventListener('popstate', checkUrl);
+  }, []);
+
+  const openCustomerProfile = (id: string | number) => {
+    const path = `/invoice-management/customer/${id}`;
+    window.history.pushState({ page: 'invoice-management' }, '', path);
+    setProfileCustomerId(String(id));
+  };
+
+  const closeCustomerProfile = () => {
+    const path = `/invoice-management`;
+    window.history.pushState({ page: 'invoice-management' }, '', path);
+    setProfileCustomerId(null);
+  };
+
   // COMPANY PROFILE IS THE BRANDING SOURCE, and the LEGAL ENTITY is always the
   // parent company — a branch workspace bills under its parent and appears only
   // as `branchLabel`. useIssuerCompany re-reads the profile on every workspace
@@ -125,7 +157,11 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
   const activeCompany = useIssuerCompany(propCompany);
   const companyState: string = activeCompany?.state || '';
 
-  const goCreate = (id: number | null = null) => { setEditInvoiceId(id); setTab('create'); };
+  const goCreate = (id: number | null = null) => { 
+    setEditInvoiceId(id); 
+    if (id !== null) setPreselectCustomerId(null); // Clear preselect if editing existing
+    setTab('create'); 
+  };
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -145,11 +181,29 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
         message="Invoice Management is under active development. Advanced invoice templates, branding, recurring invoices, payment gateway integrations, PDF enhancements, and automation are still being completed. Current invoice generation remains safe to use."
       />
 
-      {/* Sub navigation — daily OPERATIONS on the left, a divider, then the
-          one-time SETUP group (Templates & Branding + Settings) on the right so
-          users immediately see that branding is administrative config, not a step
-          in creating an invoice. The branding tab is hidden from users who cannot
-          manage it (Accounts/HR) — they only ever create invoices. */}
+      {profileCustomerId ? (
+        <CustomerProfile 
+          customerId={profileCustomerId}
+          onBack={closeCustomerProfile}
+          onEdit={(id) => { /* Could open CustomerModal if needed, for now just close */ closeCustomerProfile(); }}
+          onGenerateInvoice={(id) => {
+            closeCustomerProfile();
+            setPreselectCustomerId(String(id));
+            goCreate(null);
+          }}
+          onSelectInvoice={(id) => {
+            closeCustomerProfile();
+            setEditInvoiceId(Number(id));
+            setTab('invoices');
+          }}
+        />
+      ) : (
+        <>
+          {/* Sub navigation — daily OPERATIONS on the left, a divider, then the
+              one-time SETUP group (Templates & Branding + Settings) on the right so
+              users immediately see that branding is administrative config, not a step
+              in creating an invoice. The branding tab is hidden from users who cannot
+              manage it (Accounts/HR) — they only ever create invoices. */}
       {(() => {
         const renderTab = (t: typeof TABS[number]) => {
           const Icon = t.icon;
@@ -175,16 +229,18 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
         );
       })()}
 
-      {tab === 'dashboard' && <DashboardTab onOpen={(id) => { setEditInvoiceId(id); setTab('invoices'); }} onNew={() => goCreate(null)} />}
-      {tab === 'create' && <ServiceInvoiceEditor editId={editInvoiceId} canEdit={canEdit} companyState={companyState} company={activeCompany} onDone={() => { setEditInvoiceId(null); setTab('invoices'); }} />}
+      {tab === 'dashboard' && <DashboardTab onOpen={(id) => { setEditInvoiceId(id); setTab('invoices'); }} onNew={() => { setPreselectCustomerId(null); goCreate(null); }} />}
+      {tab === 'create' && <ServiceInvoiceEditor editId={editInvoiceId} preselectCustomerId={preselectCustomerId} canEdit={canEdit} companyState={companyState} company={activeCompany} onDone={() => { setEditInvoiceId(null); setPreselectCustomerId(null); setTab('invoices'); }} />}
       {tab === 'invoices' && <InvoicesTab canEdit={canEdit} canManage={canManage} company={activeCompany} onEdit={(id) => goCreate(id)} focusId={editInvoiceId} />}
-      {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} />}
+      {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Customer" />}
+      {tab === 'vendors' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Vendor" />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
-      {tab === 'payments' && <PaymentsTab canEdit={canEdit} />}
       {tab === 'designer' && (canBranding
         ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
         : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} company={activeCompany} />}
+        </>
+      )}
     </div>
   );
 };
@@ -208,12 +264,11 @@ const DashboardTab: React.FC<{ onOpen: (id: number) => void; onNew: () => void }
   const maxM = Math.max(1, ...months.map(([, v]) => Number(v)));
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <Kpi label="Total Invoices" value={loading ? '—' : k.total ?? 0} icon={<ReceiptText size={16} />} />
-        <Kpi label="Total Revenue" value={loading ? '—' : inr(k.totalRevenue)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
-        <Kpi label="Outstanding" value={loading ? '—' : inr(k.outstanding)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
-        <Kpi label="This Month" value={loading ? '—' : inr(k.thisMonthRevenue)} icon={<IndianRupee size={16} />} tone="bg-brand-50 text-brand-600" />
-        <Kpi label="Overdue" value={loading ? '—' : k.overdue ?? 0} icon={<Clock size={16} />} tone="bg-rose-50 text-rose-600" />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <Kpi label="Total Sales (Billed)" value={loading ? '—' : inr(k.salesTotal)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
+        <Kpi label="Accounts Receivable" value={loading ? '—' : inr(k.accountsReceivable)} icon={<AlertTriangle size={16} />} tone="bg-orange-50 text-orange-600" />
+        <Kpi label="Total Purchases" value={loading ? '—' : inr(k.purchaseTotal)} icon={<ReceiptText size={16} />} tone="bg-rose-50 text-rose-600" />
+        <Kpi label="Accounts Payable" value={loading ? '—' : inr(k.accountsPayable)} icon={<Clock size={16} />} tone="bg-slate-100 text-slate-600" />
       </div>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <Kpi label="Draft" value={loading ? '—' : k.draft ?? 0} icon={<FileText size={16} />} tone="bg-slate-100 text-slate-500" />
@@ -293,8 +348,10 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState(''); const [status, setStatus] = useState('All');
+  const [transactionType, setTransactionType] = useState('Collect Payment');
   const [view, setView] = useState<any>(null); // invoice detail (with items/payments)
   const [payFor, setPayFor] = useState<any>(null); // record-payment target
+  const [remindId, setRemindId] = useState<number | null>(null); // reminder center target
   const [design, setDesign] = useState<InvoiceDesign>(() => resolveDesign(null));
   const [settings, setSettings] = useState<any>(null); // raw Template Settings (logo/GSTIN/bank/signature/footer)
   const [activeLayout, setActiveLayout] = useState<InvoiceLayout | null>(null);
@@ -308,15 +365,29 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
     return () => window.removeEventListener('hrms:invoice-templates-changed', onChanged);
   }, []);
 
+  // Summary cards. Deliberately NOT derived from `rows`: the table is filtered by
+  // search/status, and a "Total Invoices" card that changed every time you typed
+  // would be worse than useless. This is the whole book, from the same server
+  // aggregate the Dashboard tab reads — one calculation, no duplicate maths.
+  const [kpis, setKpis] = useState<any>(null);
+  const loadKpis = useCallback(async () => {
+    try { const d: any = await api.invoicing.dashboard(); setKpis(d?.kpis || null); }
+    catch { /* cards degrade to em-dashes; the table still works */ }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
-    try { setRows(await api.invoicing.listInvoices({ q, status })); }
+    try { setRows(await api.invoicing.listInvoices({ q, status, transactionType })); }
     catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); }
-  }, [q, status]);
+    // Refreshed alongside every list load, so creating, editing, cancelling or
+    // deleting an invoice — and recording a payment — updates the cards with no
+    // page reload and nothing to remember to call.
+    loadKpis();
+  }, [q, status, transactionType, loadKpis]);
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => { if (focusId) openView(focusId); }, [focusId]);
 
-  const openView = async (id: number) => { try { setView(await api.invoicing.getInvoice(id)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
+  async function openView(id: number) { try { setView(await api.invoicing.getInvoice(id)); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } }
 
   const doAction = async (fn: () => Promise<any>, msg: string) => { try { await fn(); ui.toast.success(msg); await load(); } catch (e: any) { if (e?.code) ui.toast.error(e.message); else ui.toast.error(getApiErrorMessage(e)); } };
   const cancel = (i: any) => ui.confirm({ message: `Cancel invoice ${i.invoiceNumber}? It stays on record but is marked Cancelled.`, variant: 'danger', confirmText: 'Cancel Invoice' }).then((ok) => { if (ok) doAction(() => api.invoicing.setInvoiceStatus(i.id, 'Cancelled'), 'Invoice cancelled.'); });
@@ -346,11 +417,52 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
     } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not send the invoice.')); }
   };
 
+  // Money first, then the counts that explain it. Cancelled invoices are excluded
+  // from the money figures server-side — they were never owed.
+  const MONEY_CARDS = [
+    { label: 'Total Invoice Amount', value: kpis && inr(kpis.totalInvoiced), tone: 'text-slate-900', icon: <ReceiptText size={14} /> },
+    { label: 'Amount Received', value: kpis && inr(kpis.totalRevenue), tone: 'text-emerald-600', icon: <TrendingUp size={14} /> },
+    { label: 'Pending Amount', value: kpis && inr(kpis.outstanding), tone: 'text-orange-600', icon: <Wallet size={14} /> },
+  ];
+  const COUNT_CARDS = [
+    { label: 'Total Invoices', value: kpis?.live, tone: 'text-slate-900' },
+    { label: 'Paid', value: kpis?.paid, tone: 'text-emerald-600' },
+    { label: 'Partial', value: kpis?.partiallyPaid, tone: 'text-amber-600' },
+    { label: 'Unpaid', value: kpis?.unpaid, tone: 'text-rose-600' },
+    { label: 'Overdue', value: kpis?.overdue, tone: 'text-rose-700' },
+  ];
+
   return (
     <div className="space-y-3">
+      {/* Payment summary — replaces the separate Payments tab. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {MONEY_CARDS.map((c) => (
+          <div key={c.label} className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              <span className="text-slate-400">{c.icon}</span>{c.label}
+            </div>
+            <div className={`mt-1 text-[19px] font-bold leading-none tabular-nums ${c.tone}`}>{c.value ?? '—'}</div>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {COUNT_CARDS.map((c) => (
+          <div key={c.label} className="bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-center">
+            <div className={`text-[18px] font-bold leading-none tabular-nums ${c.tone}`}>{c.value ?? '—'}</div>
+            <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 truncate">{c.label}</div>
+          </div>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / customer…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search number / party…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+        <select value={transactionType} onChange={(e) => setTransactionType(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-brand-700 font-semibold">
+          <option value="">All Transactions</option>
+          <option value="Collect Payment">Sales (Collect Payment)</option>
+          <option value="Pay Vendor">Purchases (Pay Vendor)</option>
+          <option value="Investment">Investment</option>
+        </select>
         <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs">
           {['All', 'Draft', 'Generated', 'Sent', 'Partially Paid', 'Paid', 'Cancelled'].map((s) => <option key={s} value={s}>{s === 'All' ? 'All Status' : s}</option>)}
         </select>
@@ -367,7 +479,19 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
               {loading && <tr><td colSpan={9} className="p-8 text-center text-slate-400">Loading…</td></tr>}
               {!loading && rows.length === 0 && <tr><td colSpan={9}><Empty icon={<ReceiptText size={26} />} title="No invoices yet" sub="Use “New Invoice” to create your first." /></td></tr>}
               {rows.map((i) => (
-                <tr key={i.id} className="hover:bg-slate-50/60">
+                <tr
+                  key={i.id}
+                  onClick={() => openView(i.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+                      e.preventDefault();
+                      openView(i.id);
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-label={`View invoice ${i.invoiceNumber}`}
+                  className="cursor-pointer transition-all duration-200 hover:bg-slate-50 hover:shadow-sm hover:border-l-4 hover:border-l-[#C77E52] border-l-4 border-l-transparent focus:outline-none focus:bg-slate-50 focus:shadow-sm focus:border-l-[#C77E52]"
+                >
                   <td className="p-3 font-bold text-slate-800">{i.invoiceNumber}</td>
                   <td className="p-3 text-slate-600 truncate max-w-[160px]" title={i.billToName}>{i.billToName}</td>
                   <td className="p-3 text-slate-500 whitespace-nowrap">{formatDate(i.invoiceDate)}</td>
@@ -379,6 +503,7 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
                   <td className="p-3">
                     <div className="flex items-center justify-end gap-0.5">
                       <IconBtn title="View" onClick={() => openView(i.id)}><Eye size={14} /></IconBtn>
+                      <IconBtn title="Payment Reminder Center" tone="indigo" onClick={() => setRemindId(i.id)}><Bell size={14} /></IconBtn>
                       <IconBtn title="Print / PDF" onClick={() => print(i)}><Printer size={14} /></IconBtn>
                       <IconBtn title="Email to customer" tone="emerald" onClick={() => emailInvoice(i)}><Send size={14} /></IconBtn>
                       {canEdit && i.balanceDue > 0 && i.status !== 'Cancelled' && <IconBtn title="Record Payment" tone="emerald" onClick={() => setPayFor(i)}><IndianRupee size={14} /></IconBtn>}
@@ -395,19 +520,20 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
         </div>
       </div>
 
-      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} settings={settings} activeLayout={activeLayout} onEmail={() => emailInvoice(view)} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
+      {view && <InvoiceDetailModal invoice={view} company={company} canEdit={canEdit} design={design} settings={settings} activeLayout={activeLayout} onRemind={() => setRemindId(view.id)} onEmail={() => emailInvoice(view)} onClose={() => setView(null)} onPay={() => { setPayFor(view); }} onChanged={load} />}
       {payFor && <RecordPaymentModal invoice={payFor} onClose={() => setPayFor(null)} onDone={() => { setPayFor(null); load(); if (view) openView(view.id); }} />}
+      {remindId !== null && <PaymentReminderCenterModal invoiceId={remindId} onClose={() => setRemindId(null)} onChanged={load} onViewInvoice={() => { const id = remindId; setRemindId(null); openView(id); }} />}
     </div>
   );
 };
 
-const IconBtn: React.FC<{ title: string; tone?: string; onClick: () => void; children: React.ReactNode }> = ({ title, tone, onClick, children }) => {
+const IconBtn: React.FC<{ title: string; tone?: string; onClick: (e?: any) => void; children: React.ReactNode }> = ({ title, tone, onClick, children }) => {
   const tones: Record<string, string> = { indigo: 'hover:text-brand-600 hover:bg-brand-50', violet: 'hover:text-brand-600 hover:bg-brand-50', emerald: 'hover:text-emerald-600 hover:bg-emerald-50', amber: 'hover:text-amber-600 hover:bg-amber-50', rose: 'hover:text-rose-600 hover:bg-rose-50' };
-  return <button title={title} onClick={onClick} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-brand-600 hover:bg-brand-50'}`}>{children}</button>;
+  return <button title={title} onClick={(e) => { e.stopPropagation(); onClick(e); }} className={`p-1.5 rounded-lg text-slate-400 ${tones[tone || ''] || 'hover:text-brand-600 hover:bg-brand-50'}`}>{children}</button>;
 };
 
 // ── Invoice detail modal ──────────────────────────────────────────────────────
-const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; settings?: any; activeLayout?: InvoiceLayout | null; onEmail?: () => void; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, settings, activeLayout, onEmail, onClose, onPay, onChanged }) => {
+const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolean; design?: InvoiceDesign; settings?: any; activeLayout?: InvoiceLayout | null; onRemind?: () => void; onEmail?: () => void; onClose: () => void; onPay: () => void; onChanged: () => void }> = ({ invoice, company, canEdit, design, settings, activeLayout, onRemind, onEmail, onClose, onPay, onChanged }) => {
   const intra = invoice.cgst > 0;
   return (
     <Modal open onClose={onClose} title={`${invoice.invoiceNumber}`} size="lg"
@@ -417,6 +543,7 @@ const InvoiceDetailModal: React.FC<{ invoice: any; company: any; canEdit: boolea
             .then(() => api.invoicing.logInvoiceAction(invoice.id, 'PRINTED').catch(() => {}))
             .catch((e) => ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')));
         }}>Print / PDF</Button>
+        {onRemind && <Button variant="outline" icon={<Bell size={14} />} onClick={onRemind} className="border-brand-300 text-brand-700 hover:bg-brand-50 font-bold">Send Reminder</Button>}
         {onEmail && <Button variant="outline" icon={<Send size={14} />} onClick={onEmail}>Email</Button>}
         {canEdit && invoice.balanceDue > 0 && invoice.status !== 'Cancelled' && <Button icon={<IndianRupee size={14} />} onClick={onPay}>Record Payment</Button>}
         <Button variant="ghost" onClick={onClose}>Close</Button>
@@ -490,18 +617,18 @@ const RecordPaymentModal: React.FC<{ invoice: any; onClose: () => void; onDone: 
 // ══════════════════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ══════════════════════════════════════════════════════════════════════════════
-const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean; onViewProfile: (id: string | number) => void; partyType: string }> = ({ canEdit, canManage, onViewProfile, partyType }) => {
   const [rows, setRows] = useState<any[]>([]); const [loading, setLoading] = useState(true); const [q, setQ] = useState('');
   const [modal, setModal] = useState<any>(null);
-  const load = useCallback(async () => { setLoading(true); try { setRows(await api.invoicing.listCustomers({ q })); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } }, [q]);
+  const load = useCallback(async () => { setLoading(true); try { setRows(await api.invoicing.listCustomers({ q, partyType })); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); } }, [q, partyType]);
   useEffect(() => { const t = setTimeout(load, q ? 300 : 0); return () => clearTimeout(t); }, [load, q]);
   const save = async (data: any) => { try { await api.invoicing.saveCustomer(data.id, data); ui.toast.success('Customer saved.'); setModal(null); load(); } catch (e) { ui.toast.error(getApiErrorMessage(e)); } };
   const del = (c: any) => ui.confirm({ message: `Delete customer "${c.companyName}"?`, variant: 'danger', confirmText: 'Delete' }).then(async (ok) => { if (!ok) return; try { await api.invoicing.deleteCustomer(c.id); ui.toast.success('Deleted.'); load(); } catch (e: any) { ui.toast.error(e?.message || getApiErrorMessage(e)); } });
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search customers…" className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
-        {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true })}>Add Customer</Button>}
+        <div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${partyType.toLowerCase()}s…`} className="w-56 rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs focus:border-[#C77E52] focus:outline-none" /></div>
+        {canEdit && <Button size="sm" icon={<Plus size={14} />} onClick={() => setModal({ companyName: '', country: 'India', isActive: true, partyType })}>Add {partyType}</Button>}
       </div>
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         <div className="overflow-x-auto"><table className="w-full text-left text-xs min-w-[760px]">
@@ -512,7 +639,7 @@ const CustomersTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canE
             {rows.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50/60">
                 <td className="p-3 font-mono text-[11px] font-bold text-[#C77E52]">{c.customerCode || '—'}</td>
-                <td className="p-3"><p className="font-bold text-slate-800">{c.companyName}</p><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
+                <td className="p-3"><button onClick={() => onViewProfile(c.id)} className="font-bold text-[#C77E52] hover:underline text-left">{c.companyName}</button><p className="text-[11px] text-slate-400">{c.email || c.phone || ''}</p></td>
                 <td className="p-3 text-slate-600 font-mono text-[11px]">{c.gstin || '—'}</td>
                 <td className="p-3 text-slate-600">{c.contactPerson || '—'}<span className="block text-[10px] text-slate-400">{[c.city, c.state].filter(Boolean).join(', ')}</span></td>
                 <td className="p-3 text-center">{c.history?.count ?? 0}</td>
@@ -566,52 +693,6 @@ const ProductsTab: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEd
         </table></div>
       </div>
       {modal && <ProductModal product={modal} onClose={() => setModal(null)} onSave={save} />}
-    </div>
-  );
-};
-// ══════════════════════════════════════════════════════════════════════════════
-// PAYMENTS (all recorded payments across invoices)
-// ══════════════════════════════════════════════════════════════════════════════
-const PaymentsTab: React.FC<{ canEdit: boolean }> = () => {
-  const [rows, setRows] = useState<any[]>([]); const [loading, setLoading] = useState(true);
-  useEffect(() => { (async () => {
-    setLoading(true);
-    try {
-      const invoices = await api.invoicing.listInvoices({});
-      const withPay = invoices.filter((i: any) => i.amountPaid > 0);
-      const detailed = await Promise.all(withPay.slice(0, 200).map((i: any) => api.invoicing.getInvoice(i.id).catch(() => null)));
-      const pays: any[] = [];
-      for (const inv of detailed) { if (!inv) continue; for (const p of inv.payments || []) pays.push({ ...p, invoiceNumber: inv.invoiceNumber, customer: inv.billToName }); }
-      pays.sort((a, b) => (b.paymentDate || '').localeCompare(a.paymentDate || ''));
-      setRows(pays);
-    } catch (e) { ui.toast.error(getApiErrorMessage(e)); } finally { setLoading(false); }
-  })(); }, []);
-  const total = rows.reduce((s, p) => s + (p.amount || 0), 0);
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <Kpi label="Payments Recorded" value={loading ? '—' : rows.length} icon={<Wallet size={16} />} />
-        <Kpi label="Total Collected" value={loading ? '—' : inr(total)} icon={<TrendingUp size={16} />} tone="bg-emerald-50 text-emerald-600" />
-      </div>
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto"><table className="w-full text-left text-xs min-w-[680px]">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] tracking-wide"><tr><th className="p-3">Date</th><th className="p-3">Invoice</th><th className="p-3">Customer</th><th className="p-3">Mode</th><th className="p-3">Reference</th><th className="p-3 text-right">Amount</th></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={6} className="p-8 text-center text-slate-400">Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={6}><Empty icon={<Wallet size={26} />} title="No payments recorded yet" sub="Record a payment from All Invoices." /></td></tr>}
-            {rows.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50/60">
-                <td className="p-3 text-slate-500 whitespace-nowrap">{formatDate(p.paymentDate)}</td>
-                <td className="p-3 font-bold text-slate-700">{p.invoiceNumber}</td>
-                <td className="p-3 text-slate-600 truncate max-w-[160px]">{p.customer}</td>
-                <td className="p-3"><Badge variant="blue">{p.mode}</Badge></td>
-                <td className="p-3 text-slate-500">{p.referenceNumber || '—'}</td>
-                <td className="p-3 text-right font-semibold text-emerald-600">{inr(p.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      </div>
     </div>
   );
 };

@@ -1,6 +1,9 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const otPay = require('../utils/overtimePay');
+const { deriveOvertimeHours } = require('../utils/overtimeDerivation');
 const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
+const { canEnterWorkspace, companyScopeFor, isSuperAdmin } = require('../utils/workspaceScope');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
@@ -101,14 +104,53 @@ exports.getAll = async (req, res) => {
       empWhere = { OR: [{ companyId }, { branchId: companyId }] };
     }
 
+    // ── Row filters ──────────────────────────────────────────────────────────
+    // These were accepted and silently DISCARDED: `?employeeId=7` and a date
+    // range both returned the entire scoped table, so a caller asking for one
+    // employee (or for the year 2099) still received every row — 28,861 of them,
+    // 9.8 MB. A filter that is ignored is worse than one that is rejected: the
+    // screen looks filtered and is not.
+    const rowWhere = {};
+    const employeeId = idParam(req.query.employeeId);
+    if (employeeId) rowWhere.employeeId = employeeId;
+
+    const startDate = String(req.query.startDate || req.query.from || '').trim();
+    const endDate = String(req.query.endDate || req.query.to || '').trim();
+    if (startDate || endDate) {
+      rowWhere.date = {};
+      if (startDate) rowWhere.date.gte = startDate;
+      if (endDate) rowWhere.date.lte = endDate;
+    }
+    if (req.query.status) rowWhere.status = String(req.query.status);
+    if (req.query.department) rowWhere.department = String(req.query.department);
+    if (req.query.branch) rowWhere.branch = String(req.query.branch);
+
+    // Optional cap. Unbounded by DEFAULT so existing callers are unaffected —
+    // `take` must stay undefined unless the caller actually asked for a limit.
+    // (Math.max(1, …) here would have silently capped every request at 1 row.)
+    const limitRaw = parseInt(req.query.limit, 10);
+    const take = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(5000, limitRaw) : undefined;
+
     let data;
     if (empWhere) {
       const scopedEmps = await prisma.employee.findMany({ where: empWhere, select: { id: true } });
       const empIds = scopedEmps.map(e => e.id);
-      data = await prisma.attendance.findMany({ where: { employeeId: { in: empIds.length ? empIds : [-1] } } });
+      // `?employeeId=` NARROWS the scoped set — it never replaces it. Asking for
+      // an employee outside the caller's workspace must return nothing, not that
+      // employee's attendance.
+      const scopedEmployeeId = rowWhere.employeeId
+        ? (empIds.includes(rowWhere.employeeId) ? rowWhere.employeeId : -1)
+        : { in: empIds.length ? empIds : [-1] };
+      data = await prisma.attendance.findMany({
+        where: { ...rowWhere, employeeId: scopedEmployeeId },
+        ...(take ? { take, orderBy: { date: 'desc' } } : {}),
+      });
       console.log('[attendance.getAll] workspace=', companyId, 'role=', req.user?.role, 'scopedEmployees=', empIds.length, 'attendanceRows=', data.length);
     } else {
-      data = await prisma.attendance.findMany({});
+      data = await prisma.attendance.findMany({
+        where: rowWhere,
+        ...(take ? { take, orderBy: { date: 'desc' } } : {}),
+      });
       console.log('[attendance.getAll] role=', req.user?.role, 'no workspace filter, attendanceRows=', data.length);
     }
     res.json(data);
@@ -255,6 +297,81 @@ exports.getAnalytics = async (req, res) => {
 // ---------------------------------------------------------------------------
 const pad2 = (n) => String(n).padStart(2, '0');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-raise overtime from a day's punches.
+//
+// Only the Excel-import path used to do this, so a day typed into the Attendance
+// screen produced no overtime however long it was: 09:00–21:00 against a 9-hour
+// shift generated nothing. Both paths now measure the day with the SAME rule
+// (utils/overtimeDerivation).
+//
+// The record is created PENDING — deriving hours is not approving them, and only
+// approval moves money. Idempotent: the auto-raised row for an employee+date is
+// replaced, never stacked, so correcting a punch cannot leave two claims behind.
+// A MANUALLY raised overtime record for that date is left completely alone; a
+// person's judgement outranks a derivation.
+// ─────────────────────────────────────────────────────────────────────────────
+const AUTO_OT_MARKER = 'auto-derived';
+
+async function deriveOvertimeForAttendance(record) {
+  if (!record || !record.employeeId || !record.date) return null;
+  try {
+    const emp = await prisma.employee.findUnique({
+      where: { id: Number(record.employeeId) },
+      select: { id: true, name: true, employeeId: true, companyId: true, department: true, branchLocation: true, shiftId: true },
+    });
+    if (!emp) return null;
+
+    // A manual claim for this date wins — never overwrite or duplicate it.
+    const manual = await prisma.overtime.findFirst({
+      where: { employeeId: emp.id, date: record.date, NOT: { remarks: AUTO_OT_MARKER } },
+      select: { id: true },
+    });
+    if (manual) return { skipped: 'a manually raised overtime entry already exists for this date' };
+
+    const shift = emp.shiftId
+      ? await prisma.shift.findUnique({ where: { id: Number(emp.shiftId) }, select: { name: true, start: true, end: true, breakTime: true, otEnabled: true } })
+      : null;
+
+    const status = String(record.status || '').toLowerCase();
+    const { otHours, reason } = deriveOvertimeHours({
+      clockIn: record.clockIn, clockOut: record.clockOut, shift,
+      isHoliday: /holiday/.test(status),
+      isWeeklyOff: /weekly off|week off/.test(status),
+    });
+
+    // Clear any previous auto-raised row for the date, so an edited punch
+    // re-derives instead of accumulating.
+    await prisma.overtime.deleteMany({ where: { employeeId: emp.id, date: record.date, remarks: AUTO_OT_MARKER } });
+    if (!(otHours > 0)) return { otHours: 0, reason };
+
+    const created = await prisma.overtime.create({
+      data: {
+        companyId: emp.companyId, employeeId: emp.id, employeeName: emp.name,
+        employeeCode: emp.employeeId, department: emp.department || null,
+        branch: emp.branchLocation || null, shift: shift?.name || null,
+        date: record.date, inTime: record.clockIn || '', outTime: record.clockOut || '',
+        otHours, type: 'Auto', reason: 'Derived from attendance punches',
+        remarks: AUTO_OT_MARKER, status: 'Pending',
+      },
+    });
+    console.log('[attendance→overtime]', JSON.stringify({
+      employeeId: emp.id, date: record.date, clockIn: record.clockIn, clockOut: record.clockOut,
+      shift: shift?.name || null, otHours, overtimeId: created.id, status: 'Pending', reason,
+    }));
+    return { otHours, overtimeId: created.id, reason };
+  } catch (err) {
+    // Never fail an attendance write because the derivation had a problem — but
+    // never hide it either.
+    console.error('[attendance→overtime] DERIVATION FAILED', JSON.stringify({
+      employeeId: record?.employeeId, date: record?.date,
+      message: err?.message, code: err?.code, timestamp: new Date().toISOString(),
+    }));
+    console.error(err?.stack || err);
+    return { error: err?.message || 'derivation failed' };
+  }
+}
+
 exports.syncPayroll = async (req, res) => {
   // ROOT-CAUSE FIX: Employee.companyId / branchId are Int columns, but the client
   // sends companyId/scopeIds as STRINGS (e.g. the active workspace id "5"). Passing
@@ -287,6 +404,11 @@ exports.syncPayroll = async (req, res) => {
       allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined);
     }
 
+    // A named workspace is only honoured if the caller may actually enter it.
+    if (companyId !== undefined && !isSuperAdmin(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You are not authorised to sync payroll for this workspace.' });
+    }
+
     empWhere = { status: { notIn: OFFBOARDED_STATUSES } };
     if (scopeIds.length > 0) {
       empWhere.OR = [{ companyId: { in: scopeIds } }, { branchId: { in: scopeIds } }, { id: { in: scopeIds } }];
@@ -294,6 +416,22 @@ exports.syncPayroll = async (req, res) => {
       empWhere.OR = [{ companyId }, { branchId: companyId }];
     } else if (allowedIds && allowedIds.length) {
       empWhere.OR = [{ companyId: { in: allowedIds } }, { branchId: { in: allowedIds } }];
+    }
+
+    // ── Hard tenant fence ────────────────────────────────────────────────────
+    // `allowedIds` above was computed and then only ever used as a FALLBACK, so
+    // naming `companyId` (or any `scopeIds`) replaced the caller's scope instead
+    // of narrowing it: a Company Head of one tenant could read — and with
+    // dryRun:false WRITE payroll rows for — another tenant's employees simply by
+    // naming their id. The scope the client asks for is now intersected with the
+    // scope the caller actually holds, so a named id can only ever narrow.
+    // `scopeIds` also matches raw employee PKs, which this fence contains too.
+    if (!isSuperAdmin(req)) {
+      const allowedCompanies = companyScopeFor(req); // branch-aware, numeric
+      empWhere.AND = [
+        ...(empWhere.AND || []),
+        { companyId: { in: allowedCompanies.length ? allowedCompanies : [-1] } },
+      ];
     }
 
     console.log('[syncPayroll] employee.findMany query', { role: req.user?.role, companyId, scopeIds, allowedIds, status: 'notIn OFFBOARDED_STATUSES', empWhere: JSON.stringify(empWhere) });
@@ -336,6 +474,20 @@ exports.syncPayroll = async (req, res) => {
       return 'absent';
     };
 
+    // Resolve the Deduction Policy ONCE per company|branch scope (not per
+    // employee) — the OT multiplier lives there, and a per-employee await inside
+    // the loop would be hundreds of round-trips for a large company.
+    const policySvc = require('../services/deductionPolicyService');
+    const policyCache = new Map();
+    for (const scope of new Set(employees.map((e) => `${e.companyId}|${e.branchId ?? ''}`))) {
+      const [cid, bid] = scope.split('|');
+      const resolved = await policySvc
+        .resolveEffectivePolicy({ companyId: Number(cid), branchId: bid === '' ? null : Number(bid) })
+        .catch(() => null);
+      policyCache.set(scope, resolved);
+    }
+    const policyFor = (e) => policyCache.get(`${e.companyId}|${e.branchId ?? ''}`) || null;
+
     const rows = [];
     for (const emp of employees) {
       const counts = { present: 0, absent: 0, leave: 0, half: 0, wfh: 0, holiday: 0, weeklyOff: 0 };
@@ -360,9 +512,16 @@ exports.syncPayroll = async (req, res) => {
       const payableDays = counts.present + counts.half * 0.5 + counts.leave + counts.weeklyOff + counts.holiday + counts.wfh;
       const perDay = (emp.salary || 0) / daysInMonth;
       const lopDeduction = Math.round(perDay * lopDays);
-      const overtimeRate = company?.overtimeRate || 1.5;
-      const hourlyRate = (emp.salary || 0) / (daysInMonth * 8);
-      const otAmount = Math.round(otHours * hourlyRate * overtimeRate);
+
+      // OT priced by the SHARED formula (utils/overtimePay) — the same one the
+      // payroll engine uses. Previously this divided by calendar days and ignored
+      // the Deduction Policy multiplier, so the amount reviewed here did not match
+      // the amount that reached the payslip.
+      const workingDays = Math.max(0, daysInMonth - counts.weeklyOff - counts.holiday) || daysInMonth;
+      const overtimeRate = otPay.resolveOvertimeMultiplier(policyFor(emp), company);
+      const otAmount = otPay.computeOvertimeAmount({
+        otHours, monthlyGross: emp.salary || 0, workingDays, multiplier: overtimeRate,
+      });
 
       rows.push({
         employeeId: emp.id,
@@ -482,17 +641,28 @@ exports.syncPayroll = async (req, res) => {
   }
 };
 
-// ── PUSH TO PAYROLL ENGINE — transfer the finalized attendance calculation ──────
-// Takes the EXACT per-employee values the user reviewed on the Attendance
-// Synchronization page and writes them into the Payroll module (the `payroll`
-// table the Payroll UI reads) as one draft batch (company + month + year).
+// ── PUSH TO PAYROLL ENGINE — transfer the finalized attendance AND compute pay ──
+// Takes the per-employee attendance the user reviewed on the Attendance
+// Synchronization page, writes it into the Payroll module (the `payroll` table the
+// Payroll UI reads) as one draft batch (company + month + year), and then runs the
+// SINGLE payroll engine over it.
 //
-// CRITICAL: Payroll does NOT recalculate here — the reviewed values (payable days,
-// estimated/gross/net salary) are stored VERBATIM so the Payroll screen shows the
-// exact same numbers. Gross = Net = Estimated (no PF/ESIC/PT/deductions in this
-// phase). Idempotent per employee/month/year/company (unique key → no duplicates),
-// runs inside ONE transaction (any failure rolls back the whole batch), and is
-// blocked (409) if payroll already exists for the period unless `replace` is set.
+// It used to stop after the transfer: `overtime: 0, allowances: 0, deductions: 0,
+// netSalary = payableSalary` were written verbatim and no engine ran. That is why
+// approved overtime showed HOURS on the payroll row but never an AMOUNT — gross and
+// net were unchanged and the payslip had no OT line. The hours were transferred,
+// the money never was.
+//
+// Now the batch write is followed by, per employee:
+//   1. attendanceSummaryService.recompute — persists the canonical snapshot,
+//      including otHours summed from APPROVED overtime only;
+//   2. payrollController.recalcForEmployeeMonth → recalcOne — the one engine that
+//      computes OT amount, splits gross into Basic/HRA/Special, applies PF/ESI/PT
+//      and produces net. No salary formula is duplicated here.
+//
+// Idempotent per employee/month/year/company (unique key → no duplicates; the
+// engine is itself idempotent), and blocked (409) if payroll already exists for the
+// period unless `replace` is set. Locked payroll rows are never touched.
 exports.pushToPayroll = async (req, res) => {
   const toIntId = (v) => { const n = Number(v); return Number.isFinite(n) ? n : undefined; };
   const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -522,10 +692,22 @@ exports.pushToPayroll = async (req, res) => {
       allowedCompanyIds = new Set([req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined));
       allowedBranchIds = new Set([...(req.user.accessibleBranchIds || [])].map(toIntId).filter(v => v !== undefined));
     }
+    // A named workspace must be one the caller may enter — otherwise the check
+    // below ("is this employee in the company the CLIENT named?") is satisfied by
+    // simply naming the victim's company, which let a Company Head push payroll
+    // for another tenant's employees. Authorise the id first, then keep the
+    // narrowing behaviour it was written for.
+    if (companyId !== undefined && !isSuper && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You are not authorised to push payroll for this workspace.' });
+    }
     const inScope = (e) => {
       if (isSuper) return true;
+      // The caller's real grants are ALWAYS required; a named companyId can only
+      // narrow further, never substitute for them.
+      const granted = allowedCompanyIds.has(e.companyId) || allowedBranchIds.has(e.branchId);
+      if (!granted) return false;
       if (companyId !== undefined) return e.companyId === companyId || e.branchId === companyId;
-      return allowedCompanyIds.has(e.companyId) || allowedBranchIds.has(e.branchId);
+      return true;
     };
     for (const r of rows) {
       const e = empById.get(toIntId(r.employeeId));
@@ -562,6 +744,8 @@ exports.pushToPayroll = async (req, res) => {
         companyId: e.companyId,
         employeeName: r.employeeName || e.name || 'Unknown',
         department: r.department || e.department || 'General',
+        // Seed values only — the engine pass below overwrites every money field
+        // from the synced AttendanceSummary. They are NOT the final figures.
         basicSalary: payable, allowances: 0, deductions: 0, netSalary: payable,
         overtime: 0, bonus: 0, loanDeduction: 0, tax: 0,
         presentDays: round2(r.present),
@@ -576,7 +760,7 @@ exports.pushToPayroll = async (req, res) => {
         attendanceSyncedAt: now, attendanceSource: 'Attendance Synchronization',
         isOutdated: false, summarySyncedAt: now,
         payrollStatus: 'draft', paymentStatus: 'pending', payslipGenerated: false,
-        notes: `Transferred from Attendance Synchronization — ${round2(r.payableDays)}/${round2(r.workingDays)} payable day(s); gross = net = ₹${payable} (no recalculation).`,
+        notes: `Transferred from Attendance Synchronization — ${round2(r.payableDays)}/${round2(r.workingDays)} payable day(s).`,
       };
       return prisma.payroll.upsert({
         where: { employeeId_month_year_companyId: { employeeId: e.id, month, year, companyId: e.companyId } },
@@ -587,6 +771,56 @@ exports.pushToPayroll = async (req, res) => {
 
     // ── STEP: ONE transaction — all-or-nothing (no partial payroll) ─────────
     await prisma.$transaction(ops);
+
+    // ── STEP: run the SINGLE payroll engine over the batch ──────────────────
+    // Without this the rows above are attendance-only: OT hours present, OT amount
+    // zero, no PF/ESI/PT, net = gross. The engine computes the money from the
+    // canonical AttendanceSummary, so Payroll, the Salary Worksheet, the payslip
+    // and every report read one identical calculation.
+    //
+    // Deliberately NOT inside the transaction above: a batch can be several
+    // hundred employees and each recompute issues many queries, which would blow
+    // Prisma's interactive-transaction timeout and hold locks across the whole
+    // run. Instead each employee is independent — one failure cannot corrupt or
+    // roll back the others, and every failure is reported back to the caller
+    // rather than being swallowed.
+    const attSvc = require('../services/attendanceSummaryService');
+    const payrollCtrl = require('./payrollController'); // lazy require — no top-level cycle
+    let computed = 0;
+    const engineFailures = [];
+    for (const r of rows) {
+      const eid = toIntId(r.employeeId);
+      const e = empById.get(eid);
+      try {
+        // 1) Canonical attendance snapshot (otHours = APPROVED overtime only).
+        await attSvc.recompute(eid, month, year, { markSynced: true });
+        // 2) One engine: OT amount, Basic/HRA/Special split, PF/ESI/PT, net.
+        await payrollCtrl.recalcForEmployeeMonth(eid, month, year);
+        computed++;
+      } catch (err) {
+        console.error('[pushToPayroll] engine failed for employee', eid, err && err.message);
+        engineFailures.push({
+          employeeId: eid,
+          employeeName: r.employeeName || e?.name || `#${eid}`,
+          reason: (err && err.message) || 'Unknown error',
+        });
+        // Leave the row visibly unfinished so it cannot be mistaken for final pay.
+        await prisma.payroll.updateMany({
+          where: { employeeId: eid, month, year, companyId: e?.companyId },
+          data: { isOutdated: true },
+        }).catch(() => {});
+      }
+    }
+
+    // The reviewed estimate is NOT the payable total once deductions apply — report
+    // what the engine actually produced so the UI never shows a stale figure.
+    const computedAgg = await prisma.payroll.aggregate({
+      where: { month, year, companyId: batchCompanyId, employeeId: { in: empIds.length ? empIds : [-1] } },
+      _sum: { netSalary: true, overtime: true, otHours: true },
+    });
+    const netTotal = round2(computedAgg._sum.netSalary || 0);
+    const overtimeTotal = round2(computedAgg._sum.overtime || 0);
+    const otHoursTotal = round2(computedAgg._sum.otHours || 0);
 
     const batchId = `PB-${batchCompanyId}-${year}-${String(MONTH_NAMES.indexOf(month) + 1).padStart(2, '0')}`;
 
@@ -599,6 +833,8 @@ exports.pushToPayroll = async (req, res) => {
           details: JSON.stringify({
             batchId, companyId: batchCompanyId, month, year,
             employeeCount: rows.length, totalPayrollAmount: totalAmount,
+            computed, netTotal, overtimeTotal, otHoursTotal,
+            engineFailed: engineFailures.length,
             generatedBy, generatedAt: now.toISOString(), replaced: existing.length > 0,
           }).slice(0, 1000),
         },
@@ -608,6 +844,9 @@ exports.pushToPayroll = async (req, res) => {
     return res.json({
       batchId, month, year, companyId: batchCompanyId,
       employees: rows.length, totalAmount, replaced: existing.length > 0,
+      // Post-engine figures — what payroll actually holds now.
+      computed, netTotal, overtimeTotal, otHoursTotal,
+      failed: engineFailures.length, engineFailures,
       generatedBy, generatedAt: now.toISOString(),
     });
   } catch (error) {
@@ -650,9 +889,11 @@ exports.create = async (req, res) => {
       const dup = await prisma.attendance.findFirst({ where: { employeeId: Number(body.employeeId), date: body.date } });
       if (dup) {
         const updated = await prisma.attendance.update({ where: { id: dup.id }, data: body });
+        // Re-derive overtime: a corrected punch must not leave the old claim behind.
+        const overtime = await deriveOvertimeForAttendance(updated);
         const flagged = await flagPayrollOutdated(updated.employeeId, updated.date);
         await writeAttendanceAudit(req, 'CORRECT_ATTENDANCE', updated, dup.status, source, undefined, flagged > 0);
-        return res.status(200).json(updated);
+        return res.status(200).json({ ...updated, overtime });
       }
     }
 
@@ -672,10 +913,12 @@ exports.create = async (req, res) => {
       } else throw err;
     }
     console.log('[attendance.create] AFTER (db response)', { id: data.id, employeeId: data.employeeId, date: data.date, status: data.status, action });
+    // Punches in ⇒ overtime derived (Pending, awaiting approval).
+    const overtime = await deriveOvertimeForAttendance(data);
     // A new attendance record changes the month's totals → payroll is now stale.
     const flagged = await flagPayrollOutdated(data.employeeId, data.date);
     await writeAttendanceAudit(req, action, data, undefined, source, undefined, flagged > 0);
-    res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json(data);
+    res.status(action === 'CORRECT_ATTENDANCE' ? 200 : 201).json({ ...data, overtime });
   } catch (error) {
     console.error('[attendance.create] FAILED', error);
     res.status(500).json({ error: error.message || 'Server error', code: error.code });
@@ -729,3 +972,60 @@ exports.delete = async (req, res) => {
     res.status(500).json({ error: error.message || 'Server error' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTENDANCE REPORTS — the "View Full Report" destinations.
+//
+// Both are projections of ONE aggregate (services/attendanceReportService.js), so
+// the Department report's numbers can never disagree with the Workforce report's,
+// and both reconcile with the dashboard cards because they share the frontend's
+// status classifier via utils/attendanceStatus.js.
+//
+// Scope, branch confinement and the date range are all resolved server-side; a
+// hand-crafted request cannot widen them. Failures are logged with the actor and
+// the query, and returned as real status codes — never a silent empty report.
+// ─────────────────────────────────────────────────────────────────────────────
+const { buildReport } = require('../services/attendanceReportService');
+
+const reportHandler = (name, project) => async (req, res) => {
+  const tag = `[attendance:${name}] by=${req.user?.id ?? '?'} (${req.user?.role || 'unknown'}) q=${JSON.stringify(req.query)}`;
+  const startedAt = Date.now();
+  try {
+    const built = await buildReport(req, req.query || {});
+    if (!built.ok) {
+      console.warn(`${tag} REJECTED ${built.status}: ${built.body.error}`);
+      return res.status(built.status).json(built.body);
+    }
+    const body = project(built.report);
+    console.log(`${tag} ok in ${Date.now() - startedAt}ms employees=${built.report.totals.employees} records=${built.report.totals.records}`);
+    res.json(body);
+  } catch (error) {
+    // Never fail silently: the actor, the query, the message and the stack all go
+    // to the log, and the caller gets a 500 they can surface.
+    console.error(`${tag} FAILED after ${Date.now() - startedAt}ms`, error);
+    res.status(500).json({ error: error.message || 'Server error' });
+  }
+};
+
+// GET /api/attendance/workforce-report
+// Everything: totals, the three trend series, department split and the
+// per-employee breakdown.
+exports.workforceReport = reportHandler('workforce-report', (r) => r);
+
+// GET /api/attendance/department-report
+// Department-first projection. The employee list is retained for the drill-down
+// but carries only the fields the department view renders.
+exports.departmentReport = reportHandler('department-report', (r) => ({
+  range: r.range,
+  scope: r.scope,
+  totals: r.totals,
+  byDepartment: r.byDepartment,
+  daily: r.daily,
+  employees: r.byEmployee.map((e) => ({
+    employeeId: e.employeeId, code: e.code, name: e.name, department: e.department,
+    designation: e.designation, branch: e.branch,
+    present: e.present, absent: e.absent, leave: e.leave, halfDay: e.halfDay, wfh: e.wfh,
+    late: e.late, earlyExit: e.earlyExit, overtimeHours: e.overtimeHours,
+    attendancePercent: e.attendancePercent,
+  })),
+}));

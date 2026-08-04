@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus, Search, Calendar, Clock, CheckCircle2, ChevronDown, ChevronUp, BarChart3, Award, ClipboardList, Building2, UserRound, CheckCheck, Stethoscope, Coffee, Plane, Layers, History } from 'lucide-react';
 import { InfoCard } from '@/components/ui/InfoCard';
 import {
@@ -17,6 +17,7 @@ import { Card, StatCard } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input, Select, Textarea } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
+import { PaginationBar } from '@/components/ui/Paginated';
 import { type UserAccount } from '@/pages/Login';
 import { getUniqueEmployees, getUniqueRecords } from '@/utils/deduplication';
 import { byEmployeeCode } from '@/utils/employeeSort';
@@ -28,6 +29,7 @@ import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { useLeavePolicy } from '@/hooks/useLeavePolicy';
+import { useEligibleLeaveTypes } from '@/hooks/useEligibleLeaveTypes';
 import { LEAVE_FIELDS } from '@/utils/payrollSettings';
 import { buildLeaveWallet, walletTotalRemaining, walletTotalUsed, WALLET_TONE, walletPalette } from '@/utils/leaveWallet';
 
@@ -52,6 +54,11 @@ interface LeavesProps {
   authProfile?: UserAccount | null;
 }
 
+// The full catalogue, used ONLY where every historical value must remain
+// selectable — the list filter. It is deliberately NOT what the apply form
+// renders: a male employee was being offered Maternity Leave from exactly this
+// array. Eligibility now comes per employee from the server
+// (GET /leave-types/eligible), which is the same rule POST /leaves enforces.
 const leaveTypes: LeaveType[] = ['Annual', 'Sick', 'Casual', 'Maternity', 'Paternity', 'Unpaid'];
 const leaveStatuses: LeaveStatus[] = ['Pending', 'Approved', 'Rejected', 'Cancelled'];
 
@@ -146,6 +153,52 @@ export const Leaves: React.FC<LeavesProps> = ({
     reason: '',
   });
 
+  // ── Gender-based leave eligibility ────────────────────────────────────────
+  // Which types the SELECTED employee may apply for. Refetched per employee,
+  // because the answer depends on who the leave is for. The server enforces the
+  // same rule on POST/PUT, so this is presentation of a policy — not the policy.
+  const applyEligibility = useEligibleLeaveTypes(selectedEmp?.id);
+  const editEligibility = useEligibleLeaveTypes((editLeave as any)?.employeeId);
+
+  /**
+   * Options for a Leave Category dropdown.
+   *
+   * If the lookup failed we fall back to the full catalogue rather than showing
+   * an empty dropdown: the backend still refuses an ineligible type, so the
+   * worst case is a clear server-side rejection instead of a user who cannot
+   * file any leave at all.
+   */
+  const categoryOptions = (
+    e: { types: Array<{ code: string; label: string }>; loading: boolean; error: string | null },
+    current: string,
+    keepCurrent = false,
+  ) => {
+    const source = e.error || (!e.types.length && e.loading)
+      ? leaveTypes.map((t) => ({ code: t, label: t }))
+      : e.types;
+    const opts = source.map((t) => ({ value: t.label, label: t.label }));
+    // On the EDIT form a historical record may hold a type the employee is no
+    // longer eligible for. Keep it selectable so opening the record does not
+    // silently rewrite its category to whatever happens to be first in the list.
+    // The NEW-leave form does not do this — it would show the blank form opening
+    // on "Annual (not currently eligible)", which is just the stale default.
+    if (keepCurrent && current && !opts.some((o) => o.value === current)) {
+      opts.unshift({ value: current, label: `${current} (not currently eligible)` });
+    }
+    return opts;
+  };
+
+  // Keep the new-leave form on a type the selected employee can actually take.
+  // Without this the form keeps its 'Annual' default, which is not one of the
+  // master's labels, and the first submit would be refused by the server.
+  useEffect(() => {
+    const opts = applyEligibility.types;
+    if (!opts.length) return;
+    setForm((prev) => (opts.some((t) => t.label === prev.leaveType)
+      ? prev
+      : { ...prev, leaveType: opts[0].label as LeaveType }));
+  }, [applyEligibility.types]);
+
   const [editForm, setEditForm] = useState({
     leaveType: 'Annual' as LeaveType,
     fromDate: todayStr,
@@ -208,6 +261,115 @@ export const Leaves: React.FC<LeavesProps> = ({
     }
     return isCompany;
   }, [uniqueLeaves, activeCompanyId, role, authProfile, uniqueEmployees]);
+
+  /** Every leave-type spelling actually present in this company's records. */
+  const presentLeaveTypes = useMemo(
+    () => [...new Set(companyLeaves.map(l => String(l.leaveType || '').trim()).filter(Boolean))].sort(),
+    [companyLeaves],
+  );
+
+  /* ── SERVER-SIDE pagination for the Leave Requests table ───────────────────
+   * Previously the table rendered `filtered` — every leave record in the
+   * workspace, filtered and sorted in the browser from the globally-loaded
+   * `leaves` prop. GET /api/leaves had no LIMIT at all, so the payload grew with
+   * the company's entire leave history.
+   *
+   * The table now asks the database for one page. `filtered` is kept for the
+   * per-employee balance summaries in the expanded row, which are whole-history
+   * figures by definition.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const PAGE_SIZES = [10, 25, 50, 100];
+  interface PageView { page: number; limit: number; sort: string; from: string; to: string }
+  const viewKey = `hrms_leaves_view_${activeCompanyId}`;
+  const [pageView, setPageView] = useState<PageView>(() => {
+    const fallback: PageView = { page: 1, limit: 10, sort: 'latest', from: '', to: '' };
+    try {
+      const raw = sessionStorage.getItem(`hrms_leaves_view_${activeCompanyId}`);
+      return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+    } catch { return fallback; }
+  });
+  const [pageData, setPageData] = useState<{ data: any[]; total: number; totalPages: number } | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  // Debounced search → one request per pause, not per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Any filter change returns to page 1 — staying on page 7 of a list that now
+  // has 2 pages would show an empty table.
+  useEffect(() => {
+    setPageView(v => (v.page === 1 ? v : { ...v, page: 1 }));
+  }, [debouncedSearch, typeFilter, statusFilter, branchFilter]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(viewKey, JSON.stringify(pageView)); } catch { /* quota */ }
+  }, [viewKey, pageView]);
+
+  const queryParams = useMemo(() => ({
+    companyId: activeCompanyId,
+    page: pageView.page,
+    limit: pageView.limit,
+    sort: pageView.sort,
+    search: debouncedSearch,
+    status: statusFilter,
+    leaveType: typeFilter,
+    branch: branchFilter,
+    from: pageView.from,
+    to: pageView.to,
+  }), [activeCompanyId, pageView, debouncedSearch, statusFilter, typeFilter, branchFilter]);
+
+  const loadPage = useCallback(async () => {
+    if (!activeCompanyId) return;
+    setPageLoading(true);
+    setPageError(null);
+    try {
+      const res: any = await api.leaves.paginated(queryParams);
+      setPageData({ data: res?.data || [], total: res?.total || 0, totalPages: res?.totalPages || 1 });
+    } catch (e: any) {
+      // Never fall back to an empty table — that reads as "no leave records".
+      setPageError(e?.data?.error || e?.message || 'Could not load leave requests.');
+      setPageData(null);
+    } finally {
+      setPageLoading(false);
+    }
+  }, [activeCompanyId, queryParams]);
+
+  useEffect(() => { loadPage(); }, [loadPage]);
+
+  /** The rows actually rendered — one server page. */
+  const pageRows = pageData?.data || [];
+
+  /* ── Export scope ──────────────────────────────────────────────────────────
+   * ExportMenu takes a SYNCHRONOUS row getter, so "all matching" cannot be
+   * fetched at click time. Selecting it pulls the full filtered set once (the
+   * server's sanctioned export=all path) and holds it until the filters change,
+   * at which point it is dropped rather than exported stale.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const [exportScope, setExportScope] = useState<'page' | 'all'>('page');
+  const [allMatching, setAllMatching] = useState<any[] | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  useEffect(() => { setAllMatching(null); }, [queryParams]);
+
+  useEffect(() => {
+    if (exportScope !== 'all' || allMatching || !activeCompanyId) return;
+    let alive = true;
+    setExportBusy(true);
+    api.leaves.paginated({ ...queryParams, export: 'all' })
+      .then((res: any) => { if (alive) setAllMatching(res?.data || []); })
+      .catch(() => { if (alive) setAllMatching(null); })
+      .finally(() => { if (alive) setExportBusy(false); });
+    return () => { alive = false; };
+  }, [exportScope, allMatching, queryParams, activeCompanyId]);
+
+  const exportRows = useCallback(
+    () => (exportScope === 'all' ? (allMatching || []) : pageRows),
+    [exportScope, allMatching, pageRows],
+  );
 
   const filtered = useMemo(() => {
     return companyLeaves.filter(l => {
@@ -410,6 +572,10 @@ export const Leaves: React.FC<LeavesProps> = ({
     try {
       const saved = await api.leaves.create(newLeave);
       onUpdateLeaves([saved, ...leaves]);
+      // The table renders a SERVER page, so the global prop update alone would
+      // not show the new row — re-read the current page. A new request sorts
+      // newest-first, so page 1 is where it belongs; other pages keep their place.
+      loadPage();
       setAddOpen(false);
       setForm({ employeeName: '', department: 'Engineering', leaveType: 'Annual', fromDate: todayStr, toDate: todayStr, reason: '' });
       setNameError('');
@@ -437,6 +603,7 @@ export const Leaves: React.FC<LeavesProps> = ({
     try {
       const saved = await api.leaves.update(updated.id, updated);
       onUpdateLeaves(leaves.map(l => (l.id === editLeave.id ? saved : l)));
+      loadPage();               // refresh the page in place — page/filters/sort kept
       setEditLeave(null);
       ui.toast.success('Leave request updated successfully.');
     } catch (e) {
@@ -451,6 +618,7 @@ export const Leaves: React.FC<LeavesProps> = ({
     try {
       const saved = await api.leaves.update(leaveId, updated);
       onUpdateLeaves(leaves.map(l => (l.id === leaveId ? saved : l)));
+      loadPage();               // approve/reject stays on the same page
       ui.toast.success(`Leave status updated to ${nextStatus}.`);
     } catch (e) {
       ui.toast.error(getApiErrorMessage(e, 'Could not update the leave status.'));
@@ -470,12 +638,13 @@ export const Leaves: React.FC<LeavesProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-2">
+
           <ExportMenu
             fileName="Leaves"
             title="Leave Report"
             sheetName="Leaves"
             columns={LEAVE_EXPORT_COLUMNS}
-            rows={() => filtered}
+            rows={exportRows}
           />
           {isHR && canCreate && (
             <Button icon={<Plus size={14} />} onClick={() => setAddOpen(true)} className="gradient-btn-indigo border-none shadow-lg shadow-brand-500/25">
@@ -571,14 +740,52 @@ export const Leaves: React.FC<LeavesProps> = ({
             ]}
           />
           
+          {/* Options come from the values actually present, not from a fixed
+              array. The array listed 6 names while the data holds 10 spellings
+              ('CL', 'PL', 'SL', 'LWP', 'Comp Off', 'Optional Holiday'), so most
+              records could not be filtered at all. Historical types stay listed
+              on purpose — audit visibility does not depend on eligibility. */}
           <Select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-            options={[{ value: '', label: 'All Types' }, ...leaveTypes.map(t => ({ value: t, label: t }))]}
+            options={[{ value: '', label: 'All Types' }, ...presentLeaveTypes.map(t => ({ value: t, label: t }))]}
           />
           
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
             options={[{ value: '', label: 'All Status' }, ...leaveStatuses.map(s => ({ value: s, label: s }))]}
           />
+          {/* Date range + sort are applied by the SERVER, alongside the filters
+              above, so they compose with pagination instead of re-sorting one
+              page in the browser (which would order only the visible rows). */}
+          <Input type="date" value={pageView.from} max={pageView.to || undefined}
+            aria-label="From date"
+            onChange={e => setPageView(v => ({ ...v, from: e.target.value, page: 1 }))} />
+          <Input type="date" value={pageView.to} min={pageView.from || undefined}
+            aria-label="To date"
+            onChange={e => setPageView(v => ({ ...v, to: e.target.value, page: 1 }))} />
+          <Select value={pageView.sort} aria-label="Sort order"
+            onChange={e => setPageView(v => ({ ...v, sort: e.target.value, page: 1 }))}
+            options={[
+              { value: 'latest', label: 'Latest first' },
+              { value: 'oldest', label: 'Oldest first' },
+              { value: 'employee', label: 'Employee name' },
+              { value: 'type', label: 'Leave type' },
+              { value: 'status', label: 'Status' },
+            ]}
+          />
+          {(search || typeFilter || statusFilter || branchFilter || pageView.from || pageView.to) && (
+            <button
+              onClick={() => {
+                setSearch(''); setTypeFilter(''); setStatusFilter(''); setBranchFilter('');
+                setPageView(v => ({ ...v, from: '', to: '', page: 1 }));
+              }}
+              className="h-9 px-3 text-[11px] font-bold text-slate-400 hover:text-brand-600 rounded-lg border border-white/10"
+            >Clear filters</button>
+          )}
         </div>
+        {(pageLoading || exportBusy) && (
+          <p className="mt-2 text-[11px] font-semibold text-slate-400">
+            {exportBusy ? 'Preparing export…' : 'Loading…'}
+          </p>
+        )}
       </Card>
 
       {/* Table */}
@@ -598,18 +805,34 @@ export const Leaves: React.FC<LeavesProps> = ({
             </tr>
           </Thead>
           <Tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={9} className="text-center py-12 text-sm text-slate-500">No leave records registered</td></tr>
+            {pageError ? (
+              <tr><td colSpan={9} className="text-center py-12 text-sm">
+                <span className="text-rose-400 font-semibold">{pageError}</span>
+                <button onClick={loadPage} className="ml-3 underline text-brand-600 font-bold">Retry</button>
+              </td></tr>
+            ) : !pageData ? (
+              <tr><td colSpan={9} className="text-center py-12 text-sm text-slate-500">Loading leave requests…</td></tr>
+            ) : pageRows.length === 0 ? (
+              <tr><td colSpan={9} className="text-center py-12 text-sm text-slate-500">
+                {(search || typeFilter || statusFilter || branchFilter || pageView.from || pageView.to)
+                  ? 'No leave records match these filters'
+                  : 'No leave records registered'}
+              </td></tr>
             ) : (
-              filtered.map((l, idx) => {
+              pageRows.map((l, idx) => {
                 const empSummary = employeeLeaveSummaries.find(
                   s => s.employeeName.toLowerCase() === l.employeeName.toLowerCase()
                 );
-                const empCode = uniqueEmployees.find(e => e.id === l.employeeId || e.name?.toLowerCase() === l.employeeName?.toLowerCase())?.employeeId;
+                // The server sends the code with the row; the roster lookup is
+                // only a fallback for rows whose employee link is missing.
+                const empCode = l.employeeCode
+                  || uniqueEmployees.find(e => e.id === l.employeeId || e.name?.toLowerCase() === l.employeeName?.toLowerCase())?.employeeId;
+                // Row number continues across pages (page 2 starts at 11).
+                const rowNo = (pageView.page - 1) * pageView.limit + idx + 1;
                 return (
                   <React.Fragment key={l.id}>
                     <Tr className="hover:bg-white/[0.02] transition-colors border-b border-white/5">
-                      <Td className="text-center text-[11px] text-slate-400">{idx + 1}</Td>
+                      <Td className="text-center text-[11px] text-slate-400">{rowNo}</Td>
                       <Td>
                         <button
                           onClick={() => setExpandedRowId(expandedRowId === l.id ? null : l.id)}
@@ -719,6 +942,21 @@ export const Leaves: React.FC<LeavesProps> = ({
             )}
           </Tbody>
         </Table>
+
+        {/* Server-side pagination — the shared PaginationBar, driven by the
+            server's page/total rather than by slicing a local array. */}
+        {pageData && (
+          <PaginationBar
+            page={pageView.page}
+            totalPages={pageData.totalPages}
+            total={pageData.total}
+            pageSize={pageView.limit}
+            label="leave requests"
+            onChange={(p) => setPageView(v => ({ ...v, page: p }))}
+            onPageSizeChange={(size) => setPageView(v => ({ ...v, limit: size, page: 1 }))}
+            pageSizeOptions={PAGE_SIZES}
+          />
+        )}
       </Card>
 
       {/* View Leave Reason Modal */}
@@ -853,7 +1091,14 @@ export const Leaves: React.FC<LeavesProps> = ({
             const empLeaves = uniqueLeaves.filter(l =>
               (l.employeeId === selectedEmp.id || l.employeeName.toLowerCase() === selectedEmp.name.toLowerCase()) && l.status === 'Approved'
             );
-            const wallet = buildLeaveWallet(leavePolicy, empLeaves);
+            // Only balances this employee can actually draw on. The wallet keys
+            // (annual/casual/sick/paid/earned/compOff/optional/lop) come from the
+            // company Leave Policy and are gender-neutral today, so nothing is
+            // hidden until HR restricts one — at which point the wallet follows
+            // the same master the dropdown does, rather than drifting from it.
+            const eligibleCodes = new Set(applyEligibility.types.map(t => t.code));
+            const wallet = buildLeaveWallet(leavePolicy, empLeaves)
+              .filter(w => !eligibleCodes.size || eligibleCodes.has(w.key));
             return (
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2 text-xs">
                 <div className="flex items-center justify-between border-b border-slate-150 pb-1.5">
@@ -882,13 +1127,28 @@ export const Leaves: React.FC<LeavesProps> = ({
             );
           })()}
 
+          {/* Only the types THIS employee is eligible for. A male employee is not
+              offered Maternity Leave, and the same rule refuses it server-side. */}
           <Select label="Leave Category *" disabled={!canEdit} value={form.leaveType} onChange={e => setForm({ ...form, leaveType: e.target.value as LeaveType })}
-            options={leaveTypes.map(type => {
-              const cat = categoryOfType(type);
-              const bal = selectedEmp ? balanceForType(selectedEmp.id, type) : Infinity;
+            options={categoryOptions(applyEligibility, form.leaveType).map(opt => {
+              const cat = categoryOfType(opt.value);
+              const bal = selectedEmp ? balanceForType(selectedEmp.id, opt.value) : Infinity;
               const blocked = !!cat && cat !== 'LWP' && bal <= 0;
-              return { value: type, label: blocked ? `${type} (0 balance)` : type, disabled: blocked };
+              return { value: opt.value, label: blocked ? `${opt.label} (0 balance)` : opt.label, disabled: blocked };
             })} />
+          {selectedEmp && !applyEligibility.loading && !applyEligibility.error && !applyEligibility.genderRecorded && (
+            // Say why the list is short rather than leaving HR to wonder. A
+            // gender-restricted type is never granted off a blank field.
+            <p className="text-[11px] font-semibold text-amber-600">
+              Gender is not recorded for {selectedEmp.name}, so gender-specific leave types are not offered.
+              Set it on the employee record to enable them.
+            </p>
+          )}
+          {applyEligibility.error && (
+            <p className="text-[11px] font-semibold text-amber-600">
+              Could not load this employee's eligible leave types — showing all. The server will still refuse an ineligible type.
+            </p>
+          )}
           {selectedEmp && (() => {
             const cat = categoryOfType(form.leaveType);
             const bal = balanceForType(selectedEmp.id, form.leaveType);
@@ -944,8 +1204,11 @@ export const Leaves: React.FC<LeavesProps> = ({
               <p className="font-bold text-gray-900 mt-0.5">{editLeave.employeeName} ({editLeave.department})</p>
             </div>
             
+            {/* The record's existing category stays selectable even if the
+                employee is no longer eligible for it — historical records must
+                remain readable. Saving one forward is what the server refuses. */}
             <Select label="Leave Category *" disabled={!canEdit} value={editForm.leaveType} onChange={e => setEditForm({ ...editForm, leaveType: e.target.value as LeaveType })}
-              options={leaveTypes.map(type => ({ value: type, label: type }))} />
+              options={categoryOptions(editEligibility, editForm.leaveType, true)} />
 
             <div className="grid grid-cols-2 gap-3">
               <Input label="From Date *" type="date" disabled={!canEdit} value={editForm.fromDate} onChange={e => setEditForm({ ...editForm, fromDate: e.target.value })} />

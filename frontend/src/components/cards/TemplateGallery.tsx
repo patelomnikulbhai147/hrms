@@ -52,6 +52,14 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
     return true;
   }), [templates, cat, q]);
 
+  // "My Templates" = anything this company created or uploaded; the rest are the
+  // system's. Sorting is stable within each group so the gallery does not
+  // reshuffle as templates are added.
+  const groups = useMemo(() => ([
+    { key: 'mine', label: 'My Templates', hint: 'uploaded or customised by your company', items: shown.filter((t) => t.custom) },
+    { key: 'builtin', label: 'Built-in Templates', hint: '', items: shown.filter((t) => !t.custom) },
+  ]), [shown]);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -66,8 +74,19 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-        {shown.map((t) => {
+      {/* The company's own templates come first and are labelled, so an uploaded
+          design is obviously "ours" rather than lost among 20 built-ins. The
+          heading only appears when a group has members, so a company that has
+          never uploaded anything sees exactly the gallery it saw before. */}
+      {groups.map(({ key, label, hint, items }) => items.length === 0 ? null : (
+        <div key={key} className="space-y-2">
+          <div className="flex items-baseline gap-2">
+            <h4 className="text-[11px] font-extrabold uppercase tracking-wide text-slate-500">{label}</h4>
+            <span className="text-[10px] text-slate-400">{items.length}</span>
+            {hint && <span className="text-[10px] text-slate-400 hidden sm:inline">· {hint}</span>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            {items.map((t) => {
           const isActive = activeId === t.id;
           return (
           <div key={t.id} className={`rounded-2xl border p-3 transition ${isActive ? 'border-[#C77E52] ring-2 ring-[#C77E52]/30 bg-[#FCF4EE]' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
@@ -104,9 +123,11 @@ export const TemplateGallery: React.FC<Props> = ({ templates, activeId, sample, 
             </div>
           </div>
           );
-        })}
-        {shown.length === 0 && <p className="col-span-full text-center text-xs text-slate-400 py-10">No templates match your search.</p>}
-      </div>
+            })}
+          </div>
+        </div>
+      ))}
+      {shown.length === 0 && <p className="text-center text-xs text-slate-400 py-10">No templates match your search.</p>}
     </div>
   );
 };

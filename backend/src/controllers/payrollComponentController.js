@@ -15,26 +15,18 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 
-const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 const canView = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Workspace authorisation is delegated to the shared, BRANCH-AWARE resolver.
+// The previous private helper compared the workspace id against
+// accessibleCompanyIds only, which never contains branch ids — so every branch
+// workspace was refused with "Unauthorized to view this workspace."
+const { isSuperAdmin, scopedCompanyWhere, targetCompanyId } = require('../utils/workspaceScope');
 
-// Which company a WRITE targets — Super Admin must name one; others are pinned.
-function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested || req.query.companyId || req.headers['x-workspace-id']) || null;
-  return req.user?.companyId || null;
-}
 // Company-scoped WHERE for reads (null → unauthorised workspace).
-function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { companyId: workspaceId } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null;
-  return { companyId: workspaceId || { in: scope.length ? scope : [-1] } };
-}
+const scopedWhere = (req) => scopedCompanyWhere(req);
 
 // ── Enumerations (validated server-side so no bad value can be persisted) ──────
 const TYPES = ['Allowance', 'Deduction', 'Reimbursement', 'Bonus', 'Incentive', 'Employer Contribution', 'Loan', 'Recovery', 'Custom'];

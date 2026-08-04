@@ -53,8 +53,30 @@ app.use('/api/attendance-device', require('./src/routes/attendancePushRoutes'));
 const _attendancePush = require('./src/controllers/attendancePushController');
 app.all(/^\/iclock.*/, _attendancePush.captureRaw, _attendancePush.receive);
 
-app.use(express.json({ limit: '100mb' }));
-app.use(express.urlencoded({ limit: '100mb', extended: true }));
+// ── Cashfree Payment Gateway webhook ─────────────────────────────────────────
+// Mounted BEFORE the JSON parser: HMAC signature verification needs the EXACT
+// raw request bytes. Unauthenticated (Cashfree calls it); the handler verifies
+// the x-webhook-signature, dedupes deliveries, and settlement is idempotent.
+app.post(
+  '/api/payments/webhooks/cashfree',
+  express.raw({ type: '*/*', limit: '1mb' }),
+  require('./src/controllers/paymentGatewayController').cashfreeWebhook
+);
+
+// Body size ceiling.
+//
+// This was 100mb — a thousand times the Express default, applied to EVERY route,
+// which made any endpoint a memory-exhaustion target: a handful of concurrent
+// 100 MB posts is enough to take the process down.
+//
+// 10mb is sized from what the app actually stores. Measured against this
+// database the largest payloads are a 667 KB document (`document.fileData`,
+// base64) and a 652 KB employee photo — so this leaves roughly 15× headroom over
+// the biggest real upload while removing the DoS surface. Raise it deliberately
+// (and per-route) if a genuinely larger upload is ever introduced.
+const BODY_LIMIT = process.env.MAX_REQUEST_BODY || '10mb';
+app.use(express.json({ limit: BODY_LIMIT }));
+app.use(express.urlencoded({ limit: BODY_LIMIT, extended: true }));
 
 // Open the audit-trail actor context for every request so the global audit
 // middleware (in config/prisma) can record who performed each mutation.
@@ -111,7 +133,15 @@ const plan = (key) => requirePlanModule(key);
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
-app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate from website /api/*)
+app.use('/api/mobile', require('./src/routes/employeeRoutes'));
+
+// ── NEW MOBILE APP API ────────────────────────────────────────────────────────
+// Next-gen Mobile APIs with isolated authentication and JWT scope.
+app.use('/api/app/auth', require('./src/routes/mobileAuthRoutes')); // Legacy backward compatibility
+app.use('/api/app/v1/auth', require('./src/routes/mobileAuthRoutes')); // Versioned Authentication
+app.use('/api/app/v1/employee', require('./src/routes/employeeMobileAuthRoutes')); // Employee Mobile Auth
+app.use('/api/app/v1', require('./src/routes/mobileAppRoutes')); // New Mobile App API System
+app.use('/api/app', require('./src/app/routes')); // Legacy Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
 app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
 app.use('/api/company-profile', pii('CompanyProfile'), require('./src/routes/companyProfileRoutes'));
@@ -129,6 +159,8 @@ app.use('/api/leaves', pii('Leave'), leaveRoutes);
 app.use('/api/leave-credit', pii('Leave'), leaveCreditRoutes);
 app.use('/api/leave-balances', pii('Leave'), leaveBalanceRoutes);
 app.use('/api/leave-admin', pii('Leave'), leaveAdminRoutes);
+// Leave-type master + per-employee eligibility (gender-based leave rules).
+app.use('/api/leave-types', pii('Leave'), require('./src/routes/leaveTypeRoutes'));
 app.use('/api/tasks', _protect, plan('tasks'), taskRoutes);
 app.use('/api/tenders', pii('Tenders'), plan('tenders'), tenderRoutes);
 app.use('/api/contracts', pii('Contracts'), plan('contracts'), require('./src/routes/contractRoutes'));
@@ -170,6 +202,30 @@ app.use('/api/epfo-ecr', pii('Reports'), require('./src/routes/epfoEcrRoutes'));
 app.use('/api/custom-reports', pii('Reports'), plan('custom-reports'), require('./src/routes/customReportRoutes'));
 app.use('/api/nominees', pii('Nominees'), require('./src/routes/nomineeRoutes'));
 app.use('/api/ifsc', require('./src/routes/ifscRoutes'));
+app.use('/api/bank', require('./src/routes/bankRoutes'));
+app.use('/api/verification-credits', require('./src/routes/verificationCreditRoutes'));
+app.use('/api/super-admin/verification-credits', require('./src/routes/superAdminVerificationRoutes'));
+// Employee slot add-on management (limits enforced by employeeLimitService;
+// online purchases ride the shared Cashfree payment spine).
+app.use('/api/employee-slots', require('./src/routes/employeeSlotRoutes'));
+app.use('/api/super-admin/employee-slots', require('./src/routes/superAdminEmployeeSlotRoutes'));
+app.use('/api/subscription-purchase', require('./src/routes/subscriptionPurchaseRoutes'));
+// White Label & Custom Domain (Beta): host resolution runs on every request
+// (null for unknown/default hosts — existing routing untouched); the public
+// branding endpoint powers custom-domain login pages BEFORE authentication.
+app.use(require('./src/middleware/customDomainHost'));
+app.get('/api/public/host-branding', require('./src/controllers/customDomainController').publicHostBranding);
+app.use('/api/custom-domain', require('./src/routes/customDomainRoutes'));
+app.use('/api/super-admin/white-label', require('./src/routes/superAdminWhiteLabelRoutes'));
+// Automatic domain monitoring (DNS/SSL/health + cert renewal) every 6 hours.
+// Kill switch: CUSTOM_DOMAIN_MONITOR=off.
+if (String(process.env.CUSTOM_DOMAIN_MONITOR || 'on') !== 'off') {
+  const domainMonitor = () => require('./src/services/customDomain/domainService').monitorSweep()
+    .then((r) => { if (r.length) console.log(`[custom-domain] monitor sweep: ${r.length} domain(s) checked`); })
+    .catch((e) => console.error('[custom-domain] monitor sweep failed:', e.message));
+  setTimeout(domainMonitor, 60 * 1000); // first pass a minute after boot
+  setInterval(domainMonitor, 6 * 60 * 60 * 1000);
+}
 app.use('/api/users', userRoutes);
 app.use('/api/overtime', pii('Overtime'), overtimeRoutes);
 app.use('/api/shifts', pii('Shifts'), shiftRoutes);
@@ -250,13 +306,58 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large' || err.status === 413) {
     return res.status(413).json({ error: 'The uploaded data is too large. Please use a smaller file.', code: 'PAYLOAD_TOO_LARGE' });
   }
+  // A malformed id/filter reaching Prisma is a BAD REQUEST, not a server fault.
+  // Prisma's validation message embeds the query shape and absolute server file
+  // paths, so it must never reach the client: answer 400 with a generic message
+  // and keep the detail in the server log.
+  const prismaName = err?.name || '';
+  if (prismaName === 'PrismaClientValidationError') {
+    console.error(`Invalid query on ${req.method} ${req.originalUrl}:`, err.message);
+    return res.status(400).json({ error: 'One or more values in the request were not valid.', code: 'INVALID_REQUEST' });
+  }
+  // Known Prisma runtime errors carry a stable code; map the common ones and
+  // never echo the raw message (it can contain table/column names and paths).
+  if (prismaName === 'PrismaClientKnownRequestError') {
+    console.error(`Database error on ${req.method} ${req.originalUrl}: ${err.code}`, err.message);
+    const map = {
+      P2002: [409, 'That record already exists.', 'DUPLICATE'],
+      P2003: [400, 'A related record referenced by this request does not exist.', 'FK_CONSTRAINT'],
+      P2025: [404, 'The requested record was not found.', 'NOT_FOUND'],
+    };
+    const [status, message, code] = map[err.code] || [400, 'The request could not be completed.', 'DB_ERROR'];
+    return res.status(status).json({ error: message, code });
+  }
+
   console.error(`Unhandled Error on ${req.method} ${req.originalUrl}:`, err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error', code: 'INTERNAL' });
+  // An unexpected failure must not leak internals (stack frames, file paths, SQL)
+  // to the client; those stay in the log above.
+  const safeMessage = err.status && err.status < 500 && err.message ? err.message : 'Internal Server Error';
+  res.status(err.status || 500).json({ error: safeMessage, code: 'INTERNAL' });
 });
 
 const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  
+
+  // ── Live/sandbox mode visibility (names only — never secret values) ────────
+  // Ops must be able to SEE which mode each money-moving integration runs in.
+  try {
+    const pg = require('./src/services/payments/cashfreePgClient').configStatus();
+    console.log(`[payments] Cashfree PG mode: ${pg.mode.toUpperCase()} · credentials ${pg.configured ? 'configured' : `MISSING (${pg.missing.join(', ')})`}`);
+    if (pg.mode === 'production' && !pg.configured) {
+      console.error('[payments] ⚠ CASHFREE_PG_ENV=production but the production keypair is missing — every payment attempt will fail until CASHFREE_PG_PROD_CLIENT_ID/SECRET are set.');
+    }
+    if (pg.mode !== 'production' && String(process.env.NODE_ENV).toLowerCase() === 'production') {
+      console.warn('[payments] ⚠ NODE_ENV=production but CASHFREE_PG_ENV is not "production" — the payment gateway is still in SANDBOX mode.');
+    }
+    const bank = require('./src/services/bankVerificationService').globalProviderConfig();
+    console.log(`[bank-verification] provider: ${bank.provider || 'not configured'} · environment: ${(bank.environment || 'not configured').toUpperCase()}`);
+    if (String(process.env.NODE_ENV).toLowerCase() === 'production' && bank.environment !== 'Production') {
+      console.warn('[bank-verification] ⚠ NODE_ENV=production but bank verification is not in Production mode — set CASHFREE_PROD_CLIENT_ID/SECRET (or BANK_VERIFICATION_ENVIRONMENT=Production).');
+    }
+  } catch (e) {
+    console.error('[server] mode visibility check failed:', e.message);
+  }
+
   // Run one-time headcount synchronization (data repair routine)
   const HeadcountSyncService = require('./src/services/headcountSyncService');
   HeadcountSyncService.syncAllBranches().then(count => {

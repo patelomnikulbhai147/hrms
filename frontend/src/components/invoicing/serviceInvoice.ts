@@ -365,6 +365,77 @@ export const totalsRows = (t: any, intraState: boolean, amountPaid: number) => {
 };
 
 /**
+ * Dispatch & Destination, as the rows each half of the block should show.
+ *
+ * Exported so the on-screen editable invoice renders from the SAME description
+ * the print path uses — the two cannot list different fields or order them
+ * differently.
+ *
+ * Every row is data-gated and the whole section is omitted when both halves are
+ * empty, so a services business that never ships anything sees no change at all.
+ */
+export interface LogisticsRow { label: string; value: string }
+export function dispatchRows(inv: any): LogisticsRow[] {
+  const v = (x: any) => String(x ?? '').trim();
+  const cityLine = [v(inv.dispatchCity), v(inv.dispatchState), v(inv.dispatchPincode)].filter(Boolean).join(', ');
+  return ([
+    { label: 'Dispatch From', value: v(inv.dispatchFrom) },
+    { label: 'Address', value: v(inv.dispatchAddress) },
+    { label: 'City / State / PIN', value: cityLine },
+    { label: 'Dispatch Date', value: v(inv.dispatchDate) },
+    { label: 'Dispatched Through', value: v(inv.dispatchThrough) },
+    { label: 'Vehicle No', value: v(inv.vehicleNumber) },
+    { label: 'LR / AWB No', value: v(inv.lrNumber) },
+  ] as LogisticsRow[]).filter((r) => r.value);
+}
+export function destinationRows(inv: any): LogisticsRow[] {
+  const v = (x: any) => String(x ?? '').trim();
+  // "If no shipping address exists, use the billing address as the destination."
+  const addr = v(inv.billToShipAddress) || v(inv.billToAddress);
+  const cityLine = [v(inv.shipToCity), v(inv.shipToState), v(inv.shipToPincode)].filter(Boolean).join(', ');
+  return ([
+    { label: 'Ship To', value: v(inv.shipToName) || v(inv.billToName) },
+    { label: 'Delivery Address', value: addr },
+    { label: 'City / State / PIN', value: cityLine },
+    { label: 'Country', value: v(inv.shipToCountry) },
+  ] as LogisticsRow[]).filter((r) => r.value);
+}
+
+/**
+ * Does this invoice carry REAL logistics data?
+ *
+ * Deliberately not "do any rows render": destinationRows() falls back to the
+ * billing name and address, which every invoice has, so that test would be true
+ * for every invoice ever created and the section would never hide. Only fields
+ * that someone actually filled in for a consignment count here.
+ */
+export function hasLogistics(inv: any): boolean {
+  const filled = (x: any) => String(x ?? '').trim() !== '';
+  return [
+    inv?.dispatchFrom, inv?.dispatchAddress, inv?.dispatchCity, inv?.dispatchState,
+    inv?.dispatchPincode, inv?.dispatchDate, inv?.dispatchThrough, inv?.vehicleNumber, inv?.lrNumber,
+    inv?.billToShipAddress, inv?.shipToName, inv?.shipToCity, inv?.shipToState, inv?.shipToPincode,
+  ].some(filled);
+}
+
+/** The printed Dispatch & Destination block. Empty string when there is nothing
+ *  to show, or when the template has the section switched off. */
+function logisticsBlockHtml(inv: any, opts: { showLogistics?: boolean } = {}): string {
+  if (opts.showLogistics === false || !hasLogistics(inv)) return '';
+  const d = dispatchRows(inv);
+  const s = destinationRows(inv);
+  const half = (title: string, rows: LogisticsRow[]) => `
+        <div class="si-lbl">${title}</div>
+        ${rows.length
+          ? rows.map((r) => `<div class="si-kv"><span style="min-width:104px">${esc(r.label)}</span><span>${nl(r.value)}</span></div>`).join('')
+          : '<div class="si-bill-line" style="color:#9ca3af">—</div>'}`;
+  return `<div class="si-bill">
+      <div class="si-bill-l">${half('Dispatch Details', d)}</div>
+      <div class="si-bill-r">${half('Destination Details', s)}</div>
+    </div>`;
+}
+
+/**
  * The A4 print / PDF / email document. Same markup + same CSS as the on-screen
  * editable invoice, so the printed page matches the preview exactly.
  */
@@ -372,7 +443,9 @@ export function serviceInvoiceHtml(
   inv: any,
   company: any,
   settings: any,
-  opts: { print?: boolean; qrDataUrl?: string } = {},
+  // `showLogistics: false` switches the Dispatch & Destination section off for
+  // businesses whose invoice format does not need it.
+  opts: { print?: boolean; qrDataUrl?: string; showLogistics?: boolean } = {},
 ): string {
   const iss = resolveIssuer(company, settings, inv.brandingOverride);
   const intraState = inv.intraState !== false;
@@ -405,8 +478,6 @@ export function serviceInvoiceHtml(
        <tr class="due"><td class="k">Outstanding / Balance</td><td class="v">${inr(due)}</td></tr>`
     : '';
 
-  const bank = String(inv.bankDetails || iss.bankDetails || '').trim();
-  const upi = String(inv.upiId || iss.upiId || '').trim();
   const notes = String(inv.notes || '').trim();
   const terms = String(inv.termsConditions || '').trim();
 
@@ -447,6 +518,8 @@ export function serviceInvoiceHtml(
       </div>
     </div>
 
+    ${logisticsBlockHtml(inv, opts)}
+
     <table class="si-items">
       <thead><tr>
         <th style="width:5%">Sr</th><th style="width:31%">Particulars / Service Description</th>
@@ -472,22 +545,9 @@ export function serviceInvoiceHtml(
 
     <div class="si-words"><b>Amount in Words</b><br/>${esc(amountInWords(t.grandTotal))}</div>
 
-    <div class="si-bank">
-      <div class="si-bank-l">
-        <div class="si-lbl">Bank Details</div>
-        ${bank ? `<div class="si-terms">${nl(bank)}</div>` : `<div class="si-terms si-missing">${NOT_CONFIGURED}</div>`}
-      </div>
-      <div class="si-bank-r">
-        <div style="flex:1">
-          <div class="si-lbl">Payment</div>
-          ${inv.paymentMode ? `<div class="si-kv"><span>Mode</span><span>${esc(inv.paymentMode)}</span></div>` : ''}
-          ${upi ? `<div class="si-kv"><span>UPI ID</span><span>${esc(upi)}</span></div>` : ''}
-        </div>
-        <div class="si-qr">${(opts.qrDataUrl || iss.qr)
-          ? `<img src="${esc(opts.qrDataUrl || iss.qr)}" alt="Payment QR code"/>`
-          : '<span class="si-missing">Scan &amp;<br/>Pay QR</span>'}</div>
-      </div>
-    </div>
+    <!-- Payment Details (bank block, payment mode, UPI ID and the QR panel) was
+         removed from the invoice layout. Terms & Conditions and the signatory
+         block below now sit directly under Amount in Words. -->
 
     <div class="si-end">
       <div class="si-end-l">

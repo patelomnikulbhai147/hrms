@@ -33,3 +33,23 @@ export function getApiErrorMessage(err: any, fallback = 'Something went wrong. P
 
   return fallback;
 }
+
+/**
+ * Pull per-field validation errors out of a rejected request.
+ *
+ * The server answers a failed mandatory-field check with 422
+ * `{ code: 'VALIDATION_FAILED', errors: { fieldName: message } }` (see
+ * backend/src/utils/employeeRequiredFields.js). Feeding that straight back into
+ * the form's error state marks the exact inputs that were refused, instead of
+ * collapsing everything into one toast.
+ *
+ * Returns `{}` when the failure was not a field-validation failure.
+ */
+export function getApiFieldErrors(err: any): Record<string, string> {
+  const data = err?.data || err?.response?.data;
+  const errors = data?.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return {};
+  return Object.fromEntries(
+    Object.entries(errors).filter(([, v]) => typeof v === 'string')
+  ) as Record<string, string>;
+}

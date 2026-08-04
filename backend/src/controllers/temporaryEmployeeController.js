@@ -16,6 +16,7 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
+const { normalizeField, validateField } = require('../utils/fieldValidators');
 const { generateTempCode, generateEmployeeCode } = require('../utils/employeeCode');
 
 // Who performed an action (for the audit trail).
@@ -74,15 +75,36 @@ async function findMobileIdentity(mobileRaw, { excludeTempId } = {}) {
   return null;
 }
 
+/**
+ * The duplicate descriptor as the CALLER is allowed to see it.
+ *
+ * The mobile lookup deliberately spans every tenant (a phone number must stay
+ * unique platform-wide), so the raw match can belong to another company. Echoing
+ * it back turned this endpoint into a PII oracle: anyone could probe a number and
+ * learn a rival tenant's employee name, code, status and company id — verified
+ * before this redaction existed.
+ *
+ * Out of scope ⇒ the caller is told only THAT the number is taken, which is all
+ * duplicate prevention needs; identity is withheld.
+ */
+function visibleDuplicate(req, dup) {
+  const scoped = inScope(req, dup.companyId);
+  if (scoped) return { ...dup, inScope: true };
+  return { kind: dup.kind, inScope: false, redacted: true };
+}
+
 // Build the standard 409 body for a duplicate mobile, tagging whether the caller
 // can act on the existing record (same company scope).
 function duplicateMobileResponse(req, dup) {
   const noun = dup.kind === 'employee' ? 'employee' : 'temporary employee';
+  const scoped = inScope(req, dup.companyId);
   const statusBit = dup.status ? `, ${dup.status}` : '';
   return {
-    error: `This mobile number is already linked to an existing ${noun} (${dup.code}${statusBit}). Duplicate employee creation is not allowed.`,
+    error: scoped
+      ? `This mobile number is already linked to an existing ${noun} (${dup.code}${statusBit}). Duplicate employee creation is not allowed.`
+      : 'This mobile number is already registered. Duplicate employee creation is not allowed.',
     code: 'DUPLICATE_MOBILE',
-    duplicate: { ...dup, inScope: inScope(req, dup.companyId) },
+    duplicate: visibleDuplicate(req, dup),
   };
 }
 
@@ -206,7 +228,7 @@ exports.checkMobile = async (req, res) => {
     const excludeTempId = req.query.excludeTempId ? idParam(req.query.excludeTempId) : null;
     const dup = await findMobileIdentity(mobile, excludeTempId ? { excludeTempId } : {});
     if (!dup) return res.json({ exists: false });
-    return res.json({ exists: true, duplicate: { ...dup, inScope: inScope(req, dup.companyId) } });
+    return res.json({ exists: true, duplicate: visibleDuplicate(req, dup) });
   } catch (e) { return respondError(res, e); }
 };
 
@@ -219,6 +241,35 @@ exports.create = async (req, res) => {
     if (!idParam(b.branchId) && !String(b.branchLocation || '').trim()) {
       return res.status(400).json({ error: 'Branch is required.' });
     }
+
+    // Shape check against the SHARED rule the UI uses (utils/fieldValidators
+    // mirrors utils/fieldFormats.ts), so a client that skips the form — a script,
+    // a stale bundle, curl — cannot store a 15-digit or alphabetic "mobile".
+    // Normalising first means "+91 98765 43210" is accepted and stored as the
+    // bare 10 digits, which is also what the duplicate check compares on.
+    // The FORM trims an over-long paste as you type, which is fine — the user
+    // sees the result. The API must NOT do that silently: truncating a 14-digit
+    // value to 10 would store a different, plausible-looking number that nobody
+    // entered. So anything still too long after stripping a recognised +91/91/0
+    // prefix is refused outright.
+    const rawDigits = String(b.mobile).replace(/\D/g, '');
+    const withoutPrefix =
+      rawDigits.length === 12 && rawDigits.startsWith('91') ? rawDigits.slice(2)
+      : rawDigits.length === 11 && rawDigits.startsWith('0') ? rawDigits.slice(1)
+      : rawDigits;
+    if (withoutPrefix.length > 10) {
+      return res.status(400).json({ error: 'Mobile number must be exactly 10 digits.', field: 'mobile' });
+    }
+
+    const mobile = normalizeField('mobile', b.mobile);
+    // An all-letters value ("abcdefghij") normalises to empty, and the registry
+    // treats blank as "optional field left blank — passes". Mobile is REQUIRED
+    // here, so the emptiness has to be caught explicitly or a record would be
+    // created with no mobile at all.
+    if (!mobile) return res.status(400).json({ error: 'Mobile number must be exactly 10 digits.', field: 'mobile' });
+    const mobileCheck = validateField('mobile', mobile);
+    if (!mobileCheck.valid) return res.status(400).json({ error: mobileCheck.error, field: 'mobile' });
+    b.mobile = mobile;
 
     // One mobile = one employee identity. Reject before generating any Temp ID.
     const dup = await findMobileIdentity(b.mobile);

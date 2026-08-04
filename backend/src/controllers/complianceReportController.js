@@ -413,9 +413,12 @@ async function salaryReg(s) {
   // `loanDeduction` is additive and already returned by salarySlip(); the register
   // template needs it to render a Loan Recovery column. No total changes: it is a
   // component OF `deductions`, never added on top.
-  const rows = pay.map((p, i) => ({ sr: i + 1, code: p.employeeId, name: p.employeeName, department: p.department, month: `${p.month} ${p.year}`, basic: r2(p.basicSalary), allowances: r2(p.allowances), deductions: r2(p.deductions), bonus: r2(p.bonus || 0), tax: r2(p.tax || 0), net: r2(p.netSalary), payableDays: p.payableDays, loanDeduction: r2(p.loanDeduction || 0) }));
-  const summary = { employees: pay.length, basic: r2(pay.reduce((t, p) => t + p.basicSalary, 0)), net: r2(pay.reduce((t, p) => t + p.netSalary, 0)) };
-  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'month', label: 'Period' }, { key: 'basic', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'deductions', label: 'Deductions' }, { key: 'net', label: 'Net Pay' }], rows, summary };
+  // `overtime` and `otHours` are components OF `allowances` — surfaced as their own
+  // columns so overtime is auditable on the register, never added on top (that
+  // would double-count it against Net Pay).
+  const rows = pay.map((p, i) => ({ sr: i + 1, code: p.employeeId, name: p.employeeName, department: p.department, month: `${p.month} ${p.year}`, basic: r2(p.basicSalary), allowances: r2(p.allowances), otHours: p.otHours ?? 0, overtime: r2(p.overtime || 0), deductions: r2(p.deductions), bonus: r2(p.bonus || 0), tax: r2(p.tax || 0), net: r2(p.netSalary), payableDays: p.payableDays, loanDeduction: r2(p.loanDeduction || 0) }));
+  const summary = { employees: pay.length, basic: r2(pay.reduce((t, p) => t + p.basicSalary, 0)), overtime: r2(pay.reduce((t, p) => t + (p.overtime || 0), 0)), net: r2(pay.reduce((t, p) => t + p.netSalary, 0)) };
+  return { columns: [{ key: 'sr', label: 'Sr' }, { key: 'code', label: 'Emp ID' }, { key: 'name', label: 'Name' }, { key: 'department', label: 'Dept' }, { key: 'month', label: 'Period' }, { key: 'basic', label: 'Basic' }, { key: 'allowances', label: 'Allowances' }, { key: 'otHours', label: 'OT Hrs' }, { key: 'overtime', label: 'Overtime' }, { key: 'deductions', label: 'Deductions' }, { key: 'net', label: 'Net Pay' }], rows, summary };
 }
 async function salarySlip(s) {
   const pay = await prisma.payroll.findMany({ where: payrollWhere(s), orderBy: { employeeName: 'asc' } });
@@ -434,6 +437,9 @@ async function salarySlip(s) {
       presentDays: p.presentDays ?? 0, payableDays: p.payableDays ?? 0, clDays: p.clDays ?? 0,
       slDays: p.slDays ?? 0, plDays: p.plDays ?? 0, lwpDays: p.lwpDays ?? 0, halfDays: p.halfDays ?? 0, otHours: p.otHours ?? 0,
       basic: r2(p.basicSalary), allowances: r2(p.allowances), bonus: r2(p.bonus || 0),
+      // Overtime is a component OF `allowances` — shown as its own earnings line on
+      // the slip, never added on top of it.
+      overtime: r2(p.overtime || 0),
       deductions: r2(p.deductions), tax: r2(p.tax || 0), net: r2(p.netSalary), status: p.paymentStatus,
       // Loan EMI auto-deducted this month (drives the payslip's Loan line; the
       // "Other" deduction split subtracts it so it isn't double-shown).

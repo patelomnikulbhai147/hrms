@@ -11,6 +11,10 @@ import { EsicSettings, PtSettings, LwfSettings, OvertimeSettings } from '@/compo
 import { PayrollComponentBuilder } from '@/components/settings/PayrollComponentBuilder';
 import { FormulaBuilder } from '@/components/settings/FormulaBuilder';
 import { PayrollSettings } from '@/components/settings/PayrollSettings';
+// utils/formatDate.ts is the only date formatter — a bare toLocaleString()
+// renders in the viewer's locale and time zone, so an audit timestamp read
+// differently for every user looking at the same record.
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 
 interface PayrollComplianceEngineProps {
   currentCompany: Company;
@@ -186,7 +190,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
       action, 
       module,
       ip: '192.168.1.42',
-      time: new Date().toLocaleString() 
+      time: formatDateTime(new Date()) 
     };
     setEngineState((prev: any) => ({ ...prev, auditLogs: [log, ...prev.auditLogs] }));
   };
@@ -197,7 +201,7 @@ export const PayrollComplianceEngine: React.FC<PayrollComplianceEngineProps> = (
   const commitFormulas = (next: any[], auditAction?: string) => {
     setEngineState((prev: any) => {
       const logs = auditAction
-        ? [{ user: performedBy || 'Company Head', role: 'Payroll Administrator', action: auditAction, module: 'Formula Builder', ip: '—', time: new Date().toLocaleString() }]
+        ? [{ user: performedBy || 'Company Head', role: 'Payroll Administrator', action: auditAction, module: 'Formula Builder', ip: '—', time: formatDateTime(new Date()) }]
         : [];
       const nextState = { ...prev, formulas: next, auditLogs: [...logs, ...(prev.auditLogs || [])] };
       try { localStorage.setItem(`hrms_compliance_${currentCompany.id}`, JSON.stringify(nextState)); } catch { /* storage optional */ }
@@ -732,7 +736,7 @@ const AttendanceDeductionPolicySection: React.FC<{ currentCompany: Company; canE
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-[10px] text-slate-500">{v.createdBy || '—'}</p>
-                      <p className="text-[9px] text-slate-400">{v.createdAt ? new Date(v.createdAt).toLocaleDateString() : ''}</p>
+                      <p className="text-[9px] text-slate-400">{v.createdAt ? formatDate(v.createdAt, '') : ''}</p>
                     </div>
                   </li>
                 ))}

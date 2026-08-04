@@ -11,7 +11,11 @@
  */
 const prisma = require('../config/prisma');
 
-const DEFAULT_YEAR = 2026;
+// The leave YEAR every accrue/validate/deduct/grant/reset defaults to when the
+// caller does not name one. This must track the real calendar year: pinning it
+// to a literal made every such call read and write the wrong year's balance row
+// the moment that year ended.
+const DEFAULT_YEAR = new Date().getFullYear();
 
 // Map a free-form leaveType string to a tracked category.
 function categoryOf(leaveType) {

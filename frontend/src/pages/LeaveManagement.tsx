@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Users, Wallet, CalendarPlus, CalendarMinus, RotateCcw, ArrowLeftRight,
   History as HistoryIcon, BarChart3, ShieldCheck, FileText, RefreshCw, ChevronDown,
-  LayoutDashboard, Clock, CheckCircle2, ArrowRight, MoreVertical, Pencil
+  LayoutDashboard, Clock, CheckCircle2, ArrowRight, Pencil
 } from 'lucide-react';
 import {
   type Employee, type LeaveRequest, type Role, type Company,
@@ -16,6 +15,10 @@ import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { ExportMenu } from '@/components/ui/ExportMenu';
+import { RowActionMenu, type RowActionTone } from '@/components/ui/RowActions';
+import { PaginationBar } from '@/components/ui/Paginated';
+import { Search } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { type ExportColumn } from '@/utils/exportUtils';
 import { formatDate } from '@/utils/formatDate';
 import { type UserAccount } from '@/pages/Login';
@@ -66,14 +69,16 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
  * changes. Rendered via a portal so the table's overflow-x wrapper can't clip it.
  * ──────────────────────────────────────────────────────────────────────────── */
 type RowActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit';
-const ROW_MENU_ITEMS: Array<{ kind: RowActionKind; label: string; icon: React.ReactNode; tone: string; onlyMobile?: boolean }> = [
-  // Edit is duplicated here for tablet/mobile (where the standalone Edit button is
-  // hidden); `onlyMobile` hides it from the menu on desktop to avoid redundancy.
-  { kind: 'edit',     label: 'Edit Leave',          icon: <Pencil size={14} />,        tone: 'hover:bg-brand-50 hover:text-brand-700',     onlyMobile: true },
-  { kind: 'grant',    label: 'Credit Leave',        icon: <CalendarPlus size={14} />,  tone: 'hover:bg-emerald-50 hover:text-emerald-700' },
-  { kind: 'deduct',   label: 'Debit Leave',         icon: <CalendarMinus size={14} />, tone: 'hover:bg-rose-50 hover:text-rose-700' },
-  { kind: 'transfer', label: 'Adjust Balance',      icon: <ArrowLeftRight size={14} />, tone: 'hover:bg-brand-50 hover:text-brand-700' },
-  { kind: 'reset',    label: 'Reset Leave Balance', icon: <RotateCcw size={14} />,     tone: 'hover:bg-amber-50 hover:text-amber-700' },
+// Icons are passed as COMPONENTS and tones as semantic names, which is the
+// shared menu's contract — it owns the icon size and the colour mapping so every
+// table's menu looks identical. Edit is now a plain menu item at every width:
+// with no inline button beside the menu there is nothing for it to duplicate.
+const ROW_MENU_ITEMS: Array<{ kind: RowActionKind; label: string; icon: LucideIcon; tone: RowActionTone }> = [
+  { kind: 'edit',     label: 'Edit Leave',          icon: Pencil,         tone: 'edit' },
+  { kind: 'grant',    label: 'Credit Leave',        icon: CalendarPlus,   tone: 'success' },
+  { kind: 'deduct',   label: 'Debit Leave',         icon: CalendarMinus,  tone: 'danger' },
+  { kind: 'transfer', label: 'Adjust Balance',      icon: ArrowLeftRight, tone: 'primary' },
+  { kind: 'reset',    label: 'Reset Leave Balance', icon: RotateCcw,      tone: 'warning' },
 ];
 
 const RowActionsMenu: React.FC<{
@@ -81,63 +86,20 @@ const RowActionsMenu: React.FC<{
   canEdit: boolean;
   onAction: (kind: RowActionKind, row: any) => void;
 }> = ({ row, canEdit, onAction }) => {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useDismissable(open, useCallback(() => setOpen(false), []), [wrapRef, menuRef]);
-
-  const MENU_W = 208; // matches w-52
-  const place = () => {
-    const b = btnRef.current?.getBoundingClientRect();
-    if (!b) return;
-    setPos({ top: b.bottom + 4, left: Math.max(8, b.right - MENU_W) });
-  };
-  const toggle = () => { if (!open) place(); setOpen(o => !o); };
-
-  // Any scroll/resize while open would leave the fixed panel stranded → close it.
-  useEffect(() => {
-    if (!open) return;
-    const dismiss = () => setOpen(false);
-    window.addEventListener('scroll', dismiss, true);
-    window.addEventListener('resize', dismiss);
-    return () => {
-      window.removeEventListener('scroll', dismiss, true);
-      window.removeEventListener('resize', dismiss);
-    };
-  }, [open]);
-
-  // Move focus into the panel for keyboard users once it renders.
-  useEffect(() => { if (open && pos) menuRef.current?.focus(); }, [open, pos]);
-
   if (!canEdit) return <span className="text-slate-300">—</span>;
-
-  const run = (kind: RowActionKind) => { setOpen(false); onAction(kind, row); };
-
+  // Delegates to the SHARED menu (components/ui/RowActions). This file used to
+  // carry its own portal/positioning/dismissal copy; that logic now lives in one
+  // place, so the flip-up, viewport clamping and arrow-key navigation added
+  // there apply here too. The action list and handler are unchanged.
   return (
-    <div ref={wrapRef} className="flex items-center justify-end gap-1.5">
-      {/* Primary action — desktop only (tablet/mobile get it inside the menu). */}
-      <button onClick={() => onAction('edit', row)} title="Edit Leave"
-        className="hidden lg:inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-200 bg-white text-slate-500 shadow-sm text-[11px] font-semibold transition-colors hover:text-brand-600 hover:border-brand-200">
-        <Pencil size={13} /> Edit
-      </button>
-      {/* More actions (⋮) */}
-      <button ref={btnRef} onClick={toggle} title="More actions" aria-haspopup="menu" aria-expanded={open}
-        className="p-1.5 rounded-md border border-slate-200 bg-white text-slate-400 shadow-sm transition-colors hover:text-brand-600 hover:border-brand-200">
-        <MoreVertical size={15} />
-      </button>
-      {open && pos && createPortal(
-        <div ref={menuRef} role="menu" tabIndex={-1} style={{ top: pos.top, left: pos.left }}
-          className="fixed z-50 w-52 rounded-xl border border-slate-200 bg-white shadow-xl py-1 outline-none">
-          {ROW_MENU_ITEMS.map(it => (
-            <button key={it.kind} role="menuitem" onClick={() => run(it.kind)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors ${it.tone} ${it.onlyMobile ? 'lg:hidden' : ''}`}>
-              {it.icon} {it.label}
-            </button>
-          ))}
-        </div>, document.body)}
-    </div>
+    <RowActionMenu
+      items={ROW_MENU_ITEMS.map(it => ({
+        icon: it.icon,
+        label: it.label,
+        tone: it.tone,
+        onClick: () => onAction(it.kind, row),
+      }))}
+    />
   );
 };
 
@@ -242,6 +204,171 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
     });
   }, [scopedEmployees, balances, leaves, leavePolicy]);
 
+  /* ─── Leave Administration: SERVER-SIDE paginated roster ───────────────────
+   * The table used to render `adminRows` — every employee in the workspace,
+   * assembled in the browser from the full employee, balance and leave sets. At
+   * 826 employees that is ~826 wallet builds and an O(employees × leaves) scan on
+   * every render. This fetches ONE PAGE from the database instead.
+   *
+   * `adminRows` deliberately survives for the Dashboard aggregates, the Leave
+   * Balances tab and Export, which are whole-company figures — pointing those at
+   * a 10-row page would silently turn company totals into page totals.
+   *
+   * Entitlement (Total Allocation / Used / Remaining) is still computed HERE,
+   * because the leave policy lives in localStorage and the server cannot read it
+   * (see leaveAdministrationController). Only the 10 rows on screen are built.
+   * ──────────────────────────────────────────────────────────────────────── */
+  const ROSTER_PAGE_SIZES = [10, 25, 50, 100];
+  // Filters + page survive an edit/navigate round trip. sessionStorage holds a
+  // few scalars only — never records (see the no-large-datasets rule).
+  interface RosterView {
+    page: number; limit: number; search: string;
+    branch: string; department: string; status: string; leaveType: string;
+  }
+  const rosterStateKey = `hrms_leaveadmin_view_${activeCompanyId}`;
+  const [rosterView, setRosterView] = useState<RosterView>(() => {
+    const fallback: RosterView = { page: 1, limit: 10, search: '', branch: '', department: '', status: '', leaveType: '' };
+    try {
+      const raw = sessionStorage.getItem(`hrms_leaveadmin_view_${activeCompanyId}`);
+      return raw ? { ...fallback, ...JSON.parse(raw) } : fallback;
+    } catch { return fallback; }
+  });
+  const [roster, setRoster] = useState<{ data: any[]; total: number; totalPages: number } | null>(null);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [rosterOptions, setRosterOptions] = useState<{ departments: string[]; branches: string[]; leaveTypes: string[] }>(
+    { departments: [], branches: [], leaveTypes: [] });
+  // Debounced copy of the search box, so typing costs one request, not one per key.
+  const [searchInput, setSearchInput] = useState(rosterView.search);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(rosterStateKey, JSON.stringify(rosterView)); } catch { /* quota */ }
+  }, [rosterStateKey, rosterView]);
+
+  // Switching workspace must NOT carry the previous company's filters — a branch
+  // or department from company A does not exist in company B, so the table would
+  // come back empty and look broken. Load that workspace's own saved view, or a
+  // clean one. The ref keeps this to an actual change, not every render.
+  const lastCompanyRef = useRef(activeCompanyId);
+  useEffect(() => {
+    if (String(lastCompanyRef.current) === String(activeCompanyId)) return;
+    lastCompanyRef.current = activeCompanyId;
+    const fresh: RosterView = { page: 1, limit: 10, search: '', branch: '', department: '', status: '', leaveType: '' };
+    let next = fresh;
+    try {
+      const raw = sessionStorage.getItem(`hrms_leaveadmin_view_${activeCompanyId}`);
+      if (raw) next = { ...fresh, ...JSON.parse(raw) };
+    } catch { /* fall back to fresh */ }
+    setRosterView(next);
+    setSearchInput(next.search);
+  }, [activeCompanyId]);
+
+  const [balancesSearch, setBalancesSearch] = useState('');
+  const [balancesPage, setBalancesPage] = useState(1);
+  const [balancesPageSize, setBalancesPageSize] = useState(12);
+
+  // Client-side pagination for the Reports tab
+  const [reportsPage, setReportsPage] = useState(1);
+  const [reportsPageSize, setReportsPageSize] = useState(10);
+  
+  const reportsTotal = adminRows.length;
+  const reportsTotalPages = Math.max(1, Math.ceil(reportsTotal / reportsPageSize));
+
+  // Reset reports page on workspace change
+  useEffect(() => { setReportsPage(1); }, [activeCompanyId, reportsPageSize]);
+
+  const currentReportsPage = Math.min(reportsPage, reportsTotalPages);
+  const reportsStartIndex = (currentReportsPage - 1) * reportsPageSize;
+  const paginatedReports = adminRows.slice(reportsStartIndex, reportsStartIndex + reportsPageSize);
+
+  // Client-side pagination for Audit Log
+  const [auditPage, setAuditPage] = useState(1);
+  const [auditPageSize, setAuditPageSize] = useState(10);
+  const auditTotal = auditLog.length;
+  const auditTotalPages = Math.max(1, Math.ceil(auditTotal / auditPageSize));
+  
+  useEffect(() => { setAuditPage(1); }, [auditPageSize]);
+
+  const currentAuditPage = Math.min(auditPage, auditTotalPages);
+  const auditStartIndex = (currentAuditPage - 1) * auditPageSize;
+  const paginatedAuditLog = auditLog.slice(auditStartIndex, auditStartIndex + auditPageSize);
+
+  const filteredBalances = useMemo(() => {
+    let list = adminRows;
+    if (balancesSearch.trim()) {
+      const q = balancesSearch.toLowerCase();
+      list = list.filter(r =>
+        (r.employeeName || '').toLowerCase().includes(q) ||
+        (r.employeeCode || '').toLowerCase().includes(q) ||
+        (r.department || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [adminRows, balancesSearch]);
+
+  const balancesTotal = filteredBalances.length;
+  const balancesTotalPages = Math.max(1, Math.ceil(balancesTotal / balancesPageSize));
+
+  // Reset to page 1 on filter or workspace change
+  useEffect(() => { setBalancesPage(1); }, [balancesSearch, balancesPageSize, activeCompanyId]);
+
+  const currentBalancesPage = Math.min(balancesPage, balancesTotalPages);
+  const balancesStartIndex = (currentBalancesPage - 1) * balancesPageSize;
+  const paginatedBalances = filteredBalances.slice(balancesStartIndex, balancesStartIndex + balancesPageSize);
+
+  useEffect(() => {
+    const t = setTimeout(() => setRosterView(v => (v.search === searchInput ? v : { ...v, search: searchInput, page: 1 })), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const patchRoster = useCallback((patch: Partial<RosterView>) => setRosterView(v => ({ ...v, ...patch })), []);
+
+  const loadRoster = useCallback(async () => {
+    if (!activeCompanyId) return;
+    setRosterLoading(true);
+    setRosterError(null);
+    try {
+      const res: any = await api.leaveAdmin.roster({ companyId: activeCompanyId, ...rosterView });
+      setRoster({ data: res?.data || [], total: res?.total || 0, totalPages: res?.totalPages || 1 });
+    } catch (e: any) {
+      // A failed page must say so — an empty table would read as "no employees".
+      setRosterError(e?.data?.error || e?.message || 'Could not load the roster.');
+      setRoster(null);
+    } finally {
+      setRosterLoading(false);
+    }
+  }, [activeCompanyId, rosterView]);
+
+  useEffect(() => { if (tab === 'administration') loadRoster(); }, [tab, loadRoster]);
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    api.leaveAdmin.filterOptions(activeCompanyId)
+      .then((o: any) => setRosterOptions({ departments: o?.departments || [], branches: o?.branches || [], leaveTypes: o?.leaveTypes || [] }))
+      .catch(() => {});
+  }, [activeCompanyId]);
+
+  /** The page's rows, with the entitlement wallet built from the local policy. */
+  const rosterRows = useMemo(() => (roster?.data || []).map((r: any) => {
+    // Inject the employee's DB balances into the policy before calculating.
+    // This allows manual grants, deducts, and accruals to actually display in the UI.
+    const customPolicy = {
+      ...leavePolicy,
+      cl: r.cl,
+      pl: r.pl,
+      sl: r.sl,
+    };
+    const wallet = buildLeaveWallet(customPolicy as any, r.approvedLeaves || []);
+    const totalAllocation = wallet.filter(w => w.key !== 'lop').reduce((s, w) => s + (Number(w.total) || 0), 0);
+    return {
+      ...r,
+      wallet,
+      totalAllocation: num(totalAllocation),
+      walletUsed: num(walletTotalUsed(wallet)),
+      walletRemaining: walletTotalRemaining(wallet),
+      remaining: num(r.cl + r.pl + r.sl),
+    };
+  }), [roster, leavePolicy]);
+
   /* ─── action modal state ─────────────────────────────────────────────── */
   type ActionKind = 'grant' | 'deduct' | 'reset' | 'transfer' | 'edit';
   const [action, setAction] = useState<{ kind: ActionKind; row: any } | null>(null);
@@ -270,16 +397,30 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
 
   const submitAction = async () => {
     if (!action) return;
-    const eid = action.row.employeeId || form.employeeId;
+    const eid = action.row.id || action.row.employeeId || form.employeeId;
     const empName = action.row.employeeName
-      || adminRows.find(r => String(r.employeeId) === String(eid))?.employeeName
+      || adminRows.find(r => String((r as any).id) === String(eid))?.employeeName
       || 'employee';
     setBusy(true);
     try {
       if (action.kind === 'grant') {
-        if (!eid) { flash('err', 'Select an employee.'); setBusy(false); return; }
-        await api.leaveAdmin.grant({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason, effectiveDate: form.effectiveDate });
-        flash('ok', `Added ${form.days} ${form.category} credit to ${empName}.`);
+        if (!action.row.employeeId) {
+          // Global grant
+          const res: any = await api.leaveAdmin.grantBulk({ 
+            category: form.category, 
+            days: Number(form.days), 
+            reason: form.reason, 
+            effectiveDate: form.effectiveDate,
+            allowDuplicate: form.allowDuplicate,
+            companyId: activeCompanyId,
+            ...rosterView
+          });
+          flash('ok', `Added ${form.days} ${form.category} credit to ${res.processed} employees.`);
+        } else {
+          if (!eid) { flash('err', 'Select an employee.'); setBusy(false); return; }
+          await api.leaveAdmin.grant({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason, effectiveDate: form.effectiveDate });
+          flash('ok', `Added ${form.days} ${form.category} credit to ${empName}.`);
+        }
       } else if (action.kind === 'deduct') {
         if (!eid) { flash('err', 'Select an employee.'); setBusy(false); return; }
         await api.leaveAdmin.deduct({ employeeId: eid, category: form.category, days: Number(form.days), reason: form.reason, effectiveDate: form.effectiveDate });
@@ -295,10 +436,17 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
         await api.leaveBalances.update(eid, { clBalance: Number(form.clBalance), plBalance: Number(form.plBalance), slBalance: Number(form.slBalance) });
         flash('ok', `Updated balances for ${action.row.employeeName}.`);
       }
-      await loadBalances();
+      // Refresh BOTH sources: `balances` feeds the dashboard/wallets, `roster` is
+      // the paginated table the user is looking at. Reloading the current page
+      // (rather than resetting to page 1) is what keeps their place after an edit.
+      await Promise.all([loadBalances(), loadRoster()]);
       closeAction();
     } catch (e: any) {
-      flash('err', e?.message || 'Action failed.');
+      if (e?.data?.isDuplicate) {
+        setForm((f: any) => ({ ...f, showDuplicateOverride: true, duplicateMessage: e.data.error }));
+      } else {
+        flash('err', e?.message || e?.data?.error || 'Action failed.');
+      }
     } finally { setBusy(false); }
   };
 
@@ -479,18 +627,6 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               </Card>
             </div>
 
-            {/* Quick Actions */}
-            <Card>
-              <h3 className="text-sm font-bold text-slate-800 mb-3">Quick Actions</h3>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" icon={<FileText size={13} />} onClick={() => setTab('requests')}>Leave Requests</Button>
-                {canEdit && <Button size="sm" variant="outline" icon={<CalendarPlus size={13} />} onClick={() => setTab('administration')}>Manage Balances</Button>}
-                <Button size="sm" variant="outline" icon={<Wallet size={13} />} onClick={() => setTab('balances')}>Leave Balances</Button>
-                <Button size="sm" variant="outline" icon={<HistoryIcon size={13} />} onClick={() => setTab('history')}>History</Button>
-                <Button size="sm" variant="outline" icon={<BarChart3 size={13} />} onClick={() => setTab('reports')}>Reports</Button>
-                <Button size="sm" variant="outline" icon={<ShieldCheck size={13} />} onClick={() => setTab('policies')}>Policies &amp; Audit</Button>
-              </div>
-            </Card>
           </div>
         );
       })()}
@@ -503,7 +639,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
 
       {/* ── Administration ── */}
       {tab === 'administration' && (
-        <Card>
+        <Card className="!overflow-visible">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-bold text-slate-800">Leave Administration</h3>
             <div className="flex items-center gap-2">
@@ -531,18 +667,98 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               {canExport && <ExportMenu fileName="Leave_Administration" title="Leave Administration" sheetName="Balances" columns={ADMIN_COLS} rows={() => adminRows} />}
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
+          {/* ── Filters. Every one is applied in the DATABASE, so they compose
+                 with pagination: narrowing the list resets to page 1 and the
+                 total reflects the filter. ── */}
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 px-2 h-8 border border-slate-200 rounded-lg bg-white">
+              <Search size={12} className="text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search employee, code, department…"
+                className="w-60 text-xs bg-transparent focus:outline-none"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+                aria-label="Search employees"
+              />
+            </div>
+            <select value={rosterView.branch} onChange={e => patchRoster({ branch: e.target.value, page: 1 })}
+              aria-label="Filter by branch"
+              className="h-8 text-xs font-medium border border-slate-200 rounded-lg px-2 bg-white text-slate-700">
+              <option value="">All branches</option>
+              {rosterOptions.branches.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select value={rosterView.department} onChange={e => patchRoster({ department: e.target.value, page: 1 })}
+              aria-label="Filter by department"
+              className="h-8 text-xs font-medium border border-slate-200 rounded-lg px-2 bg-white text-slate-700">
+              <option value="">All departments</option>
+              {rosterOptions.departments.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select value={rosterView.status} onChange={e => patchRoster({ status: e.target.value, page: 1 })}
+              aria-label="Filter by status"
+              className="h-8 text-xs font-medium border border-slate-200 rounded-lg px-2 bg-white text-slate-700">
+              <option value="">All statuses</option>
+              <option value="Present">Present</option>
+              <option value="On Leave">On Leave</option>
+            </select>
+            {rosterOptions.leaveTypes.length > 0 && (
+              <select value={rosterView.leaveType} onChange={e => patchRoster({ leaveType: e.target.value, page: 1 })}
+                aria-label="Filter by leave type"
+                className="h-8 text-xs font-medium border border-slate-200 rounded-lg px-2 bg-white text-slate-700">
+                <option value="">All leave types</option>
+                {rosterOptions.leaveTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            )}
+            {(rosterView.search || rosterView.branch || rosterView.department || rosterView.status || rosterView.leaveType) && (
+              <button
+                onClick={() => { setSearchInput(''); setRosterView(v => ({ ...v, search: '', branch: '', department: '', status: '', leaveType: '', page: 1 })); }}
+                className="h-8 px-2.5 text-[11px] font-bold text-slate-500 hover:text-brand-600 rounded-lg border border-slate-200 bg-white"
+              >Clear filters</button>
+            )}
+            {rosterLoading && <span className="text-[11px] font-semibold text-slate-400">Loading…</span>}
+          </div>
+
+          {rosterError && (
+            <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-[11px] font-semibold text-rose-700 flex items-center justify-between gap-3">
+              <span>{rosterError}</span>
+              <button onClick={loadRoster} className="underline hover:text-rose-900">Retry</button>
+            </div>
+          )}
+
+          {/* `dense` trims cell padding from 16px to 10px a side — 9 columns × 12px
+              of reclaimed width, which is most of what stopped the Employee column
+              fitting. The Table component owns its own overflow, so the extra
+              wrapper that used to sit here (a second nested scroll container) is
+              gone. */}
+          <Table dense>
               <Thead>
                 <Tr>
-                  <Th>Emp Code</Th><Th>Employee</Th><Th>Branch</Th><Th>Department</Th>
-                  <Th>Total Allocation</Th><Th>Leave Used</Th><Th>Leave Remaining</Th>
-                  <Th>Pending</Th><Th>Status</Th><Th className="w-28 text-right">Actions</Th>
+                  {/* Employee carries the code beneath the name — that removed a
+                      whole column, and it is the identity users scan for, so it
+                      gets the widest allocation and never truncates. */}
+                  <Th className="min-w-[220px] sticky left-0 z-20 bg-surface-muted pl-4 md:pl-6 shadow-[1px_0_0_0_#e2e8f0]">Employee</Th>
+                  <Th className="min-w-[150px]">Branch</Th>
+                  <Th className="min-w-[120px]">Department</Th>
+                  <Th className="text-center">Total Allocation</Th>
+                  <Th className="text-center">Leave Used</Th>
+                  <Th className="text-center">Leave Remaining</Th>
+                  <Th className="text-center">Pending</Th>
+                  <Th className="text-center">Status</Th>
+                  <Th className="w-[80px] text-right sticky right-0 z-20 bg-surface-muted pr-4 md:pr-6 shadow-[-1px_0_0_0_#e2e8f0]">Actions</Th>
                 </Tr>
               </Thead>
               <Tbody>
-                {adminRows.length === 0 && <Tr><Td colSpan={10}><span className="text-slate-400 text-xs">No employees in this workspace.</span></Td></Tr>}
-                {adminRows.map(r => {
+                {!roster && !rosterError && (
+                  <Tr><Td colSpan={9}><span className="text-slate-400 text-xs">Loading employees…</span></Td></Tr>
+                )}
+                {roster && rosterRows.length === 0 && (
+                  <Tr><Td colSpan={9}><span className="text-slate-400 text-xs">
+                    {rosterView.search || rosterView.branch || rosterView.department || rosterView.status || rosterView.leaveType
+                      ? 'No employees match these filters.'
+                      : 'No employees in this workspace.'}
+                  </span></Td></Tr>
+                )}
+                {rosterRows.map(r => {
                   // Remaining entitlement health: green >50%, yellow 20–50%, red <20%.
                   const pct = r.totalAllocation > 0 ? (r.walletRemaining / r.totalAllocation) * 100 : 0;
                   const remTone = pct >= 50 ? 'text-emerald-600' : pct >= 20 ? 'text-amber-600' : 'text-rose-600';
@@ -555,28 +771,31 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                   };
                   return (
                     <Tr key={r.employeeId}>
-                      <Td><span className="font-mono text-[11px] text-brand-700">{r.employeeCode}</span></Td>
-                      <Td>
-                        {/* Clicking the name opens the full per-type Leave Wallet
-                            breakdown (kept out of the main table). */}
+                      <Td className="sticky left-0 z-10 bg-white pl-4 md:pl-6 shadow-[1px_0_0_0_#e2e8f0]">
+                        {/* Name + code in one cell. Clicking the name opens the
+                            full per-type Leave Wallet breakdown (kept out of the
+                            main table). */}
                         <button onClick={() => setWalletDetail(r)}
-                          className="font-semibold text-slate-800 hover:text-brand-600 hover:underline text-left">
-                          {r.employeeName}
+                          className="text-left group">
+                          <span className="block font-semibold text-slate-800 group-hover:text-brand-600 group-hover:underline">{r.employeeName}</span>
+                          <span className="block font-mono text-[10px] text-brand-700">{r.employeeCode}</span>
                         </button>
                       </Td>
                       <Td>{r.branch}</Td><Td>{r.department}</Td>
-                      <Td><span className="font-semibold text-slate-700">{r.totalAllocation} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
-                      <Td><span className="font-semibold text-rose-600">{r.walletUsed} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
-                      <Td><span className={`font-bold ${remTone}`}>{r.walletRemaining} <span className="text-[10px] font-normal text-slate-400">days</span></span></Td>
-                      <Td>
+                      {/* "days" is stated once in the header, not repeated in every
+                          cell — that repetition cost ~35px per numeric column. */}
+                      <Td className="text-center"><span className="font-semibold text-slate-700">{r.totalAllocation}</span></Td>
+                      <Td className="text-center"><span className="font-semibold text-rose-600">{r.walletUsed}</span></Td>
+                      <Td className="text-center"><span className={`font-bold ${remTone}`}>{r.walletRemaining}</span></Td>
+                      <Td className="text-center">
                         {r.pendingCount > 0
                           ? <Badge variant="amber">{r.pendingCount}</Badge>
                           : <span className="text-slate-300">—</span>}
                       </Td>
-                      <Td>
+                      <Td className="text-center">
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${statusTone[r.currentStatus] || statusTone.Present}`}>{r.currentStatus}</span>
                       </Td>
-                      <Td className="text-right">
+                      <Td className="text-right sticky right-0 z-10 bg-white pr-4 md:pr-6 shadow-[-1px_0_0_0_#e2e8f0]">
                         <RowActionsMenu row={r} canEdit={canEdit} onAction={openAction} />
                       </Td>
                     </Tr>
@@ -584,16 +803,34 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                 })}
               </Tbody>
             </Table>
-          </div>
+
+            {/* Server-side pagination. The SHARED PaginationBar — the same control
+                the rest of the HRMS uses — driven by the server's page/total
+                rather than by slicing a local array. */}
+            {roster && (
+              <PaginationBar
+                page={rosterView.page}
+                totalPages={roster.totalPages}
+                total={roster.total}
+                pageSize={rosterView.limit}
+                label="employees"
+                onChange={(p) => patchRoster({ page: p })}
+                onPageSizeChange={(size) => patchRoster({ limit: size, page: 1 })}
+                pageSizeOptions={ROSTER_PAGE_SIZES}
+              />
+            )}
         </Card>
       )}
 
       {/* ── Balances (wallet) ── */}
       {tab === 'balances' && (
         <Card>
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h3 className="text-sm font-bold text-slate-800">Employee Leave Wallets</h3>
-            <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={loadBalances}>Refresh</Button>
+            <div className="flex items-center gap-3">
+              <div className="w-64"><Input icon={<Search size={14} />} placeholder="Search wallets..." value={balancesSearch} onChange={e => setBalancesSearch(e.target.value)} /></div>
+              <Button size="sm" variant="outline" icon={<RefreshCw size={13} />} onClick={loadBalances}>Refresh</Button>
+            </div>
           </div>
           {/* Employee Leave Wallets — rendered 100% dynamically from the company
               Leave Policy: ONE card per configured leave type, in Settings order,
@@ -601,12 +838,22 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               and every wallet reflects it live. No hardcoded CL / PL / SL. */}
           {!hasLeavePolicy ? (
             <p className="text-sm font-semibold text-slate-500 py-6 text-center">No leave policy configured.</p>
+          ) : filteredBalances.length === 0 ? (
+            <div className="py-12 text-center flex flex-col items-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                <Search size={24} className="text-slate-300" />
+              </div>
+              <p className="text-sm font-semibold text-slate-700 mb-1">No employees found.</p>
+              <p className="text-xs text-slate-500 mb-4">Try adjusting your search or filters.</p>
+              <Button size="sm" variant="outline" onClick={() => setBalancesSearch('')}>Reset Filters</Button>
+            </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {adminRows.map(r => (
-                <div key={r.employeeId} className="rounded-xl border border-slate-200 p-3.5 bg-gradient-to-br from-white to-slate-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {paginatedBalances.map(r => (
+                  <div key={r.employeeId} className="rounded-xl border border-slate-200 p-3.5 bg-gradient-to-br from-white to-slate-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
                       <p className="font-bold text-slate-800 text-sm">{r.employeeName}</p>
                       <p className="text-[10px] font-mono text-slate-400">{r.employeeCode} · {r.branch} · {r.department}</p>
                     </div>
@@ -629,6 +876,20 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                   </div>
                 </div>
               ))}
+            </div>
+              
+              {balancesTotal > 0 && (
+                <PaginationBar
+                  page={currentBalancesPage}
+                  totalPages={balancesTotalPages}
+                  total={balancesTotal}
+                  pageSize={balancesPageSize}
+                  label="employees"
+                  onChange={setBalancesPage}
+                  onPageSizeChange={setBalancesPageSize}
+                  pageSizeOptions={[10, 12, 24, 48, 100]}
+                />
+              )}
             </div>
           )}
         </Card>
@@ -672,11 +933,9 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       {/* ── Reports ── */}
       {tab === 'reports' && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <StatCard label="Pending Requests" value={reportStats.pending} icon={<HistoryIcon size={16} />} color="bg-amber-500" />
             <StatCard label="Approved Days" value={reportStats.approvedDays} icon={<CalendarPlus size={16} />} color="bg-brand-500" />
-            <StatCard label="Leaves Taken" value={reportStats.totalTaken} icon={<CalendarMinus size={16} />} color="bg-rose-500" />
-            <StatCard label="Remaining Balance" value={reportStats.totalRemaining} icon={<Wallet size={16} />} color="bg-emerald-500" />
           </div>
           <Card>
             <div className="flex items-center justify-between mb-3">
@@ -687,7 +946,7 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               <Table>
                 <Thead><Tr><Th>Employee</Th><Th>Branch</Th><Th>CL</Th><Th>PL</Th><Th>SL</Th><Th>Taken</Th><Th>Remaining</Th></Tr></Thead>
                 <Tbody>
-                  {adminRows.map(r => (
+                  {paginatedReports.map(r => (
                     <Tr key={r.employeeId}>
                       <Td><span className="font-semibold text-slate-800">{r.employeeName}</span></Td>
                       <Td>{r.branch}</Td><Td>{r.cl}</Td><Td>{r.pl}</Td><Td>{r.sl}</Td>
@@ -698,6 +957,19 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
                 </Tbody>
               </Table>
             </div>
+            
+            {reportsTotal > 0 && (
+              <PaginationBar
+                page={currentReportsPage}
+                totalPages={reportsTotalPages}
+                total={reportsTotal}
+                pageSize={reportsPageSize}
+                label="employees"
+                onChange={setReportsPage}
+                onPageSizeChange={setReportsPageSize}
+                pageSizeOptions={[10, 25, 50, 100]}
+              />
+            )}
           </Card>
         </div>
       )}
@@ -705,43 +977,52 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
       {/* ── Policies & Audit ── */}
       {tab === 'policies' && cfgForm && (
         <div className="space-y-4">
-          <Card>
-            <h3 className="text-sm font-bold text-slate-800 mb-3">Carry-Forward Policy</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-3xl">
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                  <input type="checkbox" checked={!!cfgForm.carryForwardEnabled} disabled={!canEdit} onChange={e => setCfgForm({ ...cfgForm, carryForwardEnabled: e.target.checked })} />
-                  Allow carry-forward of unused leave
-                </label>
-                <Input label="Max carry-forward (days)" type="number" value={cfgForm.maxCarryForward ?? 5} onChange={e => setCfgForm({ ...cfgForm, maxCarryForward: e.target.value })} disabled={!canEdit} />
-              </div>
-            </div>
-            {canEdit && (
-              <div className="flex items-center gap-2 mt-4">
-                <Button size="sm" loading={busy} onClick={() => saveConfig()}>Save Policy</Button>
-                <Button size="sm" variant="outline" disabled={busy} onClick={() => api.leaveAdmin.carryForward({ year: 2026 }).then((r: any) => flash('ok', `Carried forward for ${r?.processed ?? 0} employees.`)).catch((e: any) => flash('err', e?.message || 'Carry-forward failed.'))}>Run Carry-Forward → 2027</Button>
-              </div>
-            )}
-          </Card>
+
 
           <Card>
             <h3 className="text-sm font-bold text-slate-800 mb-3">Audit Log</h3>
-            <div className="overflow-x-auto max-h-[420px]">
+            <div className="overflow-x-auto">
               <Table>
                 <Thead><Tr><Th>When</Th><Th>Action</Th><Th>By</Th><Th>Details</Th></Tr></Thead>
                 <Tbody>
-                  {auditLog.length === 0 && <Tr><Td colSpan={4}><span className="text-slate-400 text-xs">No audit entries yet.</span></Td></Tr>}
-                  {auditLog.map(a => (
-                    <Tr key={a.id}>
-                      <Td><span className="text-[11px] text-slate-500">{new Date(a.createdAt).toLocaleString('en-IN')}</span></Td>
-                      <Td><Badge variant="indigo">{String(a.action).replace(/_/g, ' ')}</Badge></Td>
-                      <Td>{a.user} <span className="text-[10px] text-slate-400">({a.role})</span></Td>
-                      <Td><span className="text-[11px] text-slate-500">{typeof a.details === 'object' ? Object.entries(a.details).map(([k, v]) => `${k}: ${v}`).join(', ') : a.details}</span></Td>
+                  {auditLog.length === 0 ? (
+                    <Tr>
+                      <Td colSpan={4}>
+                        <div className="py-12 text-center flex flex-col items-center">
+                          <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                            <ShieldCheck size={24} className="text-slate-300" />
+                          </div>
+                          <p className="text-sm font-semibold text-slate-700 mb-1">No audit records found.</p>
+                          <p className="text-xs text-slate-500">Action history will appear here once leave activities are performed.</p>
+                        </div>
+                      </Td>
                     </Tr>
-                  ))}
+                  ) : (
+                    paginatedAuditLog.map(a => (
+                      <Tr key={a.id}>
+                        <Td><span className="text-[11px] text-slate-500">{new Date(a.createdAt).toLocaleString('en-IN')}</span></Td>
+                        <Td><Badge variant="indigo">{String(a.action).replace(/_/g, ' ')}</Badge></Td>
+                        <Td>{a.user} <span className="text-[10px] text-slate-400">({a.role})</span></Td>
+                        <Td><span className="text-[11px] text-slate-500">{typeof a.details === 'object' ? Object.entries(a.details).map(([k, v]) => `${k}: ${v}`).join(', ') : a.details}</span></Td>
+                      </Tr>
+                    ))
+                  )}
                 </Tbody>
               </Table>
             </div>
+            
+            {auditTotal > 0 && (
+              <PaginationBar
+                page={currentAuditPage}
+                totalPages={auditTotalPages}
+                total={auditTotal}
+                pageSize={auditPageSize}
+                label="audit records"
+                onChange={setAuditPage}
+                onPageSizeChange={setAuditPageSize}
+                pageSizeOptions={[10, 25, 50, 100]}
+              />
+            )}
           </Card>
         </div>
       )}
@@ -800,10 +1081,27 @@ export const LeaveManagement: React.FC<LeaveManagementProps> = ({
               </div>
             ) : (
               <>
-                {/* Standalone Add/Deduct from the toolbar — pick the employee here. */}
-                {(action.kind === 'grant' || action.kind === 'deduct') && !action.row.employeeId && (
+                {/* Standalone Deduct from the toolbar — pick the employee here. */}
+                {action.kind === 'deduct' && !action.row.employeeId && (
                   <Select label="Employee" value={form.employeeId} onChange={e => setForm({ ...form, employeeId: e.target.value })}
                     options={[{ value: '', label: 'Select employee…' }, ...adminRows.map(r => ({ value: String(r.employeeId), label: `${r.employeeName} (${r.employeeCode})` }))]} />
+                )}
+                {/* Standalone Grant from the toolbar — applies globally to filtered employees. */}
+                {action.kind === 'grant' && !action.row.employeeId && (
+                  <>
+                    <div className="bg-blue-50 text-blue-800 p-3 rounded-lg text-xs mb-2 border border-blue-100 shadow-sm">
+                      This leave credit will be applied to all eligible employees based on the selected company, branch, and policy.<br/><br/>
+                      <strong>This action will credit {form.days || 1} days of {form.category || 'Leave'} to {roster?.total || 0} employees.</strong>
+                    </div>
+                    {form.showDuplicateOverride && (
+                      <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-xs mb-2 border border-amber-200">
+                        <label className="flex items-center gap-2 font-semibold">
+                          <input type="checkbox" checked={!!form.allowDuplicate} onChange={e => setForm({ ...form, allowDuplicate: e.target.checked })} />
+                          {form.duplicateMessage || 'A similar credit was given today. Allow duplicate?'}
+                        </label>
+                      </div>
+                    )}
+                  </>
                 )}
                 <Select label="Leave Type" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={CATS} />
                 <Input label="Days" type="number" step="0.5" min="0.5" value={form.days} onChange={e => setForm({ ...form, days: e.target.value })} />

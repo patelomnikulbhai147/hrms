@@ -68,7 +68,8 @@ export const BLOCK_LIBRARY: BlockDef[] = [
   { type: 'customer', label: 'Customer Details', w: 300, h: 96 },
   { type: 'itemTable', label: 'Item Table', w: 730, h: 200 },
   { type: 'taxSummary', label: 'Tax Summary', w: 300, h: 150 },
-  { type: 'bank', label: 'Bank Details', w: 320, h: 90 },
+  // Bank Details is no longer offered — Payment Details were removed from the
+  // invoice layout, so a placed block would render nothing.
   { type: 'qr', label: 'QR Code', w: 90, h: 90 },
   { type: 'barcode', label: 'Barcode', w: 200, h: 60 },
   { type: 'signature', label: 'Signature', w: 200, h: 80 },
@@ -188,12 +189,11 @@ export function renderBlockHtml(block: CanvasBlock, ctx: BlockCtx): string {
       ].filter(Boolean).join(''));
     }
 
+    // Payment Details were removed from the invoice layout. Older saved layouts
+    // may still carry a bank block; it now renders nothing rather than printing
+    // account and UPI data.
     case 'bank':
-      return wrap([
-        `<div style="font-weight:700">Bank Details</div>`,
-        inv.bankDetails ? `<div style="${muted};white-space:pre-wrap">${esc(inv.bankDetails)}</div>` : `<div style="${muted}">—</div>`,
-        inv.upiId ? `<div style="${muted}">UPI: ${esc(inv.upiId)}</div>` : '',
-      ].filter(Boolean).join(''));
+      return '';
 
     case 'signature':
       return `<div style="${styleCss(s, 'display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end')}">

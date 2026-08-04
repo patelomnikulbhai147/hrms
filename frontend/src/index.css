@@ -289,6 +289,20 @@ h6 {
   animation: slide-in-right 0.22s ease-out;
 }
 
+/* Dropdown/combobox popover entrance. Kept short (140ms) so the list feels
+   instant while still resolving softly instead of snapping into place. */
+@keyframes pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-pop-in {
+  animation: pop-in 0.14s ease-out;
+  transform-origin: top center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-pop-in { animation: none; }
+}
+
 /* Glassmorphism base utility */
 .glass-panel {
   background: var(--glass-bg);

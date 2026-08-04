@@ -61,7 +61,13 @@ const RULES = {
   cin: { normalize: (v) => alnumUpper(v).slice(0, 21), test: (r) => /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/.test(r), error: 'Invalid CIN (21 chars).' },
   tan: { normalize: (v) => alnumUpper(v).slice(0, 10), test: (r) => /^[A-Z]{4}[0-9]{5}[A-Z]$/.test(r), error: 'Invalid TAN (e.g. ABCD12345E).' },
   uan: { normalize: (v) => digits(v).slice(0, 12), test: (r) => /^[0-9]{12}$/.test(r), error: 'UAN must be exactly 12 digits.' },
-  esic: { normalize: (v) => digits(v).slice(0, 17), test: (r) => /^[0-9]{17}$/.test(r), error: 'ESIC number must be exactly 17 digits.' },
+  // ESIC **IP number** — 10 digits. NOT 17: that is the ESIC challan number, a
+  // different identifier. This rule was 17 and rejected 827 of the 828 production
+  // employees that carry an ESIC value (821 of them are exactly 10 digits). Since
+  // the employee edit form echoes the whole record back on save, that made every
+  // one of those records uneditable — a phone-number change was refused over an
+  // ESIC value nobody had touched. Keep in step with fieldFormats.ts.
+  esic: { normalize: (v) => digits(v).slice(0, 10), test: (r) => /^[0-9]{10}$/.test(r), error: 'ESIC IP number must be exactly 10 digits.' },
   pf: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 30), test: (r) => /^[A-Z0-9/-]{5,30}$/.test(r), error: 'Invalid PF code.' },
   professionalTax: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 20), test: (r) => /^[A-Z0-9/-]{5,20}$/.test(r), error: 'Invalid Professional Tax number.' },
   shopEstablishment: { normalize: (v) => String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9/-]/g, '').slice(0, 25), test: (r) => /^[A-Z0-9/-]{4,25}$/.test(r), error: 'Invalid Shop & Establishment number.' },
@@ -75,7 +81,19 @@ const RULES = {
   cheque: { normalize: (v) => digits(v).slice(0, 6), test: (r) => /^[0-9]{6}$/.test(r), error: 'Cheque number must be exactly 6 digits.' },
   creditCard: { normalize: (v) => digits(v).slice(0, 19), test: (r) => luhnValid(r), error: 'Invalid card number (failed Luhn check).' },
 
-  mobile: { normalize: (v) => { const d = digits(v); return d.length > 10 ? d.slice(-10) : d; }, test: (r) => /^[6-9][0-9]{9}$/.test(r), error: 'Mobile must be 10 digits starting 6-9.' },
+  // Mirrors utils/fieldFormats.ts exactly. Strips a RECOGNISED +91/91/0 prefix
+  // and then keeps the FIRST 10 digits — never the last 10, which used to turn a
+  // one-digit typo ("98765432100") into a different valid number ("8765432100").
+  mobile: {
+    normalize: (v) => {
+      let d = digits(v);
+      if (d.length === 12 && d.startsWith('91')) d = d.slice(2);
+      else if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+      return d.slice(0, 10);
+    },
+    test: (r) => /^[6-9][0-9]{9}$/.test(r),
+    error: 'Mobile must be 10 digits starting 6-9.',
+  },
   telephone: { normalize: (v) => String(v == null ? '' : v).replace(/[^0-9-]/g, '').slice(0, 15), test: (r) => /^[0-9]{2,5}-?[0-9]{6,8}$/.test(r), error: 'Invalid telephone (e.g. 079-26543210).' },
   email: { normalize: (v) => String(v == null ? '' : v).toLowerCase().replace(/\s/g, ''), test: (r) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r), error: 'Invalid email format.' },
   website: { normalize: (v) => String(v == null ? '' : v).trim().replace(/\s/g, ''), test: (r) => /^(https?:\/\/)?([\w-]+\.)+[\w-]{2,}(\/\S*)?$/.test(r), error: 'Invalid website.' },

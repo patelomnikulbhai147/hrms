@@ -18,6 +18,7 @@ import {
   resolveActiveWorkspace
 } from '@/types';
 import { deriveCompanyPayrollStatus } from '@/utils/payroll';
+import { isAtWork } from '@/utils/attendanceStatus';
 import { RemoveSampleDataButton } from '@/components/subscription/RemoveSampleDataButton';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
 import {
@@ -31,6 +32,8 @@ import { api, type SuperAdminStats } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { ui } from '@/components/ui/feedback';
 import { Card, StatCard } from '@/components/ui/Card';
+import { VerificationCreditsCard } from '@/components/verification/VerificationCreditsCard';
+import { EmployeeSlotsCard } from '@/components/subscription/EmployeeSlotsCard';
 import { Table, Thead, Tbody, Th, Td, Tr } from '@/components/ui/Table';
 import { TaskTenderWidgets } from '@/components/dashboard/TaskTenderWidgets';
 import { RecentActivityFeed } from '@/components/activity/RecentActivityFeed';
@@ -191,6 +194,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // handleNavigate takes a page id only and drops query strings.
   const goToBranchManagement = () => {
     localStorage.setItem('hrms_company_profile_tab', 'branches');
+    onNavigate('company-profile');
+  };
+
+  // Recent Activities → the existing Company Profile ▸ Audit Timeline tab. The
+  // dashboard card is only a preview of that same log, so it deep-links there
+  // instead of owning a second copy of the timeline.
+  const canOpenAuditTimeline = role === 'Company Head' || role === 'Super Admin';
+  const goToAuditTimeline = () => {
+    localStorage.setItem('hrms_company_profile_tab', 'audit');
     onNavigate('company-profile');
   };
 
@@ -875,7 +887,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // ─── Company Head Dashboard (Corporate Operations Control) ───
   if (role === 'Company Head') {
     const totalEmployees = scopedEmployees.length;
-    const activeEmployeesCount = currentCompany?.employeeCount || 0;
+    // Counted from the SAME live roster the rest of the dashboard reads, not from
+    // Company.employeeCount. That column is denormalised and is only recomputed by
+    // the headcount sync (which runs at backend boot / on branch update), so on a
+    // long-running production server it kept reporting the figure from whenever the
+    // process last started — adding, archiving or restoring an employee never moved
+    // it, while every other card updated immediately. Deriving it here means one
+    // source of truth and no refresh required.
+    const activeEmployeesCount = scopedEmployees.filter(
+      (e: any) => String(e.status || '').toLowerCase() === 'active'
+    ).length;
 
     const branches = companies.filter(b => b.parentCompanyId === activeCompanyId);
 
@@ -959,9 +980,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     // 1. Total Employees = COUNT(employee_records) assigned to this scope.
     const totalEmployeesLive = rawScopedEmployees.length;
 
-    // 2. Present Today = COUNT(attendance WHERE date = today AND status = Present).
+    // 2. Present Today = COUNT(attendance WHERE date = today AND the employee is
+    // at work). Classification comes from utils/attendanceStatus so this card and
+    // the Present chip in Today's Attendance apply the SAME rule — the old
+    // /present/i test here silently excluded Work From Home and On Duty, which
+    // the widget counted, so the two tiles could disagree on the same day.
     const presentTodayLive = attendance.filter(a =>
-      a.date === todayStr && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+      a.date === todayStr && isAtWork(a.status) && scopedEmpIds.has(a.employeeId)
     ).length;
 
     // 3. Pending Leaves (scoped to this branch/company).
@@ -1009,7 +1034,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
         const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         const present = attendance.filter(a =>
-          a.date === ds && /present/i.test(String(a.status)) && scopedEmpIds.has(a.employeeId)
+          a.date === ds && isAtWork(a.status) && scopedEmpIds.has(a.employeeId)
         ).length;
         rows.push({ name: `${String(d.getDate()).padStart(2, '0')} ${d.toLocaleString('en-US', { month: 'short' })}`, present });
       }
@@ -1038,7 +1063,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const activeEmps = emps.filter(e => e.status !== 'Archived' && e.status !== 'Terminated');
         const branchDepts = new Set<string>();
         emps.forEach(e => { const d = e.department || 'Other'; branchDepts.add(d); globalDepts.add(d); });
-        const present = attendance.filter(a => a.date === todayStr && /present/i.test(String(a.status)) && empIds.has(a.employeeId)).length;
+        const present = attendance.filter(a => a.date === todayStr && isAtWork(a.status) && empIds.has(a.employeeId)).length;
         const pendingLeaves = leaves.filter(l =>
           (empIds.has(l.employeeId) || isCompanyIdMatch(l.companyId, b.id, companies as any[])) && String(l.status) === 'Pending'
         ).length;
@@ -1159,7 +1184,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="flex justify-between items-end mt-4">
               <span className="text-[11px] font-medium text-gray-500">{pendingLeavesLive} Awaiting Approval</span>
-              <span onClick={() => onNavigate('leaves')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">Review</span>
+              <button type="button" onClick={() => onNavigate('leaves')} className="px-1.5 py-1 -mr-1.5 rounded-lg text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">Review</button>
             </div>
           </div>
 
@@ -1177,13 +1202,24 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
             <div className="flex justify-between items-end mt-4">
-              <span onClick={() => onNavigate('payroll')} className="text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline">View Summary</span>
+              <button type="button" onClick={() => onNavigate('payroll')} className="px-1.5 py-1 -mr-1.5 rounded-lg text-[11px] font-semibold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View Summary</button>
               <svg className="w-20 h-6 text-[#C77E52]" viewBox="0 0 100 30" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M0,25 Q15,25 25,20 T50,15 T75,10 T100,5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
           </div>
         </div>
+
+        {/* Remaining verification credits — a quota of API verification requests,
+            never money. Hides itself when the figure can't be read, so a lookup
+            failure never shows a false zero.
+            The link navigates to the dedicated Verification Credits page
+            (company-facing 'verification-wallet' route — the old wallet popup
+            is gone). Employees get no credits view at all. */}
+        <VerificationCreditsCard onViewWallet={() => window.dispatchEvent(new CustomEvent('hrms:view-verification-credits'))} />
+        {/* Employee slot usage — every active user (head/HR/employee) is one
+            slot; the card opens the slot history page / purchase dialog. */}
+        <EmployeeSlotsCard />
 
         {/* Task Manager + Tender Information widgets (added below statistics cards) */}
         {/* This dashboard block renders only for Company Head (leadership) — tenders allowed. */}
@@ -1297,9 +1333,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Top Departments (Horizontal Bars) */}
               <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5">
-                <div className="flex justify-between items-center mb-5">
+                <div className="flex items-center mb-5">
                   <h3 className="text-[14px] font-bold text-gray-800">Top Departments</h3>
-                  <span className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View Full Report</span>
                 </div>
                 <div className="space-y-4">
                   {topDeptsLive.length === 0 ? (
@@ -1442,7 +1477,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 shrink-0">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="text-[14px] font-bold text-gray-800">Pending Approvals</h3>
-                <span onClick={() => onNavigate('leaves')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                {/* A <span onClick> is invisible to the keyboard and to screen
+                    readers — a real button gets Enter/Space and focus for free. */}
+                <button type="button" onClick={() => onNavigate('leaves')} aria-label="View all pending approvals" className="-mr-1.5 px-1.5 py-1 rounded-lg text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View All</button>
               </div>
               <div className="space-y-4">
                 <div onClick={() => onNavigate('leaves')} className="flex items-center justify-between cursor-pointer">
@@ -1475,10 +1512,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="shrink-0">
               <RecentActivityFeed
                 entries={recentAuditLogs}
-                onViewAll={() => {
-                  localStorage.setItem('hrms_company_profile_tab', 'audit');
-                  onNavigate('company-profile');
-                }}
+                limit={8}
+                // "View All" deep-links into the EXISTING Audit Timeline rather
+                // than duplicating it: same table, same API, same filters. The
+                // tab id rides in localStorage because handleNavigate takes a
+                // page id only and drops query strings — CompanyProfile reads and
+                // clears it on mount (the same handoff the Branches card uses).
+                //
+                // Only offered when the destination is actually reachable.
+                // Company Profile is leadership-only (App.tsx LEADERSHIP_ONLY_PAGES),
+                // so for HR/Finance the old link led to an Access Denied screen —
+                // a control that cannot work should not be shown at all.
+                onViewAll={canOpenAuditTimeline ? goToAuditTimeline : undefined}
               />
             </div>
 
@@ -1487,7 +1532,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="bg-white rounded-[18px] border border-[#E5E7EB] shadow-sm p-5 flex-1 flex flex-col min-h-0">
               <div className="flex justify-between items-center mb-4 shrink-0">
                 <h3 className="text-[14px] font-bold text-gray-800">Notifications</h3>
-                <span onClick={() => onNavigate('notifications')} className="text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline">View All</span>
+                <button type="button" onClick={() => onNavigate('notifications')} aria-label="View all notifications" className="-mr-1.5 px-1.5 py-1 rounded-lg text-[11px] font-bold text-[#2563EB] cursor-pointer hover:underline hover:bg-blue-50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40">View All</button>
               </div>
               <div className="space-y-3.5 flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
                 {(() => {

@@ -2,6 +2,10 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+// The one date formatter (utils/formatDate.ts). A bare toLocaleDateString()
+// renders in the VIEWER's locale, so the same exported PDF read "06/20/2026" in
+// one browser and "20/06/2026" in another.
+import { formatDate, formatDateTime } from '@/utils/formatDate';
 
 export const downloadPayrollPDF = (record: any, company: any) => {
   const doc = new jsPDF();
@@ -15,7 +19,7 @@ export const downloadPayrollPDF = (record: any, company: any) => {
   doc.setTextColor(100, 100, 100);
   doc.text('PAYSLIP', 14, 30);
   doc.text(`Pay Period: ${record.month} ${record.year}`, 14, 35);
-  doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 40);
+  doc.text(`Generated: ${formatDate(new Date())}`, 14, 40);
 
   // Employee Info
   doc.setFontSize(12);
@@ -253,7 +257,7 @@ export const exportRowsToPDF = (
   doc.setTextColor(120, 120, 120);
   let y = 25;
   if (subtitle) { doc.text(subtitle, 14, y); y += 5; }
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
+  doc.text(`Generated: ${formatDateTime(new Date())}`, 14, y);
   doc.text(`Records: ${rows.length}`, 14, y + 5);
 
   autoTable(doc, {
@@ -324,7 +328,7 @@ export interface ReportAttachment {
   mimeType?: string;
 }
 
-const nowStamp = () => new Date().toLocaleString();
+const nowStamp = () => formatDateTime(new Date());
 
 /** Builds (but does not download) a branded jsPDF report. Reused by ZIP export. */
 export const buildReportPdf = (
@@ -387,7 +391,7 @@ export const buildReportPdf = (
       if (opts.footer !== false) {
         doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(150, 150, 150);
         doc.text(meta.companyName || '', 14, pageH - 8);
-        doc.text(`Generated ${new Date().toLocaleDateString()}`, pageW / 2, pageH - 8, { align: 'center' });
+        doc.text(`Generated ${formatDate(new Date())}`, pageW / 2, pageH - 8, { align: 'center' });
       }
     },
   });

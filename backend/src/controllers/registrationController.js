@@ -17,6 +17,7 @@ const prisma = require('../config/prisma');
 const { sendOtpEmail } = require('../services/emailService');
 const { provisionFreeCompany } = require('../services/companyProvisioning');
 const { getLockedModules, getLockedPages, getAllowedReports, getEntitlements } = require('../services/planEntitlements');
+const { normalizeBillingCycle, isBillingCycle } = require('../utils/billingCycle');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const REG_PURPOSE = 'company_registration';
@@ -91,6 +92,15 @@ exports.registerCompanyStart = async (req, res) => {
       return res.status(400).json({ error: 'You must accept the Terms & Conditions and Privacy Policy.', code: 'TERMS_REQUIRED' });
     }
 
+    // ── Billing cycle (chosen at onboarding, inherited by every later purchase) ──
+    // A value that was SENT but is not a real cycle is rejected rather than
+    // silently coerced — a typo must not quietly bill the tenant quarterly.
+    // Omitting it entirely is still allowed and lands on the default.
+    if (!isBlank(b.billingCycle) && !isBillingCycle(String(b.billingCycle).trim())) {
+      return res.status(400).json({ error: 'Billing cycle must be either Quarterly or Yearly.', code: 'VALIDATION' });
+    }
+    const billingCycle = normalizeBillingCycle(b.billingCycle);
+
     // ── CAPTCHA (internal SVG) ──
     if (!verifyInternalCaptcha(b.captchaId, b.captchaAnswer)) {
       return res.status(400).json({ error: 'Invalid CAPTCHA. Please enter the correct characters.', code: 'CAPTCHA_FAILED' });
@@ -125,6 +135,10 @@ exports.registerCompanyStart = async (req, res) => {
             branchName: isBlank(branch.branchName) ? 'Head Office' : String(branch.branchName).trim(),
             address: isBlank(branch.address) ? '' : String(branch.address).trim(),
           },
+          // Travels inside the SIGNED token, so the cycle that reaches
+          // provisioning is the validated one from step 1 — the verify call
+          // cannot substitute a different cycle.
+          billingCycle,
         },
       },
       JWT_SECRET,
@@ -207,7 +221,12 @@ exports.registerCompanyVerify = async (req, res) => {
       message: 'Welcome to ZeniaHR! Your free workspace has been created.',
       token: generateSessionToken(created.head.id),
       user: safeUser,
-      company: { id: created.company.id, name: created.company.name, plan: created.company.plan },
+      company: {
+        id: created.company.id,
+        name: created.company.name,
+        plan: created.company.plan,
+        billingCycle: created.company.billingCycle,
+      },
     });
   } catch (error) {
     console.error('[REGISTER VERIFY ERROR]', error);

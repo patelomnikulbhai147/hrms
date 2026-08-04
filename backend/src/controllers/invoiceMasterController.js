@@ -40,6 +40,7 @@ exports.listCustomers = async (req, res) => {
       ];
     }
     if (req.query.active === 'true') where.isActive = true;
+    if (req.query.partyType) where.partyType = String(req.query.partyType);
     const customers = await prisma.invoiceCustomer.findMany({ where, orderBy: { companyName: 'asc' } });
     // Attach lightweight history (invoice count / outstanding / paid) per customer.
     const ids = customers.map((c) => c.id);
@@ -62,6 +63,7 @@ exports.saveCustomer = async (req, res) => {
       email: b.email || null, phone: b.phone || null, addressLine: b.addressLine || null, shipToAddress: b.shipToAddress || null,
       city: b.city || null, state: b.state || null, country: b.country || 'India',
       paymentTerms: b.paymentTerms || null, creditDays, isActive: b.isActive !== false, notes: b.notes || null,
+      partyType: b.partyType || 'Customer'
     };
     const id = idParam(req.params.id);
     let saved;

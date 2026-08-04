@@ -239,7 +239,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         open={!!lockedModuleLabel}
         onClose={() => setLockedModuleLabel(null)}
         moduleLabel={lockedModuleLabel ?? undefined}
-        onUpgrade={() => { setLockedModuleLabel(null); onNavigate('settings'); }}
+        onUpgrade={() => { setLockedModuleLabel(null); window.dispatchEvent(new CustomEvent('hrms:upgrade-plan')); }}
       />
 
       {/* Footer */}

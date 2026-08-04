@@ -1,12 +1,13 @@
 import { api } from '@/api/apiClient';
-import { getApiErrorMessage } from '@/utils/apiError';
+import { getApiErrorMessage, getApiFieldErrors } from '@/utils/apiError';
 import { formatDate } from '@/utils/formatDate';
+import { normalizeField, validateField } from '@/utils/fieldFormats';
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Plus, Search, Eye, Edit2,
   EyeOff, ShieldCheck, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle,
   Users, UserCheck, LogOut, ChevronRight, Lock, FileText, IndianRupee, Archive, Gift, XCircle, Trash2,
-  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2, Printer
+  Send, RotateCcw, Download, Clock, ThumbsUp, ChevronDown, FileDown, UserPlus, Fingerprint, Building2, Printer, ArrowLeft, ChevronLeft
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -22,6 +23,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ActionConfirmationModal } from '@/components/ui/ActionConfirmationModal';
 import { Input, Select } from '@/components/ui/Input';
+import { SearchSelect } from '@/components/ui/SearchSelect';
+import { useFormGate, type GateFields } from '@/hooks/useFormGate';
 import {
   validatePhone, validateName, validateEmail,
   validateSalary
@@ -39,9 +42,10 @@ import { AddressSection, buildAddressString, validatePresentAddress, BLANK_ADDRE
 import { INDIAN_STATES, citiesForState } from '@/data/indianStatesCities';
 import { NATIONALITY_COUNTRIES, DEFAULT_COUNTRY } from '@/data/countries';
 import { byEmployeeCode } from '@/utils/employeeSort';
-import { isActiveEmployee, isOffboarded } from '@/utils/employeeStatus';
+import { isActiveEmployee, isOffboarded, isRecordLocked, LOCKED_RECORD_MESSAGE } from '@/utils/employeeStatus';
 import { formatAadhaar, formatPan, rawAadhaar, rawPan, isValidAadhaar, isValidPan, AADHAAR_ERROR, PAN_ERROR } from '@/utils/idFormat';
 import { BankDetails } from '@/components/employee/BankDetails';
+import { EmployeeBankVerificationPanel } from '@/components/bank/EmployeeBankVerificationPanel';
 import { BonusConfigSection } from '@/components/employee/BonusConfigSection';
 import { MinimumWageAdvisory } from '@/components/employee/MinimumWageAdvisory';
 import { usePermissions } from '@/context/PermissionContext';
@@ -151,6 +155,20 @@ const buildFullName = (first?: string, middle?: string, last?: string) =>
 // Employee lifecycle: Active operations vs Archived (offboarded — retained for
 // history, excluded from payroll/attendance/leave credits). 'Inactive' is
 // retired in favour of 'Archived'.
+// ── Employee editor route ────────────────────────────────────────────────────
+// The full-page editor has its own URL, /employees/:id/edit, so Back, refresh
+// and shared links all behave. App.tsx's pathToPage only reads the FIRST path
+// segment, so this deeper path still resolves to the Employees page — the id and
+// the /edit suffix are interpreted here.
+const editPathFor = (id: string | number) => `/employees/${encodeURIComponent(String(id))}/edit`;
+const editIdFromPath = (): string | null => {
+  const m = (typeof window === 'undefined' ? '' : window.location.pathname).match(/^\/employees\/([^/]+)\/edit\/?$/);
+  return m ? decodeURIComponent(m[1]) : null;
+};
+
+// Shown when a user clicks a registration step they have not yet earned.
+const LOCKED_STEP_MESSAGE = 'Please complete and save the current step before proceeding.';
+
 const statusOptions: EmployeeStatus[] = ['Active', 'Archived', 'On Leave'];
 const categoryOptions = ['Skilled', 'Semi-skilled', 'Unskilled', 'Highly skilled'];
 const employmentTypeOptions = ['PERMANENT', 'CONTRACTUAL', 'PROBATION', 'INTERN'];
@@ -205,7 +223,6 @@ export const Employees: React.FC<EmployeesProps> = ({
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [branchFilter, setBranchFilter] = useState('');
 
   // Server-Side Pagination State
   const [page, setPage] = useState(1);
@@ -247,17 +264,82 @@ export const Employees: React.FC<EmployeesProps> = ({
     } catch { /* ignore — list stays as-is */ }
   };
 
-  // Drawer & Modals state
+  // Modals state
   const [viewEmp, setViewEmp] = useState<Employee | null>(null);
+
+  // ── Employee Profile = a real PAGE at /employees/:id ────────────────────────
+  // It is never a drawer, modal or overlay: it renders in the normal document
+  // flow in place of the list (below), so it always gets the full content width
+  // and the page's own scrollbar. The URL carries the employee id, which is what
+  // makes Back, refresh and link-sharing work; every entry point in the app goes
+  // through openProfile() so there is exactly one behaviour everywhere.
+  const profilePushedRef = useRef(false);
+  const readProfileIdFromUrl = () => {
+    const seg = window.location.pathname.replace(/^\/+/, '').split('/');
+    return seg[0] === 'employees' && seg[1] ? decodeURIComponent(seg[1]) : null;
+  };
+
+  const openProfile = (emp: Employee, tab?: string) => {
+    setViewEmp(emp);
+    if (tab) setActiveTab(tab as any);
+    if (readProfileIdFromUrl() !== String(emp.id)) {
+      // pushState (not replace) so Back returns to the list, as any page would.
+      window.history.pushState({ page: 'employees', employeeId: String(emp.id) }, '', `/employees/${encodeURIComponent(String(emp.id))}`);
+      profilePushedRef.current = true;
+    }
+  };
+
+  const closeProfile = () => {
+    setViewEmp(null);
+    if (!readProfileIdFromUrl()) return;
+    if (profilePushedRef.current) {
+      profilePushedRef.current = false;
+      window.history.back();          // consumes the entry we added
+    } else {
+      // Arrived by deep link / refresh — there is no entry of ours to pop, so
+      // going Back would leave the app entirely.
+      window.history.replaceState({ page: 'employees' }, '', '/employees');
+    }
+  };
+
+  // Back / Forward: the profile follows the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const id = readProfileIdFromUrl();
+      if (!id) { profilePushedRef.current = false; setViewEmp(null); return; }
+      const target = employees.find(e => String(e.id) === String(id));
+      if (target) setViewEmp(target);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [employees]);
+
+  // Deep link / hard refresh on /employees/:id — open once the list has loaded.
+  useEffect(() => {
+    const id = readProfileIdFromUrl();
+    if (!id || viewEmp) return;
+    const target = employees.find(e => String(e.id) === String(id));
+    if (target) setViewEmp(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
+  // True when the profile currently open belongs to a PREVIOUS employee whose
+  // record is locked for this user. Every write affordance inside the profile
+  // (bonus, document upload/replace) is gated on this in addition to `canEdit`;
+  // the server enforces the same rule, so this only removes dead buttons.
+  const isViewLocked = isRecordLocked(viewEmp, role);
+  // Document upload/replace inside the profile. Viewing and downloading stay
+  // available on a locked record — only writes are withdrawn.
+  const canEditDocs = canEdit && !isViewLocked;
 
   // Deep-link from Employee Cards → "View Profile". Opens the real profile modal
   // once the employee list has loaded, then clears the request so closing the
-  // modal does not immediately reopen it.
+  // page does not immediately reopen it. Goes through openProfile so a deep link
+  // from another module lands on the same URL as a click in the list.
   useEffect(() => {
     if (!focusEmployeeId) return;
     const target = employees.find(e => String(e.id) === String(focusEmployeeId));
     if (!target) return;
-    setViewEmp(target);
+    openProfile(target);
     onFocusHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEmployeeId, employees]);
@@ -266,7 +348,13 @@ export const Employees: React.FC<EmployeesProps> = ({
   // (so the user can stay on the page and continue editing after Save).
   const [editOriginal, setEditOriginal] = useState<Employee | null>(null);
   const [editSaved, setEditSaved] = useState(false);
+  // True while the authoritative record is being fetched for the editor.
+  const [editLoading, setEditLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  // When set, the registration wizard is running in RE-ONBOARD mode: it is
+  // prefilled from this previous (locked) employee and submits to the
+  // re-onboard endpoint, which creates a new record instead of editing this one.
+  const [reOnboardSource, setReOnboardSource] = useState<Employee | null>(null);
   const [wizardNominees, setWizardNominees] = useState<any[]>([]); // staged nominees during registration
   const [deleteEmp, setDeleteEmp] = useState<Employee | null>(null);
 
@@ -309,6 +397,24 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Unique-mobile enforcement: live duplicate descriptor + in-flight flag for Quick Add.
   const [mobileDup, setMobileDup] = useState<any | null>(null);
   const [mobileChecking, setMobileChecking] = useState(false);
+  // Shape validity of the Quick Add mobile, from the shared field registry — the
+  // same rule the backend applies, so the button can't offer a save the API will
+  // refuse. (Blank is "not yet valid" here because the field is required.)
+  const quickMobileCheck = validateField('mobile', quickForm.mobile);
+  const quickMobileValid = !!quickForm.mobile.trim() && quickMobileCheck.isValid;
+  const quickMobileError = quickMobileCheck.isValid ? '' : (quickMobileCheck.error || 'Invalid mobile number.');
+  // Quick Registration gate. Branch is only the user's to choose at company
+  // scope — inside a branch workspace it is auto-assigned, so it cannot block.
+  const quickGate = useFormGate(useMemo(() => {
+    const f: GateFields = {
+      quickName: { type: 'name', value: quickForm.name, required: true, label: 'Employee Name' },
+      quickMobile: { type: 'mobile', value: quickForm.mobile, required: true, label: 'Mobile Number', focusId: 'field-quickMobile' },
+    };
+    if (!isBranchWorkspace) {
+      f.quickBranch = { type: 'text', value: quickForm.branch, required: true, label: 'Branch' };
+    }
+    return f;
+  }, [quickForm.name, quickForm.mobile, quickForm.branch, isBranchWorkspace]));
   const [editTemp, setEditTemp] = useState<any | null>(null);   // Complete-profile modal
   const [reviewTemp, setReviewTemp] = useState<any | null>(null); // Approval review modal
   // HR Employment Assignment screen (opened on approve — HR assigns official details).
@@ -506,6 +612,9 @@ export const Employees: React.FC<EmployeesProps> = ({
   const handleQuickCreate = async () => {
     if (!quickForm.name.trim()) { ui.toast.warning('Employee Name is required.'); return; }
     if (!quickForm.mobile.trim()) { ui.toast.warning('Mobile Number is required.'); return; }
+    // Re-checked here, not just on the button: the handler is also reachable by
+    // Enter, and a disabled button is a hint, never an enforcement point.
+    if (!quickMobileValid) { ui.toast.warning(quickMobileError); return; }
     // Branch scope: the active branch is authoritative — ignore any stale form value.
     // Company scope: the user must have chosen a branch.
     const effectiveBranch = isBranchWorkspace ? activeBranchName : quickForm.branch.trim();
@@ -867,6 +976,24 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   const [editMobileNumber, setEditMobileNumber] = useState('');
 
+  // Employee Edit gate — the same mandatory set the registration wizard enforces,
+  // so a record cannot be edited INTO an invalid state that could not have been
+  // created in the first place.
+  const editGate = useFormGate(useMemo(() => {
+    const e: any = editEmp || {};
+    return {
+      name: { type: 'name', value: e.name, required: true, label: 'Full Name' },
+      phone: { type: 'mobile', value: editMobileNumber, required: true, label: 'Mobile Number' },
+      email: { type: 'email', value: e.email, required: false, label: 'Email' },
+      department: { type: 'text', value: e.department, required: true, label: 'Department' },
+      designation: { type: 'text', value: e.designation, required: true, label: 'Designation' },
+      joinDate: { type: 'text', value: e.joinDate, required: true, label: 'Date of Joining' },
+      salary: { type: 'salary', value: e.salary, required: true, label: 'Salary' },
+      aadhaar: { type: 'aadhaar', value: e.aadhaar, label: 'Aadhaar Number' },
+      pan: { type: 'pan', value: e.pan, label: 'PAN' },
+    } as GateFields;
+  }, [editEmp, editMobileNumber]));
+
   // Auto-generate employee code on add open
   // Proactive subscription-cap guard: before opening the Add form, check seat
   // capacity. If the plan is full, show the upgrade dialog (via the same global
@@ -908,6 +1035,64 @@ export const Employees: React.FC<EmployeesProps> = ({
     setErrors({});
     setWizardNominees([]);
     setActiveTab('personal');
+    setAddStepsSaved([]);          // a fresh wizard starts locked at step 1
+    setReOnboardSource(null);
+    setAddOpen(true);
+  };
+
+  /** Close the registration/re-onboarding wizard, clearing the re-onboard mode
+   *  so the next "Add Employee" opens a blank form rather than the last copy. */
+  const closeAddWizard = () => {
+    setAddOpen(false);
+    setReOnboardSource(null);
+    setAddStepsSaved([]);
+  };
+
+  // ── Re-onboard a PREVIOUS employee ───────────────────────────────────────────
+  // Opens the registration wizard prefilled from the locked historical record.
+  // Nothing is written until the wizard is submitted, and even then the write
+  // goes to the NEW record — the previous one is never touched.
+  const handleStartReOnboard = async (emp: Employee) => {
+    const ok = await ui.confirm({
+      title: 'Re-onboard employee',
+      message: `Do you want to re-onboard ${emp.name}?\n\n` +
+        `This creates a NEW active employment record with a new employee code. ` +
+        `The previous record (${emp.employeeId}) stays locked as historical data, ` +
+        `along with its attendance and payroll history.`,
+      confirmText: 'Re-onboard',
+      cancelText: 'Cancel',
+      variant: 'info',
+    });
+    if (!ok) return;
+
+    // Split "+91 98765 43210" back into the two controls the wizard uses.
+    const rawPhone = String(emp.phone || '').trim();
+    const phoneMatch = rawPhone.match(/^(\+\d{1,4})\s*(.*)$/);
+    const countryCode = phoneMatch ? phoneMatch[1] : '+91';
+    const mobileNumber = (phoneMatch ? phoneMatch[2] : rawPhone).replace(/\D/g, '');
+
+    setForm(f => ({
+      ...f,
+      ...emp as any,
+      // Identity of the NEW employment — never inherited from the locked record.
+      employeeId: '[ Auto Generated ]', codeMode: 'auto',
+      status: 'Active',
+      joinDate: new Date().toISOString().split('T')[0],
+      exitDate: '', exitReason: '',
+      // The device enrolment belongs to the old record and is unique per company.
+      biometricId: '',
+      countryCode, mobileNumber,
+      salary: String(emp.salary ?? ''),
+      shiftId: emp.shiftId ?? '',
+      confirmAccountNumber: (emp as any).accountNumber || '',
+      esic: (emp as any).esic || (emp as any).esiNumber || '',
+    }));
+    setErrors({});
+    setWizardNominees([]);
+    setActiveTab('personal');
+    setAddStepsSaved([]);          // re-onboarding walks the same gated steps
+    setReOnboardSource(emp);
+    closeProfile();
     setAddOpen(true);
   };
 
@@ -945,6 +1130,83 @@ export const Employees: React.FC<EmployeesProps> = ({
     return e;
   };
 
+  // ── Declarative required-field map, per wizard step ───────────────────────
+  // The single description of what "complete" means for each step. It drives
+  // BOTH the live Save & Continue gate and the red-* markers, so the button and
+  // the asterisks can never disagree. Key order is screen order, which is what
+  // makes "scroll to the FIRST invalid field" land on the right one.
+  //
+  // Rules themselves come from the shared FIELD_SPECS registry — this map only
+  // says which fields are mandatory on which step.
+  const addGateFields: GateFields = useMemo(() => {
+    if (activeTab === 'personal') {
+      const f: GateFields = {
+        aadhaarName: { type: 'name', value: form.aadhaarName || form.name, required: true, label: 'Name as per Aadhaar' },
+        gender: { type: 'text', value: form.gender, required: true, label: 'Gender' },
+        dob: { type: 'text', value: form.dob, required: true, label: 'Date of Birth' },
+        maritalStatus: { type: 'text', value: form.maritalStatus, required: true, label: 'Marital Status' },
+        nationality: { type: 'text', value: form.nationality, required: true, label: 'Nationality' },
+        state: { type: 'text', value: form.state, required: true, label: 'State' },
+        city: { type: 'text', value: form.city, required: true, label: 'City' },
+        // 'mobile' enforces the exact 10-digit rule centrally.
+        phone: { type: 'mobile', value: form.mobileNumber, required: true, label: 'Mobile Number', focusId: 'field-phone' },
+      };
+      // Only mandatory when the user opted out of the auto-generated code.
+      if (form.codeMode === 'custom') {
+        f.employeeId = { type: 'employeeCode', value: form.employeeId, required: true, label: 'Employee Code' };
+      }
+      // Optional, but must be well-formed if supplied.
+      f.email = { type: 'email', value: form.email, required: false, label: 'Email' };
+      return f;
+    }
+    if (activeTab === 'job') {
+      // Declared in screen order, so "first invalid" is the topmost one.
+      const f: GateFields = {};
+      // At branch scope the branch is fixed by the workspace, so it is not
+      // something the user can (or must) choose.
+      if (!isBranchWorkspace) {
+        f.branchLocation = { type: 'text', value: form.branchLocation, required: true, label: 'Branch Location' };
+      }
+      f.department = { type: 'text', value: form.department, required: true, label: 'Department' };
+      f.designation = { type: 'text', value: form.designation, required: true, label: 'Designation' };
+      f.category = { type: 'text', value: form.category, required: true, label: 'Employment Class' };
+      f.employmentType = { type: 'text', value: form.employmentType, required: true, label: 'Employment Type' };
+      f.joinDate = { type: 'text', value: form.joinDate, required: true, label: 'Date of Joining' };
+      f.salary = { type: 'salary', value: form.salary, required: true, label: 'Salary' };
+      return f;
+    }
+    // Remaining steps carry no mandatory fields of their own; anything supplied
+    // is still format-checked by the specs below.
+    if (activeTab === 'banking') {
+      return {
+        aadhaar: { type: 'aadhaar', value: form.aadhaar, label: 'Aadhaar Number' },
+        pan: { type: 'pan', value: form.pan, label: 'PAN' },
+        uan: { type: 'uan', value: form.uan, label: 'UAN' },
+        accountNumber: { type: 'bankAccount', value: form.accountNumber, label: 'Account Number' },
+        ifsc: { type: 'ifsc', value: form.ifsc, label: 'IFSC' },
+      };
+    }
+    return {};
+  }, [activeTab, form, isBranchWorkspace]);
+
+  // The live gate for the CURRENT step. Recomputes on every keystroke.
+  const addGate = useFormGate(addGateFields);
+
+  // What the wizard's fields render as their error. Live gate errors first, with
+  // anything the submit path recorded layered on top (duplicate code, server
+  // rejections). Untouched empty fields are absent, so the form does not open
+  // covered in red.
+  const addErrors: Record<string, string> = { ...addGate.visibleErrors, ...errors };
+
+  // The final step submits the whole form, so it is gated on every step's rules
+  // rather than just its own — a user who jumped straight to Review by clicking
+  // the tab header must still complete Personal Info and Employment Details.
+  const addAllStepsValid = useMemo(() => {
+    const missing = { ...validateAddSection('personal'), ...validateAddSection('job') };
+    return Object.keys(missing).length === 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, isBranchWorkspace]);
+
   // Which error keys belong to which step — so the top summary only lists the
   // currently-visible step's missing fields (and they remain scroll/focusable).
   const ADD_STEP_FIELD_KEYS: Record<string, string[]> = {
@@ -961,38 +1223,191 @@ export const Employees: React.FC<EmployeesProps> = ({
     setTimeout(() => focusable?.focus(), 250);
   };
 
+  // ── Sequential step lock ────────────────────────────────────────────────
+  // Steps the user has confirmed with "Save & Continue". Confirmation alone is
+  // not completion: a step counts as complete only while it ALSO still passes
+  // its own validation, so going back and emptying a required field re-locks
+  // every later step by itself.
+  const [addStepsSaved, setAddStepsSaved] = useState<string[]>([]);
+
+  const isAddStepComplete = useCallback((step: string) => (
+    addStepsSaved.includes(step) && Object.keys(validateAddSection(step)).length === 0
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [addStepsSaved, form, isBranchWorkspace]);
+
+  // Step 1 is always open. Every other step needs all of its predecessors done.
+  const isAddStepUnlocked = useCallback((step: string) => {
+    const idx = ADD_STEPS.indexOf(step as any);
+    if (idx <= 0) return true;
+    return ADD_STEPS.slice(0, idx).every(isAddStepComplete);
+  }, [isAddStepComplete]);
+
+  // Clicking a locked step must not navigate — it explains why and stays put.
+  const goToAddStep = (step: typeof ADD_STEPS[number]) => {
+    if (!isAddStepUnlocked(step)) { ui.toast.warning(LOCKED_STEP_MESSAGE); return; }
+    setActiveTab(step);
+    setErrors({});
+  };
+
+  // If the active step ever becomes unreachable (an earlier step was corrected
+  // into an invalid state), fall back to the first incomplete step rather than
+  // leaving the user on a screen they are no longer entitled to.
+  useEffect(() => {
+    if (!addOpen) return;
+    if (isAddStepUnlocked(activeTab)) return;
+    const firstIncomplete = ADD_STEPS.find(s => !isAddStepComplete(s)) || ADD_STEPS[0];
+    setActiveTab(firstIncomplete);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addOpen, activeTab, isAddStepUnlocked, isAddStepComplete]);
+
+  // Advance a step. Routed through the gate, so a click on the blocked button
+  // reveals what is missing and focuses it instead of silently doing nothing.
   const handleSaveContinue = () => {
     const idx = ADD_STEPS.indexOf(activeTab as any);
     if (idx === -1) return;
-    const sectionErrors = validateAddSection(activeTab);
-    if (Object.keys(sectionErrors).length) {
-      // Block progress, surface every invalid field, and jump to the first one.
-      setErrors(prev => ({ ...prev, ...sectionErrors }));
-      setTimeout(() => focusField(Object.keys(sectionErrors)[0]), 50);
-      return;
-    }
-    setErrors({});
-    setStepMsg(`${ADD_STEP_LABELS[activeTab]} saved — continuing to ${ADD_STEP_LABELS[ADD_STEPS[idx + 1]]}.`);
-    setTimeout(() => setStepMsg(''), 2500);
-    setActiveTab(ADD_STEPS[idx + 1]);
+    addGate.attemptSubmit(() => {
+      setErrors({});
+      addGate.reset();
+      setAddStepsSaved(prev => (prev.includes(activeTab) ? prev : [...prev, activeTab]));
+      setStepMsg(`${ADD_STEP_LABELS[activeTab]} completed — continuing to ${ADD_STEP_LABELS[ADD_STEPS[idx + 1]]}.`);
+      setTimeout(() => setStepMsg(''), 2500);
+      setActiveTab(ADD_STEPS[idx + 1]);
+    });
   };
 
-  const handleStartEdit = (emp: Employee) => {
+  // Load the editor's working copy from a record.
+  const seedEditor = (source: any) => {
     // Pre-fill Confirm Account Number with the stored value so editing an
     // existing record doesn't trip the "numbers must match" check.
-    const seeded = { ...emp, confirmAccountNumber: emp.accountNumber || '' } as any;
+    const seeded = { ...source, confirmAccountNumber: source.accountNumber || '' } as any;
     setEditEmp(seeded);
-    setEditOriginal(seeded);   // baseline for Reset
+    setEditOriginal(seeded);   // baseline for Reset AND for the dirty check
     setEditSaved(false);
-    const parts = (emp.phone || '').split(' ');
-    if (parts.length > 1) {
-      setEditMobileNumber(parts.slice(1).join(''));
-    } else {
-      setEditMobileNumber(emp.phone || '');
-    }
+    const parts = (source.phone || '').split(' ');
+    setEditMobileNumber(parts.length > 1 ? parts.slice(1).join('') : (source.phone || ''));
     setActiveTab('personal');
     setErrors({});
   };
+
+  /**
+   * Open the editor for an employee id, reading the COMMITTED database record.
+   * `fallback` is the list row the user clicked, used to paint the page instantly
+   * while the authoritative read is in flight — on a deep link or a refresh there
+   * is no row to fall back on, which is when the skeleton shows.
+   */
+  const openEditorById = useCallback(async (id: string | number, fallback?: Employee) => {
+    setEditLoading(true);
+    if (fallback) seedEditor(fallback);
+    try {
+      const fresh: any = await api.employees.getById(id);
+      if (fresh && fresh.id != null) {
+        seedEditor(fresh);
+        onUpdateEmployees(employees.map(e => (String(e.id) === String(fresh.id) ? fresh : e)));
+      } else if (!fallback) {
+        ui.toast.error('That employee could not be found.');
+        exitEditor(false);
+      }
+    } catch (err) {
+      // A list row is better than nothing; with no row at all the editor would be
+      // empty, so leave rather than showing a blank form.
+      console.error('[employee:edit] could not read the record:', err);
+      if (!fallback) {
+        ui.toast.error('Could not load that employee.');
+        exitEditor(false);
+      }
+    } finally {
+      setEditLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees]);
+
+  const handleStartEdit = (emp: Employee) => {
+    // The editor is a real route: /employees/:id/edit. Pushing it means the
+    // browser Back button leaves the editor (instead of leaving the Employees
+    // page entirely), and a refresh or a shared link reopens the same record.
+    const path = editPathFor(emp.id);
+    if (window.location.pathname !== path) {
+      window.history.pushState({ employeeEdit: String(emp.id) }, '', path);
+    }
+    openEditorById(emp.id, emp);
+  };
+
+  // Has the user changed anything since the editor opened (or since the last save)?
+  const isEditDirty = useCallback(() => {
+    if (!editEmp || !editOriginal) return false;
+    return JSON.stringify(editEmp) !== JSON.stringify(editOriginal);
+  }, [editEmp, editOriginal]);
+
+  /** Tear down the editor. `restoreUrl` puts the address bar back on the list. */
+  const exitEditor = (restoreUrl = true) => {
+    setEditEmp(null);
+    setEditOriginal(null);
+    setEditSaved(false);
+    setErrors({});
+    // replace (not push) so pressing Back from the list doesn't re-open the editor.
+    if (restoreUrl && editIdFromPath()) window.history.replaceState({}, '', '/employees');
+  };
+
+  /** The single guarded exit — Cancel, breadcrumb, close button and Escape. */
+  const closeEditor = async () => {
+    if (isEditDirty()) {
+      const ok = await ui.confirm({
+        title: 'Unsaved changes',
+        message: 'You have unsaved changes. Leave without saving?',
+        confirmText: 'Leave',
+        cancelText: 'Stay',
+        variant: 'warning',
+      });
+      if (!ok) return;
+    }
+    exitEditor();
+  };
+
+  // ── Keep the editor and the URL in step ────────────────────────────────────
+  // Deep link / refresh: /employees/:id/edit opens that employee on mount.
+  useEffect(() => {
+    const id = editIdFromPath();
+    if (id) openEditorById(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Browser Back/Forward. A popstate has already happened by the time we see it,
+  // so an unsaved-changes "Stay" has to push the editor URL back on.
+  useEffect(() => {
+    const onPop = () => {
+      const id = editIdFromPath();
+      if (id) {
+        if (!editEmp || String(editEmp.id) !== id) openEditorById(id);
+        return;
+      }
+      if (!editEmp) return;
+      if (!isEditDirty()) { exitEditor(false); return; }
+      const target = editPathFor(editEmp.id);
+      ui.confirm({
+        title: 'Unsaved changes',
+        message: 'You have unsaved changes. Leave without saving?',
+        confirmText: 'Leave',
+        cancelText: 'Stay',
+        variant: 'warning',
+      }).then((ok) => {
+        if (ok) exitEditor(false);
+        else window.history.pushState({ employeeEdit: String(editEmp.id) }, '', target);
+      });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [editEmp, isEditDirty, openEditorById]);
+
+  // Closing the tab / reloading with unsaved edits gets the browser's own prompt.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!isEditDirty()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isEditDirty]);
 
   // Revert every field back to the values loaded when editing began.
   const handleResetEdit = () => {
@@ -1011,29 +1426,41 @@ export const Employees: React.FC<EmployeesProps> = ({
     return unique;
   }, [employees, activeCompanyId, companies]);
 
-  // A compact fingerprint of the client roster (id + status). It changes on any
-  // add / delete / archive / offboard / status-edit / import / temp-conversion —
+  // A compact fingerprint of the client roster. It changes on any add / delete /
+  // archive / offboard / status-edit / import / temp-conversion / FIELD EDIT —
   // every mutation flows through onUpdateEmployees — so using it as a fetch
   // dependency re-pulls the authoritative table AND counts together, keeping them
   // synchronized in real time without a page refresh.
+  //
+  // `updatedAt` is load-bearing, not decoration. The fingerprint used to be
+  // `id:status` alone, and editing personal details changes neither: the roster
+  // looked identical, the effect below never re-ran, and `paginatedData` kept the
+  // PRE-EDIT server rows. Since the table renders from `paginatedData` — and
+  // opening an employee seeds the form from the row object it was given — a saved
+  // change appeared to vanish the moment you went back to the list and reopened
+  // the person, even though the database had committed it correctly.
   const rosterSignature = useMemo(
-    () => companyEmployees.map(e => `${e.id}:${e.status}`).join('|'),
+    () => companyEmployees.map(e => `${e.id}:${e.status}:${(e as any).updatedAt || ''}`).join('|'),
     [companyEmployees]
   );
 
   const filterDepartments = useMemo(() => {
     const set = new Set<string>();
-    const branchEmps = employees.filter(e => {
-      const matchComp = isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId);
-      const matchBranch = !branchFilter || (e.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
-      return matchComp && matchBranch;
-    });
+    const branchEmps = employees.filter(e =>
+      isCompanyIdMatch(e.companyId, activeCompanyId, companies, e.branchLocation, e.branchId)
+    );
     branchEmps.forEach(e => {
       if (e.department) set.add(e.department.trim().toUpperCase());
       if (e.designation) set.add(e.designation.trim().toUpperCase());
     });
     return Array.from(set).sort();
-  }, [employees, activeCompanyId, companies, branchFilter]);
+  }, [employees, activeCompanyId, companies]);
+
+  // Built once per roster change, not on every keystroke in the combobox.
+  const deptFilterOptions = useMemo(
+    () => filterDepartments.map(d => ({ value: d, label: d })),
+    [filterDepartments]
+  );
 
   const formDepartments = useMemo(() => {
     const set = new Set<string>();
@@ -1111,17 +1538,16 @@ export const Employees: React.FC<EmployeesProps> = ({
         (emp.designation || '').toLowerCase().includes(search.toLowerCase());
       const matchesDept = !deptFilter || emp.department === deptFilter || emp.designation === deptFilter;
       const matchesStatus = !statusFilter || emp.status === statusFilter;
-      const matchesBranch = !branchFilter || (emp.branchLocation || '').toUpperCase() === branchFilter.toUpperCase();
-      return matchesSearch && matchesDept && matchesStatus && matchesBranch;
+      return matchesSearch && matchesDept && matchesStatus;
     })
       // Default ordering: Employee ID ascending (Company → Branch → numeric seq).
       .sort(byEmployeeCode(e => e.employeeId));
-  }, [companyEmployees, search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+  }, [companyEmployees, search, deptFilter, statusFilter, activeMainTab]);
 
   // Reset page to 1 when filters change
   useEffect(() => {
     setPage(1);
-  }, [search, deptFilter, statusFilter, branchFilter, activeMainTab]);
+  }, [search, deptFilter, statusFilter, activeMainTab]);
 
   // Fetch server-side paginated data + authoritative counts for the current view.
   // The Temporary/Approvals tabs render their own dataset, but we still refresh the
@@ -1143,7 +1569,6 @@ export const Employees: React.FC<EmployeesProps> = ({
         if (search) params.search = search;
         if (deptFilter) params.department = deptFilter;
         if (statusFilter) params.status = statusFilter;
-        if (branchFilter) params.branch = branchFilter;
 
         const res = await api.employees.getPaginated(params) as any;
         if (!isMounted || !res) return;
@@ -1169,7 +1594,7 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     fetchPaginated();
     return () => { isMounted = false; };
-  }, [page, limit, search, deptFilter, statusFilter, branchFilter, activeCompanyId, activeMainTab, rosterSignature]);
+  }, [page, limit, search, deptFilter, statusFilter, activeCompanyId, activeMainTab, rosterSignature]);
 
   // Master Statistics Calculations
   const stats = useMemo(() => {
@@ -1179,9 +1604,8 @@ export const Employees: React.FC<EmployeesProps> = ({
     // because a branch's staff are archived.
     const total = companyEmployees.length;
     const active = activeRoster.length;
-    const verifiedPayroll = activeRoster.filter(e => e.pfNumber && e.bankName && e.accountNumber).length;
     const pendingExits = activeRoster.filter(e => e.exitDate && !e.exitReason).length;
-    return { total, active, verifiedPayroll, pendingExits };
+    return { total, active, pendingExits };
   }, [companyEmployees]);
 
   // ── Canonical workforce reconciliation (single source of truth) ──────────────
@@ -1229,6 +1653,21 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   // Add Validation & Execution
   const handleAddSubmit = async () => {
+    // The gate blocks the button, but the click still arrives (by design) — and
+    // the Review tab can be reached directly from the tab header. Refuse here,
+    // send the user to the step that is actually incomplete, and never let a
+    // partial record reach the API.
+    if (!addAllStepsValid) {
+      const stepErrors = { personal: validateAddSection('personal'), job: validateAddSection('job') };
+      const firstBadStep = (['personal', 'job'] as const).find(s => Object.keys(stepErrors[s]).length);
+      if (firstBadStep) {
+        setErrors(prev => ({ ...prev, ...stepErrors[firstBadStep] }));
+        setActiveTab(firstBadStep);
+        setTimeout(() => focusField(Object.keys(stepErrors[firstBadStep])[0]), 80);
+      }
+      return;
+    }
+
     const effectiveAadhaarName = form.aadhaarName || form.name;
     const effectiveEmail = form.email || '';
 
@@ -1394,7 +1833,7 @@ export const Employees: React.FC<EmployeesProps> = ({
       // Structured fields joined into the same master-schema string columns, so the
       // DB mapping is unchanged (Quick Add onboarding assembles addresses identically).
       presentAddress: buildAddressString(form, 'p_'),
-      permanentAddress: form.sameAsPresent ? buildAddressString(form, 'p_') : buildAddressString(form, 'q_'),
+      permanentAddress: (form as any).sameAsPresent ? buildAddressString(form, 'p_') : buildAddressString(form, 'q_'),
       shiftId: form.shiftId ? Number(form.shiftId) : null,
 
       // Bonus configuration
@@ -1418,8 +1857,30 @@ export const Employees: React.FC<EmployeesProps> = ({
 
     try {
       // Step 1 — create the employee (nominee records are created ONLY after this succeeds).
-      const savedEmp = await api.employees.create(newEmp);
+      // Re-onboarding goes to its own endpoint: it creates a second, brand-new
+      // employment record from this reviewed copy and leaves the previous record
+      // locked. Anything the wizard does not collect is inherited server-side
+      // from the old record, so the returning employee keeps their history of
+      // compliance IDs, bank details and addresses without re-keying.
+      const savedEmp = reOnboardSource
+        ? (await api.employees.reOnboard(reOnboardSource.id, newEmp)).employee
+        : await api.employees.create(newEmp);
       onUpdateEmployees([savedEmp, ...employees]);
+
+      // Step 1b — file the bank verification against the employee that now exists.
+      // The verification ran before this row did, so its record was written with no
+      // employee id; linking it here is what makes the employee's verification
+      // history findable. Linkage only — the verification result is not re-run and
+      // no credit is charged. A failure here costs nothing but the link, so it must
+      // never fail the registration that already succeeded.
+      const verificationRef = (form as any).verificationReferenceId;
+      if (verificationRef && savedEmp?.id) {
+        try {
+          await api.bank.linkVerification({ referenceId: verificationRef, employeeId: savedEmp.id });
+        } catch (linkErr) {
+          console.warn('[Employees] Could not link the bank verification record:', linkErr);
+        }
+      }
 
       // Step 2 — save the staged nominees together, in a single transaction (all-or-none).
       let nomineeNote = '';
@@ -1432,15 +1893,34 @@ export const Employees: React.FC<EmployeesProps> = ({
         }
       }
       setAddOpen(false);
-      ui.toast.success(`${form.name} registered successfully${nomineeNote}.`);
+      ui.toast.success(
+        reOnboardSource
+          ? `${form.name} re-onboarded as ${savedEmp.employeeId}. The previous record (${reOnboardSource.employeeId}) stays locked.`
+          : `${form.name} registered successfully${nomineeNote}.`
+      );
       // Open the profile on the Nominees tab so the saved nominees are visible and
       // any remaining ones can be completed.
-      setActiveTab('nominees');
-      setViewEmp(savedEmp);
+      openProfile(savedEmp, 'nominees');
       setWizardNominees([]);
+      // Land on Active: the person now lives there, and leaving the user on the
+      // Previous tab would make the re-onboarding look like it did nothing.
+      if (reOnboardSource) setActiveMainTab('active');
+      setReOnboardSource(null);
     } catch (err: any) {
       console.error(err);
-      ui.toast.error(`Failed to save to database: ${err.message}`);
+      // A server-side mandatory-field rejection comes back per field — mark the
+      // exact inputs and jump to the first one, rather than a single vague toast.
+      const fieldErrors = getApiFieldErrors(err);
+      if (Object.keys(fieldErrors).length) {
+        setErrors(prev => ({ ...prev, ...fieldErrors }));
+        const firstBadStep = (['personal', 'job'] as const)
+          .find(s => (ADD_STEP_FIELD_KEYS[s] || []).some(k => fieldErrors[k]));
+        if (firstBadStep) setActiveTab(firstBadStep);
+        setTimeout(() => focusField(Object.keys(fieldErrors)[0]), 80);
+        ui.toast.error(getApiErrorMessage(err, 'Some required fields are missing or invalid.'));
+        return;
+      }
+      ui.toast.error(getApiErrorMessage(err, 'Failed to save to database.'));
     }
   };
 
@@ -1473,6 +1953,14 @@ export const Employees: React.FC<EmployeesProps> = ({
   // save = success banner + continue). Both persist through the SAME update API.
   const handleEditSubmit = async (mode: 'draft' | 'save' = 'save') => {
     if (!editEmp) return;
+
+    // The editor is a real route, so it can be reached by URL even when the
+    // buttons that open it are hidden. Refuse the save here too — otherwise the
+    // user fills in a whole form only to meet a 403 from the server.
+    if (isRecordLocked(editEmp, role)) {
+      await ui.alert({ title: 'Record locked', message: LOCKED_RECORD_MESSAGE, variant: 'warning' });
+      return;
+    }
     setEditSaved(false);
 
     const nameErr = validateName(editEmp.name).error;
@@ -1586,6 +2074,13 @@ export const Employees: React.FC<EmployeesProps> = ({
     try {
       api.employees.update(updatedEmp.id, updatedEmp).then(savedEmp => {
         onUpdateEmployees(employees.map(e => e.id === updatedEmp.id ? savedEmp : e));
+        // The table renders from `paginatedData`, so patch that row too. The
+        // roster fingerprint also re-pulls the page from the server, but this
+        // makes the list correct the instant the user navigates back instead of
+        // one round-trip later.
+        setPaginatedData(rows => rows.map(r => (String(r.id) === String(updatedEmp.id) ? (savedEmp as any) : r)));
+        // If the read-only profile panel is open on this person, refresh it too.
+        setViewEmp(v => (v && String(v.id) === String(updatedEmp.id) ? (savedEmp as any) : v));
         // Stay on the full-page editor. Refresh the working copy + baseline with
         // the saved record so the user can keep editing from a clean state.
         const seeded = { ...savedEmp, confirmAccountNumber: (savedEmp as any).accountNumber || '' } as any;
@@ -2024,6 +2519,11 @@ export const Employees: React.FC<EmployeesProps> = ({
 
   return (
     <div className="space-y-3 font-sans text-left">
+      {/* Employee Management list. Hidden — not unmounted — while the profile
+          page is open, so list state (filters, paging, scroll) survives the trip
+          and Back returns you exactly where you were. Dialog-variant modals
+          nested here still portal to <body>, so none of them are affected. */}
+      <div className={viewEmp ? 'hidden' : 'space-y-3'}>
       {/* Compact single-row enterprise toolbar: title + counters + actions all on
           one line on desktop; wraps only on tablet/mobile. */}
       <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -2127,25 +2627,35 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       )}
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Metrics Row — three cards, so the grid is 3-up from `sm` and they widen
+          to fill the row rather than leaving a hole where the fourth used to be.
+          Deliberately NOT 2-up on phones: three items in a 2-column grid drop the
+          last card into a half-width row of its own, which is exactly the ragged
+          gap this change was meant to remove. Full-width stacked reads cleanly. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" />
         <StatCard label="Active Personnel" value={countAudit.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
-        <StatCard label="Verified Payroll " value={stats.verifiedPayroll} icon={<ShieldCheck size={16} className="text-brand-600" />} color="bg-brand-50" />
         <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
 
-      {/* Filters */}
-      <Card>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+      {/* Filters — overflow-visible so the department combobox panel can hang
+          outside the card instead of being clipped by Card's overflow-hidden. */}
+      <Card className="overflow-visible">
+        {/* Branch is already chosen by the workspace scope selector in the top
+            bar, so a second branch dropdown here only duplicated it. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Input placeholder="Search code, name, designation..." value={search} onChange={e => setSearch(e.target.value)} icon={<Search size={14} />} />
 
-          <Select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
-            options={[{ value: '', label: 'All Branches' }, ...branchOptions.map(b => ({ value: b, label: b }))]}
-          />
-
-          <Select value={deptFilter} onChange={e => setDeptFilter(e.target.value)}
-            options={[{ value: '', label: 'All Depts' }, ...filterDepartments.map(d => ({ value: d, label: d }))]}
+          {/* Searchable: a company can carry 100+ departments/designations, and a
+              native <select> only key-matches the first characters. */}
+          <SearchSelect
+            value={deptFilter}
+            onChange={setDeptFilter}
+            options={deptFilterOptions}
+            allLabel="All Departments"
+            ariaLabel="Filter by department"
+            placeholder="Search departments…"
+            emptyText="No departments found."
           />
 
           <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
@@ -2319,7 +2829,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Td className="px-2 py-1 text-center"><span className="text-[11px] font-semibold text-slate-500">{(page - 1) * limit + idx + 1}</span></Td>
                     <Td className="px-2 py-1"><span className="text-[11px] font-bold text-slate-800">{emp.employeeId}</span></Td>
                     <Td className="px-2 py-1">
-                      <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => setViewEmp(emp)}>
+                      <div className="flex items-center gap-1.5 cursor-pointer" onClick={() => openProfile(emp)}>
                         <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center font-bold text-[9px] text-slate-600 ring-1 ring-slate-200 shrink-0">
                           {emp.avatar || 'EM'}
                         </div>
@@ -2337,7 +2847,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Td className="px-2 py-1 w-24">
                       <div className="flex items-center justify-center gap-1 whitespace-nowrap">
                         <button
-                          onClick={() => setViewEmp(emp)}
+                          onClick={() => openProfile(emp)}
                           className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
                           title="View Master File"
                         >
@@ -2363,16 +2873,39 @@ export const Employees: React.FC<EmployeesProps> = ({
                             </button>
                           </>
                         )}
-                        {/* Archived / offboarded = historical record → View only.
-                          Restore/Edit is reserved for Super Admin. */}
-                        {isOffboarded(emp.status) && role === 'Super Admin' && (
-                          <button
-                            onClick={() => handleStartEdit(emp)}
-                            className="p-1 hover:bg-emerald-50 rounded text-slate-500 hover:text-emerald-600 transition"
-                            title="Edit / Restore (Super Admin)"
-                          >
-                            <Edit2 size={13} />
-                          </button>
+                        {/* Previous employee = locked historical record. The only
+                            write available is re-onboarding, which creates a NEW
+                            record and leaves this one untouched. */}
+                        {isOffboarded(emp.status) && (
+                          <>
+                            <button
+                              onClick={() => openProfile(emp, 'documents')}
+                              className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-brand-600 transition"
+                              title="View / Download Documents"
+                            >
+                              <FileText size={13} />
+                            </button>
+                            {canCreate && (
+                              <button
+                                onClick={() => handleStartReOnboard(emp)}
+                                className="p-1 hover:bg-emerald-50 rounded text-emerald-600 hover:text-emerald-700 transition"
+                                title="Re-Onboard Employee"
+                              >
+                                <RotateCcw size={13} />
+                              </button>
+                            )}
+                            {/* Break-glass data correction, Super Admin only —
+                                the server enforces the same exception. */}
+                            {role === 'Super Admin' && (
+                              <button
+                                onClick={() => handleStartEdit(emp)}
+                                className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
+                                title="Edit locked record (Super Admin override)"
+                              >
+                                <Edit2 size={13} />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </Td>
@@ -2422,12 +2955,18 @@ export const Employees: React.FC<EmployeesProps> = ({
       <Modal open={quickOpen} onClose={() => setQuickOpen(false)} title="Quick Employee Registration (Temporary)" size="sm">
         <div className="space-y-3 text-left">
           <p className="text-[11px] text-slate-500">Create a temporary employee in seconds — only Name, Mobile &amp; Branch are required. Complete the rest later and convert to a permanent employee.</p>
-          <Input label="Employee Name *" value={quickForm.name} onChange={e => setQuickForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" />
+          <Input id="field-quickName" label="Employee Name *" value={quickForm.name} onChange={e => setQuickForm(f => ({ ...f, name: e.target.value }))} onBlur={() => quickGate.touch('quickName')} error={quickGate.visibleErrors.quickName} placeholder="Full name" />
           <div>
-            <Input label="Mobile Number *" value={quickForm.mobile}
-              onChange={e => { setMobileDup(null); setQuickForm(f => ({ ...f, mobile: e.target.value.replace(/[^0-9+]/g, '') })); }}
+            {/* Normalised through the shared field registry, so typing, pasting
+                and validation behave exactly as they do everywhere else: digits
+                only, capped at 10, and a pasted "+91 98765 43210" reduces to the
+                subscriber number instead of being rejected. */}
+            <Input id="field-quickMobile" label="Mobile Number *" value={quickForm.mobile}
+              inputMode="tel" maxLength={10}
+              onChange={e => { setMobileDup(null); setQuickForm(f => ({ ...f, mobile: normalizeField('mobile', e.target.value) })); }}
               onBlur={e => checkMobileLive(e.target.value)}
-              placeholder="10-digit mobile" />
+              placeholder="10-digit mobile"
+              error={quickForm.mobile && !quickMobileValid ? quickMobileError : undefined} />
             {mobileChecking && <p className="mt-1 text-[10px] text-slate-400">Checking mobile number…</p>}
             {mobileDup && (
               <p className="mt-1 text-[11px] font-medium text-rose-600">
@@ -2446,13 +2985,25 @@ export const Employees: React.FC<EmployeesProps> = ({
               <p className="mt-1 text-[10px] text-slate-400">Set by the current workspace scope. Switch scope to assign a different branch.</p>
             </div>
           ) : (
-            <Select label="Branch *" value={quickForm.branch} onChange={e => setQuickForm(f => ({ ...f, branch: e.target.value }))}
+            <Select id="field-quickBranch" label="Branch *" value={quickForm.branch} onChange={e => setQuickForm(f => ({ ...f, branch: e.target.value }))}
+              onBlur={() => quickGate.touch('quickBranch')} error={quickGate.visibleErrors.quickBranch}
               options={[{ value: '', label: 'Select branch…' }, ...branchOptions.map(b => ({ value: b, label: b }))]} />
           )}
           <Input label="Department (optional)" value={quickForm.department} onChange={e => setQuickForm(f => ({ ...f, department: e.target.value }))} placeholder="e.g. Operations" />
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" size="sm" onClick={() => setQuickOpen(false)}>Cancel</Button>
-            <Button size="sm" className="bg-amber-500 hover:bg-amber-600" loading={tempBusy} disabled={!!mobileDup || mobileChecking} onClick={handleQuickCreate}>Create Temporary Employee</Button>
+            {/* Blocked until name, 10-digit mobile and branch are all valid.
+                A duplicate mobile / in-flight check is a genuine hard disable —
+                there is nothing for the user to fix by clicking. */}
+            <Button
+              size="sm"
+              className="bg-amber-500 hover:bg-amber-600"
+              loading={tempBusy}
+              disabled={!!mobileDup || mobileChecking}
+              blocked={!quickGate.isValid}
+              blockedReason={quickGate.blockedReason}
+              onClick={() => quickGate.attemptSubmit(handleQuickCreate)}
+            >Create Temporary Employee</Button>
           </div>
         </div>
       </Modal>
@@ -2631,37 +3182,74 @@ export const Employees: React.FC<EmployeesProps> = ({
         )}
       </Modal>
 
-      {/* View Master Drawer/Modal */}
-      {/* ── Full-page Employee Profile (replaces the old popup) ── */}
-      <Modal
-        open={!!viewEmp}
-        onClose={() => setViewEmp(null)}
-        variant="page"
-        title="Employee Profile"
-        subtitle={viewEmp ? `${viewEmp.name} · ${viewEmp.employeeId || '—'}` : undefined}
-        breadcrumbs={[
-          { label: 'Employee Management', onClick: () => setViewEmp(null) },
-          { label: 'Profile' },
-          { label: viewEmp?.name || 'Employee' },
-        ]}
-        context={currentComp?.name || undefined}
-        footer={viewEmp && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setViewEmp(null)}>Back</Button>
-            {canEdit && !isOffboarded(viewEmp.status) && (
-              <Button size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Employee</Button>
-            )}
-            <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={() => printEmployeeProfile(viewEmp, currentComp?.name || 'Company')}>Print Profile</Button>
-            <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={() => downloadEmployeeProfilePdf(viewEmp, currentComp?.name || 'Company')}>Download PDF</Button>
+      </div>
+      {/* ── EMPLOYEE PROFILE PAGE ───────────────────────────────────────────────
+          A page, not an overlay. It renders in the normal flow at /employees/:id,
+          takes the full content width, and scrolls with the page — there is no
+          portal, no absolute/fixed positioning and no nested scroll region, so it
+          cannot be clipped or compressed by whatever container it happens to sit
+          in. The header/action bar below replicate what the old page-variant
+          Modal chrome provided; the profile body itself is unchanged. */}
+      {viewEmp && (
+        <section className="space-y-3" aria-label="Employee Profile">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
+            <div className="px-4 pt-3 pb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 flex-wrap">
+              <button onClick={closeProfile} className="hover:text-brand-600 transition-colors">Employee Management</button>
+              <ChevronRight size={11} className="text-slate-300" />
+              <span>Profile</span>
+              <ChevronRight size={11} className="text-slate-300" />
+              <span className="text-slate-700">{viewEmp.name}</span>
+            </div>
+            <div className="px-4 pb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <button onClick={closeProfile} className="flex items-center gap-1 text-xs font-bold text-slate-600 hover:text-brand-600 transition shrink-0">
+                  <ChevronLeft size={16} /> Back
+                </button>
+                <div className="border-l border-slate-200 pl-3">
+                  <h2 className="text-base font-extrabold text-slate-800 leading-tight">Employee Profile</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{viewEmp.name} · {viewEmp.employeeId || '—'}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {currentComp?.name && (
+                  <span className="text-[11px] font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">{currentComp.name}</span>
+                )}
+                {/* A locked record offers Re-Onboard where an active one offers Edit —
+                    the two are mutually exclusive by design. */}
+                {isOffboarded(viewEmp.status) ? (
+                  canCreate && (
+                    <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => handleStartReOnboard(viewEmp)}>Re-Onboard Employee</Button>
+                  )
+                ) : (
+                  canEdit && (
+                    <Button size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit Employee</Button>
+                  )
+                )}
+                {isOffboarded(viewEmp.status) && role === 'Super Admin' && (
+                  <Button variant="outline" size="sm" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit (Super Admin)</Button>
+                )}
+                <Button variant="outline" size="sm" icon={<Printer size={13} />} onClick={() => printEmployeeProfile(viewEmp, currentComp?.name || 'Company')}>Print Profile</Button>
+                <Button variant="outline" size="sm" icon={<Download size={13} />} onClick={() => downloadEmployeeProfilePdf(viewEmp, currentComp?.name || 'Company')}>Download PDF</Button>
+              </div>
+            </div>
           </div>
-        )}
-      >
         {viewEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
             {isOffboarded(viewEmp.status) && (
-              <div className="px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-300 text-amber-800">
-                <p className="text-[12px] font-bold">Archived Employee Record</p>
-                <p className="text-[11px] font-medium mt-0.5">This employee is no longer active. Data is available in read-only mode.</p>
+              <div className="flex flex-wrap items-start gap-3 px-3.5 py-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900">
+                <Lock size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-bold">Record Locked — Previous Employee</p>
+                  <p className="text-[11px] font-medium mt-0.5">{LOCKED_RECORD_MESSAGE}</p>
+                  {role === 'Super Admin' && (
+                    <p className="text-[10px] mt-1 text-amber-700">
+                      You are a Super Admin: you retain a break-glass edit on this record for data corrections. Every such edit is audited.
+                    </p>
+                  )}
+                </div>
+                {canCreate && (
+                  <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => handleStartReOnboard(viewEmp)}>Re-Onboard</Button>
+                )}
               </div>
             )}
             {/* Profile header — photo, identity, status + key employment facts */}
@@ -2777,11 +3365,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                   )}
                 </div>
 
-                {/* Quick Actions */}
-                {canEdit && (
+                {/* Quick Actions — withdrawn on a locked previous employee. */}
+                {canEdit && !isViewLocked && (
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" icon={<Plus size={13} />} onClick={() => setAddBonusOpen(true)}>Add Bonus</Button>
-                    <Button size="sm" variant="outline" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; setViewEmp(null); handleStartEdit(emp); }}>Edit Bonus</Button>
+                    <Button size="sm" variant="outline" icon={<Edit2 size={13} />} onClick={() => { const emp = viewEmp; closeProfile(); handleStartEdit(emp); }}>Edit Bonus</Button>
                     <Button size="sm" variant="outline" icon={<XCircle size={13} />} onClick={handleDisableBonus} disabled={!viewEmp.bonusApplicable}>Disable Bonus</Button>
                   </div>
                 )}
@@ -2823,6 +3411,25 @@ export const Employees: React.FC<EmployeesProps> = ({
 
             {activeTab === 'banking' && (
               <div className="space-y-3.5 p-1">
+                {/* Permanent bank verification state (§11). Reads the stored
+                    record — opening a profile never calls the provider or spends
+                    a credit. Reverify hands off to the editor, which is the only
+                    place in the app that can run a paid verification. */}
+                <EmployeeBankVerificationPanel
+                  employee={{
+                    id: viewEmp.id,
+                    code: viewEmp.employeeId,
+                    name: viewEmp.name,
+                    bankVerificationStatus: (viewEmp as any).bankVerificationStatus,
+                    bankVerificationRefId: (viewEmp as any).bankVerificationRefId,
+                    bankVerifiedAt: (viewEmp as any).bankVerifiedAt,
+                    bankVerifiedBy: (viewEmp as any).bankVerifiedBy,
+                    bankVerificationProvider: (viewEmp as any).bankVerificationProvider,
+                  }}
+                  companyName={currentComp?.name || null}
+                  onReverify={canEdit ? () => { setViewEmp(null); openEditorById(viewEmp.id, viewEmp); setActiveTab('banking'); } : undefined}
+                />
+
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <p className="text-[10px] text-gray-400">Bank Name</p>
@@ -2955,20 +3562,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.photoUpload} download={`${viewEmp.name}_photo.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          {canEdit && (
+                          {canEditDocs && (
                             <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
-                        canEdit && (
+                        canEditDocs && (
                           <button onClick={() => document.getElementById('upload-photoUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
                       )}
-                      {canEdit && <input type="file" id="upload-photoUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'photoUpload')} />}
+                      {canEditDocs && <input type="file" id="upload-photoUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'photoUpload')} />}
                     </div>
                   </div>
 
@@ -3004,20 +3611,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.aadhaarUpload} download={`${viewEmp.name}_aadhaar.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          {canEdit && (
+                          {canEditDocs && (
                             <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
-                        canEdit && (
+                        canEditDocs && (
                           <button onClick={() => document.getElementById('upload-aadhaarUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
                       )}
-                      {canEdit && <input type="file" id="upload-aadhaarUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'aadhaarUpload')} />}
+                      {canEditDocs && <input type="file" id="upload-aadhaarUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'aadhaarUpload')} />}
                     </div>
                   </div>
 
@@ -3053,20 +3660,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.panUpload} download={`${viewEmp.name}_pan.pdf`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          {canEdit && (
+                          {canEditDocs && (
                             <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
-                        canEdit && (
+                        canEditDocs && (
                           <button onClick={() => document.getElementById('upload-panUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
                       )}
-                      {canEdit && <input type="file" id="upload-panUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'panUpload')} />}
+                      {canEditDocs && <input type="file" id="upload-panUpload" className="hidden" accept=".pdf,image/*" onChange={e => handleFileChange(e, 'panUpload')} />}
                     </div>
                   </div>
 
@@ -3099,20 +3706,20 @@ export const Employees: React.FC<EmployeesProps> = ({
                           <a href={viewEmp.signatureUpload} download={`${viewEmp.name}_signature.jpg`} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                             Download
                           </a>
-                          {canEdit && (
+                          {canEditDocs && (
                             <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="px-2 py-0.5 bg-slate-800/40 hover:bg-slate-700/60 border border-slate-700/50 hover:border-brand-500/50 text-slate-200 rounded text-[9px] font-bold transition">
                               Replace
                             </button>
                           )}
                         </>
                       ) : (
-                        canEdit && (
+                        canEditDocs && (
                           <button onClick={() => document.getElementById('upload-signatureUpload')?.click()} className="w-full py-1 bg-brand-600 hover:bg-brand-700 text-white rounded text-[9px] font-bold transition flex items-center justify-center gap-1">
                             <Upload size={10} /> Upload
                           </button>
                         )
                       )}
-                      {canEdit && <input type="file" id="upload-signatureUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'signatureUpload')} />}
+                      {canEditDocs && <input type="file" id="upload-signatureUpload" className="hidden" accept="image/*" onChange={e => handleFileChange(e, 'signatureUpload')} />}
                     </div>
                   </div>
                 </div>
@@ -3164,7 +3771,8 @@ export const Employees: React.FC<EmployeesProps> = ({
             )}
           </div>
         )}
-      </Modal>
+        </section>
+      )}
 
       {/* Add one-time bonus (festival / performance / custom) to an employee's history */}
       <Modal
@@ -3394,45 +4002,102 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Modal>
 
-      {/* Add Employee Master — dedicated full-page registration wizard */}
+      {/* Add Employee Master — dedicated full-page registration wizard. Doubles
+          as the Re-Onboarding page: same steps, prefilled from the previous
+          record, submitting to the re-onboard endpoint. */}
       <Modal
         open={addOpen}
-        onClose={() => setAddOpen(false)}
-        title="Register Master Employee File"
+        onClose={closeAddWizard}
+        title={reOnboardSource ? 'Re-Onboard Employee' : 'Register Master Employee File'}
         variant="page"
-        breadcrumbs={[{ label: 'Employees', onClick: () => setAddOpen(false) }, { label: 'Register Employee' }]}
-        subtitle="Complete all steps to create the employee master file."
+        breadcrumbs={[{ label: 'Employees', onClick: closeAddWizard }, { label: reOnboardSource ? 'Re-Onboard Employee' : 'Register Employee' }]}
+        subtitle={reOnboardSource
+          ? `Review the details carried over from ${reOnboardSource.employeeId}. Submitting creates a new active record.`
+          : 'Complete all steps to create the employee master file.'}
         context={form.branchLocation ? `Branch: ${form.branchLocation}` : undefined}
         size="md"
         footer={
           <div className="flex items-center justify-between w-full gap-2">
             <div>
+              {/* Back is routed through the same gate as the step tabs. It is
+                  normally allowed (the previous step must be complete to have
+                  got here), but if that step was since invalidated this refuses
+                  rather than dropping the user onto a locked screen. */}
               {activeTab !== 'personal' && (
-                <Button variant="outline" onClick={() => { const i = ADD_STEPS.indexOf(activeTab as any); if (i > 0) setActiveTab(ADD_STEPS[i - 1]); }}>← Back</Button>
+                <Button variant="outline" onClick={() => { const i = ADD_STEPS.indexOf(activeTab as any); if (i > 0) goToAddStep(ADD_STEPS[i - 1]); }}>← Back</Button>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setAddOpen(false)}>Cancel</Button>
-              {canEdit && (activeTab === 'review'
-                ? <Button onClick={handleAddSubmit}>Complete Registration</Button>
-                : <Button onClick={handleSaveContinue}>Save &amp; Continue →</Button>)}
+              <Button variant="outline" onClick={closeAddWizard}>Cancel</Button>
+              {/* Re-onboarding is a CREATE, so it follows the create permission.
+                  Both actions are gated: the final step on EVERY step's rules,
+                  intermediate steps on their own. `blocked` styles the button as
+                  disabled but keeps the click, which reports what is missing. */}
+              {(reOnboardSource ? canCreate : canEdit) && (activeTab === 'review'
+                ? <Button
+                    onClick={handleAddSubmit}
+                    blocked={!addAllStepsValid}
+                    blockedReason="Complete Personal Info and Employment Details first"
+                  >{reOnboardSource ? 'Complete Re-Onboarding' : 'Complete Registration'}</Button>
+                : <Button
+                    onClick={handleSaveContinue}
+                    blocked={!addGate.isValid}
+                    blockedReason={addGate.blockedReason}
+                  >Save &amp; Continue →</Button>)}
             </div>
           </div>
         }
       >
         <div className="space-y-4 text-left text-xs font-sans">
+          {reOnboardSource && (
+            <div className="flex items-start gap-2.5 px-3.5 py-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900">
+              <RotateCcw size={15} className="mt-0.5 shrink-0 text-emerald-600" />
+              <div>
+                <p className="text-[12px] font-bold">Re-onboarding {reOnboardSource.name}</p>
+                <p className="text-[11px] font-medium mt-0.5">
+                  Details are carried over from the locked record <strong>{reOnboardSource.employeeId}</strong>. A new employee
+                  code is issued on submit, and a fresh biometric enrolment is required. The previous record — and its
+                  attendance and payroll history — stays locked and unchanged.
+                </p>
+              </div>
+            </div>
+          )}
           {stepMsg && (
             <div className="px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">✓ {stepMsg}</div>
           )}
-          {/* Tabs header in dialog */}
-          <div className="flex border-b border-gray-200 gap-3 text-xs">
-            <button onClick={() => setActiveTab('personal')} className={`pb-1.5 font-bold transition ${activeTab === 'personal' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>1. Personal Info</button>
-            <button onClick={() => setActiveTab('job')} className={`pb-1.5 font-bold transition ${activeTab === 'job' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>2. Employment Details</button>
-            <button onClick={() => setActiveTab('bonus')} className={`pb-1.5 font-bold transition ${activeTab === 'bonus' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>3. Compensation Configuration</button>
-            <button onClick={() => setActiveTab('banking')} className={`pb-1.5 font-bold transition ${activeTab === 'banking' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>4. Compliance & Bank</button>
-            <button onClick={() => setActiveTab('address')} className={`pb-1.5 font-bold transition ${activeTab === 'address' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>5. Addresses</button>
-            <button onClick={() => setActiveTab('nominees')} className={`pb-1.5 font-bold transition ${activeTab === 'nominees' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>6. Nominees</button>
-            <button onClick={() => setActiveTab('review')} className={`pb-1.5 font-bold transition ${activeTab === 'review' ? 'border-b-2 border-brand-600 text-brand-600' : 'text-gray-400 hover:text-gray-600'}`}>7. Review</button>
+          {/* ── Step navigation ─────────────────────────────────────────────
+              Strictly sequential. A step is reachable only once EVERY earlier
+              step is complete; a completed step stays reachable so it can be
+              reviewed and corrected. Because completion is derived (saved AND
+              still valid), correcting an early step into an invalid state
+              re-locks everything after it automatically — there is no separate
+              invalidation cascade to keep in sync. */}
+          <div className="flex flex-wrap border-b border-gray-200 gap-x-3 gap-y-1 text-xs">
+            {ADD_STEPS.map((s, i) => {
+              const done = isAddStepComplete(s);
+              const unlocked = isAddStepUnlocked(s);
+              const current = activeTab === s;
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => goToAddStep(s)}
+                  aria-current={current ? 'step' : undefined}
+                  aria-disabled={!unlocked}
+                  title={unlocked ? undefined : LOCKED_STEP_MESSAGE}
+                  className={`pb-1.5 font-bold transition inline-flex items-center gap-1 ${
+                    current ? 'border-b-2 border-brand-600 text-brand-600'
+                      : !unlocked ? 'text-slate-300 cursor-not-allowed'
+                      : done ? 'text-emerald-600 hover:text-emerald-700'
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {!unlocked && <Lock size={11} className="shrink-0" />}
+                  {unlocked && done && !current && <CheckCircle2 size={11} className="shrink-0" />}
+                  {i + 1}. {ADD_STEP_LABELS[s]}
+                </button>
+              );
+            })}
           </div>
 
           {/* Validation summary — lists this step's missing/invalid fields; click to jump */}
@@ -3513,10 +4178,10 @@ export const Employees: React.FC<EmployeesProps> = ({
                     <Input value="VE-<BRANCH>-#### (auto on save)" disabled />
                   ) : (
                     <Input id="field-employeeId" placeholder="e.g. VE-CONTRACT-001" value={form.employeeId}
-                      onChange={e => setForm({ ...form, employeeId: e.target.value.toUpperCase() })} error={errors.employeeId} />
+                      onChange={e => setForm({ ...form, employeeId: e.target.value.toUpperCase() })} error={addErrors.employeeId} />
                   )}
                 </div>
-                <Input id="field-aadhaarName" label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={errors.aadhaarName || errors.name} />
+                <Input id="field-aadhaarName" label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={addErrors.aadhaarName || addErrors.name} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <Input id="field-firstName" label="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
@@ -3524,32 +4189,32 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <Input id="field-lastName" label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Select id="field-gender" label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
-                <Input id="field-dob" label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} error={errors.dob} />
-                <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
+                <Select id="field-gender" label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={addErrors.gender} />
+                <Input id="field-dob" label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} error={addErrors.dob} />
+                <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={addErrors.maritalStatus} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <CreatableSelect id="field-state" label="State *" value={form.state} options={stateOptions}
-                  placeholder="Select or type a state" error={errors.state}
+                  placeholder="Select or type a state" error={addErrors.state}
                   onChange={v => setForm({ ...form, state: v, city: (form.state && v !== form.state) ? '' : form.city })} onCreate={rememberState} />
                 <CreatableSelect id="field-city" label="City *" value={form.city} options={cityOptionsFor(form.state)}
-                  placeholder={form.state ? 'Select or type a city' : 'Select a state first'} error={errors.city}
+                  placeholder={form.state ? 'Select or type a city' : 'Select a state first'} error={addErrors.city}
                   disabled={!form.state}
                   onChange={v => setForm({ ...form, city: v })} onCreate={v => rememberCity(form.state, v)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <CreatableSelect id="field-nationality" label="Nationality *" value={form.nationality} options={countryOptions}
-                  placeholder="Select a country" error={errors.nationality} allowCustom={isSuperAdmin}
+                  placeholder="Select a country" error={addErrors.nationality} allowCustom={isSuperAdmin}
                   onChange={v => setForm({ ...form, nationality: v })} onCreate={rememberCountry} />
-                <Input id="field-phone" label="Mobile Number *" value={form.mobileNumber} onChange={e => setForm({ ...form, mobileNumber: e.target.value })} error={errors.phone} />
+                <Input id="field-phone" label="Mobile Number *" value={form.mobileNumber} inputMode="tel" maxLength={10} onChange={e => setForm({ ...form, mobileNumber: normalizeField('mobile', e.target.value) })} error={addErrors.phone} />
               </div>
               <div className="grid grid-cols-1 gap-3">
-                <Input id="field-email" label="Email Address (Optional)" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} error={errors.email} />
+                <Input id="field-email" label="Email Address (Optional)" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} error={addErrors.email} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input id="field-fatherSpouseName" label="Father/Spouse Name" value={form.fatherSpouseName} onChange={e => setForm({ ...form, fatherSpouseName: e.target.value })} error={errors.fatherSpouseName} />
+                <Input id="field-fatherSpouseName" label="Father/Spouse Name" value={form.fatherSpouseName} onChange={e => setForm({ ...form, fatherSpouseName: e.target.value })} error={addErrors.fatherSpouseName} />
                 <Select id="field-relationType" label="Relation" value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
-                <Input id="field-emergencyContact" label="Emergency Phone" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} />
+                <Input id="field-emergencyContact" label="Emergency Phone" value={form.emergencyContact} inputMode="tel" maxLength={10} onChange={e => setForm({ ...form, emergencyContact: normalizeField('mobile', e.target.value) })} />
               </div>
             </div>
           )}
@@ -3557,23 +4222,23 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'job' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Select id="field-branchLocation" label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={[{ value: '', label: 'Head Office / None' }, ...branchOptions.map(b => ({ value: b, label: b }))]} disabled={isBranchWorkspace} error={errors.branchLocation} />
-                <Select id="field-department" label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} error={errors.department} />
+                <Select id="field-branchLocation" label="Branch Location *" value={form.branchLocation} onChange={e => setForm({ ...form, branchLocation: e.target.value })} options={[{ value: '', label: 'Head Office / None' }, ...branchOptions.map(b => ({ value: b, label: b }))]} disabled={isBranchWorkspace} error={addErrors.branchLocation} />
+                <Select id="field-department" label="Department *" value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} options={formDepartments.map(d => ({ value: d, label: d }))} error={addErrors.department} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Select id="field-designation" label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} error={errors.designation} />
-                <Select id="field-category" label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} error={errors.category} />
+                <Select id="field-designation" label="Designation *" value={form.designation} onChange={e => setForm({ ...form, designation: e.target.value })} options={dynamicDesignations.map(d => ({ value: d, label: d }))} error={addErrors.designation} />
+                <Select id="field-category" label="Employment Class *" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} options={categoryOptions.map(c => ({ value: c, label: c }))} error={addErrors.category} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Select id="field-employmentType" label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={errors.employmentType} />
-                <Input id="field-joinDate" label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={errors.joinDate} />
+                <Select id="field-employmentType" label="Employment Type *" value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })} options={employmentTypeOptions.map(t => ({ value: t, label: t }))} error={addErrors.employmentType} />
+                <Input id="field-joinDate" label="Joining Date *" type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} error={addErrors.joinDate} />
               </div>
               <div>
                 <Input id="field-biometricId" label="Biometric Code (Optional)" maxLength={50} placeholder="e.g. 0001" value={form.biometricId} onChange={e => setForm({ ...form, biometricId: e.target.value })} />
                 <p className="text-[10px] text-slate-400 mt-1">Attendance-machine code (a.k.a. Machine Employee Code). Must be unique within the company. This is NOT the Employee ID. Leave blank if biometric attendance is not used.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={errors.salary} />
+                <Input id="field-salary" label="Salary (Monthly Basic) *" type="number" value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} error={addErrors.salary} />
                 <Input id="field-manager" label="Manager" value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -3606,22 +4271,34 @@ export const Employees: React.FC<EmployeesProps> = ({
           {activeTab === 'banking' && (
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
-                <Input id="field-aadhaar" label="Aadhaar Number" placeholder="1234 5678 9012" className="font-mono tracking-wider" value={formatAadhaar(form.aadhaar)} onChange={e => setForm({ ...form, aadhaar: rawAadhaar(e.target.value) })} error={errors.aadhaar} />
-                <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(form.pan)} onChange={e => setForm({ ...form, pan: rawPan(e.target.value) })} error={errors.pan} />
+                <Input id="field-aadhaar" label="Aadhaar Number" placeholder="1234 5678 9012" className="font-mono tracking-wider" value={formatAadhaar(form.aadhaar)} onChange={e => setForm({ ...form, aadhaar: rawAadhaar(e.target.value) })} error={addErrors.aadhaar} />
+                <Input id="field-pan" label="PAN Card" placeholder="ABCDE1234F" className="font-mono" value={formatPan(form.pan)} onChange={e => setForm({ ...form, pan: rawPan(e.target.value) })} error={addErrors.pan} />
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={errors.pfNumber} />
-                <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={errors.uan} />
-                <Input id="field-esic" label="ESIC IP Number (Optional)" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={errors.esic} />
+                <Input id="field-pfNumber" label="Provident Fund (PF) No (Optional)" value={form.pfNumber} onChange={e => setForm({ ...form, pfNumber: e.target.value })} error={addErrors.pfNumber} />
+                <Input id="field-uan" label="Universal Account No (UAN) (Optional)" value={form.uan} onChange={e => setForm({ ...form, uan: e.target.value.replace(/\D/g, '').slice(0, 12) })} error={addErrors.uan} />
+                <Input id="field-esic" label="ESIC IP Number (Optional)" value={form.esic} onChange={e => setForm({ ...form, esic: e.target.value })} error={addErrors.esic} />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={form.wcPolicyNumber} onChange={e => setForm({ ...form, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
+                <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={form.wcPolicyNumber} onChange={e => setForm({ ...form, wcPolicyNumber: e.target.value.slice(0, 100) })} error={addErrors.wcPolicyNumber} />
               </div>
               <BankDetails
-                data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState }}
+                data={{ accountHolderName: form.accountHolderName, accountNumber: form.accountNumber, confirmAccountNumber: form.confirmAccountNumber, ifsc: form.ifsc, bankName: form.bankName, bankBranch: form.bankBranch, bankAddress: form.bankAddress, bankCity: form.bankCity, bankDistrict: form.bankDistrict, bankState: form.bankState, micr: (form as any).micr, swift: (form as any).swift, verificationStatus: (form as any).verificationStatus, verificationReferenceId: (form as any).verificationReferenceId, verifiedAt: (form as any).verifiedAt, manualOverride: (form as any).manualOverride }}
                 onChange={patch => setForm((f: any) => ({ ...f, ...patch }))}
                 errors={errors}
                 disabled={!canEdit}
+                /* No employee row exists yet during registration — the name is
+                   what the bank name-match needs, and the record is linked to the
+                   employee id after the employee is created. */
+                employee={{
+                  name: [form.firstName, (form as any).middleName, form.lastName].filter(Boolean).join(' ').trim() || (form as any).name || null,
+                  email: form.email || null,
+                  phone: form.mobileNumber || null,
+                  department: form.department || null,
+                  designation: form.designation || null,
+                  branch: (form as any).branchLocation || null,
+                }}
+                companyName={currentComp?.name || null}
               />
             </div>
           )}
@@ -3632,30 +4309,61 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
       </Modal>
 
-      {/* ── Full-page Employee Editor (replaces the old popup) ── */}
+      {/* ── Full-page Employee Editor — its own route, /employees/:id/edit ──
+          `editLoading` keeps the page open while a deep link or a refresh fetches
+          the record, so the employee list never flashes behind an empty editor. */}
       <Modal
-        open={!!editEmp}
-        onClose={() => setEditEmp(null)}
+        open={!!editEmp || editLoading}
+        onClose={closeEditor}
         variant="page"
         title="Edit Employee"
         subtitle={editEmp ? `${editEmp.name} · ${editEmp.employeeId || '—'}` : undefined}
         breadcrumbs={[
-          { label: 'Employee Management', onClick: () => setEditEmp(null) },
+          { label: 'Employee Management', onClick: closeEditor },
           { label: 'Edit' },
           { label: editEmp?.name || 'Employee' },
         ]}
         context={currentComp?.name || undefined}
         footer={editEmp && (
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setEditEmp(null)}>Cancel</Button>
+            <Button variant="outline" size="sm" onClick={closeEditor}>Cancel</Button>
             <Button variant="outline" size="sm" icon={<RotateCcw size={13} />} onClick={handleResetEdit}>Reset</Button>
-            {canEdit && <Button variant="outline" size="sm" onClick={() => handleEditSubmit('draft')}>Save Draft</Button>}
-            {canEdit && <Button size="sm" onClick={() => handleEditSubmit('save')}>Save Changes</Button>}
+            {canEdit && !isRecordLocked(editEmp, role) && (
+              <Button variant="outline" size="sm" blocked={!editGate.isValid} blockedReason={editGate.blockedReason}
+                onClick={() => editGate.attemptSubmit(() => handleEditSubmit('draft'))}>Save Draft</Button>
+            )}
+            {canEdit && !isRecordLocked(editEmp, role) && (
+              <Button size="sm" blocked={!editGate.isValid} blockedReason={editGate.blockedReason}
+                onClick={() => editGate.attemptSubmit(() => handleEditSubmit('save'))}>Save Changes</Button>
+            )}
           </div>
         )}
       >
+        {!editEmp && editLoading && (
+          <div className="space-y-4">
+            <div className="h-24 rounded-xl shimmer-skeleton" />
+            <div className="h-9 w-full max-w-md rounded-lg shimmer-skeleton" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-12 rounded-lg shimmer-skeleton" />)}
+            </div>
+          </div>
+        )}
         {editEmp && (
           <div className="space-y-4 text-left text-xs font-sans">
+            {/* Locked previous employee reached by URL: state it up front rather
+                than letting the user fill in a form the server will refuse. */}
+            {isRecordLocked(editEmp, role) && (
+              <div className="flex flex-wrap items-start gap-3 px-3.5 py-3 rounded-lg bg-amber-50 border border-amber-300 text-amber-900">
+                <Lock size={15} className="mt-0.5 shrink-0 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-bold">Record Locked — Previous Employee</p>
+                  <p className="text-[11px] font-medium mt-0.5">{LOCKED_RECORD_MESSAGE}</p>
+                </div>
+                {canCreate && (
+                  <Button size="sm" icon={<RotateCcw size={13} />} onClick={() => { const emp = editEmp; exitEditor(); handleStartReOnboard(emp); }}>Re-Onboard</Button>
+                )}
+              </div>
+            )}
             {/* Editor header — photo + identity + key employment facts */}
             <div className="flex flex-wrap items-center gap-4 p-4 bg-white border border-slate-200 rounded-xl shadow-sm">
               {editEmp.photoUpload ? (
@@ -3685,8 +4393,10 @@ export const Employees: React.FC<EmployeesProps> = ({
               <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
                 <p className="text-xs font-bold text-emerald-700 flex items-center gap-1.5"><CheckCircle2 size={14} /> Employee updated successfully.</p>
                 <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setEditEmp(null)}>Back to Employee List</Button>
-                  <Button size="sm" variant="outline" onClick={() => { const emp = editEmp; setEditEmp(null); setViewEmp(emp); setActiveTab('personal'); }}>View Employee</Button>
+                  <Button size="sm" variant="outline" icon={<ArrowLeft size={13} />} onClick={closeEditor}>Back to Employees</Button>
+                  {/* Switching to the read-only profile also leaves the editor,
+                      so it goes through the same unsaved-changes guard. */}
+                  <Button size="sm" variant="outline" onClick={async () => { const emp = editEmp; if (isEditDirty() && !(await ui.confirm({ title: 'Unsaved changes', message: 'You have unsaved changes. Leave without saving?', confirmText: 'Leave', cancelText: 'Stay', variant: 'warning' }))) return; exitEditor(); openProfile(emp, 'personal'); }}>View Employee</Button>
                 </div>
               </div>
             )}
@@ -3750,7 +4460,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <CreatableSelect label="Nationality *" value={editEmp.nationality || DEFAULT_COUNTRY} options={countryOptions}
                     placeholder="Select a country" error={errors.nationality} allowCustom={isSuperAdmin}
                     onChange={v => setEditEmp({ ...editEmp, nationality: v })} onCreate={rememberCountry} />
-                  <Input id="field-phone" label="Mobile Number *" value={editMobileNumber} onChange={e => setEditMobileNumber(e.target.value)} error={errors.phone} />
+                  <Input id="field-phone" label="Mobile Number *" value={editMobileNumber} inputMode="tel" maxLength={10} onChange={e => setEditMobileNumber(normalizeField('mobile', e.target.value))} error={errors.phone} />
                 </div>
                 <div className="grid grid-cols-1 gap-3">
                   <Input id="field-email" label="Email Address (Optional)" value={editEmp.email || ''} onChange={e => setEditEmp({ ...editEmp, email: e.target.value })} error={errors.email} />
@@ -3758,7 +4468,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 <div className="grid grid-cols-3 gap-3">
                   <Input id="field-fatherSpouseName" label="Father/Spouse Name" value={editEmp.fatherSpouseName || ''} onChange={e => setEditEmp({ ...editEmp, fatherSpouseName: e.target.value })} error={errors.fatherSpouseName} />
                   <Select id="field-relationType" label="Relation" value={editEmp.relationType || 'FATHER'} onChange={e => setEditEmp({ ...editEmp, relationType: e.target.value })} options={[{ value: 'FATHER', label: 'FATHER' }, { value: 'SPOUSE', label: 'SPOUSE' }, { value: 'MOTHER', label: 'MOTHER' }]} />
-                  <Input id="field-emergencyContact" label="Emergency Phone" value={editEmp.emergencyContact || ''} onChange={e => setEditEmp({ ...editEmp, emergencyContact: e.target.value })} />
+                  <Input id="field-emergencyContact" label="Emergency Phone" value={editEmp.emergencyContact || ''} inputMode="tel" maxLength={10} onChange={e => setEditEmp({ ...editEmp, emergencyContact: normalizeField('mobile', e.target.value) })} />
                 </div>
               </div>
             )}
@@ -3822,10 +4532,23 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input id="field-wcPolicyNumber" label="Workmen Compensation (WC) Policy No. (Optional)" placeholder="e.g. WC-1234/2026" maxLength={100} value={(editEmp as any).wcPolicyNumber || ''} onChange={e => setEditEmp({ ...editEmp, wcPolicyNumber: e.target.value.slice(0, 100) })} error={errors.wcPolicyNumber} />
                 </div>
                 <BankDetails
-                  data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState }}
+                  data={{ accountHolderName: (editEmp as any).accountHolderName, accountNumber: editEmp.accountNumber, confirmAccountNumber: (editEmp as any).confirmAccountNumber, ifsc: editEmp.ifsc, bankName: editEmp.bankName, bankBranch: (editEmp as any).bankBranch, bankAddress: (editEmp as any).bankAddress, bankCity: (editEmp as any).bankCity, bankDistrict: (editEmp as any).bankDistrict, bankState: (editEmp as any).bankState, micr: (editEmp as any).micr, swift: (editEmp as any).swift, verificationStatus: (editEmp as any).bankVerificationStatus || (editEmp as any).verificationStatus, verificationReferenceId: (editEmp as any).bankVerificationRefId || (editEmp as any).verificationReferenceId, verifiedAt: (editEmp as any).bankVerifiedAt || (editEmp as any).verifiedAt, manualOverride: (editEmp as any).manualOverride }}
                   onChange={patch => setEditEmp((e: any) => ({ ...e, ...patch }))}
                   errors={errors}
                   disabled={!canEdit}
+                  /* An existing employee: the stored verification record is looked
+                     up by this id, so the full report opens without re-verifying. */
+                  employee={{
+                    id: (editEmp as any).id ?? null,
+                    code: editEmp.employeeId || null,
+                    name: editEmp.name || null,
+                    email: editEmp.email || null,
+                    phone: editEmp.phone || null,
+                    department: editEmp.department || null,
+                    designation: editEmp.designation || null,
+                    branch: (editEmp as any).branchLocation || null,
+                  }}
+                  companyName={currentComp?.name || null}
                 />
               </div>
             )}

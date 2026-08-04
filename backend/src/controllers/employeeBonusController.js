@@ -66,7 +66,10 @@ exports.create = async (req, res) => {
     });
     if (!emp) return res.status(404).json({ error: 'Employee not found.' });
 
-    const monthlySalary = (Number(emp.salary) || 0) / 12;
+    // `Employee.salary` is already the MONTHLY gross (see payrollController's
+    // recalcOne). Dividing by 12 made a percentage bonus here one twelfth of the
+    // amount payrollController.applyBonus computes for the same action.
+    const monthlySalary = Number(emp.salary) || 0;
     const amount = resolveAmount(b, monthlySalary);
 
     const row = await prisma.employeeBonus.create({

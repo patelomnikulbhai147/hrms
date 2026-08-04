@@ -1,0 +1,39 @@
+ZeniaHR - Module Demo
+=====================
+
+This folder contains two demo screens from the ZeniaHR platform.
+
+   1. payroll.html             - Payroll Management
+   2. invoice-management.html  - Invoice Management
+
+HOW TO OPEN
+-----------
+Double-click either file. It opens in your web browser
+(Chrome, Edge, Firefox or Safari).
+
+Nothing needs to be installed. No login, no internet connection
+and no setup is required.
+
+WHAT YOU CAN TRY
+----------------
+Payroll
+   - Search for an employee, or filter by branch / department
+   - Click any row's eye icon to see the full salary breakdown
+     (earnings, deductions, net salary)
+   - Tick employees to see the payroll workflow scope update
+   - Try "Generate Payroll", "Apply Bonus" and "Export"
+
+Invoice Management
+   - Move between the tabs at the top
+   - Search invoices, or filter by status
+   - Click any invoice row to open it - customer details,
+     line items, GST breakdown and payment history
+   - Try "Record Payment" - the totals and status update live
+   - Try "Print / Download" for the printable tax invoice
+
+NOTE
+----
+This is a demonstration using sample data. The figures, employee
+names and company names shown are examples only.
+
+For the best experience, view on a laptop or desktop screen.

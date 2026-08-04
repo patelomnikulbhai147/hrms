@@ -17,6 +17,8 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
 const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
+// Branch-aware workspace authorisation (utils/workspaceScope.js).
+const { canEnterWorkspace } = require('../utils/workspaceScope');
 
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
 const isSuper = (req) => req.user?.role === 'Super Admin';
@@ -158,10 +160,11 @@ exports.getDashboard = async (req, res) => {
   try {
     const companyId = idParam(req.params.companyId);
     if (!companyId) return res.status(400).json({ error: 'companyId is required.' });
-    // Non-super users may only view their own company's beta dashboard.
-    if (!isSuper(req)) {
-      const allowed = [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
-      if (!allowed.includes(companyId)) return res.status(403).json({ error: 'Unauthorized.' });
+    // Non-super users may only view their own company's beta dashboard. The
+    // check is branch-aware: a branch workspace resolves to its parent company,
+    // whose id is what this dashboard is keyed by.
+    if (!isSuper(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'Unauthorized.' });
     }
     res.json(await computeDashboard(companyId));
   } catch (e) { return respondError(res, e); }

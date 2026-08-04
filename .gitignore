@@ -28,3 +28,13 @@ dist.zip
 
 # Local backup of backend/.env taken during the email de-branding change (holds SMTP creds)
 backend/.env.bak-*
+# Browser QA screenshots (real employee names) + the capture script that creates a
+# temporary login to take them — same reason as qa-proof/ above: local only.
+screenshots/
+backend/scripts/shotOvertimeScreen.js
+backend/scripts/shotLeaveEligibility.js
+# Ad-hoc Cashfree probes with a PRODUCTION client id/secret pasted inline. Never
+# commit these — a payment-provider secret in git history cannot be un-published,
+# it can only be rotated. Use backend/.env (CASHFREE_PROD_*) instead.
+backend/scripts/cashfree_audit.js
+backend/scripts/phase2_test.js

@@ -15,6 +15,17 @@ export default defineConfig({
       "@": path.resolve(__dirname, "frontend/src"),
     },
   },
+  // Strip developer logging from PRODUCTION bundles only.
+  //
+  // 31 `console.log` calls were shipping to users — noise in their console, and
+  // several print request payloads and workspace ids. Dropped at build time
+  // rather than deleted from source, so local development keeps every log and no
+  // 31-file mechanical edit is needed. `console.error`/`warn` are deliberately
+  // KEPT: real failures must still surface in a production browser console.
+  esbuild: {
+    drop: process.env.NODE_ENV === "production" ? ["debugger"] : [],
+    pure: process.env.NODE_ENV === "production" ? ["console.log", "console.debug", "console.info"] : [],
+  },
   build: {
     // Split heavy, rarely-changing libraries into their own chunks so the
     // browser caches them across deploys and the initial route loads less JS.

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Lock, Mail, Eye, EyeOff, ShieldCheck, Users, BarChart3, KeyRound, RefreshCw,
   CalendarDays, Wallet, FileText, Zap, ArrowRight, Globe, ChevronDown,
@@ -124,6 +124,15 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
       console.error('Failed to load internal CAPTCHA:', err);
     }
   };
+
+  // White-label branding when the app is served on a mapped custom tenant
+  // domain (public endpoint; returns null on the default app host).
+  const [hostBrand, setHostBrand] = useState<any | null>(null);
+  useEffect(() => {
+    api.customDomain.hostBranding(window.location.hostname)
+      .then((res: any) => setHostBrand(res?.branding || null))
+      .catch(() => { /* default branding */ });
+  }, []);
 
   const loadGoogleRecaptcha = (info: any) => {
     const siteKey = info.captchaType === 'google_v2' ? info.googleV2SiteKey : info.googleV3SiteKey;
@@ -394,8 +403,10 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   };
 
   // ── Shared presentation tokens (login-scoped only) ──────────────────────────
-  const BROWN = '#C67B49';       // brand accent — wordmark "HR", links
-  const NAVY = '#16284A';        // primary action (Sign In)
+  // On a white-labelled custom domain the company's colors replace the defaults.
+  const wl = hostBrand?.whiteLabel || null;
+  const BROWN = wl?.secondaryColor || '#C67B49';  // brand accent — wordmark "HR", links
+  const NAVY = wl?.primaryColor || '#16284A';     // primary action (Sign In)
   const inputBase =
     // Height compresses with viewport height so short / display-scaled desktops
     // (e.g. 1366×768 @ 125%) never push the card into an inner scrollbar. Caps at
@@ -448,7 +459,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             office (windows, desks, plants, cabins) stays recognizable. Lazy; fades
             in on load, ambient shows meanwhile. */}
         <img
-          src="/login-office.jpg"
+          src={wl?.loginBackground || '/login-office.jpg'}
           alt=""
           aria-hidden="true"
           loading="lazy"
@@ -507,7 +518,11 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
 
             {/* Central brand showcase — square logo tile (no outer circle) on a soft pedestal */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-              <ZeniaLogo size={116} radius={220} className="rounded-[24%] shadow-[0_16px_44px_-16px_rgba(199,126,82,0.38)] ring-1 ring-black/[0.05]" />
+              {wl?.logoUrl ? (
+                <img src={wl.logoUrl} alt="" className="w-[116px] h-[116px] object-contain rounded-[24%] bg-white shadow-[0_16px_44px_-16px_rgba(16,24,40,0.30)] ring-1 ring-black/[0.05]" />
+              ) : (
+                <ZeniaLogo size={116} radius={220} className="rounded-[24%] shadow-[0_16px_44px_-16px_rgba(199,126,82,0.38)] ring-1 ring-black/[0.05]" />
+              )}
               {/* Pedestal — soft light, low intensity */}
               <div className="relative -mt-1">
                 <div className="w-[104px] h-[22px] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(240,203,174,0.55),rgba(240,203,174,0)_70%)] blur-[2px]" />
@@ -519,7 +534,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
           {/* Compact brand mark — mobile only */}
           <div className="lg:hidden mb-4">
             <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-[0_10px_30px_-14px_rgba(199,126,82,0.35)] ring-1 ring-black/[0.04]">
-              <ZeniaLogo size={52} radius={220} className="rounded-[24%]" />
+              {wl?.logoUrl ? <img src={wl.logoUrl} alt="" className="w-[52px] h-[52px] object-contain rounded-[24%]" /> : <ZeniaLogo size={52} radius={220} className="rounded-[24%]" />}
             </div>
           </div>
 
@@ -537,8 +552,11 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
             className="text-[34px] leading-none font-bold tracking-tight font-heading mb-2"
             style={{ textShadow: '0 1px 2px rgba(255,255,255,0.9), 0 2px 10px rgba(255,255,255,0.7)' }}
           >
-            {/* One seamless wordmark: adjacent spans, no gap. Zenia=navy, HR=bronze. */}
-            <span style={{ color: NAVY }}>Zenia</span><span style={{ color: BROWN }}>HR</span>
+            {/* One seamless wordmark: adjacent spans, no gap. Zenia=navy, HR=bronze.
+                On a white-labelled custom domain the company's own name replaces it. */}
+            {hostBrand?.companyName && wl?.hideZeniaBranding !== false
+              ? <span style={{ color: NAVY }}>{hostBrand.companyName}</span>
+              : <><span style={{ color: NAVY }}>Zenia</span><span style={{ color: BROWN }}>HR</span></>}
           </h1>
           <h2
             className="text-[15px] font-semibold text-slate-700 mb-3"
@@ -552,6 +570,11 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
           >
             Manage your employees, payroll, attendance, and more from a single powerful platform.
           </p>
+          {wl && (wl.footerText || wl.supportEmail || wl.supportPhone) && (
+            <p className="text-slate-600 text-[12px] font-medium mb-4" style={{ textShadow: '0 1px 6px rgba(255,255,255,0.7)' }}>
+              {[wl.footerText, wl.supportEmail, wl.supportPhone].filter(Boolean).join(' · ')}
+            </p>
+          )}
 
           {/* Trust badges */}
           <div className="flex flex-wrap items-center justify-center gap-3">
@@ -597,12 +620,54 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
                   </div>
 
-                  <div className="mb-[clamp(12px,2.2vh,20px)]">
-                    <h3 className="text-[28px] font-extrabold text-slate-900 mb-1 font-heading tracking-tight flex items-center gap-2">
-                      Welcome back! <span className="inline-block" aria-hidden="true">👋</span>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                    className="mb-[clamp(12px,2.2vh,20px)]"
+                  >
+                    <h3 className="text-[28px] mb-1 flex items-center gap-2">
+                      <span 
+                        className="font-[900] tracking-[0.02em] text-slate-900"
+                        style={{ 
+                          fontFamily: "'Inter', 'Manrope', 'Poppins', sans-serif",
+                          filter: "drop-shadow(0px 1px 1px rgba(0,0,0,0.1)) drop-shadow(0px 0px 12px rgba(199,126,82,0.25))"
+                        }}
+                      >
+                        Welcome back!
+                      </span>
+                      <motion.span 
+                        className="inline-block text-[24px]" 
+                        aria-hidden="true"
+                        animate={{ y: [0, -4, 0] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                      >
+                        👋
+                      </motion.span>
                     </h3>
-                    <p className="text-slate-500 text-[14px] font-medium">Sign in to your super admin account</p>
-                  </div>
+                    <p className="text-slate-500 text-[14px] font-medium">
+                      Sign in to continue to{" "}
+                      <span className="relative inline-block group cursor-default">
+                        <span 
+                          className="relative z-10 font-[800] transition-all duration-200 ease-in-out group-hover:brightness-110"
+                          style={{
+                            background: "linear-gradient(135deg, #99552F 0%, #C77E52 50%, #E0996A 100%)",
+                            WebkitBackgroundClip: "text",
+                            WebkitTextFillColor: "transparent",
+                            backgroundClip: "text",
+                            color: "transparent",
+                            filter: "drop-shadow(0px 1px 1px rgba(0,0,0,0.15))"
+                          }}
+                        >
+                          ZeniaHR
+                        </span>
+                        <span 
+                          className="absolute inset-0 z-0 bg-[#C77E52] blur-[8px] opacity-10 transition-opacity duration-200 ease-in-out group-hover:opacity-30"
+                          aria-hidden="true"
+                        ></span>
+                      </span>.
+                    </p>
+                  </motion.div>
 
                   <form onSubmit={handleLoginSubmit} className="space-y-[clamp(10px,1.6vh,14px)]">
                     {sessionMessage && !error && (
@@ -722,7 +787,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                     </div>
 
                     <div className="pt-1">
-                      <button type="submit" disabled={submitting} className={primaryBtn}>
+                      <button type="submit" disabled={submitting} className={primaryBtn} style={wl?.primaryColor ? { backgroundColor: NAVY } : undefined}>
                         <Lock size={18} strokeWidth={2.5} />
                         {submitting ? 'Signing In…' : 'Sign In'}
                         <ArrowRight size={18} strokeWidth={2.5} className="absolute right-5" />
@@ -817,7 +882,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         />
                       </div>
                       <div className="pt-2 space-y-3">
-                        <button type="submit" disabled={submitting} className={primaryBtn}>
+                        <button type="submit" disabled={submitting} className={primaryBtn} style={wl?.primaryColor ? { backgroundColor: NAVY } : undefined}>
                           {submitting ? 'Sending…' : 'Send Verification Code'}
                         </button>
                         <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full h-12 bg-white border border-slate-200 hover:bg-slate-50 text-[15px] font-bold text-slate-600 rounded-2xl transition-all duration-200 active:scale-[0.98]">
@@ -845,7 +910,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         />
                       </div>
                       <div className="pt-2 space-y-3">
-                        <button type="submit" disabled={submitting} className={primaryBtn}>
+                        <button type="submit" disabled={submitting} className={primaryBtn} style={wl?.primaryColor ? { backgroundColor: NAVY } : undefined}>
                           {submitting ? 'Verifying…' : 'Verify Code'}
                         </button>
                         <button type="button" onClick={() => { setError(''); setSuccessMsg(''); setOtp(''); handleRequestOtp(new Event('submit') as any); }} className="w-full text-[13px] font-semibold transition-colors hover:opacity-80" style={{ color: BROWN }}>
@@ -877,7 +942,7 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
                         </button>
                       </div>
                       <div className="pt-2 space-y-3">
-                        <button type="submit" disabled={submitting} className={primaryBtn}>
+                        <button type="submit" disabled={submitting} className={primaryBtn} style={wl?.primaryColor ? { backgroundColor: NAVY } : undefined}>
                           {submitting ? 'Resetting…' : 'Reset Password'}
                         </button>
                         <button type="button" onClick={() => { setIsForgotPassword(false); resetForgotFlow(); }} className="w-full h-12 bg-white border border-slate-200 hover:bg-slate-50 text-[15px] font-bold text-slate-600 rounded-2xl transition-all duration-200 active:scale-[0.98]">

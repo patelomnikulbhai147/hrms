@@ -9,6 +9,12 @@ router.use(require('../middleware/readOnlyMiddleware')); // offboarded company �
 
 router.get('/', requirePermission('attendance', 'view'), controller.getAll);
 router.get('/analytics', requirePermission('attendance', 'view'), controller.getAnalytics);
+// Full-report destinations for the dashboard's "View Full Report" actions.
+// Read-only, so they ride on the same `attendance:view` permission as the tiles
+// that link to them — a user who can see the card can open its report, and one
+// who cannot see the card cannot reach the report by URL either.
+router.get('/workforce-report', requirePermission('attendance', 'view'), controller.workforceReport);
+router.get('/department-report', requirePermission('attendance', 'view'), controller.departmentReport);
 router.post('/sync-payroll', requirePermission('attendance', 'edit'), controller.syncPayroll);
 // Push to Payroll Engine — transfer the finalized attendance calculation into the
 // Payroll module (creates payroll records from the snapshot; NO recalculation).

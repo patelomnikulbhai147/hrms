@@ -15,7 +15,9 @@ const ecrEngine = require('../services/ecrEngine');
 const REPORT_ROLES = ['Super Admin', 'Company Head', 'HR'];
 const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 const actorOf = (req) => req.user?.name || req.user?.email || 'System';
-const companyScopeFor = (req) => [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
+// Branch-aware: company-wide grants plus the parent company of each accessible
+// branch (ECR files are company-level). See utils/workspaceScope.js.
+const { companyScopeFor } = require('../utils/workspaceScope');
 const canAccess = (req) => REPORT_ROLES.includes(req.user?.role);
 
 /**

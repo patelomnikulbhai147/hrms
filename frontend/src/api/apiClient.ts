@@ -99,10 +99,18 @@ async function apiFetch(url: string, options?: RequestInit) {
       if (code === 'EMPLOYEE_LIMIT_REACHED') {
         try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
       }
+      // The audited Support Session backing a Super Admin's masquerade is gone
+      // (hard expiry, or ended in another tab). Broadcast so App can leave
+      // masquerade instead of leaving the tab stuck in a workspace where every
+      // employee-PII request 403s and looks like a backend outage.
+      if (code === 'SUPPORT_SESSION_REQUIRED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:support-session-expired', { detail: body })); } catch (_) { /* ignore */ }
+      }
       const err: any = new Error(msg);
       err.status = res.status;
       err.code = code;
       err.data = body; // full parsed body (e.g. { duplicate: {...} } for 409s)
+      err.response = { data: body, status: res.status };
       throw err;
     }
     return await res.json();
@@ -131,7 +139,100 @@ async function apiFetch(url: string, options?: RequestInit) {
   }
 }
 
+function resolveUrl(url: string, params?: Record<string, any>) {
+  let cleanUrl = url;
+  if (cleanUrl.startsWith('/api/') && BASE_URL.endsWith('/api')) {
+    cleanUrl = cleanUrl.slice(4);
+  }
+  let fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `${BASE_URL}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+  if (params) {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== '') qs.append(k, String(v));
+    });
+    const queryString = qs.toString();
+    if (queryString) {
+      fullUrl += (fullUrl.includes('?') ? '&' : '?') + queryString;
+    }
+  }
+  return fullUrl;
+}
+
+async function apiFetchWithMeta(url: string, options?: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const _hadToken = !!authStorage.get('hrms_jwt_token');
+  if (_hadToken) authStorage.markActivity();
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    let body: any = null;
+    try {
+      body = await res.json();
+    } catch (_) {}
+    if (!res.ok) {
+      let msg = body?.error || body?.message || '';
+      const code = body?.code;
+      if (!msg) {
+        if (res.status === 401) msg = 'Your session has expired. Please sign in again.';
+        else if (res.status === 403) msg = 'You do not have permission to perform this action.';
+        else if (res.status === 404) msg = 'The requested record was not found.';
+        else if (res.status === 503) msg = 'The database is currently unreachable. Please try again shortly.';
+        else if (res.status >= 500) msg = 'The server encountered an error. Please try again.';
+        else msg = `Request failed (HTTP ${res.status}).`;
+      }
+      if (res.status === 401 && _hadToken) {
+        authStorage.clearSession();
+        authStorage.broadcastLogout('expired');
+        try { window.dispatchEvent(new CustomEvent('hrms:unauthorized')); } catch (_) { /* ignore */ }
+      }
+      if (code === 'EMPLOYEE_LIMIT_REACHED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:employee-limit', { detail: body })); } catch (_) { /* ignore */ }
+      }
+      if (code === 'SUPPORT_SESSION_REQUIRED') {
+        try { window.dispatchEvent(new CustomEvent('hrms:support-session-expired', { detail: body })); } catch (_) { /* ignore */ }
+      }
+      const err: any = new Error(msg);
+      err.status = res.status;
+      err.code = code;
+      err.data = body;
+      err.response = { data: body, status: res.status };
+      throw err;
+    }
+    return { data: body, status: res.status };
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      const e: any = new Error('The request timed out. The server took too long to respond.');
+      e.isTimeout = true;
+      e.isNetworkError = true;
+      console.error('API Client Timeout:', url);
+      throw e;
+    }
+    if (err instanceof TypeError) {
+      const e: any = new Error('Cannot reach the server. Please check your connection and try again.');
+      e.isNetworkError = true;
+      console.error('API Client Network Error:', url, err.message);
+      throw e;
+    }
+    console.error('API Client Error:', err);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const api = {
+  get: async (url: string, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'GET', headers: { ...getHeaders(), ...(config?.headers || {}) } });
+  },
+  post: async (url: string, body?: any, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'POST', headers: { ...getHeaders(), ...(config?.headers || {}) }, body: body ? JSON.stringify(body) : undefined });
+  },
+  put: async (url: string, body?: any, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'PUT', headers: { ...getHeaders(), ...(config?.headers || {}) }, body: body ? JSON.stringify(body) : undefined });
+  },
+  delete: async (url: string, config?: { params?: any; headers?: any }) => {
+    return await apiFetchWithMeta(resolveUrl(url, config?.params), { method: 'DELETE', headers: { ...getHeaders(), ...(config?.headers || {}) } });
+  },
   auth: {
     login: async (credentials: any) => {
       return await apiFetch(`${BASE_URL}/auth/login`, {
@@ -211,6 +312,15 @@ export const api = {
   companies: {
     getAll: async () => {
       return await apiFetch(`${BASE_URL}/companies`, { headers: getHeaders() });
+    },
+    /**
+     * Heavy branding artwork (seal / letterhead / signature) for ONE company.
+     * getAll deliberately omits these — together they were 95% of its payload.
+     * Use `ensureCompanyAssets` in utils/companyAssets.ts rather than calling
+     * this directly; it caches and de-duplicates.
+     */
+    getAssets: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/companies/${encodeURIComponent(String(id))}/assets`, { headers: getHeaders() });
     },
     create: async (data: Partial<Company>) => {
       return await apiFetch(`${BASE_URL}/companies`, {
@@ -365,6 +475,11 @@ export const api = {
     getAll: async (query: string = '') => {
       return await apiFetch(`${BASE_URL}/employees${query}`, { headers: getHeaders() });
     },
+    // Authoritative single-record read — use this before opening an employee for
+    // editing so the form is never seeded from a stale list row.
+    getById: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/employees/${id}`, { headers: getHeaders() });
+    },
     getPaginated: async (params: Record<string, any>) => {
       const query = new URLSearchParams();
       Object.entries(params).forEach(([key, value]) => {
@@ -373,6 +488,19 @@ export const api = {
         }
       });
       return await apiFetch(`${BASE_URL}/employees?${query.toString()}`, { headers: getHeaders() });
+    },
+    /**
+     * Employee Cards grid, one page at a time, with each card's attendance /
+     * leave / payroll records already joined server-side. Replaces the old
+     * whole-company fetch of three datasets.
+     * Returns { data, page, limit, total, totalPages, period }.
+     */
+    getCards: async (params: Record<string, any>) => {
+      const query = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') query.append(key, String(value));
+      });
+      return await apiFetch(`${BASE_URL}/employees/cards?${query.toString()}`, { headers: getHeaders() });
     },
     create: async (data: any) => {
       return await apiFetch(`${BASE_URL}/employees`, {
@@ -384,6 +512,16 @@ export const api = {
     update: async (id: string, data: any) => {
       return await apiFetch(`${BASE_URL}/employees/${id}`, {
         method: 'PUT',
+        headers: getHeaders(),
+        body: JSON.stringify(data)
+      });
+    },
+    // Re-hire a PREVIOUS employee: creates a NEW active record from the reviewed
+    // copy and leaves the old, locked record untouched. Returns
+    // { employee, previous, message }.
+    reOnboard: async (previousId: string | number, data: any) => {
+      return await apiFetch(`${BASE_URL}/employees/${previousId}/re-onboard`, {
+        method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify(data)
       });
@@ -479,9 +617,43 @@ export const api = {
 
   leaves: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/leaves`, { headers: getHeaders() }); },
+    /**
+     * SERVER-SIDE paginated leave requests → { data, page, limit, total, totalPages }.
+     * Search, status, type, branch, department and date range are all applied in
+     * the database BEFORE paging, so page N of a filtered list is still one page
+     * over the wire. Sorting is whitelisted server-side.
+     *
+     * `export: 'all'` is the one sanctioned way to receive more than a page — it
+     * returns every row matching the CURRENT filters, for the export menu.
+     */
+    paginated: async (params: {
+      companyId: any; page?: number; limit?: number; sort?: string; search?: string;
+      status?: string; leaveType?: string; branch?: string; department?: string;
+      from?: string; to?: string; export?: 'all';
+    }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/leaves/paginated?${qs.toString()}`, { headers: getHeaders() });
+    },
+    /** Distinct leave types / statuses / departments / branches in scope. */
+    filterOptions: async (companyId: any) => {
+      return await apiFetch(`${BASE_URL}/leaves/filter-options?companyId=${encodeURIComponent(String(companyId))}`, { headers: getHeaders() });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/leaves`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/leaves/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/leaves/${id}`, { method: 'DELETE', headers: getHeaders() }); }
+  },
+
+  // Leave-type master + gender-based eligibility. The apply form renders
+  // `eligible(employeeId)` rather than a hardcoded list, and the same rule is
+  // enforced server-side on POST /leaves — this is presentation of a policy, not
+  // the policy itself.
+  leaveTypes: {
+    getAll: async () => { return await apiFetch(`${BASE_URL}/leave-types`, { headers: getHeaders() }); },
+    eligible: async (employeeId: any) => { return await apiFetch(`${BASE_URL}/leave-types/eligible?employeeId=${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() }); },
+    update: async (code: string, data: { eligibleGender?: string; enabled?: boolean; label?: string; companyId?: any }) => {
+      return await apiFetch(`${BASE_URL}/leave-types/${encodeURIComponent(code)}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) });
+    },
   },
 
   leaveBalances: {
@@ -498,11 +670,31 @@ export const api = {
   // Manual leave administration (grant / deduct / reset / transfer / carry-forward + audit)
   leaveAdmin: {
     grant: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/grant`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    grantBulk: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/grant-bulk`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     deduct: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/deduct`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     reset: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/reset`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     transfer: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/transfer`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     carryForward: async (data: any) => { return await apiFetch(`${BASE_URL}/leave-admin/carry-forward`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     audit: async () => { return await apiFetch(`${BASE_URL}/leave-admin/audit`, { headers: getHeaders() }); },
+    // (roster/filterOptions below serve the Leave Administration table.)
+    /**
+     * SERVER-SIDE paginated Leave Administration roster.
+     * Returns { data, page, limit, total, totalPages }. Search, branch,
+     * department, status and leave-type filtering all happen in the database, so
+     * page N of a filtered list costs the same as page 1 of an unfiltered one.
+     */
+    roster: async (params: {
+      companyId: any; page?: number; limit?: number; search?: string;
+      branch?: string; department?: string; status?: string; leaveType?: string;
+    }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/leave-admin/roster?${qs.toString()}`, { headers: getHeaders() });
+    },
+    /** Distinct branch / department / leave-type values in scope, for the filters. */
+    filterOptions: async (companyId: any) => {
+      return await apiFetch(`${BASE_URL}/leave-admin/filter-options?companyId=${encodeURIComponent(String(companyId))}`, { headers: getHeaders() });
+    },
   },
 
   // Attendance vendor registry — configurable catalog (E-TimeOffice, eSSL, …).
@@ -548,6 +740,7 @@ export const api = {
     dashboard: async () => apiFetch(`${BASE_URL}/invoicing/dashboard`, { headers: getHeaders() }),
     // Customers
     listCustomers: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/customers${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    getCustomerProfile: async (id: string | number) => { return await apiFetch(`${BASE_URL}/invoicing/customers/${encodeURIComponent(String(id))}/profile`, { headers: getHeaders() }); },
     saveCustomer: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/customers${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteCustomer: async (id: any) => apiFetch(`${BASE_URL}/invoicing/customers/${id}`, { method: 'DELETE', headers: getHeaders() }),
     // Products
@@ -569,6 +762,10 @@ export const api = {
     // client is rendering, so the attachment matches the invoice on screen.
     emailInvoice: async (id: any, data: { to: string; cc?: string; subject?: string; message?: string; html?: string }) =>
       apiFetch(`${BASE_URL}/invoicing/invoices/${id}/email`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    getReminderCenter: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/reminder-center`, { headers: getHeaders() }),
+    sendReminder: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/remind`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    rescheduleDueDate: async (id: any, dueDate: string) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/reschedule`, { method: 'PATCH', headers: getHeaders(), body: JSON.stringify({ dueDate }) }),
+    sendThankYou: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/thank-you`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deleteInvoice: async (id: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}`, { method: 'DELETE', headers: getHeaders() }),
     recordPayment: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     deletePayment: async (paymentId: any) => apiFetch(`${BASE_URL}/invoicing/payments/${paymentId}`, { method: 'DELETE', headers: getHeaders() }),
@@ -746,7 +943,42 @@ export const api = {
 
   // IFSC → bank/branch lookup (auto-fills bank details from the IFSC code)
   ifsc: {
-    lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },
+    lookup: async (code: string) => { return await apiFetch(`${BASE_URL}/bank/ifsc/${encodeURIComponent(code)}`, { headers: getHeaders() }); },
+  },
+
+  // Smart Bank Account Verification & IFSC Lookup
+  bank: {
+    ifscLookup: async (ifsc: string) => { return await apiFetch(`${BASE_URL}/bank/ifsc/${encodeURIComponent(ifsc)}`, { headers: getHeaders() }); },
+    verifyAccount: async (payload: { ifsc: string; accountNumber: string; employeeName?: string; employeeId?: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/verify-account`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+    logManualOverride: async (payload: { ifsc?: string; accountNumber?: string; reason?: string; employeeId?: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/log-manual-override`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+
+    // Permanent verification history. Reading these NEVER calls the provider and
+    // never costs a credit — only verifyAccount does.
+    verifications: async (params: Record<string, any> = {}) => {
+      const qs = new URLSearchParams(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '') as [string, string][]
+      ).toString();
+      return await apiFetch(`${BASE_URL}/bank/verifications${qs ? `?${qs}` : ''}`, { headers: getHeaders() });
+    },
+    verification: async (id: string | number) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/${encodeURIComponent(String(id))}`, { headers: getHeaders() });
+    },
+    latestVerification: async (employeeId: string | number) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/latest/${encodeURIComponent(String(employeeId))}`, { headers: getHeaders() });
+    },
+    linkVerification: async (payload: { referenceId: string; employeeId: string | number }) => {
+      return await apiFetch(`${BASE_URL}/bank/verifications/link`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) });
+    },
+    payrollPolicy: async () => {
+      return await apiFetch(`${BASE_URL}/bank/payroll-policy`, { headers: getHeaders() });
+    },
+    savePayrollPolicy: async (requireVerifiedBankForPayroll: boolean) => {
+      return await apiFetch(`${BASE_URL}/bank/payroll-policy`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ requireVerifiedBankForPayroll }) });
+    },
   },
 
   // Task Manager
@@ -790,6 +1022,12 @@ export const api = {
 
   documents: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/documents`, { headers: getHeaders() }); },
+    /**
+     * File CONTENTS for one document. getAll omits `fileData` (it was 99.9% of
+     * that response), so anything that previews or downloads a file fetches it
+     * here. Returns { id, fileData, mimeType, name }.
+     */
+    getFile: async (id: string | number) => { return await apiFetch(`${BASE_URL}/documents/${encodeURIComponent(String(id))}/file`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/documents`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/documents/${id}`, { method: 'DELETE', headers: getHeaders() }); }
@@ -842,6 +1080,119 @@ export const api = {
       get: async () => { return await apiFetch(`${BASE_URL}/system-settings/security`, { headers: getHeaders() }); },
       update: async (data: any) => { return await apiFetch(`${BASE_URL}/system-settings/security`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); }
     }
+  },
+
+  // Verification Credit Recharge (self-service, Cashfree PG). Tenant endpoints
+  // are company-resolved on the backend; responses never include internal
+  // pricing. The admin.* group is Super-Admin-only (hard-gated server-side).
+  recharge: {
+    config: async () => apiFetch(`${BASE_URL}/verification-credits/recharge/config`, { headers: getHeaders() }),
+    quote: async (amount: number) => apiFetch(`${BASE_URL}/verification-credits/recharge/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ amount }) }),
+    createOrder: async (data: { amount?: number; packageId?: number }) => apiFetch(`${BASE_URL}/verification-credits/recharge/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    history: async (params?: { page?: number; pageSize?: number }) => {
+      const q = new URLSearchParams();
+      if (params?.page) q.set('page', String(params.page));
+      if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+      return apiFetch(`${BASE_URL}/verification-credits/recharge/history${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+    },
+    /** Downloads the invoice PDF as a Blob (authenticated fetch, not a bare link). */
+    downloadInvoice: async (invoiceId: number): Promise<Blob> => {
+      const res = await fetch(`${BASE_URL}/verification-credits/recharge/invoices/${invoiceId}/download`, { headers: getHeaders() });
+      if (!res.ok) {
+        let msg = 'Could not download the invoice.';
+        try { msg = (await res.json())?.error || msg; } catch { /* keep default */ }
+        throw new Error(msg);
+      }
+      return res.blob();
+    },
+    admin: {
+      settings: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/settings`, { headers: getHeaders() }),
+      updateSettings: async (data: any) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/settings`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+      packages: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages`, { headers: getHeaders() }),
+      savePackage: async (data: any) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages${data?.id ? `/${data.id}` : ''}`, { method: data?.id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      deletePackage: async (id: number) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/packages/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      orders: async (params?: Record<string, any>) => {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+        return apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      approveOrder: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/approve`, { method: 'POST', headers: getHeaders() }),
+      reverifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/reverify`, { method: 'POST', headers: getHeaders() }),
+      regenerateInvoice: async (orderId: string) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/orders/${encodeURIComponent(orderId)}/regenerate-invoice`, { method: 'POST', headers: getHeaders() }),
+      refunds: async (params?: { page?: number; pageSize?: number }) => {
+        const q = new URLSearchParams();
+        if (params?.page) q.set('page', String(params.page));
+        if (params?.pageSize) q.set('pageSize', String(params.pageSize));
+        return apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/refunds${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      markRefundAdjusted: async (id: number) => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/refunds/${id}/mark-adjusted`, { method: 'PUT', headers: getHeaders() }),
+      dashboard: async () => apiFetch(`${BASE_URL}/super-admin/verification-credits/recharge/dashboard`, { headers: getHeaders() }),
+    },
+  },
+
+  // White Label & Custom Domain (Beta). Company endpoints are plan-gated
+  // server-side (custom-domain module); writes are Company Head only.
+  customDomain: {
+    overview: async () => apiFetch(`${BASE_URL}/custom-domain/overview`, { headers: getHeaders() }),
+    addDomain: async (domain: string) => apiFetch(`${BASE_URL}/custom-domain/domains`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ domain }) }),
+    verify: async () => apiFetch(`${BASE_URL}/custom-domain/domains/verify`, { method: 'POST', headers: getHeaders() }),
+    refresh: async () => apiFetch(`${BASE_URL}/custom-domain/domains/refresh`, { method: 'POST', headers: getHeaders() }),
+    remove: async () => apiFetch(`${BASE_URL}/custom-domain/domains`, { method: 'DELETE', headers: getHeaders() }),
+    saveWhiteLabel: async (data: any) => apiFetch(`${BASE_URL}/custom-domain/white-label`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }),
+    status: async () => apiFetch(`${BASE_URL}/custom-domain/status`, { headers: getHeaders() }),
+    health: async () => apiFetch(`${BASE_URL}/custom-domain/health`, { headers: getHeaders() }),
+    // Public (pre-login): login-page branding for the current host.
+    hostBranding: async (host: string) => apiFetch(`${BASE_URL}/public/host-branding?host=${encodeURIComponent(host)}`, { headers: getHeaders() }),
+    admin: {
+      mappings: async () => apiFetch(`${BASE_URL}/super-admin/white-label/mappings`, { headers: getHeaders() }),
+      disable: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/disable`, { method: 'POST', headers: getHeaders() }),
+      enable: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/enable`, { method: 'POST', headers: getHeaders() }),
+      reverify: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}/reverify`, { method: 'POST', headers: getHeaders() }),
+      remove: async (id: number) => apiFetch(`${BASE_URL}/super-admin/white-label/mappings/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      renewSweep: async () => apiFetch(`${BASE_URL}/super-admin/white-label/ssl/renew-sweep`, { method: 'POST', headers: getHeaders() }),
+    },
+  },
+
+  // Subscription Purchase — the self-service upgrade/renewal wizard. The
+  // client only ever sends { planKey, billingCycle, employeeCount }; price,
+  // discount, GST and limits are computed server-side and frozen on the order.
+  subscriptionPurchase: {
+    context: async () => apiFetch(`${BASE_URL}/subscription-purchase/context`, { headers: getHeaders() }),
+    quote: async (data: { planKey: string; billingCycle: string; employeeCount: number }) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    createOrder: async (data: { planKey: string; billingCycle: string; employeeCount: number }) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) =>
+      apiFetch(`${BASE_URL}/subscription-purchase/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    history: async () => apiFetch(`${BASE_URL}/subscription-purchase/history`, { headers: getHeaders() }),
+  },
+
+  // Employee Slot Management — plan-limit add-ons. Company endpoints resolve
+  // the tenant server-side; only a settled payment or a Super Admin can raise
+  // a limit. Slot invoices share the recharge invoice download endpoint.
+  employeeSlots: {
+    overview: async () => apiFetch(`${BASE_URL}/employee-slots/overview`, { headers: getHeaders() }),
+    quote: async (slots: number) => apiFetch(`${BASE_URL}/employee-slots/quote`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ slots }) }),
+    createOrder: async (data: { slots?: number; packId?: number }) => apiFetch(`${BASE_URL}/employee-slots/orders`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    verifyOrder: async (orderId: string) => apiFetch(`${BASE_URL}/employee-slots/orders/${encodeURIComponent(orderId)}/verify`, { method: 'POST', headers: getHeaders() }),
+    request: async (data: { packId?: number; slots?: number; note?: string }) => apiFetch(`${BASE_URL}/employee-slots/request`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    history: async () => apiFetch(`${BASE_URL}/employee-slots/history`, { headers: getHeaders() }),
+    admin: {
+      packs: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs`, { headers: getHeaders() }),
+      savePack: async (data: any) => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs${data?.id ? `/${data.id}` : ''}`, { method: data?.id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      deletePack: async (id: number) => apiFetch(`${BASE_URL}/super-admin/employee-slots/packs/${id}`, { method: 'DELETE', headers: getHeaders() }),
+      requests: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests`, { headers: getHeaders() }),
+      approveRequest: async (id: number) => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests/${id}/approve`, { method: 'POST', headers: getHeaders() }),
+      rejectRequest: async (id: number, reason?: string) => apiFetch(`${BASE_URL}/super-admin/employee-slots/requests/${id}/reject`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ reason }) }),
+      adjust: async (data: { companyId: number; delta: number; reason: string }) => apiFetch(`${BASE_URL}/super-admin/employee-slots/adjust`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+      transactions: async (params?: Record<string, any>) => {
+        const q = new URLSearchParams();
+        Object.entries(params || {}).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+        return apiFetch(`${BASE_URL}/super-admin/employee-slots/transactions${q.toString() ? `?${q}` : ''}`, { headers: getHeaders() });
+      },
+      usage: async () => apiFetch(`${BASE_URL}/super-admin/employee-slots/usage`, { headers: getHeaders() }),
+    },
   },
 
   // Communication Center (Phase 1 — storage only, no sending). Scoped to caller's
@@ -1062,6 +1413,8 @@ export const api = {
     remove: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     setStatus: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/status`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     payments: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { headers: getHeaders() }); },
+    /** Every payment received across all invoices (Billing → Payments register). */
+    allPayments: async (limit = 500) => { return await apiFetch(`${BASE_URL}/subscription-invoices/payments?limit=${limit}`, { headers: getHeaders() }); },
     addPayment: async (id: string | number, data: any) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/payments`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     duplicate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/duplicate`, { method: 'POST', headers: getHeaders() }); },
     regenerate: async (id: string | number) => { return await apiFetch(`${BASE_URL}/subscription-invoices/${id}/regenerate`, { method: 'POST', headers: getHeaders() }); },
@@ -1092,6 +1445,22 @@ export const api = {
   notifications: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/notifications`, { headers: getHeaders() }); },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/notifications`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
+    /**
+     * The audiences/branches/departments/roles/employees the CALLER may target.
+     * The broadcast UI renders this verbatim and derives nothing itself, so a
+     * branch user is never offered a cross-branch option. The same server-side
+     * scope backs the send endpoint, so the menu and the rule cannot drift.
+     */
+    broadcastOptions: async (companyId?: any) => {
+      const qs = companyId ? `?companyId=${encodeURIComponent(String(companyId))}` : '';
+      return await apiFetch(`${BASE_URL}/notifications/broadcast-options${qs}`, { headers: getHeaders() });
+    },
+    /** Send one message to a resolved audience. Resolves only after the rows are committed. */
+    broadcast: async (data: {
+      message: string; title?: string; priority?: string;
+      audience: 'all' | 'branch' | 'role' | 'department' | 'employee';
+      role?: string; department?: string; branchId?: any; employeeId?: any; companyId?: any;
+    }) => { return await apiFetch(`${BASE_URL}/notifications/broadcast`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     markRead: async (id: any) => { return await apiFetch(`${BASE_URL}/notifications/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify({ read: true }) }); },
@@ -1166,6 +1535,22 @@ export const api = {
       if (date) params.append('date', date);
       return await apiFetch(`${BASE_URL}/attendance/analytics?${params.toString()}`, { headers: getHeaders() });
     },
+    /**
+     * Full attendance reports — the "View Full Report" destinations.
+     * Both are projections of ONE server-side aggregate, so their totals always
+     * agree with each other and with the dashboard cards. Scope, branch
+     * confinement and the range are all enforced server-side.
+     */
+    workforceReport: async (params: { companyId: any; from?: string; to?: string; branchId?: any; department?: string }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/attendance/workforce-report?${qs.toString()}`, { headers: getHeaders() });
+    },
+    departmentReport: async (params: { companyId: any; from?: string; to?: string; branchId?: any; department?: string }) => {
+      const qs = new URLSearchParams();
+      Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') qs.append(k, String(v)); });
+      return await apiFetch(`${BASE_URL}/attendance/department-report?${qs.toString()}`, { headers: getHeaders() });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
@@ -1181,6 +1566,16 @@ export const api = {
 
   overtime: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/overtime`, { headers: getHeaders() }); },
+    // One row per employee. Grouped server-side from the same records getAll
+    // returns, so the totals HR approves against come from the database rather
+    // than from whichever page the table happens to be showing.
+    summary: async () => { return await apiFetch(`${BASE_URL}/overtime/summary`, { headers: getHeaders() }); },
+    pushToPayroll: async (employeeId: number | string, period?: { month: string; year: number }) => {
+      return await apiFetch(`${BASE_URL}/overtime/push-to-payroll`, {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ employeeId, ...(period || {}) }),
+      });
+    },
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/overtime`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/overtime/${id}`, { method: 'DELETE', headers: getHeaders() }); }

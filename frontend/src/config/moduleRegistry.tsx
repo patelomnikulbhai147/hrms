@@ -22,14 +22,11 @@ import type { AppModules } from '@/pages/Login';
 
 export type PageId =
   | 'select-workspace' | 'dashboard' | 'companies' | 'employee-cards' | 'employees' | 'leaves' | 'payroll' | 'bonus' | 'attendance'
-  | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
+  | 'attendance-integration' | 'attendance-sync' | 'documents' | 'reports' | 'settings' | 'billing' | 'verification-credits' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'audit'
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
   | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
-  // Dedicated full-page Subscription Invoice (/subscription-invoice/:invoiceId).
-  // Super-Admin billing route — never rendered as a modal.
   | 'subscription-invoice'
-  // Company-facing View Plans / upgrade screen (not a sidebar/matrix module).
-  | 'plans';
+  | 'plans' | 'custom-domain' | 'employee-slot-history' | 'verification-wallet';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -57,7 +54,7 @@ export interface ModuleRegistryEntry {
   platformOnly?: boolean;
   /**
    * When true, the module is NOT rendered as its own sidebar item. Used for
-   * modules that have been folded into a parent sidebar entry but must remain a
+   * modules that have been folded into a parent sidebar item but must remain a
    * permission-matrix row so their access is still governed independently
    * (e.g. Loans & Compliance now live under the "Finance & Compliance" item).
    */
@@ -85,6 +82,7 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: true },
   { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'], permission: 'companies', inMatrix: true, platformOnly: true },
   { id: 'billing', label: 'Subscription Management', icon: <CreditCard size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: true, platformOnly: true },
+  { id: 'verification-credits', label: 'Bank Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: false, platformOnly: true },
   { id: 'employees', label: 'Employees', icon: <UsersIcon size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'employees', inMatrix: true },
   // Employee Cards is a sub-feature of Employees — it is governed by the
   // `employees` permission everywhere in the app, so it shares that key here.
@@ -115,7 +113,11 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'finance-compliance', label: 'Finance & Compliance', icon: <Landmark size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', anyPermission: ['loans', 'compliance'], inMatrix: false, beta: true },
   { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true, hideInSidebar: true },
   { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
-  { id: 'documents', label: 'Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
+  // Label only — the id, route and `documents` permission are unchanged, so the
+  // permission matrix, saved links and API calls are unaffected. "Employee
+  // Documents" distinguishes it from Finance & Compliance ▸ Documents, which is
+  // a separate statutory-document repository.
+  { id: 'documents', label: 'Employee Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
   // Custom Report Builder — drag & drop report designer. Shares the `reports`
   // permission (no separate matrix row — inMatrix:false), like Employee Cards
@@ -126,6 +128,14 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },
   { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'], permission: 'contracts', inMatrix: true },
   { id: 'company-profile', label: 'Company Profile', icon: <Building2 size={15} />, roles: ['Company Head'], permission: 'company-profile', inMatrix: true },
+  // Premium page riding the `settings` permission (same pattern as the Custom
+  // Report Builder on `reports`); the plan lock is by PAGE ID 'custom-domain'.
+  { id: 'custom-domain', label: '🧪 Custom Domain (Beta)', icon: <PlugZap size={15} />, roles: ['Company Head'], permission: 'settings', inMatrix: false, beta: true },
+  // Company-facing Verification Credits page (quota, analytics, verification +
+  // recharge history). Distinct from the platform-only 'verification-credits'
+  // Super-Admin portal above. Rides the dashboard permission (no matrix row);
+  // the page + backend both refuse the Employee role themselves.
+  { id: 'verification-wallet', label: 'Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: false },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'settings', inMatrix: true },
   { id: 'users', label: 'User Management', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'users', inMatrix: true },
   { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'], permission: 'audit', inMatrix: true, platformOnly: true },

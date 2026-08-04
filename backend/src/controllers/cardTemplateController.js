@@ -6,7 +6,15 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { canView, canEdit, canManage, actorOf, readCompanyId, scopedWhere, isSuperAdmin } = require('../utils/cardScope');
 
-const MAX_SPEC = 400000; // guard against oversized specs (embedded images belong on the employee, not here)
+// Templates may now carry their own uploaded artwork (a company's own card
+// design), so the old 400 KB ceiling — written when images were assumed to live
+// on the employee record — would reject every custom upload with a 413.
+//
+// 4 MB comfortably fits a front and a back image after the client's downscale
+// (~1.2 MB each) plus the element list, while still refusing a template heavy
+// enough to bog down the gallery, which loads every spec to draw its thumbnails.
+// The database itself is not the constraint (max_allowed_packet is 512 MB here).
+const MAX_SPEC = 4_000_000;
 
 function shape(t) {
   return {
@@ -22,7 +30,22 @@ exports.list = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'Not authorised.' });
     const where = scopedWhere(req);
     if (where === null) return res.status(403).json({ error: 'Unauthorised workspace.' });
-    const rows = await prisma.cardTemplate.findMany({ where, orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }] });
+    // Sorted in JS, deliberately NOT by MySQL.
+    //
+    // `spec` holds a template's whole design, and since custom uploads were
+    // allowed it can carry megabytes of base64 artwork. Asking MySQL to ORDER BY
+    // makes it materialise and sort rows that wide, which overflows sort_buffer_size
+    // on the production instance and fails the whole query with
+    //   ERROR 1038 "Out of sort memory, consider increasing server sort buffer size"
+    // — so the gallery 500'd as soon as a company uploaded its first design.
+    //
+    // Sorting here costs nothing (a company has a handful of templates) and does
+    // not depend on how the database server happens to be tuned. Ordering is
+    // unchanged: default first, then most recently updated.
+    const rows = await prisma.cardTemplate.findMany({ where });
+    rows.sort((a, b) =>
+      (b.isDefault === true) - (a.isDefault === true)
+      || new Date(b.updatedAt) - new Date(a.updatedAt));
     res.json({ templates: rows.map(shape) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 };

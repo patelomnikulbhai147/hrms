@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check, Pencil, Archive, Trash2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '@/types';
 import { Badge } from '@/components/ui/Badge';
@@ -9,6 +9,7 @@ import { Card, StatCard } from '@/components/ui/Card';
 import { Paginated } from '@/components/ui/Paginated';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
+import { RowActions, RowAction } from '@/components/ui/RowActions';
 import { Modal } from '@/components/ui/Modal';
 import { getUniqueEmployees } from '@/utils/deduplication';
 import { formatDate, formatDateTime } from '@/utils/formatDate';
@@ -27,6 +28,8 @@ import {
 } from '@/utils/attendancePeriods';
 import { AnimatedCounter } from '@/components/common/AnimatedCounter';
 import { ui } from '@/components/ui/feedback';
+import { titleCase, uniqueTitled, sameValue } from '@/utils/titleCase';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { AttendanceSheetImport } from '@/components/attendance/AttendanceSheetImport';
 interface AttendanceCenterProps {
   role: Role;
@@ -64,6 +67,26 @@ const WEEKLY_CELL_STATUSES: { value: string; label: string; dot: string }[] = [
   { value: 'Holiday', label: 'Holiday (H)', dot: 'bg-gray-400' },
   { value: 'Weekly Off', label: 'Weekly Off (WO)', dot: 'bg-slate-300' },
 ];
+
+/** Audiences the Broadcast panel can address. Mirrors the server's resolver. */
+type BroadcastAudience = 'all' | 'branch' | 'role' | 'department' | 'employee';
+
+/**
+ * What GET /notifications/broadcast-options returns — the audiences and targets
+ * the SERVER says this user may address. The panel renders this and derives
+ * nothing of its own, so the options shown always match what the send endpoint
+ * will accept. A branch user simply receives no `branch` audience.
+ */
+interface BroadcastOptions {
+  scope: { isBranchUser: boolean; companyId: number; branchId: number | null; branchName: string | null };
+  audiences: { value: BroadcastAudience; label: string }[];
+  branches: { id: number; name: string }[];
+  roles: string[];
+  departments: { name: string; branchId: number | null }[];
+  employees: { id: number; name: string; code: string | null; department: string | null; branchId: number | null; branchName: string | null }[];
+}
+/** Kept in step with MAX_MESSAGE in notificationController.broadcast. */
+const BROADCAST_MAX = 2000;
 
 const ATTENDANCE_FLAG_OPTIONS = [
   'Late Mark', 'Early Exit', 'Overtime', 'Night Shift', 'Missed Punch', 'Double Shift', 'Field Work'
@@ -179,6 +202,40 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   // OT DB State
   const [overtimeData, setOvertimeData] = useState<any[]>([]);
 
+  // ── Overtime, grouped one row per employee ────────────────────────────────
+  // The grouping is computed by the SERVER (GET /overtime/summary) from the same
+  // Overtime rows, so the per-employee totals HR approves against are the whole
+  // database — not whichever page of a paginated table is in memory — and the
+  // Payroll Status column reflects payroll.otHours vs the approved hours rather
+  // than an assumption. Individual records are never merged: each employee's
+  // `entries` carries every one of them for the expanded view.
+  const [otSummary, setOtSummary] = useState<{ employees: any[]; totals: any } | null>(null);
+  const [otSummaryError, setOtSummaryError] = useState<string | null>(null);
+  const [expandedOT, setExpandedOT] = useState<Set<string>>(new Set());
+  const [pushingOT, setPushingOT] = useState<string | null>(null);
+  const [otSearch, setOtSearch] = useState('');
+
+  const loadOvertime = React.useCallback(() => {
+    api.overtime.getAll()
+      .then(res => setOvertimeData(Array.isArray(res) ? res : []))
+      .catch(e => console.error('Failed to load overtime', e));
+    api.overtime.summary()
+      .then(res => { setOtSummary(res); setOtSummaryError(null); })
+      .catch(e => {
+        console.error('Failed to load overtime summary', e);
+        setOtSummaryError(getApiErrorMessage(e, 'Could not load the overtime summary.'));
+      });
+  }, []);
+
+  const toggleOTRow = (employeeId: any) => {
+    setExpandedOT(prev => {
+      const next = new Set(prev);
+      const k = String(employeeId);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  };
+
   const [attendanceAnalytics, setAttendanceAnalytics] = useState<any>(null);
 
   // DB-backed monthly attendance summaries (the materialized roll-up payroll reads).
@@ -205,7 +262,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       api.shifts.getAll()
         .then(res => { setShifts(Array.isArray(res) ? res : []); setShiftError(null); })
         .catch(e => { console.error("Failed to load shifts", e); setShiftError(e?.message || 'Failed to load shifts.'); });
-      api.overtime.getAll().then(res => setOvertimeData(res)).catch(e => console.error("Failed to load overtime", e));
+      loadOvertime();
       api.attendance.getAnalytics(activeCompanyId, today).then(res => setAttendanceAnalytics(res)).catch(console.error);
       loadSummaries();
     }
@@ -266,6 +323,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     empId: '', empName: '', empCode: '', department: '', branch: '', shift: '', date: today, in: '', out: '', otHours: 0, type: 'Normal Overtime', status: 'Pending', reason: ''
   });
 
+  // Per-field OT validation messages, and the in-flight guard that stops a double
+  // submit creating two identical overtime rows.
+  const [otErrors, setOtErrors] = useState<Record<string, string>>({});
+  const [savingOT, setSavingOT] = useState(false);
+
   const [empSearch, setEmpSearch] = useState('');
   const [isEmpDropdownOpen, setIsEmpDropdownOpen] = useState(false);
 
@@ -291,9 +353,117 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     (e.department && e.department.toLowerCase().includes(empSearch.toLowerCase()))
   );
 
-  const departments = Array.from(new Set(activeUniqueEmployees.map(e => e.department).filter(Boolean)));
-  const branches = Array.from(new Set(activeUniqueEmployees.map(e => e.branchLocation).filter((b): b is string => Boolean(b))));
-  const designations = Array.from(new Set(activeUniqueEmployees.map(e => (e as any).designation as string).filter((d): d is string => Boolean(d))));
+  // Filter options go through uniqueTitled, so a branch stored as both
+  // "AHMEDABAD" and "Ahmedabad" is ONE option reading "Ahmedabad" instead of two
+  // that look like different places. Values are compared with sameValue below,
+  // so selecting the tidied label still matches rows holding either spelling.
+  const departments = uniqueTitled(activeUniqueEmployees.map(e => e.department));
+  const branches = uniqueTitled(activeUniqueEmployees.map(e => e.branchLocation));
+  const designations = uniqueTitled(activeUniqueEmployees.map(e => (e as any).designation));
+
+  // ── Branch scope ───────────────────────────────────────────────────────────
+  // When the active workspace IS a branch, the user can only ever see that one
+  // branch, so offering a branch selector is noise — and "All Branches" is a
+  // lie. The filter is hidden and the branch is implied, exactly as the Company
+  // filter above already hides itself when there is only one company.
+  // The backend enforces the same scope independently; this is only the UI.
+  const activeWorkspace = useMemo(
+    () => (companies as any[]).find(c => String(c.id) === String(activeCompanyId)),
+    [companies, activeCompanyId],
+  );
+  const isBranchWorkspace = !!activeWorkspace?.parentCompanyId;
+  const implicitBranchName = isBranchWorkspace
+    ? titleCase(activeWorkspace?.branchName || activeWorkspace?.name || '')
+    : '';
+  // Show the selector only to users who genuinely span more than one branch.
+  const showBranchFilter = !isBranchWorkspace && branches.length > 1;
+
+  // ── Broadcast & Notification ───────────────────────────────────────────────
+  // The audience choice drives which second selector appears; the server
+  // re-resolves the audience itself and re-checks the workspace, so nothing here
+  // is trusted for authorisation.
+  const [bcAudience, setBcAudience] = useState<BroadcastAudience>('all');
+  const [bcTarget, setBcTarget] = useState('');
+  const [bcBranch, setBcBranch] = useState('');   // Branch → Department/Employee cascade
+  const [bcMessage, setBcMessage] = useState('');
+  const [bcSending, setBcSending] = useState(false);
+  const [bcOptions, setBcOptions] = useState<BroadcastOptions | null>(null);
+
+  // WHAT THIS USER MAY TARGET comes from the server, not from this page.
+  // Deriving it here would mean the menu and the security rule were two separate
+  // implementations that could disagree — and the one that matters (the server)
+  // is the one the user cannot see. A branch user gets no branch selector because
+  // the server does not return that audience for them.
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    let alive = true;
+    api.notifications.broadcastOptions(activeCompanyId)
+      .then((res: any) => {
+        if (!alive || !res) return;
+        setBcOptions(res);
+        // Reset any selection that the new workspace does not permit.
+        setBcAudience(prev => (res.audiences?.some((a: any) => a.value === prev) ? prev : 'all'));
+        setBcTarget('');
+        setBcBranch('');
+      })
+      .catch(() => { if (alive) setBcOptions(null); });
+    return () => { alive = false; };
+  }, [activeCompanyId]);
+
+  // A branch selector only appears for senders the server says have branches.
+  const bcShowBranchCascade = !!bcOptions?.branches?.length && bcAudience !== 'all' && bcAudience !== 'branch';
+
+  const bcTargetOptions = useMemo(() => {
+    if (!bcOptions) return [];
+    const inBranch = (b: any) => !bcBranch || String(b ?? '') === String(bcBranch);
+    if (bcAudience === 'branch') return bcOptions.branches.map(b => ({ value: String(b.id), label: b.name }));
+    if (bcAudience === 'role') return bcOptions.roles.map(r => ({ value: r, label: r }));
+    if (bcAudience === 'department') {
+      // De-duplicated by name: the same department can exist in several branches,
+      // and once narrowed to one branch it must appear exactly once.
+      const names = bcOptions.departments.filter(d => inBranch(d.branchId)).map(d => d.name);
+      return [...new Set(names)].map(d => ({ value: d, label: d }));
+    }
+    if (bcAudience === 'employee') {
+      return bcOptions.employees
+        .filter(e => inBranch(e.branchId))
+        .map(e => ({ value: String(e.id), label: `${e.name}${e.code ? ` (${e.code})` : ''}` }));
+    }
+    return [];
+  }, [bcAudience, bcBranch, bcOptions]);
+
+  const dispatchBroadcast = async () => {
+    const message = bcMessage.trim();
+    if (!message) { ui.toast.warning('Type a message to broadcast.'); return; }
+    if (bcAudience !== 'all' && !bcTarget) { ui.toast.warning('Choose who should receive this.'); return; }
+
+    setBcSending(true);
+    try {
+      const payload: any = { message, audience: bcAudience, companyId: activeCompanyId };
+      if (bcAudience === 'branch') payload.branchId = bcTarget;
+      else if (bcBranch) payload.branchId = bcBranch;   // cascade narrowing
+      if (bcAudience === 'role') payload.role = bcTarget;
+      if (bcAudience === 'department') payload.department = bcTarget;
+      if (bcAudience === 'employee') payload.employeeId = bcTarget;
+
+      const res: any = await api.notifications.broadcast(payload);
+
+      // Only clear the form once the server confirms the rows were committed —
+      // the success message must never run ahead of the database write.
+      setBcMessage('');
+      setBcTarget('');
+      setBcBranch('');
+      ui.toast.success(
+        `Broadcast sent to ${res?.recipients ?? 0} recipient${res?.recipients === 1 ? '' : 's'}${res?.audience ? ` — ${res.audience}` : ''}.`,
+      );
+      // Refresh the bell now instead of waiting out the 20s poll.
+      window.dispatchEvent(new CustomEvent('hrms:notifications-changed'));
+    } catch (err: any) {
+      ui.toast.error(getApiErrorMessage(err, 'Could not send the broadcast.'));
+    } finally {
+      setBcSending(false);
+    }
+  };
 
   // Company options for the Company / Multiple-company filters and export scope.
   const companyOptions = useMemo(() => {
@@ -302,15 +472,25 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   }, [activeUniqueEmployees, companies]);
 
   // Employees after applying the enterprise filter bar (shared by all period views).
-  const periodEmployees = useMemo(() => {
+  // Everything EXCEPT the employee filter. This is what the Employee dropdown is
+  // populated from: sourcing it from the fully-filtered list made it collapse to
+  // the single chosen person, so you could never switch to a different employee
+  // without clearing first.
+  const employeeChoices = useMemo(() => {
     let list = activeUniqueEmployees;
     if (filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany || isCompanyIdMatch(e.companyId, filterCompany, companies, e.branchLocation, e.branchId));
-    if (filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
-    if (filterDept) list = list.filter(e => e.department === filterDept);
-    if (filterDesignation) list = list.filter(e => (e as any).designation === filterDesignation);
-    if (filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
+    // sameValue, not ===: the dropdown now offers the tidied "Ahmedabad" while
+    // rows still hold "AHMEDABAD", so a strict compare would match nothing.
+    if (filterBranch) list = list.filter(e => sameValue(e.branchLocation || 'Head Office', filterBranch));
+    if (filterDept) list = list.filter(e => sameValue(e.department, filterDept));
+    if (filterDesignation) list = list.filter(e => sameValue((e as any).designation, filterDesignation));
     return list;
-  }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, filterEmployee, companies]);
+  }, [activeUniqueEmployees, filterCompany, filterBranch, filterDept, filterDesignation, companies]);
+
+  const periodEmployees = useMemo(
+    () => (filterEmployee ? employeeChoices.filter(e => String(e.id) === String(filterEmployee)) : employeeChoices),
+    [employeeChoices, filterEmployee],
+  );
 
   // Active period range + the dates it spans.
   const period = useMemo(() => getPeriodRange(periodMode, selectedDate, customStart, customEnd), [periodMode, selectedDate, customStart, customEnd]);
@@ -430,11 +610,40 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   });
 
   const empCodeById = (eid: any) => activeUniqueEmployees.find(e => String(e.id) === String(eid))?.employeeId || '';
-  const filteredRecords = dailyRecords.filter(a => {
-    const matchSearch = !search || a.employeeName.toLowerCase().includes(search.toLowerCase()) || a.department.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = !statusFilter || a.status === statusFilter;
-    return matchSearch && matchStatus;
-  }).sort(byEmployeeCode((a: any) => empCodeById(a.employeeId)));
+  // ── The Attendance Entry table's rows ──────────────────────────────────────
+  //
+  // ROOT CAUSE of "the filters do nothing": this used to apply ONLY search and
+  // status. Branch, Department, Designation, Employee and Company were ignored
+  // entirely, so the table never moved — while the filter bar's own counter,
+  // which reads periodEmployees.length, updated correctly. The two lists were
+  // never connected, which is exactly why the count changed (829 → 461 for
+  // Nursing) while the same Clinical employees stayed on screen.
+  //
+  // periodEmployees is the ONE place the employee-level filters are applied, so
+  // the table now derives from it rather than re-implementing them. That also
+  // means a filter added there is automatically honoured here.
+  //
+  // As a side effect this drops OFFBOARDED staff from the entry table:
+  // dailyRecords is projected from `uniqueEmployees` (everyone ever), whereas
+  // periodEmployees descends from `activeUniqueEmployees`.
+  const periodEmployeeIds = useMemo(
+    () => new Set(periodEmployees.map(e => String(e.id))),
+    [periodEmployees],
+  );
+
+  const filteredRecords = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return dailyRecords.filter(a => {
+      if (!periodEmployeeIds.has(String(a.employeeId))) return false;
+      if (statusFilter && a.status !== statusFilter) return false;
+      if (!q) return true;
+      // Search covers what the row actually shows — name, employee code,
+      // department — plus designation, so typing a role finds its people.
+      const emp: any = activeUniqueEmployees.find(e => String(e.id) === String(a.employeeId));
+      return [a.employeeName, a.department, emp?.employeeId, emp?.designation]
+        .some(v => String(v || '').toLowerCase().includes(q));
+    }).sort(byEmployeeCode((a: any) => empCodeById(a.employeeId)));
+  }, [dailyRecords, periodEmployeeIds, statusFilter, search, activeUniqueEmployees]);
 
   // Dashboard Stats — scope attendance rows by employee membership (records
   // carry an employeeId but no branchId, so branch workspaces need this).
@@ -762,7 +971,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   };
 
   const handleDeleteShift = async (id: string) => {
-    if (await ui.confirm({ message: "Permanently delete this shift? Employees assigned to it will be unassigned. Use Archive instead to keep history.", variant: 'danger', confirmText: 'Delete Shift' })) {
+    if (await ui.confirm({
+      title: 'Delete Shift?',
+      message: 'This action cannot be undone. Employees assigned to this shift will be unassigned — use Archive instead if you need to keep the history.',
+      variant: 'danger', confirmText: 'Delete', cancelText: 'Cancel',
+    })) {
       try {
         await api.shifts.delete(id);
         setShifts(shifts.filter(s => s.id !== id));
@@ -774,9 +987,20 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   };
 
   const handleArchiveShift = async (id: string) => {
+    // Archiving changes what the roster offers and is not obviously reversible
+    // from the row itself, so it confirms — but as a normal (not danger) dialog,
+    // because unlike Delete it preserves history.
+    const confirmed = await ui.confirm({
+      title: 'Archive Shift?',
+      message: 'Employees currently assigned will not lose historical records. The shift stops being offered for new assignments.',
+      confirmText: 'Archive',
+      cancelText: 'Cancel',
+    });
+    if (!confirmed) return;
     try {
       const res = await api.shifts.archive(id);
       setShifts(shifts.map(s => s.id === id ? res : s));
+      ui.toast.success('Shift archived.');
     } catch (e: any) {
       console.error(e);
       ui.toast.error(`Failed to archive shift: ${e?.message || 'database error'}`);
@@ -815,22 +1039,89 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       setEditingOTId(null);
       setOTForm({ empId: '', empName: '', empCode: '', department: '', branch: '', shift: '', date: selectedDate, in: '18:00', out: '20:00', otHours: 2, type: 'Normal Overtime', status: 'Pending', reason: '' });
     }
+    setOtErrors({});   // a reopened form must never show the last attempt's errors
     setShowOTModal(true);
   };
 
+  /**
+   * Validate the OT form BEFORE calling the API.
+   *
+   * The backend already rejects an incomplete entry with a field-specific 400 —
+   * verified end-to-end. The bug was on this side: there was no client-side
+   * check, and the catch block reported every failure as "Database error", so a
+   * user who clicked Save without picking an employee got a misleading message
+   * about the database and no indication of which field was wrong. That is what
+   * "the Save button does nothing" actually was.
+   *
+   * Returns a map of field → message; empty means valid.
+   */
+  const validateOT = (form: typeof otForm): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    if (!form.empId) errs.empId = 'Select an employee.';
+    if (!form.date) errs.date = 'Choose the overtime date.';
+    else if (form.date > today) errs.date = 'Overtime cannot be recorded for a future date.';
+    if (!form.in) errs.in = 'Enter the in time.';
+    if (!form.out) errs.out = 'Enter the out time.';
+    // otHours is derived from in/out, so a non-positive value means the times are
+    // the wrong way round (or identical) rather than a bad number.
+    if (form.in && form.out && !(Number(form.otHours) > 0)) {
+      errs.out = 'Out time must be after in time.';
+    }
+    if (!form.type) errs.type = 'Choose an overtime type.';
+    if (!String(form.reason || '').trim()) errs.reason = 'Give a reason for the overtime.';
+    return errs;
+  };
+
   const handleSaveOT = async () => {
+    const errs = validateOT(otForm);
+    setOtErrors(errs);
+    if (Object.keys(errs).length) {
+      // Say what is wrong, in the form, next to the field — and name the first
+      // problem in the toast so the reason is never a mystery.
+      ui.toast.warning(Object.values(errs)[0]);
+      return;
+    }
+
+    setSavingOT(true);
     try {
       if (editingOTId) {
         const res = await api.overtime.update(editingOTId, { ...otForm, companyId: activeCompanyId });
         setOvertimeData(overtimeData.map(o => o.id === editingOTId ? res : o));
+        ui.toast.success('Overtime record updated.');
       } else {
         const res = await api.overtime.create({ ...otForm, companyId: activeCompanyId });
         setOvertimeData([...overtimeData, res]);
+        ui.toast.success(`Overtime saved for ${otForm.empName} — ${otForm.otHours}h.`);
       }
+      setOtErrors({});
       setShowOTModal(false);
-    } catch (e) {
-      console.error(e);
-      ui.toast.error('Database error: failed to save overtime');
+      // Re-read from the server rather than trusting the optimistic local append:
+      // the grid, the OT stat cards, the per-employee totals and the Payroll
+      // Status column all derive from the server, so this is what makes them
+      // agree with the database — including the payroll sync the save triggered —
+      // without a manual refresh.
+      loadOvertime();
+    } catch (e: any) {
+      console.error('[overtime] save failed', e);
+      // Surface the SERVER's own field list rather than a blanket "Database
+      // error" that misattributes a validation problem. The overtime endpoint
+      // reports `fields: ['employeeId', …]` using MODEL names, so they are
+      // translated back to this form's field names before being displayed.
+      // (getApiFieldErrors is not used here: it reads an `errors` MAP, which is
+      // a different contract this endpoint does not implement.)
+      const serverFields: string[] = e?.data?.fields || e?.response?.data?.fields || [];
+      if (Array.isArray(serverFields) && serverFields.length) {
+        const toFormField: Record<string, string> = {
+          employeeId: 'empId', employeeName: 'empId', employeeCode: 'empId',
+          inTime: 'in', outTime: 'out', date: 'date',
+        };
+        const mapped: Record<string, string> = {};
+        serverFields.forEach((f) => { mapped[toFormField[f] || f] = 'This field is required.'; });
+        setOtErrors(mapped);
+      }
+      ui.toast.error(getApiErrorMessage(e, 'Could not save the overtime record.'));
+    } finally {
+      setSavingOT(false);
     }
   };
 
@@ -839,12 +1130,47 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       try {
         await api.overtime.delete(id);
         setOvertimeData(overtimeData.filter(o => o.id !== id));
+        // Deleting APPROVED overtime removes paid hours; the server re-runs the
+        // payroll sync, so re-read the grouped totals and Payroll Status.
+        loadOvertime();
       } catch (e) {
         console.error(e);
         ui.toast.error('Database error: failed to delete overtime');
       }
     }
   };
+
+  // Estimated cost of APPROVED overtime, priced per employee from their own
+  // salary — mirrors the backend formula in utils/overtimePay.js:
+  //   otAmount = hours × (monthlySalary / (workingDays × 8)) × multiplier
+  // This card used to multiply hours by a flat ₹200/hr for everyone, which had no
+  // relationship to anybody's actual pay. It is still labelled "(Est.)": the
+  // authoritative figure is the payroll row's `overtime`, computed by the engine
+  // against the synced attendance (this cannot see per-branch policy multipliers).
+  const otCostEstimate = useMemo(() => {
+    const company: any = companies.find(c => String(c.id) === String(activeCompanyId));
+    const multiplier = Number(company?.overtimeRate) || 1.5;
+    let total = 0;
+    for (const o of overtimeData) {
+      if (o.status !== 'Approved') continue;
+      const hours = Number(o.otHours) || 0;
+      if (hours <= 0) continue;
+      const emp: any = activeUniqueEmployees.find(e => String(e.id) === String((o as any).employeeId ?? (o as any).empId));
+      const salary = Number(emp?.salary) || 0;
+      if (!salary) continue; // unknown salary contributes nothing rather than a fake rate
+      // Working days for the OT date's month = days − Sundays (the same default
+      // the backend falls back to when no attendance snapshot exists).
+      const d = new Date(String(o.date));
+      const y = d.getFullYear(), m = d.getMonth();
+      if (Number.isNaN(y)) continue;
+      const dim = new Date(y, m + 1, 0).getDate();
+      let sundays = 0;
+      for (let day = 1; day <= dim; day++) if (new Date(y, m, day).getDay() === 0) sundays++;
+      const workingDays = Math.max(1, dim - sundays);
+      total += hours * (salary / (workingDays * 8)) * multiplier;
+    }
+    return Math.round(total);
+  }, [overtimeData, activeUniqueEmployees, companies, activeCompanyId]);
 
   const handleStatusOT = async (id: string, newStatus: string) => {
     const target = overtimeData.find(o => o.id === id);
@@ -853,15 +1179,104 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       // Persist the approve/reject to the database. Previously this only wrote
       // to local state + localStorage, so the overtime status reverted on
       // refresh and payroll never saw the approval.
-      await api.overtime.update(id, { ...target, status: newStatus });
+      const res = await api.overtime.update(id, { ...target, status: newStatus });
       const updatedOT = overtimeData.map(o => o.id === id ? { ...o, status: newStatus } : o);
       setOvertimeData(updatedOT);
       localStorage.setItem(`hrms_overtime_${activeCompanyId}`, JSON.stringify(updatedOT));
+      // The server recomputed the attendance snapshot and re-ran the payroll
+      // engine for this employee-month as part of the approval. Re-read so the
+      // Approved/Pending totals, OT amount and Payroll Status show the result.
+      loadOvertime();
+      const pushed = (res?.payrollSync || []).filter((p: any) => p?.ok);
+      if (newStatus === 'Approved') {
+        ui.toast.success(pushed.length
+          ? `Approved — ${pushed.map((p: any) => `${p.month} ${p.year}: ${p.otHours}h`).join(', ')} now in payroll.`
+          : 'Overtime approved.');
+      } else {
+        ui.toast.success(`Overtime ${String(newStatus).toLowerCase()}.`);
+      }
     } catch (e) {
       console.error(e);
       ui.toast.error(getApiErrorMessage(e, 'Could not update the overtime status.'));
     }
   };
+
+  /**
+   * Push one employee's overtime into payroll.
+   *
+   * This does NOT compute anything here and does not send a figure: the server
+   * re-runs the same sync the approval hook runs (recompute the attendance
+   * snapshot from APPROVED Overtime rows, then re-run the payroll engine). It
+   * exists for employees whose payroll predates the approval hook. Idempotent —
+   * pushing twice cannot double-count, because the snapshot is rebuilt from the
+   * records rather than added to.
+   */
+  const handlePushOTToPayroll = async (emp: any) => {
+    if (!(Number(emp.approvedHours) > 0)) {
+      await ui.alert({ message: `${emp.name} has no approved overtime. Approve the entries first — pending and rejected hours are never paid.` });
+      return;
+    }
+    const ok = await ui.confirm({
+      title: 'Push overtime to payroll',
+      message: `Recalculate payroll for ${emp.name} using ${emp.approvedHours} approved overtime hour(s)?\n\nOnly approved entries are paid. Locked payroll months are skipped.`,
+      confirmText: 'Push to Payroll',
+    });
+    if (!ok) return;
+    setPushingOT(String(emp.employeeId));
+    try {
+      const res = await api.overtime.pushToPayroll(emp.employeeId);
+      const done = (res?.periods || []).filter((p: any) => p.ok);
+      const failed = (res?.periods || []).filter((p: any) => !p.ok);
+      if (done.length) {
+        ui.toast.success(`${emp.name}: ${done.map((p: any) => `${p.month} ${p.year} → ${p.otHours}h`).join(', ')}` +
+          (failed.length ? ` (${failed.length} period(s) failed)` : ''));
+      }
+      if (failed.length && !done.length) {
+        ui.toast.error(`Could not push ${emp.name}: ${failed[0].error}`);
+      }
+      // A closed pay period is skipped by the engine on purpose. Reporting that
+      // as a plain success would claim money moved when it did not.
+      const locked = res?.lockedPeriods || [];
+      if (locked.length) {
+        await ui.alert({
+          title: 'Some pay periods are locked',
+          variant: 'warning',
+          message: `${locked.map((p: any) => `${p.month} ${p.year}: approved ${p.approvedHours}h, payroll still holds ${p.payrollOtHours}h`).join('\n')}\n\n`
+            + 'Locked payroll is never changed automatically. Unlock the month in Payroll if this needs correcting.',
+        });
+      }
+      loadOvertime();
+    } catch (e) {
+      console.error('[overtime] push to payroll failed', e);
+      ui.toast.error(getApiErrorMessage(e, 'Could not push overtime to payroll.'));
+    } finally {
+      setPushingOT(null);
+    }
+  };
+
+  /** Open the OT form pre-filled for one employee (from a grouped row). */
+  const handleAddOTFor = (emp: any) => {
+    setEditingOTId(null);
+    setOTForm({
+      empId: emp.employeeId, empName: emp.name, empCode: emp.employeeCode || '',
+      department: emp.department || '', branch: emp.branch || '', shift: '',
+      date: selectedDate, in: '18:00', out: '20:00', otHours: 2,
+      type: 'Normal Overtime', status: 'Pending', reason: '',
+    });
+    setOtErrors({});
+    setShowOTModal(true);
+  };
+
+  /** Employee groups after the search box, sorted by the largest approved total. */
+  const otGroups = useMemo(() => {
+    const list = otSummary?.employees || [];
+    const q = otSearch.trim().toLowerCase();
+    const filtered = q
+      ? list.filter((g: any) => [g.name, g.employeeCode, g.department, g.branch]
+          .some(v => String(v || '').toLowerCase().includes(q)))
+      : list;
+    return [...filtered].sort((a: any, b: any) => (b.approvedHours - a.approvedHours) || String(a.name).localeCompare(String(b.name)));
+  }, [otSummary, otSearch]);
 
   const downloadGuide = () => {
     downloadImportGuidePDF();
@@ -917,7 +1332,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       overtimeHours: ot ? ot.toFixed(2) : '',
       status,
       leaveType: record?.leaveType || '',
-      remarks: record?.remarks || '',
+      remarks: (record as any)?.remarks || '',
     };
   };
 
@@ -1027,8 +1442,8 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
     let list = activeUniqueEmployees;
     if (exportScope === 'company' && filterCompany) list = list.filter(e => e.companyId === filterCompany || e.branchId === filterCompany);
     else if (exportScope === 'multiple') list = list.filter(e => exportCompanyIds.includes(e.companyId) || exportCompanyIds.includes(e.branchId || ''));
-    else if (exportScope === 'branch' && filterBranch) list = list.filter(e => (e.branchLocation || 'Head Office') === filterBranch);
-    else if (exportScope === 'department' && filterDept) list = list.filter(e => e.department === filterDept);
+    else if (exportScope === 'branch' && filterBranch) list = list.filter(e => sameValue(e.branchLocation || 'Head Office', filterBranch));
+    else if (exportScope === 'department' && filterDept) list = list.filter(e => sameValue(e.department, filterDept));
     else if (exportScope === 'individual' && filterEmployee) list = list.filter(e => String(e.id) === String(filterEmployee));
     return list;
   };
@@ -1154,7 +1569,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 <h3 className="text-[14px] font-bold text-gray-800">Workforce Analytics</h3>
                 <p className="text-[11px] text-gray-500 mb-4">Real-time insights and statistics.</p>
               </div>
-              <div className="flex items-center gap-6">
+              {/* flex-1 makes this row absorb the card's spare height instead of
+                  `justify-between` collecting it all into one gap under the
+                  heading. The card still stretches to match its taller siblings —
+                  the chart just centres in the space rather than sinking to the
+                  bottom. Same technique as the Department card's flex-1 bars. */}
+              <div className="flex items-center gap-6 flex-1">
                 <div className="relative w-24 h-24 rounded-full border-[6px] border-emerald-500 flex items-center justify-center flex-shrink-0 shadow-inner">
                   <div className="text-center">
                     <span className="block text-xl font-black text-gray-800">{statTotal > 0 ? Math.round((statPresent / statTotal)*100) : 0}%</span>
@@ -1179,7 +1599,6 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   </div>
                 </div>
               </div>
-              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Department Distribution */}
@@ -1207,28 +1626,96 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                    <div className="text-xs text-gray-400 text-center py-4">No department data available.</div>
                 )}
               </div>
-              <button className="text-[11px] text-brand-600 font-bold mt-5 text-center w-full hover:underline">View Full Report</button>
             </div>
 
             {/* Broadcast & Notification */}
             <div className="bg-white rounded-[20px] border border-[#E6E0FE] shadow-sm p-5 flex flex-col justify-between">
               <div>
-                <h3 className="text-[14px] font-bold text-gray-800 mb-4">Broadcast & Notification</h3>
+                <h3 className="text-[14px] font-bold text-gray-800 mb-1">Broadcast & Notification</h3>
+                {/* A branch sender is told plainly that their reach is limited —
+                    the restriction is a rule, not a missing feature. */}
+                {bcOptions?.scope.branchId && (
+                  <p className="text-[10px] font-semibold text-gray-500 mb-3">
+                    Sending to <span className="text-brand-600">{bcOptions.scope.branchName}</span> only
+                  </p>
+                )}
               </div>
               <div className="flex flex-col gap-3 flex-1">
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Target Audience</label>
-                  <select className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all">
-                    <option>All Staff</option>
-                    <option>My Local Branch Staff Only</option>
+                  <label htmlFor="bc-audience" className="block text-[11px] font-bold text-gray-600 mb-1">Target Audience</label>
+                  <select
+                    id="bc-audience"
+                    value={bcAudience}
+                    onChange={e => { setBcAudience(e.target.value as BroadcastAudience); setBcTarget(''); setBcBranch(''); }}
+                    disabled={!bcOptions}
+                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all disabled:opacity-60"
+                  >
+                    {(bcOptions?.audiences ?? [{ value: 'all', label: 'Loading…' }]).map(a => (
+                      <option key={a.value} value={a.value}>{a.label}</option>
+                    ))}
                   </select>
                 </div>
+
+                {/* Branch → Department/Employee cascade. Only for senders who
+                    actually have branches to choose between. */}
+                {bcShowBranchCascade && (
+                  <div>
+                    <label htmlFor="bc-branch" className="block text-[11px] font-bold text-gray-600 mb-1">Branch</label>
+                    <select
+                      id="bc-branch"
+                      value={bcBranch}
+                      onChange={e => { setBcBranch(e.target.value); setBcTarget(''); }}
+                      className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    >
+                      <option value="">All branches</option>
+                      {bcOptions!.branches.map(b => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* The second selector only exists for audiences that need one. */}
+                {bcAudience !== 'all' && (
+                  <div>
+                    <label htmlFor="bc-target" className="block text-[11px] font-bold text-gray-600 mb-1">
+                      {bcAudience === 'branch' ? 'Branch' : bcAudience === 'role' ? 'Role' : bcAudience === 'department' ? 'Department' : 'Employee'}
+                    </label>
+                    <select
+                      id="bc-target"
+                      value={bcTarget}
+                      onChange={e => setBcTarget(e.target.value)}
+                      className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    >
+                      <option value="">{bcTargetOptions.length ? 'Select…' : 'None available'}</option>
+                      {bcTargetOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                  </div>
+                )}
+
                 <div>
-                  <label className="block text-[11px] font-bold text-gray-600 mb-1">Message</label>
-                  <textarea className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all" placeholder="Type your message here..."></textarea>
+                  <label htmlFor="bc-message" className="block text-[11px] font-bold text-gray-600 mb-1">Message</label>
+                  <textarea
+                    id="bc-message"
+                    value={bcMessage}
+                    maxLength={BROADCAST_MAX}
+                    onChange={e => setBcMessage(e.target.value)}
+                    className="w-full text-xs font-medium border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 h-[68px] resize-none focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-gray-700 transition-all"
+                    placeholder="Type your message here..."
+                  />
+                  <div className="flex justify-end mt-1">
+                    <span className={`text-[10px] font-semibold ${bcMessage.length >= BROADCAST_MAX ? 'text-rose-500' : 'text-gray-400'}`}>
+                      {bcMessage.length}/{BROADCAST_MAX}
+                    </span>
+                  </div>
                 </div>
               </div>
-              <Button className="w-full text-xs mt-4 bg-brand-600 hover:bg-brand-700 font-bold shadow-md shadow-brand-600/20 flex items-center justify-center gap-2"><Send size={14} /> Dispatch Broadcast</Button>
+              <Button
+                onClick={dispatchBroadcast}
+                loading={bcSending}
+                disabled={!bcMessage.trim() || (bcAudience !== 'all' && !bcTarget)}
+                className="w-full text-xs mt-4 bg-brand-600 hover:bg-brand-700 font-bold shadow-md shadow-brand-600/20 flex items-center justify-center gap-2"
+              >
+                <Send size={14} /> {bcSending ? 'Dispatching…' : 'Dispatch Broadcast'}
+              </Button>
             </div>
           </div>
 
@@ -1315,10 +1802,23 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           {companyOptions.length > 1 && (
             <div className="w-40"><Select value={filterCompany} onChange={e => setFilterCompany(e.target.value)} options={[{ value: '', label: 'All Companies' }, ...companyOptions]} className="text-xs h-8" /></div>
           )}
-          <div className="w-36"><Select value={filterBranch} onChange={e => setFilterBranch(e.target.value)} options={[{ value: '', label: 'All Branches' }, ...branches.map(b => ({ value: b, label: b }))]} className="text-xs h-8" /></div>
-          <div className="w-36"><Select value={filterDept} onChange={e => setFilterDept(e.target.value)} options={[{ value: '', label: 'All Departments' }, ...departments.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
-          <div className="w-36"><Select value={filterDesignation} onChange={e => setFilterDesignation(e.target.value)} options={[{ value: '', label: 'All Designations' }, ...designations.map(d => ({ value: d, label: d }))]} className="text-xs h-8" /></div>
-          <div className="w-44"><Select value={filterEmployee} onChange={e => setFilterEmployee(e.target.value)} options={[{ value: '', label: 'All Employees' }, ...periodEmployees.map(e => ({ value: e.id, label: e.name }))]} className="text-xs h-8" /></div>
+          {showBranchFilter ? (
+            <SearchableSelect className="w-36" value={filterBranch} onChange={setFilterBranch} placeholder="All Branches" ariaLabel="Filter by branch"
+              options={branches.map(b => ({ value: b, label: b }))} />
+          ) : isBranchWorkspace && implicitBranchName ? (
+            // Not a control — the branch is fixed by the workspace. Shown as a
+            // read-only chip so it is obvious WHY there is nothing to choose.
+            <div className="h-8 px-2.5 inline-flex items-center gap-1.5 rounded-lg bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600" title="Attendance is scoped to your branch">
+              <Building2 size={12} className="text-slate-400" />{implicitBranchName}
+            </div>
+          ) : null}
+          {/* Long lists get type-ahead; Status/period keep the native control. */}
+          <SearchableSelect className="w-36" value={filterDept} onChange={setFilterDept} placeholder="All Departments" ariaLabel="Filter by department"
+            options={departments.map(d => ({ value: d, label: d }))} />
+          <SearchableSelect className="w-40" value={filterDesignation} onChange={setFilterDesignation} placeholder="All Designations" ariaLabel="Filter by designation"
+            options={designations.map(d => ({ value: d, label: d }))} />
+          <SearchableSelect className="w-48" value={filterEmployee} onChange={setFilterEmployee} placeholder="All Employees" ariaLabel="Filter by employee"
+            options={employeeChoices.map(e => ({ value: String(e.id), label: titleCase(e.name), hint: [e.employeeId, titleCase(e.department)].filter(Boolean).join(' · ') }))} />
           {(filterCompany || filterBranch || filterDept || filterDesignation || filterEmployee) && (
             <button onClick={() => { setFilterCompany(''); setFilterBranch(''); setFilterDept(''); setFilterDesignation(''); setFilterEmployee(''); }} className="h-8 px-2 text-[11px] font-bold text-rose-600 hover:bg-rose-50 rounded-md flex items-center gap-1"><X size={12} /> Clear</button>
           )}
@@ -1447,7 +1947,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                       <Tr key={emp.id} className="hover:bg-slate-50 group">
                         <Td className="sticky left-0 z-10 bg-white group-hover:bg-slate-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.15)]"><div className="font-bold text-slate-800 text-xs">{emp.name}</div><div className="text-[10px] text-slate-500">{emp.department}</div></Td>
                         {periodDates.map(d => {
-                          const dateLabel = new Date(d).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short' });
+                          const dateLabel = new Date(d).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' });
                           // Future dates are READ-ONLY: greyed "Upcoming" cell, no
                           // click / menu / keyboard / hover — never counted or saved.
                           if (isFutureLocked(d)) {
@@ -1664,53 +2164,224 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       {/* TAB: OVERTIME */}
       {activeTab === 'overtime' && (
         <div className="space-y-4 animate-in fade-in">
-          {/* OT Analytics Dashboard */}
+          {/* OT Analytics Dashboard — server totals across the whole database,
+              not just the page of records currently rendered. */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Total OT Hours" value={overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
-            <StatCard label="Approved OT" value={overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
-            <StatCard label="Pending OT" value={overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
-            <StatCard label="OT Cost (Est.)" value={`₹ ${(overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0) * 200).toLocaleString()}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
+            <StatCard label="Total OT Hours" value={(otSummary?.totals?.totalHours ?? overtimeData.reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<Clock size={16} className="text-slate-600" />} color="bg-slate-50" />
+            <StatCard label="Approved OT" value={(otSummary?.totals?.approvedHours ?? overtimeData.filter(o => o.status === 'Approved').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<CheckCircle2 size={16} className="text-emerald-600" />} color="bg-emerald-50" />
+            <StatCard label="Pending OT" value={(otSummary?.totals?.pendingHours ?? overtimeData.filter(o => o.status === 'Pending').reduce((acc, curr) => acc + (Number(curr.otHours) || 0), 0)).toFixed(1)} icon={<Clock size={16} className="text-amber-600" />} color="bg-amber-50" />
+            <StatCard label="OT Cost (Approved)" value={`₹ ${(otSummary?.totals?.otAmount ?? otCostEstimate).toLocaleString('en-IN')}`} icon={<Database size={16} className="text-brand-600" />} color="bg-brand-50" />
           </div>
 
+          {/* ── Overtime, one row per employee ───────────────────────────────
+              Grouping is a VIEW of the records, computed on the server. Nothing
+              is merged: expanding a row lists every original entry, and payroll
+              reads the Overtime table directly — never these totals. */}
           <Card padding={false} className="overflow-hidden border-slate-200">
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+            <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-wrap justify-between items-center gap-3">
               <div>
-                <h4 className="font-bold text-sm text-slate-800">Overtime Tracking & Approvals</h4>
-                <p className="text-[10px] text-slate-500 mt-0.5">Approved OT automatically calculates via Payroll Multipliers.</p>
+                <h4 className="font-bold text-sm text-slate-800">Overtime Tracking &amp; Approvals</h4>
+                <p className="text-[10px] text-slate-500 mt-0.5">
+                  One row per employee — expand to see every record. Only <strong>approved</strong> hours are paid;
+                  payroll recalculates automatically on approval.
+                </p>
               </div>
-              {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenOTModal()}>Add OT Record</Button>}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 px-2 h-8 border border-slate-200 rounded-lg bg-white">
+                  <Search size={12} className="text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search employee, code, department…"
+                    className="w-56 text-xs bg-transparent focus:outline-none"
+                    value={otSearch}
+                    onChange={e => setOtSearch(e.target.value)}
+                  />
+                </div>
+                {isAdmin && <Button size="sm" className="h-8 text-[10px]" onClick={() => handleOpenOTModal()}>Add OT Record</Button>}
+              </div>
             </div>
-            <Paginated items={overtimeData} resetKey={activeCompanyId} label="records">
-            {(rows) => (
-            <Table>
-              <Thead><tr><Th>Employee</Th><Th>Date</Th><Th>In/Out Time</Th><Th>OT Hours</Th><Th>Type</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
+
+            {otSummaryError && (
+              <div className="px-4 py-2 bg-rose-50 border-b border-rose-100 text-[11px] text-rose-700 flex items-center gap-2">
+                <AlertCircle size={12} /> {otSummaryError}
+              </div>
+            )}
+
+            <Paginated items={otGroups} resetKey={`${activeCompanyId}|${otSearch}`} label="employees">
+            {(groups) => (
+            <Table dense>
+              <Thead><tr>
+                {/* Employee is PINNED. With 11 columns this table is wider than
+                    the page on a normal screen, so scrolling right used to carry
+                    the name out of view and leave rows unidentifiable — the
+                    "cut off" symptom. z-30 keeps it above the body's sticky
+                    cells (z-20) where the two sticky axes cross. */}
+                <Th className="sticky left-0 z-30 bg-surface-muted border-r border-hairline">Employee</Th>
+                <Th>Department</Th><Th>Branch</Th>
+                <Th>Total OT</Th><Th>Approved</Th><Th>Pending</Th>
+                <Th>OT Amount</Th><Th>Records</Th><Th>Payroll Status</Th><Th>Last OT</Th>
+                {isAdmin && <Th className="sticky right-0 z-30 bg-surface-muted border-l border-hairline">Actions</Th>}
+              </tr></Thead>
               <Tbody>
-                {overtimeData.length === 0 ? (
-                  <Tr><Td colSpan={7} className="text-center text-xs text-slate-500 py-8">No Overtime Records Found.</Td></Tr>
-                ) : rows.map(ot => (
-                  <Tr key={ot.id}>
-                    <Td><span className="font-bold text-xs">{ot.empName}</span></Td>
-                    <Td><span className="text-xs">{ot.date}</span></Td>
-                    <Td><span className="text-xs font-mono">{ot.in} - {ot.out}</span></Td>
-                    <Td><span className="text-xs font-bold text-fuchsia-600">{ot.otHours} hrs</span></Td>
-                    <Td><span className="text-[10px] bg-slate-100 px-2 py-1 rounded">{ot.type}</span></Td>
-                    <Td><Badge variant={ot.status === 'Approved' ? 'green' : ot.status === 'Rejected' ? 'red' : 'warning'}>{ot.status}</Badge></Td>
-                    {isAdmin && (
-                      <Td>
-                        <div className="flex gap-2 items-center">
-                          {ot.status === 'Pending' && (
-                            <>
-                              <button className="text-[10px] text-emerald-600 font-bold hover:underline" onClick={() => handleStatusOT(ot.id, 'Approved')}>Approve</button>
-                              <button className="text-[10px] text-rose-600 font-bold hover:underline" onClick={() => handleStatusOT(ot.id, 'Rejected')}>Reject</button>
-                            </>
-                          )}
-                          <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenOTModal(ot)}>Edit</button>
-                          <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteOT(ot.id)}>Delete</button>
-                        </div>
+                {!otSummary ? (
+                  <Tr><Td colSpan={11} className="text-center text-xs text-slate-500 py-8">Loading overtime…</Td></Tr>
+                ) : otGroups.length === 0 ? (
+                  <Tr><Td colSpan={11} className="text-center text-xs text-slate-500 py-8">
+                    {otSearch ? `No employee matches “${otSearch}”.` : 'No Overtime Records Found.'}
+                  </Td></Tr>
+                ) : groups.map((g: any) => {
+                  const open = expandedOT.has(String(g.employeeId));
+                  return (
+                  <React.Fragment key={g.employeeId}>
+                    <Tr className={open ? 'bg-brand-50/40' : ''}>
+                      {/* bg-inherit takes the row's own background (Tr sets it
+                          explicitly for exactly this reason), so the pinned cell
+                          stays opaque while the rest of the row scrolls under it. */}
+                      <Td className="sticky left-0 z-20 bg-inherit border-r border-hairline">
+                        <button
+                          type="button"
+                          className="flex items-center gap-1.5 text-left group"
+                          onClick={() => toggleOTRow(g.employeeId)}
+                          aria-expanded={open}
+                          title={open ? 'Hide overtime records' : 'Show all overtime records'}
+                        >
+                          <ChevronRight size={13} className={`text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+                          <span>
+                            <span className="font-bold text-xs block group-hover:text-brand-700">{titleCase(g.name)}</span>
+                            <span className="text-[10px] text-slate-500 font-mono">{g.employeeCode || '—'}</span>
+                          </span>
+                        </button>
                       </Td>
+                      <Td><span className="text-xs">{g.department || '—'}</span></Td>
+                      <Td><span className="text-xs">{g.branch || '—'}</span></Td>
+                      <Td><span className="text-xs font-bold">{g.totalHours} h</span></Td>
+                      <Td><span className="text-xs font-bold text-emerald-600">{g.approvedHours} h</span></Td>
+                      <Td><span className={`text-xs font-bold ${g.pendingHours > 0 ? 'text-amber-600' : 'text-slate-400'}`}>{g.pendingHours} h</span></Td>
+                      <Td><span className="text-xs font-bold text-fuchsia-600">₹ {Number(g.otAmount || 0).toLocaleString('en-IN')}</span></Td>
+                      <Td><span className="text-xs">{g.records}</span></Td>
+                      <Td>
+                        <Badge
+                          variant={g.payrollStatus === 'Synced' ? 'green' : g.payrollStatus === 'Outdated' ? 'warning' : g.payrollStatus === 'Not in payroll' ? 'red' : g.payrollStatus === 'Locked' ? 'blue' : 'gray'}
+                          className={g.payrollStatus === 'Locked' ? 'cursor-help' : undefined}
+                        >
+                          {g.payrollStatus === 'Locked'
+                            // Locked ≠ wrong: the pay period is closed, so the engine
+                            // will not move it. Pushing would do nothing, and saying
+                            // "Outdated" would send HR after a button that cannot help.
+                            ? <span title={`${g.lockedMonths} closed pay period(s) disagree with the approved hours. Unlock the month in Payroll to correct it.`}>Locked</span>
+                            : g.payrollStatus}
+                        </Badge>
+                      </Td>
+                      <Td><span className="text-xs whitespace-nowrap">{g.lastDate ? formatDate(g.lastDate) : '—'}</span></Td>
+                      {isAdmin && (
+                        // Pinned right for the same reason Employee is pinned
+                        // left: the table is wider than the page, so the controls
+                        // sat off the right edge and were unreachable without
+                        // scrolling. Identity stays left, actions stay right, the
+                        // 9 data columns scroll between them.
+                        <Td className="sticky right-0 z-20 bg-inherit border-l border-hairline">
+                          <RowActions>
+                            <RowAction iconOnly icon={FileText} label="View Details" tone="info" tooltip="Show every overtime record for this employee" onClick={() => toggleOTRow(g.employeeId)} />
+                            <RowAction iconOnly icon={Clock} label="Add OT" tone="primary" tooltip={`Raise a new overtime entry for ${titleCase(g.name)}`} onClick={() => handleAddOTFor(g)} />
+                            <RowAction
+                              icon={pushingOT === String(g.employeeId) ? Loader2 : Send}
+                              iconOnly
+                              label="Push to Payroll"
+                              tone={g.payrollStatus === 'Synced' ? 'neutral' : 'warning'}
+                              tooltip="Recalculate payroll from this employee's approved overtime"
+                              disabled={pushingOT === String(g.employeeId)}
+                              onClick={() => handlePushOTToPayroll(g)}
+                            />
+                          </RowActions>
+                        </Td>
+                      )}
+                    </Tr>
+
+                    {open && (
+                      <Tr className="bg-slate-50/70">
+                        <Td colSpan={isAdmin ? 11 : 10} className="p-0">
+                          {/* This cell spans all 11 columns, so it is as wide as
+                              the SCROLLED table — its content used to slide out
+                              of view to the left along with everything else.
+                              Pinning it and sizing it to the container's VISIBLE
+                              width (100cqw — the Table root is @container/table)
+                              keeps the record list and reconciliation readable at
+                              any scroll position, without a nested scrollbar. */}
+                          <div className="sticky left-0 w-[100cqw] px-4 py-3 border-l-2 border-brand-400">
+                            <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">
+                              {g.records} overtime record{g.records === 1 ? '' : 's'} — {titleCase(g.name)}
+                            </p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-[10px] uppercase text-slate-500 border-b border-slate-200">
+                                    <th className="text-left py-1.5 pr-3 font-bold">Date</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">In / Out</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Hours</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Type</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Reason</th>
+                                    <th className="text-left py-1.5 pr-3 font-bold">Status</th>
+                                    {isAdmin && <th className="text-left py-1.5 font-bold">Actions</th>}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {g.entries.map((ot: any) => (
+                                    <tr key={ot.id} className="border-b border-slate-100 last:border-0">
+                                      <td className="py-1.5 pr-3 whitespace-nowrap">{formatDate(ot.date)}</td>
+                                      <td className="py-1.5 pr-3 font-mono text-[11px]">{ot.in || '—'} - {ot.out || '—'}</td>
+                                      <td className="py-1.5 pr-3 font-bold text-fuchsia-600">{ot.otHours} h</td>
+                                      <td className="py-1.5 pr-3"><span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded">{ot.type}</span></td>
+                                      <td className="py-1.5 pr-3 text-slate-500 max-w-[220px] truncate" title={ot.reason || ''}>{ot.reason || '—'}</td>
+                                      <td className="py-1.5 pr-3">
+                                        <Badge variant={ot.status === 'Approved' ? 'green' : ot.status === 'Rejected' ? 'red' : 'warning'}>{ot.status}</Badge>
+                                      </td>
+                                      {isAdmin && (
+                                        <td className="py-1.5">
+                                          <RowActions>
+                                            {ot.status === 'Pending' && (
+                                              <>
+                                                <RowAction iconOnly icon={CheckCircle2} label="Approve" tone="success" tooltip="Approve this overtime — it will be paid" onClick={() => handleStatusOT(ot.id, 'Approved')} />
+                                                <RowAction iconOnly icon={XCircle} label="Reject" tone="warning" tooltip="Reject this overtime — it will not be paid" onClick={() => handleStatusOT(ot.id, 'Rejected')} />
+                                              </>
+                                            )}
+                                            <RowAction iconOnly icon={Pencil} label="Edit" tone="edit" tooltip="Edit overtime entry" onClick={() => handleOpenOTModal(ot)} />
+                                            <RowAction iconOnly icon={Trash2} label="Delete" tone="danger" tooltip="Delete overtime entry" onClick={() => handleDeleteOT(ot.id)} />
+                                          </RowActions>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            {/* Per-month reconciliation: approved hours vs what payroll
+                                actually holds. This is what "Synced" is measured on. */}
+                            {g.months?.length > 0 && (
+                              <div className="mt-3 pt-2 border-t border-slate-200">
+                                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-1.5">Payroll reconciliation (approved hours only)</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {g.months.map((m: any) => (
+                                    <div key={`${m.month}-${m.year}`} className="text-[10px] bg-white border border-slate-200 rounded px-2 py-1.5">
+                                      <span className="font-bold">{m.month} {m.year}</span>
+                                      <span className="text-slate-500"> · approved </span><span className="font-bold">{m.approvedHours}h</span>
+                                      <span className="text-slate-500"> · payroll </span>
+                                      <span className="font-bold">{m.payrollOtHours == null ? '—' : `${m.payrollOtHours}h`}</span>
+                                      {m.payrollOtAmount != null && <span className="text-slate-500"> · ₹{Number(m.payrollOtAmount).toLocaleString('en-IN')}</span>}
+                                      <span className={`ml-1.5 font-bold ${m.status === 'Synced' ? 'text-emerald-600' : m.status === 'Outdated' ? 'text-amber-600' : m.status === 'Locked' ? 'text-blue-600' : 'text-rose-600'}`}>{m.status}</span>
+                                      {m.payrollLocked && <span className="ml-1 text-slate-400">(pay period closed)</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </Td>
+                      </Tr>
                     )}
-                  </Tr>
-                ))}
+                  </React.Fragment>
+                  );
+                })}
               </Tbody>
             </Table>
             )}
@@ -1724,20 +2395,27 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
         open={showOTModal}
         onClose={() => setShowOTModal(false)}
         title={editingOTId ? "Edit Overtime Record" : "Add New Overtime"}
-        footer={<><Button variant="outline" onClick={() => setShowOTModal(false)}>Cancel</Button><Button onClick={handleSaveOT}>Save Record</Button></>}
+        footer={<>
+          <Button variant="outline" onClick={() => setShowOTModal(false)} disabled={savingOT}>Cancel</Button>
+          {/* Stays clickable while invalid on purpose: clicking runs validateOT,
+              which puts a message on every offending field. A hard-disabled
+              button would leave the user with no way to find out WHY. */}
+          <Button onClick={handleSaveOT} loading={savingOT}>{savingOT ? 'Saving…' : 'Save Record'}</Button>
+        </>}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="relative">
               <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Employee</label>
-              <div 
-                className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white flex justify-between items-center cursor-pointer"
+              <div
+                className={`w-full text-sm border rounded-lg px-3 py-2 bg-white flex justify-between items-center cursor-pointer ${otErrors.empId ? 'border-rose-400' : 'border-slate-200'}`}
                 onClick={() => setIsEmpDropdownOpen(!isEmpDropdownOpen)}
               >
                 {otForm.empName ? `${otForm.empName} (${otForm.empCode || 'N/A'})` : <span className="text-slate-400">Select Employee</span>}
                 <ChevronDown size={14} className="text-slate-400" />
               </div>
-              
+              {otErrors.empId && <p className="text-[10px] font-semibold text-rose-600 mt-1">{otErrors.empId}</p>}
+
               {isEmpDropdownOpen && (
                 <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg overflow-hidden">
                   <div className="p-2 border-b border-slate-100">
@@ -1782,11 +2460,12 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 </div>
               )}
             </div>
-            <Input type="date" label="Date" max={today} value={otForm.date} onChange={e => setOTForm({...otForm, date: clampPast(e.target.value)})} />
+            <Input type="date" label="Date" max={today} value={otForm.date} error={otErrors.date}
+              onChange={e => setOTForm({...otForm, date: clampPast(e.target.value)})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Input type="time" label="In Time" value={otForm.in} onChange={e => setOTForm({...otForm, in: e.target.value})} />
-            <Input type="time" label="Out Time" value={otForm.out} onChange={e => setOTForm({...otForm, out: e.target.value})} />
+            <Input type="time" label="In Time" value={otForm.in} error={otErrors.in} onChange={e => setOTForm({...otForm, in: e.target.value})} />
+            <Input type="time" label="Out Time" value={otForm.out} error={otErrors.out} onChange={e => setOTForm({...otForm, out: e.target.value})} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Input label="Calculated OT Hours" value={otForm.otHours.toString()} disabled className="bg-slate-50 font-bold" />
@@ -1803,7 +2482,11 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           </div>
           <div>
             <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1.5">Reason / Remarks</label>
-            <textarea className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 h-20" placeholder="E.g., Server maintenance, urgent client delivery..." value={otForm.reason} onChange={e => setOTForm({...otForm, reason: e.target.value})}></textarea>
+            <textarea
+              className={`w-full text-sm border rounded-lg px-3 py-2 h-20 ${otErrors.reason ? 'border-rose-400' : 'border-slate-200'}`}
+              placeholder="E.g., Server maintenance, urgent client delivery..."
+              value={otForm.reason} onChange={e => setOTForm({...otForm, reason: e.target.value})}></textarea>
+            {otErrors.reason && <p className="text-[10px] font-semibold text-rose-600 mt-1">{otErrors.reason}</p>}
           </div>
         </div>
       </Modal>
@@ -1823,10 +2506,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
               {shiftError}
             </div>
           )}
+          {/* 10 columns — `dense` trims the per-cell padding that otherwise costs
+              320px of pure whitespace and forces horizontal scroll at 1366px. */}
           <Paginated items={shifts} resetKey={activeCompanyId} label="shifts">
           {(rows) => (
-          <Table>
-            <Thead><tr><Th>Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th>Actions</Th>}</tr></Thead>
+          <Table dense>
+            {/* Shift Name and Actions pin to the edges. At 100% zoom on any
+                desktop width nothing scrolls, so these never engage; at 125/150%
+                zoom (or on a phone) the row identity and its actions stay put
+                while the middle columns scroll. */}
+            <Thead><tr><Th className="sticky left-0 z-20 bg-surface-muted">Shift Name</Th><Th>Code</Th><Th>Start Time</Th><Th>End Time</Th><Th>Grace Period</Th><Th>Break Time</Th><Th>Employees</Th><Th>Overtime</Th><Th>Status</Th>{isAdmin && <Th className="sticky right-0 z-20 bg-surface-muted text-right">Actions</Th>}</tr></Thead>
             <Tbody>
               {shifts.length === 0 && !shiftError && (
                 <Tr><Td colSpan={isAdmin ? 10 : 9}><span className="text-slate-400 text-xs py-3 block text-center">No shifts defined yet. Click “Create New Shift” to add one.</span></Td></Tr>
@@ -1835,7 +2524,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                 const assignedCount = (employees || []).filter((e: any) => String(e.shiftId) === String(s.id)).length;
                 return (
                 <Tr key={s.id} className={s.status === 'Archived' ? 'opacity-50' : ''}>
-                  <Td><span className="font-bold text-xs">{s.name}</span></Td>
+                  <Td className="sticky left-0 z-10 bg-inherit"><span className="font-bold text-xs">{s.name}</span></Td>
                   <Td><span className="text-[10px] font-mono bg-slate-100 px-2 py-0.5 rounded">{s.code || 'N/A'}</span></Td>
                   <Td><span className="text-xs font-mono">{s.start}</span></Td>
                   <Td><span className="text-xs font-mono">{s.end}</span></Td>
@@ -1845,13 +2534,17 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
                   <Td><Badge variant={s.otEnabled ? 'green' : 'gray'}>{s.otEnabled ? 'Eligible' : 'N/A'}</Badge></Td>
                   <Td><Badge variant={s.status === 'Active' ? 'blue' : 'gray'}>{s.status}</Badge></Td>
                   {isAdmin && (
-                    <Td>
-                      <div className="flex items-center gap-2">
-                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => openAssignShift(s)}>Assign</button>
-                        <button className="text-[10px] text-brand-600 hover:underline font-bold" onClick={() => handleOpenShiftModal(s)}>Edit</button>
-                        {s.status !== 'Archived' && <button className="text-[10px] text-amber-600 hover:underline font-bold" onClick={() => handleArchiveShift(s.id)}>Archive</button>}
-                        <button className="text-[10px] text-rose-600 hover:underline font-bold" onClick={() => handleDeleteShift(s.id)}>Delete</button>
-                      </div>
+                    // Right-aligned and non-shrinking: the actions are the last
+                    // column, so any slack belongs to the data columns, not here.
+                    <Td className="sticky right-0 z-10 bg-inherit w-px text-right">
+                      <RowActions className="justify-end">
+                        <RowAction icon={Users} label="Assign" tone="info" tooltip="Assign employees to this shift" onClick={() => openAssignShift(s)} />
+                        <RowAction icon={Pencil} label="Edit" tone="edit" tooltip="Edit shift timings" onClick={() => handleOpenShiftModal(s)} />
+                        {s.status !== 'Archived' && (
+                          <RowAction icon={Archive} label="Archive" tone="warning" tooltip="Archive this shift (keeps history)" onClick={() => handleArchiveShift(s.id)} />
+                        )}
+                        <RowAction icon={Trash2} label="Delete" tone="danger" tooltip="Permanently delete this shift" onClick={() => handleDeleteShift(s.id)} />
+                      </RowActions>
                     </Td>
                   )}
                 </Tr>

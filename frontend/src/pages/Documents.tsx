@@ -345,28 +345,12 @@ export const Documents: React.FC<DocumentsProps> = ({
     || brandingCompanies.find((c: any) => String(c.id) === String(activeCompanyId))
     || currentCompany;
 
-  // Failsafe fetch if list is 0 but we know this branch should have employees
-  useEffect(() => {
-    if (list.length === 0 && companyEmployees.length > 0 && activeCompanyId) {
-      console.log('Failsafe fetching documents for:', activeCompanyId);
-      const token = localStorage.getItem('hrms_token');
-      if (!token) return;
-      fetch(`/api/documents`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'x-workspace-id': activeCompanyId,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          onUpdateDocuments([...documents.filter(d => d.companyId !== activeCompanyId), ...data]);
-        }
-      })
-      .catch(err => console.error('Failsafe fetch failed:', err));
-    }
-  }, [list.length, companyEmployees.length, activeCompanyId]);
+  // (Removed) A "failsafe" documents fetch used to live here. It read a
+  // localStorage key that is never written, so it could never run; it also
+  // called a RELATIVE `/api/documents`, which in dev hits the Vite server and
+  // returns index.html rather than JSON. Documents are loaded through the shared
+  // api client (which resolves VITE_API_BASE_URL), so this duplicate path is not
+  // needed and only produced a JSON parse error when it did execute.
 
   // Compliance state
   const [search, setSearch] = useState('');
@@ -449,15 +433,13 @@ export const Documents: React.FC<DocumentsProps> = ({
   // Download every document on file for an employee — straight from the table,
   // no drawer/workspace needed.
   const handleDownloadEmployeeDocs = (empId: string) => {
-    const docs = list.filter(d => d.employeeId === empId && (d.fileData || d.url));
+    // `hasFile` replaces the old `d.fileData` test: the list no longer carries
+    // file contents, so checking fileData here would report "nothing to download"
+    // for every stored file. handleDownload fetches each blob on demand.
+    const docs = list.filter(d => d.employeeId === empId && ((d as any).fileData || (d as any).hasFile || d.url));
     if (docs.length === 0) { ui.toast.info('No downloadable files on record for this employee yet.'); return; }
     docs.forEach((doc, i) => {
-      setTimeout(() => {
-        if (doc.fileData) {
-          const a = document.createElement('a'); a.href = doc.fileData; a.download = doc.name || 'document';
-          document.body.appendChild(a); a.click(); a.remove();
-        } else if (doc.url) { window.open(doc.url, '_blank', 'noopener'); }
-      }, i * 250); // stagger so the browser allows multiple downloads
+      setTimeout(() => { void handleDownload(doc); }, i * 250); // stagger so the browser allows multiple downloads
     });
     ui.toast.success(`Downloading ${docs.length} document(s) for this employee.`);
   };
@@ -865,14 +847,54 @@ export const Documents: React.FC<DocumentsProps> = ({
   };
 
   // ── Preview / download ──
-  const handlePreview = (doc: Document) => setPreviewDoc(doc);
-  const handleDownload = (doc: Document) => {
-    if (doc.fileData) {
-      const a = document.createElement('a');
-      a.href = doc.fileData;
-      a.download = doc.name || 'document';
-      document.body.appendChild(a); a.click(); a.remove();
-    } else if (doc.url) {
+  //
+  // The documents LIST no longer carries file contents — `fileData` was 99.9% of
+  // that response and was re-downloaded on every login even though nothing on
+  // this screen renders it. The blob for the ONE document being opened is fetched
+  // here instead, and cached so reopening the same file is instant.
+  const fileCache = useRef(new Map<number, string>());
+
+  const loadFileData = async (doc: Document): Promise<string> => {
+    // Just-uploaded documents already hold their data URL in memory.
+    if ((doc as any).fileData) return (doc as any).fileData;
+    // `hasFile` comes from the list and distinguishes "no attachment" from
+    // "attachment not loaded yet" — without it a link-only document would
+    // trigger a pointless request on every preview.
+    if ((doc as any).hasFile === false) return '';
+    const hit = fileCache.current.get(doc.id as any);
+    if (hit) return hit;
+    const r: any = await api.documents.getFile(doc.id as any);
+    const data = r?.fileData || '';
+    if (data) fileCache.current.set(doc.id as any, data);
+    return data;
+  };
+
+  const handlePreview = async (doc: Document) => {
+    // Open immediately so the dialog never feels blocked, then fill in the file.
+    setPreviewDoc(doc);
+    try {
+      const fileData = await loadFileData(doc);
+      if (fileData) setPreviewDoc((cur: any) => (cur && cur.id === doc.id ? { ...cur, fileData } : cur));
+    } catch (e) {
+      ui.toast.error(getApiErrorMessage(e, 'Could not load the file.'));
+    }
+  };
+
+  const handleDownload = async (doc: Document) => {
+    try {
+      const fileData = await loadFileData(doc);
+      if (fileData) {
+        const a = document.createElement('a');
+        a.href = fileData;
+        a.download = doc.name || 'document';
+        document.body.appendChild(a); a.click(); a.remove();
+        return;
+      }
+    } catch (e) {
+      ui.toast.error(getApiErrorMessage(e, 'Could not download the file.'));
+      return;
+    }
+    if (doc.url) {
       window.open(doc.url, '_blank', 'noopener');
     } else {
       ui.toast.warning('No file or link is attached to this document.');
@@ -2108,7 +2130,7 @@ export const Documents: React.FC<DocumentsProps> = ({
         onClose={() => { setUploadOpen(false); }}
         title="Upload Employee Document"
         variant="page"
-        breadcrumbs={[{ label: 'Documents', onClick: () => setUploadOpen(false) }, { label: 'Upload Document' }]}
+        breadcrumbs={[{ label: 'Employee Documents', onClick: () => setUploadOpen(false) }, { label: 'Upload Employee Document' }]}
         subtitle="Attach a document file or link and tag it to an employee."
         size="lg"
         footer={
@@ -2116,7 +2138,7 @@ export const Documents: React.FC<DocumentsProps> = ({
           <>
             <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
             <Button onClick={handleUploadDocument} disabled={uploadBusy || !selectedEmpId || (!uploadFile && !uploadUrl.trim())}>
-              {uploadBusy ? 'Uploading…' : 'Upload Document'}
+              {uploadBusy ? 'Uploading…' : 'Upload Employee Document'}
             </Button>
           </>
           )
@@ -2250,6 +2272,17 @@ export const Documents: React.FC<DocumentsProps> = ({
           const lower = (previewDoc.url || previewDoc.name || '').toLowerCase();
           const isImage = mime.startsWith('image/') || /\.(png|jpe?g|gif|webp)(\?|$)/.test(lower) || !!previewDoc.fileData?.startsWith('data:image/');
           const isPdf = mime === 'application/pdf' || /\.pdf(\?|$)/.test(lower) || !!previewDoc.fileData?.startsWith('data:application/pdf');
+          // The blob is fetched when the dialog opens, so distinguish "still
+          // loading" from "genuinely has nothing attached" — otherwise every
+          // preview would flash "No file attached" before the file arrives.
+          if (!src && (previewDoc as any).hasFile) {
+            return (
+              <div className="p-8 text-center text-sm text-slate-500 flex flex-col items-center gap-3">
+                <span className="h-6 w-6 rounded-full border-2 border-slate-300 border-t-transparent animate-spin" />
+                Loading file…
+              </div>
+            );
+          }
           if (!src) return <div className="p-8 text-center text-sm text-slate-500">No file or link is attached to this document.</div>;
           if (isImage) return <div className="flex justify-center bg-slate-100 rounded-xl p-3 max-h-[68vh] overflow-auto"><img src={src} alt={previewDoc.name} className="max-w-full h-auto rounded" /></div>;
           if (isPdf) return <iframe src={src} title={previewDoc.name} className="w-full h-[68vh] rounded-xl border border-slate-200 bg-white" />;

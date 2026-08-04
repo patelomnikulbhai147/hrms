@@ -28,6 +28,15 @@ export const RemoveSampleDataButton: React.FC = () => {
     let cancelled = false;
     (async () => {
       try {
+        // Onboarding is a COMPANY-account concept; the endpoint answers 403 for a
+        // Super Admin ("Onboarding is only available to a company account"). This
+        // component is mounted on the shared dashboard header, so calling it
+        // unconditionally produced a 403 plus two console errors on EVERY Super
+        // Admin page. Skip the request for a role that can never have onboarding.
+        let role = '';
+        try { role = JSON.parse(localStorage.getItem('hrms_profile') || '{}')?.role || ''; } catch { /* no profile yet */ }
+        if (role === 'Super Admin') { setMode('none'); return; }
+
         const s: any = await api.onboarding.status();
         if (cancelled) return;
         // Removal wins: once removed, neither control is ever shown again.

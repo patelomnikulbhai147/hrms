@@ -13,27 +13,16 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const { settings, sync, client, unmatched } = require('../services/etimeoffice');
 
-const companyScopeFor = (req) =>
-  [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
-const isSuperAdmin = (req) => req.user?.role === 'Super Admin';
 const canView = (req) => ['Super Admin', 'Company Head', 'HR'].includes(req.user?.role);
 const canManage = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 
-// Which company a WRITE targets — RULE 5 isolation: a non-admin is pinned to
-// their own company; a Super Admin must name one (query / body / workspace).
-function targetCompanyId(req, requested) {
-  if (isSuperAdmin(req)) return idParam(requested || req.query.companyId || req.headers['x-workspace-id']) || null;
-  return req.user?.companyId || null;
-}
+// Branch-aware workspace authorisation (see utils/workspaceScope.js). The old
+// private helper refused every branch workspace, because branch ids live in
+// accessibleBranchIds, never in accessibleCompanyIds.
+const { isSuperAdmin, scopedCompanyWhere, targetCompanyId } = require('../utils/workspaceScope');
 
 // Company-scoped WHERE for reads (unauthorised workspace → null).
-function scopedWhere(req) {
-  const workspaceId = idParam(req.query.companyId || req.headers['x-workspace-id']);
-  if (isSuperAdmin(req)) return workspaceId ? { companyId: workspaceId } : {};
-  const scope = companyScopeFor(req);
-  if (workspaceId && !scope.includes(workspaceId)) return null;
-  return { companyId: workspaceId || { in: scope.length ? scope : [-1] } };
-}
+const scopedWhere = (req) => scopedCompanyWhere(req);
 
 // GET /connection — the (sanitized) connection config for the target company.
 exports.getConnection = async (req, res) => {

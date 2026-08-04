@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   IdCard, Search, Download, Printer, Layers, QrCode, LayoutGrid,
-  FileImage, FileArchive, Users, Contact,
+  FileImage, FileArchive, Users, Contact, Upload,
 } from 'lucide-react';
 import type { Role, Company, Employee } from '@/types';
 import { Card } from '@/components/ui/Card';
@@ -24,6 +24,7 @@ import { resolveBranding } from '@/services/brandingService';
 import { CardCanvas } from '@/components/cards/CardCanvas';
 import { CardTemplateEditor } from '@/components/cards/CardTemplateEditor';
 import { TemplateGallery } from '@/components/cards/TemplateGallery';
+import { UploadTemplateModal } from '@/components/cards/UploadTemplateModal';
 import { EmployeeInfoCards } from '@/components/cards/EmployeeInfoCards';
 import { cardDimensions } from '@/types/cardDesigner';
 import type { CardTemplate, CardSide } from '@/types/cardDesigner';
@@ -46,7 +47,6 @@ interface Props {
 /** The two sections of the module. Information Cards = dashboard summary; ID Cards = the printable studio. */
 type Section = 'info' | 'id';
 type Tab = 'generate' | 'templates';
-type ScopeMode = 'selected' | 'department' | 'branch' | 'designation' | 'employmentType' | 'all';
 
 export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companies, employees, onOpenProfile }) => {
   const { canView } = usePermissions();
@@ -63,15 +63,13 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const [selectedTemplate, setSelectedTemplate] = useState<CardTemplate>(BUILTIN_BY_ID[DEFAULT_TEMPLATE_ID]);
   const [previewTpl, setPreviewTpl] = useState<CardTemplate | null>(null);
   const [editingTpl, setEditingTpl] = useState<CardTemplate | null>(null);
-  const [side, setSide] = useState<CardSide>('front');
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   // Employee selection
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [bulkIds, setBulkIds] = useState<string[]>([]);
-  const [scopeMode, setScopeMode] = useState<ScopeMode>('selected');
-  const [scopeValue, setScopeValue] = useState('');
 
   // Generation options
   const [sideMode, setSideMode] = useState<SideMode>('both');
@@ -102,10 +100,9 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   };
 
   const scoped = useMemo(() => (employees || []).filter((e) => isActiveEmployee(e) && belongsToTree(e)), /* eslint-disable-next-line */ [employees, treeIds, treeBranchNames]);
+  // Only Department is offered as a filter here; branch/designation/type lists
+  // went with the scope selector they existed to populate.
   const departments = useMemo(() => Array.from(new Set(scoped.map((e) => e.department).filter(Boolean))).sort(), [scoped]);
-  const branches = useMemo(() => Array.from(new Set(scoped.map((e) => (e as any).branchLocation || (e as any).location).filter(Boolean))).sort(), [scoped]);
-  const designations = useMemo(() => Array.from(new Set(scoped.map((e) => e.designation).filter(Boolean))).sort(), [scoped]);
-  const empTypes = useMemo(() => Array.from(new Set(scoped.map((e) => (e as any).employmentType || (e as any).category).filter(Boolean))).sort(), [scoped]);
 
   const filtered = useMemo(() => scoped.filter((e) => {
     if (deptFilter && e.department !== deptFilter) return false;
@@ -116,18 +113,14 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
 
   const previewEmp = useMemo(() => scoped.find((e) => String(e.id) === String(selectedId)) || filtered[0] || scoped[0], [scoped, filtered, selectedId]);
 
-  // Which employees a generation run targets, per the selected scope.
-  const targets = useMemo(() => {
-    switch (scopeMode) {
-      case 'all': return scoped;
-      case 'department': return scoped.filter((e) => e.department === scopeValue);
-      case 'branch': return scoped.filter((e) => ((e as any).branchLocation || (e as any).location) === scopeValue);
-      case 'designation': return scoped.filter((e) => e.designation === scopeValue);
-      case 'employmentType': return scoped.filter((e) => ((e as any).employmentType || (e as any).category) === scopeValue);
-      case 'selected':
-      default: return bulkIds.length ? scoped.filter((e) => bulkIds.includes(String(e.id))) : (previewEmp ? [previewEmp] : []);
-    }
-  }, [scopeMode, scopeValue, scoped, bulkIds, previewEmp]);
+  // Which employees a generation run targets: whatever is ticked in the list.
+  // Nothing ticked → the employee currently previewed, so "Generate" always has
+  // an obvious subject. Bulk runs are done by narrowing with the Search /
+  // Department filters and pressing "Select all".
+  const targets = useMemo(
+    () => (bulkIds.length ? scoped.filter((e) => bulkIds.includes(String(e.id))) : (previewEmp ? [previewEmp] : [])),
+    [scoped, bulkIds, previewEmp]
+  );
 
   // Resolve THE active template for this company: the persisted active id wins,
   // then the custom default, then the shipped default — so Generate & Preview and
@@ -161,7 +154,20 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   const doZip = () => guardTargets() && withProgress('zip', (onp) => exportCardsZip(selectedTemplate, toItems(targets), { sideMode, fileName: 'employee-cards.zip', onProgress: onp }));
   const doQrZip = () => guardTargets() && withProgress('qr', (onp) => exportQrZip(toItems(targets), 'employee-qr-codes.zip', onp));
   const doPrint = () => guardTargets() && withProgress('print', (onp) => printCards(selectedTemplate, toItems(targets), { sideMode, layout: pdfLayout, onProgress: onp }));
-  const doPng = async () => { if (!previewEmp) return; const { branding, companyId } = brandFor(previewEmp); setBusy('png'); try { await exportCardPng(selectedTemplate, { employee: previewEmp, branding, companyId }, side, `${(previewEmp.employeeId || 'employee')}-${side}.png`); } catch (e: any) { ui.toast.error(e?.message || 'error'); } finally { setBusy(null); } };
+  // PNG follows the same "Sides" choice as the other exports. 'both' writes two
+  // files rather than silently dropping one — the old toggle could only ever
+  // produce a single side, and which one was not obvious from the screen.
+  const doPng = async () => {
+    if (!previewEmp) return;
+    const { branding, companyId } = brandFor(previewEmp);
+    const sides: CardSide[] = sideMode === 'both' ? ['front', 'back'] : [sideMode];
+    setBusy('png');
+    try {
+      for (const s of sides) {
+        await exportCardPng(selectedTemplate, { employee: previewEmp, branding, companyId }, s, `${(previewEmp.employeeId || 'employee')}-${s}.png`);
+      }
+    } catch (e: any) { ui.toast.error(e?.message || 'error'); } finally { setBusy(null); }
+  };
 
   // ── template actions ─────────────────────────────────────────────────────────
   // Apply = make this the company's single ACTIVE template. Confirms, persists to
@@ -194,6 +200,18 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
   // Open the dedicated Template Editor on a working copy (never edits the gallery
   // in place). Editing a template does NOT change the active template.
   const editTpl = (t: CardTemplate) => { setPreviewTpl(null); setEditingTpl(cloneTemplate(t)); };
+
+  // Upload a company's own artwork as a new template, then drop the admin
+  // straight into the mapping editor — the design is useless until the dynamic
+  // fields sit where it expects them, so making that a separate step the user
+  // has to discover would be a trap.
+  const saveUploadedTpl = async (t: CardTemplate) => {
+    const saved = await saveCustomTemplate(t);
+    const s = await reload();
+    const fresh = s.all.find((x) => x.dbId === saved.dbId || x.id === saved.id) || saved;
+    ui.toast.success('Template uploaded — now drag the fields onto your design.');
+    setEditingTpl(cloneTemplate(fresh));
+  };
   // After a save: refresh the gallery and, if the ACTIVE template was edited in
   // place, adopt its new design in Generate & Preview — without changing which
   // template is active.
@@ -304,29 +322,18 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
           Shows ONLY the active template. Template switching lives in the gallery. */}
       {tab === 'generate' && (
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.6fr] gap-4">
-          {/* Left: employees + scope */}
+          {/* Left: filter the roster, tick who gets a card */}
           <Card>
             <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-600"><Users size={14} className="text-brand-600" /> Employees</div>
+            {/* Search + Department narrow the list; the tick boxes decide who is
+                generated. "Select all" applies to whatever the filters left. */}
             <div className="space-y-2 mb-3">
-              <Select value={scopeMode} onChange={(e) => { setScopeMode(e.target.value as ScopeMode); setScopeValue(''); }}
-                options={[
-                  { value: 'selected', label: 'Selected employees' },
-                  { value: 'department', label: 'By Department' },
-                  { value: 'branch', label: 'By Branch' },
-                  { value: 'designation', label: 'By Designation' },
-                  { value: 'employmentType', label: 'By Employment Type' },
-                  { value: 'all', label: 'All Employees' },
-                ]} />
-              {scopeMode === 'department' && <Select value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} options={[{ value: '', label: 'Choose department…' }, ...departments.map((d) => ({ value: d, label: d }))]} />}
-              {scopeMode === 'branch' && <Select value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} options={[{ value: '', label: 'Choose branch…' }, ...branches.map((d) => ({ value: d, label: d }))]} />}
-              {scopeMode === 'designation' && <Select value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} options={[{ value: '', label: 'Choose designation…' }, ...designations.map((d) => ({ value: d, label: d }))]} />}
-              {scopeMode === 'employmentType' && <Select value={scopeValue} onChange={(e) => setScopeValue(e.target.value)} options={[{ value: '', label: 'Choose type…' }, ...empTypes.map((d) => ({ value: d, label: d }))]} />}
               <Input icon={<Search size={14} />} placeholder="Search employees…" value={search} onChange={(e) => setSearch(e.target.value)} />
-              {scopeMode === 'selected' && <Select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} options={[{ value: '', label: 'All departments' }, ...departments.map((d) => ({ value: d, label: d }))]} />}
+              <Select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} options={[{ value: '', label: 'All departments' }, ...departments.map((d) => ({ value: d, label: d }))]} />
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 mb-1">
-              <span>{scopeMode === 'selected' ? `${bulkIds.length || (previewEmp ? 1 : 0)} selected` : `${targets.length} in scope`}</span>
-              {scopeMode === 'selected' && <button className="text-[#C77E52] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>}
+              <span>{bulkIds.length || (previewEmp ? 1 : 0)} selected</span>
+              <button className="text-[#C77E52] font-semibold" onClick={() => setBulkIds(bulkIds.length ? [] : filtered.map((e) => String(e.id)))}>{bulkIds.length ? 'Clear' : 'Select all'}</button>
             </div>
             <div className="max-h-[460px] overflow-y-auto space-y-1">
               {filtered.length === 0 && <p className="text-xs text-slate-400 py-6 text-center">No employees match.</p>}
@@ -334,7 +341,7 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
                 const id = String(e.id); const isSel = String(previewEmp?.id) === id;
                 return (
                   <div key={id} onClick={() => setSelectedId(id)} className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border cursor-pointer ${isSel ? 'bg-brand-50 border-brand-200' : 'border-transparent hover:bg-slate-50'}`}>
-                    {scopeMode === 'selected' && <input type="checkbox" checked={bulkIds.includes(id)} onClick={(ev) => ev.stopPropagation()} onChange={() => setBulkIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])} />}
+                    <input type="checkbox" checked={bulkIds.includes(id)} onClick={(ev) => ev.stopPropagation()} onChange={() => setBulkIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])} />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-800 truncate">{e.name}</p>
                       <p className="text-[10px] text-slate-500 font-mono">{e.employeeId} · {e.designation}</p>
@@ -347,11 +354,12 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
 
           {/* Right: live preview + generation */}
           <Card>
+            {/* No Front/Back toggle here: the preview below always shows BOTH
+                sides, so the toggle changed nothing on screen. The one thing it
+                did affect — which side the PNG export produced — now follows the
+                "Sides" control below, so there is a single place to choose. */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-600"><QrCode size={14} className="text-brand-600" /> Live Preview <span className="font-normal text-slate-400 truncate max-w-[160px]">· {selectedTemplate?.name}</span></div>
-              <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden">
-                {(['front', 'back'] as const).map((s) => <button key={s} onClick={() => setSide(s)} className={`px-2.5 py-1 text-[11px] font-bold ${side === s ? 'bg-[#C77E52] text-white' : 'text-slate-500'}`}>{s === 'front' ? 'Front' : 'Back'}</button>)}
-              </div>
             </div>
             {!previewEmp ? <div className="py-16 text-center text-sm text-slate-400">Select an employee to preview.</div> : (
               <div className="flex flex-wrap items-center justify-center gap-4 py-4 px-2 bg-slate-50 rounded-xl">
@@ -387,11 +395,21 @@ export const EmployeeCards: React.FC<Props> = ({ role, activeCompanyId, companie
       {/* ── TEMPLATE GALLERY ── */}
       {tab === 'templates' && (
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-slate-500">
+              Use a built-in design, or upload your own and map the employee fields onto it once.
+            </p>
+            {canEdit && (
+              <Button size="sm" icon={<Upload size={13} />} onClick={() => setUploadOpen(true)}>Upload Custom Template</Button>
+            )}
+          </div>
           <TemplateGallery templates={tset.all} activeId={selectedTemplate?.id} sample={previewEmp} branding={pv.branding} companyId={pv.companyId}
             canEdit={canEdit} isSuperAdmin={isSuperAdmin}
             onUse={applyTemplate} onPreview={previewOf} onEdit={editTpl} onDuplicate={duplicateTpl} onDelete={deleteTpl} onSetDefault={makeDefault} onShare={shareTpl} />
         </div>
       )}
+
+      <UploadTemplateModal open={uploadOpen} onClose={() => setUploadOpen(false)} onSave={saveUploadedTpl} />
 
       </>}
 

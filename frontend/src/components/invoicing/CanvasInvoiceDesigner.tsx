@@ -55,8 +55,8 @@ const ELEMENT_TOOLS = [
   { type: 'customerDetails', label: 'Customer Details', icon: User, default: { w: 250, h: 100, fontSize: 12 } },
   { type: 'itemTable', label: 'Item Table', icon: Table2, default: { w: A4_W - 80, h: 150 } },
   { type: 'totals', label: 'Totals', icon: Sigma, default: { w: 250, h: 120 } },
-  { type: 'bankDetails', label: 'Bank Details', icon: Landmark, default: { w: 250, h: 80, fontSize: 12 } },
-  { type: 'paymentInfo', label: 'Payment Info', icon: Wallet, default: { w: 250, h: 60, fontSize: 12 } },
+  // Bank Details / Payment Info are no longer offered: Payment Details were
+  // removed from the invoice layout, so a placed block would print nothing.
   { type: 'signature', label: 'Signature', icon: PenTool, default: { w: 150, h: 80 } },
   { type: 'terms', label: 'Terms & Cond.', icon: FileText, default: { w: 300, h: 60, fontSize: 10 } },
   { type: 'notes', label: 'Notes', icon: StickyNote, default: { w: 300, h: 60, fontSize: 10 } },
@@ -213,8 +213,9 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
                { id: generateId(), type: 'text', name: 'Title', x: A4_W - 250, y: 20, w: 230, h: 40, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 4, content: sd.title || 'TAX INVOICE', fontSize: 24, textAlign: 'right' },
                { id: generateId(), type: 'itemTable', name: 'Items Table', x: 20, y: 350, w: A4_W - 40, h: 150, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 5 },
                { id: generateId(), type: 'totals', name: 'Totals', x: A4_W - 270, y: 520, w: 250, h: 140, rotation: 0, opacity: 1, visible: true, locked: false, zIndex: 6 },
-               { id: generateId(), type: 'bankDetails', name: 'Bank Details', x: 20, y: 700, w: 250, h: 100, rotation: 0, opacity: 1, visible: sd.footer.showBank, locked: false, zIndex: 7, fontSize: sd.font.size },
-               { id: generateId(), type: 'terms', name: 'Terms', x: 20, y: 820, w: 350, h: 80, rotation: 0, opacity: 1, visible: sd.footer.showTerms, locked: false, zIndex: 8, fontSize: sd.font.size - 2 },
+               // No Bank Details block: Payment Details were removed from the
+               // layout. Terms moves up into the space it used to occupy.
+               { id: generateId(), type: 'terms', name: 'Terms', x: 20, y: 700, w: 350, h: 80, rotation: 0, opacity: 1, visible: sd.footer.showTerms, locked: false, zIndex: 8, fontSize: sd.font.size - 2 },
                { id: generateId(), type: 'signature', name: 'Signature', x: A4_W - 220, y: 950, w: 200, h: 80, rotation: 0, opacity: 1, visible: sd.footer.showSignature, locked: false, zIndex: 9 },
              ];
           } else {

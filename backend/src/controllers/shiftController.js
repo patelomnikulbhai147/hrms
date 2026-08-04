@@ -29,9 +29,14 @@ async function resolveCompanyId(rawId) {
   return branch ? branch.companyId : id;
 }
 
-// The set of company ids the caller may touch (their own + accessible).
+// The set of COMPANY ids the caller may touch: their own, everything granted
+// company-wide, and the parent company of every branch they may enter. That last
+// part matters because shifts are company-wide policies and a branch-only user's
+// grants live in accessibleBranchIds — without it they were refused their own
+// company's shifts with "Unauthorized".
+const { companyScopeFor } = require('../utils/workspaceScope');
 function allowedCompanyIds(req) {
-  return [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].filter(Boolean);
+  return companyScopeFor(req);
 }
 
 exports.getAll = async (req, res) => {

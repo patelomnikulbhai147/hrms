@@ -1,10 +1,12 @@
 const prisma = require('../config/prisma');
 const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
 const idParam = require('../utils/idParam');
+const { canReachCompany } = require('../utils/companyScope');
 const { coerceEntityIds } = require('../utils/idParam');
 const AuditService = require('../services/auditService');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+const { normalizeBillingCycle } = require('../utils/billingCycle');
 
 // ── Company Branding Management ───────────────────────────────────────────────
 // A dedicated, permission-gated endpoint so Company Admins / HR can manage their
@@ -351,6 +353,30 @@ exports.updateDepartments = async (req, res) => {
 };
 
 // Get all companies
+// ─────────────────────────────────────────────────────────────────────────────
+// Heavy branding assets — base64 images stored directly on the Company row.
+//
+// Measured against production (9 companies): stampImage and letterheadImage are
+// 2.6 MB EACH across the table, 95% of the entire /companies payload. They are
+// used only when RENDERING a document — invoices, payslips, Form 16, letterheads
+// — and never by the company list, the workspace switcher or the dashboard, yet
+// the app re-downloaded all of them on every login and every workspace switch.
+//
+// They are therefore omitted from the list and served on demand by
+// GET /companies/:id/assets. logoImage is deliberately NOT in this set: it is
+// ~24 KB per company and is displayed throughout the UI (topbar, cards, PDFs),
+// so lazy-loading it would trade a real win for visible logo flicker.
+const HEAVY_ASSET_FIELDS = ['stampImage', 'letterheadImage', 'digitalSignatureImage'];
+
+const stripHeavyAssets = (company) => {
+  const out = { ...company };
+  for (const f of HEAVY_ASSET_FIELDS) delete out[f];
+  // Let the client know an asset exists without shipping it, so a "no seal
+  // uploaded" empty state stays accurate while the bytes load lazily.
+  out.hasHeavyAssets = HEAVY_ASSET_FIELDS.some((f) => !!company[f]);
+  return out;
+};
+
 exports.getCompanies = async (req, res) => {
   try {
     let whereClause = {};
@@ -395,7 +421,10 @@ exports.getCompanies = async (req, res) => {
       }
     } catch { /* CompanyOwner table absent on older DBs — non-fatal */ }
 
-    res.json(enrichedCompanies);
+    // `?assets=1` opts back into the full payload for any caller that genuinely
+    // needs every company's artwork in one go (bulk document generation).
+    const withAssets = String(req.query.assets || '') === '1';
+    res.json(withAssets ? enrichedCompanies : enrichedCompanies.map(stripHeavyAssets));
   } catch (error) {
     return respondError(res, error);
   }
@@ -449,13 +478,25 @@ exports.createCompany = async (req, res) => {
     // (the DB default is also 'Free', but set it here so it's unambiguous + audited).
     if (isBlank(companyData.plan)) companyData.plan = 'Free';
 
+    // Billing cycle is chosen alongside the plan at onboarding. `billingCycle`
+    // is already in COMPANY_FIELDS, so pickCompanyData may have carried a raw
+    // value through — normalise it here so a legacy/junk value ('Monthly', '')
+    // can never reach the subscription that slot purchases inherit from.
+    const billingCycle = normalizeBillingCycle(companyData.billingCycle);
+    companyData.billingCycle = billingCycle;
+
     const company = await prisma.company.create({
       data: { ...companyData, id: await nextEntityId() }
     });
 
-    // Subscription record (FREE / Active) — best-effort, mirrors Company.plan.
-    prisma.companySubscription.create({
-      data: { companyId: company.id, plan: company.plan || 'Free', billingCycle: 'Quarterly', status: 'Active' },
+    // Subscription record (Active) — best-effort, mirrors Company.plan and the
+    // chosen cycle. If this write fails the row is recreated lazily FROM the
+    // Company row, so the chosen cycle is not lost.
+    // AWAITED: unawaited, the response could beat the insert and the very next
+    // read (subscription detail, slot quote) would find no row yet. Still
+    // .catch()-guarded, so a failure here never fails the company creation.
+    await prisma.companySubscription.create({
+      data: { companyId: company.id, plan: company.plan || 'Free', billingCycle, status: 'Active' },
     }).catch(() => { /* lazily created later by the subscription controller if this fails */ });
 
     // The company row is authoritative. Everything below enriches the profile and
@@ -632,7 +673,20 @@ exports.updateCompany = async (req, res) => {
     }
 
     const payload = pickCompanyData(req.body);
+    // The billing cycle belongs to the SUBSCRIPTION, not the company profile.
+    // `Company.billingCycle` is only a mirror, so this route must not be a second
+    // (unaudited) way to change it — that would let the mirror drift away from
+    // the value slot purchases actually inherit. Changing it goes through
+    // Subscription Management, which writes both rows and records the history.
+    const askedToChangeCycle = Object.prototype.hasOwnProperty.call(payload, 'billingCycle');
+    delete payload.billingCycle;
     if (Object.keys(payload).length === 0) {
+      if (askedToChangeCycle) {
+        return res.status(400).json({
+          error: 'The billing cycle is part of the subscription. Change it from Subscription Management.',
+          code: 'BILLING_CYCLE_READONLY',
+        });
+      }
       return res.status(400).json({ error: 'No valid company fields supplied to update.' });
     }
     const company = await prisma.company.update({
@@ -642,6 +696,48 @@ exports.updateCompany = async (req, res) => {
     res.json(company);
   } catch (error) {
     return respondError(res, error);
+  }
+};
+
+// GET /companies/:id/assets — the heavy branding images for ONE company.
+// Paired with the omission in getCompanies above: document-rendering screens
+// pull the artwork for the workspace they are actually printing, instead of
+// every user downloading every company's artwork at login.
+exports.getCompanyAssets = async (req, res) => {
+  try {
+    const id = idParam(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Company id required.' });
+
+    let effectiveId = id;
+    let c = await prisma.company.findUnique({
+      where: { id: effectiveId },
+      select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
+    });
+
+    if (!c) {
+      // If not found in Company, check if it's a Branch workspace ID and resolve to its parent Company
+      const branch = await prisma.branch.findUnique({ where: { id: effectiveId }, select: { companyId: true } });
+      if (branch && branch.companyId) {
+        effectiveId = branch.companyId;
+        c = await prisma.company.findUnique({
+          where: { id: effectiveId },
+          select: { id: true, stampImage: true, letterheadImage: true, digitalSignatureImage: true },
+        });
+      }
+    }
+
+    if (!c) return res.status(404).json({ error: 'Company not found.' });
+
+    if (req.user && req.user.role !== 'Super Admin') {
+      if (!canReachCompany(req, id) && !canReachCompany(req, effectiveId)) {
+        return res.status(403).json({ error: 'Not your company.' });
+      }
+    }
+
+    res.json(c);
+  } catch (error) {
+    console.error('company.getAssets', error);
+    res.status(500).json({ error: error.message || 'Server error' });
   }
 };
 

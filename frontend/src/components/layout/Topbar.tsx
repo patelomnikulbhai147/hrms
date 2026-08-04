@@ -9,10 +9,27 @@ import { cn } from '@/utils/cn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '@/api/apiClient';
 import { buildWorkspaceHierarchy } from '@/utils/workspaceUtils';
-import { resolveActiveWorkspace } from '@/types';
+import { resolveActiveWorkspace, isCompanyIdMatch } from '@/types';
 import { CompanyLogo } from '@/components/brand/CompanyBrand';
 import { resolveWorkspaceBranding } from '@/services/brandingService';
 import { ui } from '@/components/ui/feedback';
+import { formatDateTime } from '@/utils/formatDate';
+
+/**
+ * "Just now" / "5m ago" for fresh alerts, falling back to the app's standard
+ * absolute format (Asia/Kolkata) once an alert is older than a day. A raw
+ * toLocaleString was previously used here, which ignores the app timezone.
+ */
+function relativeTime(value?: string | number | Date | null): string {
+  if (!value) return '';
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return '';
+  const mins = Math.floor((Date.now() - t) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return formatDateTime(value, '');
+}
 
 
 interface TopbarProps {
@@ -137,10 +154,16 @@ export const Topbar: React.FC<TopbarProps> = ({
   const accessibleIds = (authProfile?.accessibleCompanyIds || []).map(String);
   const hasCompanyLevelAccess = (companyId: string | number) => accessibleIds.includes(String(companyId));
 
-  // Filter notifications by company if not Super Admin
+  // Filter notifications by company if not Super Admin.
+  // This MUST use isCompanyIdMatch, the same helper the Notifications page uses.
+  // A raw `n.companyId === activeCompanyId` compares an Int from the API against
+  // an id that is a string whenever it was rehydrated from localStorage, so every
+  // company-scoped notification was dropped and the bell read "No recent alerts"
+  // while the full page listed the same rows correctly. It also resolves a branch
+  // workspace to its parent company, which the strict compare could not do.
   const companyNotifs = activeRole === 'Super Admin'
     ? notifications
-    : notifications.filter(n => !n.companyId || n.companyId === activeCompanyId);
+    : notifications.filter(n => !n.companyId || isCompanyIdMatch(n.companyId, activeCompanyId, companies as any[]));
   const unread = companyNotifs.filter(n => !n.read).length;
 
   const handleLogoutAction = () => {
@@ -557,9 +580,26 @@ export const Topbar: React.FC<TopbarProps> = ({
                               )}
                             </div>
                             <div className="min-w-0">
-                              {(n as any).title && <p className={cn('text-[11px] font-bold break-words', !n.read ? 'text-white' : 'text-slate-400')}>{(n as any).title}</p>}
+                              {/* A broadcast is labelled as one and carries its
+                                  provenance, so a recipient can see who sent it
+                                  and which branch it was addressed to. Every
+                                  field is optional — rows created before these
+                                  columns existed simply render as before. */}
+                              {n.type === 'broadcast' && (
+                                <p className="text-[9px] font-extrabold text-brand-400 uppercase tracking-wider mb-0.5">📢 Broadcast</p>
+                              )}
+                              {n.title && <p className={cn('text-[11px] font-bold break-words', !n.read ? 'text-white' : 'text-slate-400')}>{n.title}</p>}
                               <p className="text-[11px] text-slate-300 leading-relaxed font-medium break-words">{n.message}</p>
-                              <p className="text-[9px] text-slate-500 mt-1 font-semibold">{n.timestamp ? new Date(n.timestamp).toLocaleString('en-IN') : ''}</p>
+                              {(n.senderName || n.senderRole) && (
+                                <p className="text-[9px] text-slate-400 mt-1 font-semibold">
+                                  Sent by {n.senderName || n.senderRole}
+                                  {n.targetBranchName ? ` · ${n.targetBranchName}` : ''}
+                                </p>
+                              )}
+                              <p className="text-[9px] text-slate-500 mt-1 font-semibold flex items-center gap-1.5">
+                                {relativeTime(n.timestamp)}
+                                {!n.read && <span className="text-brand-400 font-extrabold">· Unread</span>}
+                              </p>
                             </div>
                           </div>
                           <button
