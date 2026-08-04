@@ -141,6 +141,10 @@ app.use('/api/app/auth', require('./src/routes/mobileAuthRoutes')); // Legacy ba
 app.use('/api/app/v1/auth', require('./src/routes/mobileAuthRoutes')); // Versioned Authentication
 app.use('/api/app/v1/employee', require('./src/routes/employeeMobileAuthRoutes')); // Employee Mobile Auth
 app.use('/api/app/v1', require('./src/routes/mobileAppRoutes')); // New Mobile App API System
+app.use('/api/app/v1/employee/attendance', require('./src/routes/mobileEmployeeAttendanceRoutes'));
+app.use('/api/app/v1/employee/documents', require('./src/routes/mobileEmployeeDocumentRoutes'));
+app.use('/api/app/v1/employee/payroll', require('./src/routes/mobileEmployeePayrollRoutes'));
+app.use('/api/app/v1/leaves', require('./src/routes/mobileLeaveRoutes'));
 app.use('/api/app', require('./src/app/routes')); // Legacy Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
 app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
@@ -176,7 +180,7 @@ app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payroll
 // it is NOT wrapped in pii() — the router protects + role-gates edits to SA/CH.
 app.use('/api/deduction-policy', require('./src/routes/deductionPolicyRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
-app.use('/api/invoicing', _protect, plan('invoicing'), require('./src/routes/invoiceRoutes'));
+app.use('/api/invoicing', _protect, require('./src/routes/invoiceRoutes'));
 app.use('/api/loans', _protect, plan('loans'), require('./src/routes/loanRoutes'));
 app.use('/api/compliance-mgmt', _protect, plan('compliance'), require('./src/routes/complianceMgmtRoutes'));
 // Employee Card Designer — per-company card templates (isolated card_templates).

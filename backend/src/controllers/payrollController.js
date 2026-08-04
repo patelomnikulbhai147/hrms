@@ -960,7 +960,7 @@ exports.generate = async (req, res) => {
       where: {
         month, year,
         employeeId: { in: uniqEmpIds },
-        OR: [{ workingDays: 0 }, { workingDays: null }],
+        workingDays: 0,
       },
     });
 
