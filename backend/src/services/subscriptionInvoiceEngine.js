@@ -34,9 +34,17 @@ function periodEndFor(start, cycle) {
   return d;
 }
 
-// Next unique invoice number: PREFIX-YYYY-000N (sequence = existing count + 1,
-// bumped on the rare unique collision). Prefix comes from platform settings.
-async function nextInvoiceNo(invoiceDate) {
+// Next invoice number: PREFIX-YYYY-000N.
+//
+// The sequence is scoped to the PREFIX AND YEAR (it used to be a global
+// `count()`, so the numbering never restarted per year and any deletion shifted
+// every subsequent number).
+//
+// NOTE: this is a CANDIDATE, not a reservation. Probing "does it exist?" and
+// then creating is inherently racy — two concurrent generates both see the same
+// number free. `createInvoiceWithUniqueNo` below is the safe way to use it: it
+// lets the unique index be the arbiter and retries on collision.
+async function nextInvoiceNo(invoiceDate, skip = 0) {
   const settings = store.getSettings();
   // The Invoice Settings screen (invoiceIssuerStore) is the authoritative prefix;
   // platform settings stay as a fallback so existing numbering never breaks.
@@ -44,15 +52,55 @@ async function nextInvoiceNo(invoiceDate) {
   try { issuerPrefix = (require('./invoiceIssuerStore').getIssuer().invoicePrefix || '').trim(); } catch (_) { /* fallback below */ }
   const prefix = (issuerPrefix || settings.invoicePrefix || 'INV').trim();
   const year = new Date(invoiceDate || Date.now()).getFullYear();
-  let seq = (await prisma.subscriptionInvoice.count()) + 1;
-  // Guarantee uniqueness even if numbering was edited / rows deleted.
+  const stem = `${prefix}-${year}-`;
+  const used = await prisma.subscriptionInvoice.count({ where: { invoiceNo: { startsWith: stem } } });
+  let seq = used + 1 + Number(skip || 0);
+  // Skip past numbers that already exist (numbering edited / rows deleted).
   for (let i = 0; i < 10000; i++) {
-    const candidate = `${prefix}-${year}-${String(seq).padStart(4, '0')}`;
+    const candidate = `${stem}${String(seq).padStart(4, '0')}`;
     const exists = await prisma.subscriptionInvoice.findUnique({ where: { invoiceNo: candidate } });
     if (!exists) return candidate;
     seq++;
   }
-  return `${prefix}-${year}-${Date.now()}`;
+  return `${stem}${Date.now()}`;
 }
 
-module.exports = { computeInvoice, periodEndFor, nextInvoiceNo, r2 };
+/**
+ * Create a subscription invoice with a guaranteed-unique number.
+ *
+ * Concurrency-safe by construction: the DB's unique index on `invoiceNo` is the
+ * single arbiter. On a P2002 collision we simply take the next candidate and try
+ * again, so two simultaneous generates produce two DIFFERENT numbers instead of
+ * one succeeding and the other returning a bare 500 with no invoice.
+ *
+ * @param {(invoiceNo: string) => object} buildData  data for prisma.create, given the number
+ * @param {object} [opts]
+ * @param {Date|string} [opts.invoiceDate]  drives the YYYY segment
+ * @param {string} [opts.invoiceNo]         explicit number (still retried if taken)
+ * @param {number} [opts.attempts]          max collision retries
+ */
+async function createInvoiceWithUniqueNo(buildData, opts = {}) {
+  // Attempts are cheap (one INSERT each) and only consumed under genuine
+  // contention; 12 simultaneous generates were measured to need well under 25.
+  const { invoiceDate, invoiceNo: explicit, attempts = 50 } = opts;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    // An explicitly supplied number is honoured on the first attempt only; if it
+    // is already taken we fall back to generated numbering rather than failing.
+    const candidate = attempt === 0 && explicit
+      ? String(explicit).trim()
+      : await nextInvoiceNo(invoiceDate, attempt);
+    try {
+      return await prisma.subscriptionInvoice.create({ data: buildData(candidate) });
+    } catch (e) {
+      const isNumberCollision =
+        e?.code === 'P2002' &&
+        String(e?.meta?.target ?? '').toLowerCase().includes('invoiceno');
+      if (!isNumberCollision) throw e;
+      // Another transaction claimed this number between our probe and our insert
+      // — take the next one. This is the expected path under concurrency.
+    }
+  }
+  throw new Error('Could not allocate a unique invoice number after repeated collisions.');
+}
+
+module.exports = { computeInvoice, periodEndFor, nextInvoiceNo, createInvoiceWithUniqueNo, r2 };

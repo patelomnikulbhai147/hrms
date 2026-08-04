@@ -28,8 +28,35 @@ const idParam = require('../utils/idParam');
 // sequence, and `protect` keeps branch grants in a separate list — so a workspace
 // can only be authorised through this helper, never through a local array of
 // accessibleCompanyIds (see utils/workspaceScope.js).
-const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
+const { canEnterWorkspace, isSuperAdmin, companyScopeFor } = require('../utils/workspaceScope');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
+// Offboarding salary cut-off — MIN(month end, exitDate). Shared with
+// attendanceSummaryService so eligibility and proration can never disagree.
+const { employmentWindow, payrollEligibilityWhere } = require('../utils/employmentWindow');
+
+/**
+ * Tenant guard for id-driven payroll writes.
+ *
+ * approve / mark-paid / delete take a raw `ids` array from the request body. A
+ * filter of `{ id: { in: ids } }` alone will happily approve, pay or delete
+ * ANOTHER tenant's salary rows, so every such query is additionally constrained
+ * to the companies the caller can actually reach. Super Admin is unrestricted.
+ * Returns an object to spread into `where` (`{}` for Super Admin).
+ */
+function payrollTenantWhere(req) {
+  if (isSuperAdmin(req)) return {};
+  const scope = companyScopeFor(req);
+  return { companyId: { in: scope.length ? scope : [-1] } };
+}
+
+// ── Statutory constants (must match complianceReportController + ecrEngine) ──
+// PF is computed on wages capped at the ceiling; ESI applies only up to the
+// coverage ceiling and the EMPLOYEE share is a fixed 0.75% (the company's
+// configurable `esicRate` is the EMPLOYER share, which the return charges the
+// company and is never withheld from the employee).
+const PF_WAGE_CEILING = 15000;
+const ESI_GROSS_CEILING = 21000;
+const ESI_EMP_RATE = 0.75;
 const { recurringBonusFor, bonusForPayroll } = require('../utils/bonusCalc');
 // Loan → payroll integration: auto-deduct an active loan's EMI when a payroll row
 // is (re)computed, settle its installment ledger, and advance the loan status.
@@ -265,7 +292,14 @@ async function recalcOne(payroll, summary, emp, company) {
     : Math.max(0, dim - weeklyOff - holiday) || dim;
   // No summary at all → treat as fully payable (ratio 1) so a manually created
   // row without attendance is not silently zeroed; the sync gate blocks actions.
-  const payableDays = summary ? (summary.payableDays || 0) : workingDays;
+  // EXCEPT when an exit date truncates the month: "assume a full month" would pay
+  // a leaver for days they were not employed, so the fallback is capped at the
+  // days they actually worked. A real summary always wins over this estimate.
+  const win = employmentWindow(emp, payroll.month, payroll.year);
+  const fallbackPayable = win.truncated
+    ? Math.max(0, Math.min(workingDays, win.cutoffDay - (summary?.weeklyOffDays || 0)))
+    : workingDays;
+  const payableDays = summary ? (summary.payableDays || 0) : fallbackPayable;
 
   // A month cannot pay for more days than it contains. Half-day rounding in the
   // attendance summary pushed payableDays past the calendar on 148 rows — e.g.
@@ -300,13 +334,23 @@ async function recalcOne(payroll, summary, emp, company) {
   const allowances = hra + special + otAmount;
 
   // ── Deductions applied AFTER gross pay ──
+  // These MUST agree with the statutory returns the same app files
+  // (complianceReportController: PF_WAGE_CEILING / ESI_GROSS_CEILING /
+  // ESI_EMP_RATE, and services/ecrEngine). Anything withheld here that the ECR /
+  // ESI return does not declare is money deducted from an employee that is never
+  // remitted, so the engine and the return are deliberately kept identical.
   const pfRate = company?.pfRate || 12;
-  const esicRate = company?.esicRate || 0.75;
   const profTax = company?.profTaxRate || 200;
-  // PF on earned Basic, ESI on gross pay; PT is a flat statutory floor but is
-  // waived when there is nothing to pay (grossPay = 0 ⇒ no PT either).
-  const pf = Math.round(basic * (pfRate / 100));
-  const esi = Math.round(grossPay * (esicRate / 100));
+  // `company.esicRate` is the EMPLOYER share (schema default 3.25) — it is what
+  // the ESI return charges the company. The EMPLOYEE share is the separate
+  // statutory 0.75% and is the only ESI that may be withheld from the payslip.
+  // PF is computed on wages capped at the statutory ceiling; ESI applies only
+  // while gross is within the coverage ceiling.
+  const pfWages = Math.min(basic, PF_WAGE_CEILING);
+  const pf = Math.round(pfWages * (pfRate / 100));
+  const esi = grossPay > 0 && grossPay <= ESI_GROSS_CEILING
+    ? Math.round(grossPay * (ESI_EMP_RATE / 100))
+    : 0;
   const pt = grossPay > 0 ? profTax : 0;
   const deductions = pf + esi + pt;
 
@@ -693,16 +737,24 @@ exports.generate = async (req, res) => {
     // period record and APPENDS, so payroll can be run for a few employees now and
     // more later without a 409.
 
-    // Fetch scoped employees
-    // Offboarded employees are excluded from payroll generation.
-    const employeeWhere = { status: { notIn: OFFBOARDED_STATUSES } };
+    // Fetch scoped employees.
+    // ── Offboarding eligibility ───────────────────────────────────────────────
+    // An employee is payable for a month they were employed in for even one day,
+    // so a leaver still appears in their EXIT month (prorated to the exit date by
+    // the attendance summary) and disappears from the month after. The rule lives
+    // in utils/employmentWindow so the roster and the salary maths agree.
+    // Scope (company/branch) and eligibility each contain an OR, so they are
+    // combined under AND — a bare second `OR` key would overwrite the first.
+    const employeeWhere = { AND: [payrollEligibilityWhere(month, year)] };
     if (isBranch) {
       employeeWhere.branchId = branchId;
     } else {
-      employeeWhere.OR = [
-        { companyId: companyId },
-        { branchId: companyId } // fallback in case branch is passed as companyId
-      ];
+      employeeWhere.AND.push({
+        OR: [
+          { companyId: companyId },
+          { branchId: companyId } // fallback in case branch is passed as companyId
+        ],
+      });
     }
     // Both ids are numbers by construction above, so this OR can no longer throw.
     // ── Selective generation ─────────────────────────────────────────────────
@@ -842,7 +894,23 @@ exports.generate = async (req, res) => {
     }
 
     // Upsert employee payroll records (idempotent — re-generating updates).
+    // A LOCKED row is finalized payroll: re-generating must never quietly revert
+    // it to pending_approval / unpaid and clear the lock. Every other mutation
+    // path already honours the lock, so generate does too — locked rows are
+    // skipped and reported back to the caller.
+    const lockedRows = await prisma.payroll.findMany({
+      where: {
+        payrollStatus: 'locked',
+        month, year,
+        employeeId: { in: [...new Set(payrollRecordsToCreate.map(r => r.employeeId))] },
+      },
+      select: { employeeId: true, companyId: true },
+    });
+    const lockedKeys = new Set(lockedRows.map(r => `${r.employeeId}:${r.companyId}`));
+    const lockedEmployeeIds = new Set(lockedRows.map(r => r.employeeId));
+    let skippedLockedRows = 0;
     for (const record of payrollRecordsToCreate) {
+      if (lockedKeys.has(`${record.employeeId}:${record.companyId}`)) { skippedLockedRows++; continue; }
       const row = await prisma.payroll.upsert({
         where: {
           employeeId_month_year_companyId: {
@@ -868,10 +936,33 @@ exports.generate = async (req, res) => {
     // Synchronization page stamps syncedAt) so figures reflect the latest data.
     const attSvcGen = require('../services/attendanceSummaryService');
     const uniqEmpIds = [...new Set(payrollRecordsToCreate.map(r => r.employeeId))];
+    // A recalc failure used to be swallowed by `.catch(console.error)`, so the
+    // request still returned 201 "Payroll generated" while the row kept the raw
+    // inline SEED values — un-prorated, workingDays/payableDays = 0. Those rows
+    // are indistinguishable from real payroll in the UI and can be approved,
+    // locked and PAID (verified: 1,975 such rows exist, 800 of them already
+    // paid). Failures are now counted and reported back to the caller.
+    const recalcFailures = [];
     for (const eid of uniqEmpIds) {
-      await attSvcGen.recompute(eid, month, year).catch(e => console.error('[generate] recompute', eid, e.message));
-      await recalcForEmployeeMonth(eid, month, year).catch(e => console.error('[generate] recalc', eid, e.message));
+      if (lockedEmployeeIds.has(eid)) continue; // never recompute a locked month
+      try {
+        await attSvcGen.recompute(eid, month, year);
+        await recalcForEmployeeMonth(eid, month, year);
+      } catch (e) {
+        console.error(`[generate] recalc FAILED for employee ${eid} (${month} ${year}):`, e.message);
+        recalcFailures.push({ employeeId: eid, error: e.message });
+      }
     }
+    // Belt and braces: a row that still has no proration snapshot did not go
+    // through the engine, whatever the try/catch saw. Surface it rather than
+    // letting an un-prorated seed row pass as generated payroll.
+    const unProrated = await prisma.payroll.count({
+      where: {
+        month, year,
+        employeeId: { in: uniqEmpIds },
+        OR: [{ workingDays: 0 }, { workingDays: null }],
+      },
+    });
 
     // Recompute the period's totals from ALL its child rows so appends keep the
     // summary accurate.
@@ -891,10 +982,29 @@ exports.generate = async (req, res) => {
       await prisma.companyPayroll.update({ where: { id: result.id }, data: parentUpdate });
     }
 
+    const generatedCount = payrollRecordsToCreate.length - skippedLockedRows;
+    const parts = [`Payroll generated for ${generatedCount} employee(s).`];
+    if (skippedLockedRows) parts.push(`${skippedLockedRows} locked record(s) were left unchanged.`);
+    if (recalcFailures.length) {
+      parts.push(
+        `${recalcFailures.length} record(s) could NOT be prorated from attendance and are NOT ready to approve — ` +
+        'synchronize attendance and regenerate before paying them.'
+      );
+    } else if (unProrated > 0) {
+      parts.push(
+        `${unProrated} record(s) have no attendance snapshot (0 working days) — ` +
+        'synchronize attendance and regenerate before approving or paying them.'
+      );
+    }
     res.status(201).json({
-      message: `Payroll generated for ${payrollRecordsToCreate.length} employee(s).`,
+      message: parts.join(' '),
       data: result,
-      count: payrollRecordsToCreate.length,
+      count: generatedCount,
+      skippedLocked: skippedLockedRows,
+      // Non-zero means the rows exist but are NOT trustworthy payroll yet.
+      recalcFailed: recalcFailures.length,
+      recalcFailures: recalcFailures.slice(0, 20),
+      unProratedRows: unProrated,
     });
   } catch (error) {
     console.error('Error generating payroll', error);
@@ -1044,8 +1154,10 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("PAYROLL UPDATE CALLED FOR ID:", id);
-    console.log("PAYLOAD RECEIVED:", req.body);
+    // Log the identity of the edit, not its contents — the body is a full salary
+    // payload (basic, allowances, deductions, net) and was being written to the
+    // server log verbatim on every payroll edit.
+    console.log(`[payroll:update] id=${id} by=${req.user?.id ?? '?'} fields=${Object.keys(req.body || {}).join(',')}`);
     const payload = { ...req.body };
     delete payload.status;
     delete payload.salary;
@@ -1064,6 +1176,12 @@ exports.update = async (req, res) => {
 
     if (!existingRecord) {
       return res.status(404).json({ error: 'Payroll record not found.' });
+    }
+
+    // Tenant guard — the row was fetched by id alone, so confirm it belongs to a
+    // company this caller can reach before any edit is applied.
+    if (!canEnterWorkspace(req, existingRecord.companyId)) {
+      return res.status(403).json({ error: 'You do not have access to this payroll record.' });
     }
 
     // A LOCKED payroll may only be edited by a Company Head (override authority)
@@ -1148,9 +1266,13 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.payroll.delete({
-      where: { id: idParam(id) }
+    // Tenant guard: deleteMany + the caller's company scope, so a payroll row
+    // belonging to another tenant is simply not matched (count 0 → 404) instead
+    // of being destroyed by id alone.
+    const result = await prisma.payroll.deleteMany({
+      where: { id: idParam(id), ...payrollTenantWhere(req) },
     });
+    if (result.count === 0) return res.status(404).json({ error: 'Payroll record not found.' });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting', error);
@@ -1186,7 +1308,7 @@ exports.approve = async (req, res) => {
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
     const approvedBy = req.user?.name || req.user?.email || 'Admin';
     const result = await prisma.payroll.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...payrollTenantWhere(req) },
       data: { payrollStatus: 'approved', approvedAt: new Date(), approvedBy },
     });
     res.json({ approved: result.count });
@@ -1203,7 +1325,7 @@ exports.markPaid = async (req, res) => {
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
     const paidBy = req.user?.name || req.user?.email || 'Admin';
     const result = await prisma.payroll.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, ...payrollTenantWhere(req) },
       data: { paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: new Date().toISOString(), paymentMethod: 'Bank Transfer', paidBy },
     });
     res.json({ paid: result.count });

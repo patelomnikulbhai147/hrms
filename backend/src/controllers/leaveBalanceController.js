@@ -4,6 +4,8 @@ const leaveService = require('../services/leaveService');
 const AuditService = require('../services/auditService');
 const { OFFBOARDED_STATUSES } = require('../utils/employeeStatus');
 
+const { canEnterWorkspace } = require('../utils/workspaceScope');
+
 const allowedIdsFor = (req) =>
   [req.user?.companyId, ...(req.user?.accessibleCompanyIds || [])].filter(Boolean);
 
@@ -22,7 +24,15 @@ async function resolveCompanyId(rawId) {
 // ── Leave Credit Master ──────────────────────────────────────────────────────
 exports.getConfig = async (req, res) => {
   try {
-    const companyId = (await resolveCompanyId(req.query.companyId || req.headers['x-workspace-id'])) || req.user?.companyId || 1;
+    const requested = req.query.companyId || req.headers['x-workspace-id'];
+    // A client-supplied companyId must be one this caller can actually reach —
+    // without this, any authenticated user could read (and lazily create) another
+    // tenant's leave-credit policy by passing its id.
+    if (requested && !canEnterWorkspace(req, requested)) {
+      return res.status(403).json({ error: 'You do not have access to that company.' });
+    }
+    const companyId = (await resolveCompanyId(requested)) || req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'No company context for this request.' });
     const year = Number(req.query.year) || leaveService.DEFAULT_YEAR;
     const cfg = await leaveService.getOrCreateConfig(companyId, year);
     res.json(cfg);
@@ -34,7 +44,14 @@ exports.getConfig = async (req, res) => {
 
 exports.updateConfig = async (req, res) => {
   try {
-    const companyId = (await resolveCompanyId(req.body.companyId || req.query.companyId || req.headers['x-workspace-id'])) || req.user?.companyId || 1;
+    const requested = req.body.companyId || req.query.companyId || req.headers['x-workspace-id'];
+    // Same guard as getConfig — this WRITES a tenant's accrual/carry-forward
+    // policy, so a foreign companyId must never be honoured.
+    if (requested && !canEnterWorkspace(req, requested)) {
+      return res.status(403).json({ error: 'You do not have access to that company.' });
+    }
+    const companyId = (await resolveCompanyId(requested)) || req.user?.companyId;
+    if (!companyId) return res.status(400).json({ error: 'No company context for this request.' });
     const year = Number(req.body.year) || leaveService.DEFAULT_YEAR;
     const cfg = await leaveService.getOrCreateConfig(companyId, year);
     const numericFields = ['startMonth', 'endMonth', 'clPerMonth', 'plPerMonth', 'slPerMonth', 'carryForward', 'maxCarryForward', 'maxEncashmentDays'];

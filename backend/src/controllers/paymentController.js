@@ -1,5 +1,20 @@
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
+const { isSuperAdmin, companyScopeFor, canEnterWorkspace } = require('../utils/workspaceScope');
+
+/**
+ * Tenant scope for the payment ledger.
+ *
+ * These rows are billing records per company. The list used to be an unfiltered
+ * findMany, so ANY authenticated user received every tenant's payment history
+ * (verified: a Company Head of one tenant saw another tenant's rows). Reads are
+ * now constrained to the caller's companies; Super Admin still sees everything.
+ */
+function paymentScopeWhere(req) {
+  if (isSuperAdmin(req)) return {};
+  const scope = companyScopeFor(req);
+  return { companyId: { in: scope.length ? scope : [-1] } };
+}
 
 const mapToFrontend = (r) => ({
   id: r.id,
@@ -17,6 +32,7 @@ const mapToFrontend = (r) => ({
 exports.getAll = async (req, res) => {
   try {
     const data = await prisma.paymentRecord.findMany({
+      where: paymentScopeWhere(req),
       orderBy: { createdAt: 'desc' }
     });
     res.json(data.map(mapToFrontend));
@@ -64,6 +80,17 @@ exports.update = async (req, res) => {
     if (req.body.paymentDate) updateData.date = req.body.paymentDate;
     if (req.body.invoiceNumber) updateData.invoiceUrl = req.body.invoiceNumber;
 
+    // Confirm the target row is inside the caller's tenant before mutating it,
+    // and refuse a body-supplied companyId that would move it to another tenant.
+    const existing = await prisma.paymentRecord.findUnique({ where: { id: idParam(id) } });
+    if (!existing) return res.status(404).json({ error: 'Payment record not found.' });
+    if (!canEnterWorkspace(req, existing.companyId)) {
+      return res.status(403).json({ error: 'You do not have access to this payment record.' });
+    }
+    if (updateData.companyId !== undefined && !canEnterWorkspace(req, updateData.companyId)) {
+      return res.status(403).json({ error: 'You cannot reassign a payment record to that company.' });
+    }
+
     const data = await prisma.paymentRecord.update({
       where: { id: idParam(id) },
       data: updateData
@@ -78,9 +105,11 @@ exports.update = async (req, res) => {
 exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
-    await prisma.paymentRecord.delete({
-      where: { id: idParam(id) }
+    // Scoped delete — another tenant's row simply does not match (count 0 → 404).
+    const result = await prisma.paymentRecord.deleteMany({
+      where: { id: idParam(id), ...paymentScopeWhere(req) }
     });
+    if (result.count === 0) return res.status(404).json({ error: 'Payment record not found.' });
     res.json({ message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting', error);

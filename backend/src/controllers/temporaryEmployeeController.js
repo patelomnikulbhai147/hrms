@@ -75,15 +75,36 @@ async function findMobileIdentity(mobileRaw, { excludeTempId } = {}) {
   return null;
 }
 
+/**
+ * The duplicate descriptor as the CALLER is allowed to see it.
+ *
+ * The mobile lookup deliberately spans every tenant (a phone number must stay
+ * unique platform-wide), so the raw match can belong to another company. Echoing
+ * it back turned this endpoint into a PII oracle: anyone could probe a number and
+ * learn a rival tenant's employee name, code, status and company id — verified
+ * before this redaction existed.
+ *
+ * Out of scope ⇒ the caller is told only THAT the number is taken, which is all
+ * duplicate prevention needs; identity is withheld.
+ */
+function visibleDuplicate(req, dup) {
+  const scoped = inScope(req, dup.companyId);
+  if (scoped) return { ...dup, inScope: true };
+  return { kind: dup.kind, inScope: false, redacted: true };
+}
+
 // Build the standard 409 body for a duplicate mobile, tagging whether the caller
 // can act on the existing record (same company scope).
 function duplicateMobileResponse(req, dup) {
   const noun = dup.kind === 'employee' ? 'employee' : 'temporary employee';
+  const scoped = inScope(req, dup.companyId);
   const statusBit = dup.status ? `, ${dup.status}` : '';
   return {
-    error: `This mobile number is already linked to an existing ${noun} (${dup.code}${statusBit}). Duplicate employee creation is not allowed.`,
+    error: scoped
+      ? `This mobile number is already linked to an existing ${noun} (${dup.code}${statusBit}). Duplicate employee creation is not allowed.`
+      : 'This mobile number is already registered. Duplicate employee creation is not allowed.',
     code: 'DUPLICATE_MOBILE',
-    duplicate: { ...dup, inScope: inScope(req, dup.companyId) },
+    duplicate: visibleDuplicate(req, dup),
   };
 }
 
@@ -207,7 +228,7 @@ exports.checkMobile = async (req, res) => {
     const excludeTempId = req.query.excludeTempId ? idParam(req.query.excludeTempId) : null;
     const dup = await findMobileIdentity(mobile, excludeTempId ? { excludeTempId } : {});
     if (!dup) return res.json({ exists: false });
-    return res.json({ exists: true, duplicate: { ...dup, inScope: inScope(req, dup.companyId) } });
+    return res.json({ exists: true, duplicate: visibleDuplicate(req, dup) });
   } catch (e) { return respondError(res, e); }
 };
 

@@ -320,11 +320,23 @@ async function applySubscriptionInTx(tx, order) {
   const renewalDate = addMonths(renewalBase, CYCLE_MONTHS[cycle]);
 
   const baseLimit = def.limits?.employeeLimit ?? -1;
-  const oldExtra = Math.max(0, Number(sub.extraEmployeeSlots) || 0);
-  const newExtra = baseLimit === -1 ? 0 : Math.max(0, seats - baseLimit);
-  const oldBase = require('./planEntitlements').resolveEntitlements(sub.plan, sub.plan === 'Custom' ? sub : null).limits?.maxEmployees;
-  const oldLimit = oldBase == null || Number(oldBase) < 0 ? null : Number(oldBase) + oldExtra;
-  const newLimit = baseLimit === -1 ? null : Math.max(baseLimit, seats);
+  // ── Subscription seats and purchased slot add-ons are SEPARATE buckets ──────
+  // `extraEmployeeSlots` belongs to the slot module (à-la-carte packs a customer
+  // paid for separately). Subscription settlement used to overwrite it with
+  // `seats - baseLimit`, which silently DELETED those paid add-ons on every
+  // renewal — and did so again at each subsequent renewal. This settlement now
+  // writes only `subscriptionSeats` (the seat count this subscription grants)
+  // and leaves the add-on bucket untouched, so:
+  //     effective limit = max(planBase, subscriptionSeats) + extraEmployeeSlots
+  const purchasedAddons = Math.max(0, Number(sub.extraEmployeeSlots) || 0);
+  const oldSeats = sub.subscriptionSeats == null ? null : Math.max(0, Number(sub.subscriptionSeats) || 0);
+  const newSeats = baseLimit === -1 ? null : Math.max(0, seats);
+
+  const entitlements = require('./planEntitlements');
+  const oldBase = entitlements.resolveEntitlements(sub.plan, sub.plan === 'Custom' ? sub : null).limits?.maxEmployees;
+  const oldPlanBase = oldBase == null || Number(oldBase) < 0 ? null : Number(oldBase);
+  const oldLimit = oldPlanBase == null ? null : Math.max(oldPlanBase, oldSeats ?? oldPlanBase) + purchasedAddons;
+  const newLimit = baseLimit === -1 ? null : Math.max(baseLimit, newSeats ?? baseLimit) + purchasedAddons;
 
   const prev = { plan: sub.plan, billingCycle: sub.billingCycle, renewalDate: sub.renewalDate, status: sub.status };
 
@@ -335,7 +347,9 @@ async function applySubscriptionInTx(tx, order) {
       billingCycle: cycle,
       status: 'Active',
       renewalDate,
-      extraEmployeeSlots: newExtra,
+      // Unlimited plans clear the seat override; extraEmployeeSlots is NEVER
+      // written here — only the slot module and a Super Admin may change it.
+      subscriptionSeats: newSeats,
     },
   });
 
@@ -348,21 +362,23 @@ async function applySubscriptionInTx(tx, order) {
 
   // Seat capacity change → append-only slot-transaction row (same audit trail
   // the slot module uses), so the limit history stays complete.
-  if (oldLimit !== newLimit || oldExtra !== newExtra) {
+  if (oldLimit !== newLimit || (oldSeats ?? null) !== (newSeats ?? null)) {
     await tx.employeeSlotTransaction.create({
       data: {
         companyId: head.id,
         type: 'SUBSCRIPTION_CHANGE',
         status: 'COMPLETED',
         packName: `${def.name} — ${cycle}`,
-        slots: newExtra - oldExtra,
+        // The seat movement this subscription caused. Purchased add-ons are not
+        // part of this delta — they are untouched by subscription settlement.
+        slots: (newSeats ?? 0) - (oldSeats ?? 0),
         amount: order.totalAmount,
         orderId: order.orderId,
         requestedBy: order.userName || 'Company Head',
         actionedBy: 'Online Payment',
         oldLimit,
         newLimit,
-        reason: `Subscription ${planKey} (${seats} employees)`,
+        reason: `Subscription ${planKey} (${seats} employees; ${purchasedAddons} purchased add-on slot(s) preserved)`,
       },
     });
   }

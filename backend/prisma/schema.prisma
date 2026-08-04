@@ -28,6 +28,8 @@ model User {
   lastLoginAt          DateTime?
   auditLogs            AuditLog[]
   passwordResetTokens  PasswordResetToken[]
+  mobileSessions       MobileSession[]
+  mobileOtps           MobileOtp[]
 }
 
 model PasswordResetToken {
@@ -821,6 +823,8 @@ model Employee {
   attendanceSummaries AttendanceSummary[]
   employeeBonuses     EmployeeBonus[]
   deployments         Deployment[]
+
+  @@unique([companyId, phone])
 }
 
 // ── Temporary Employee (Quick Registration) ─────────────────────────────────
@@ -1472,9 +1476,16 @@ model CompanySubscription {
   customModules    Json? // Custom: allowed module permission keys
   customReports    Json? // Custom: allowed report keys (or "all")
   customFeatures   Json? // Custom: forward-looking feature flags
+  // Seats granted by the SUBSCRIPTION itself (what the customer bought on the
+  // plan, which may exceed the plan's code-map base). NULL → use the plan base.
+  // Written ONLY by a settled subscription payment. Kept separate from
+  // extraEmployeeSlots so a renewal can restate the subscription's own seat
+  // count without touching independently purchased add-ons.
+  subscriptionSeats Int?
   // Purchased add-on employee slots. Stacks ON TOP of the plan's base limit
   // (effective limit = plan limit + extraEmployeeSlots) and never overwrites
-  // the plan. Written ONLY by a settled slot-pack payment or a Super Admin.
+  // the plan. Written ONLY by a settled slot-pack payment or a Super Admin —
+  // subscription settlement must NEVER write this column.
   extraEmployeeSlots Int     @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -3347,4 +3358,39 @@ model WhiteLabelSettings {
   updatedAt         DateTime @updatedAt
 
   @@map("white_label_settings")
+}
+
+model MobileOtp {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  email     String
+  otpHash   String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  consumed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([email])
+  @@map("mobile_otps")
+}
+
+model MobileSession {
+  id               Int      @id @default(autoincrement())
+  userId           Int
+  deviceId         String
+  devicePlatform   String?
+  ipAddress        String?
+  refreshTokenHash String   @db.Text
+  expiresAt        DateTime
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastActiveAt     DateTime @default(now())
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([deviceId])
+  @@map("mobile_sessions")
 }

@@ -12,6 +12,7 @@ const BankVerificationService = require('./bankVerificationService');
 // Shared page-window + metadata contract (utils/pagination.js) — the same helper
 // the audit-log endpoint uses, so both lists page identically.
 const { pageWindow, pageMeta } = require('../utils/pagination');
+const { lockRowForUpdate } = require('../utils/rowLock');
 
 /**
  * ONE verification credit buys exactly ONE successful API verification.
@@ -392,11 +393,32 @@ class VerificationCreditService {
         });
       }
 
-      const openingBalance = wallet.remainingCredits;
+      // ── Serialise concurrent wallet mutations ────────────────────────────
+      // The balance below is read, adjusted in JS, then written back ABSOLUTELY.
+      // Without an exclusive lock a Super-Admin allocation running alongside a
+      // verification debit (which correctly uses an atomic decrement) reads a
+      // stale balance and writes it back, silently restoring the credit the
+      // debit had just consumed — and leaving the ledger's opening/closing
+      // balances contradicting the wallet. Clamping (DEDUCT/RESET) rules out a
+      // plain increment, so the row is locked instead.
+      //
+      // The balances MUST come from the locking read: a plain findUnique here
+      // returns this transaction's REPEATABLE-READ snapshot (the pre-lock
+      // value), which would let the lost update survive the lock.
+      const lockedWallet = await lockRowForUpdate(
+        tx, 'verification_credit_wallet', 'id', wallet.id,
+        ['totalCredits', 'usedCredits', 'remainingCredits', 'status']
+      );
+      if (!lockedWallet) throw new Error('Credit wallet disappeared while locking.');
+
+      const openingBalance = Number(lockedWallet.remainingCredits) || 0;
       let closingBalance = openingBalance;
-      let newTotal = wallet.totalCredits;
-      let newUsed = wallet.usedCredits;
+      let newTotal = Number(lockedWallet.totalCredits) || 0;
+      let newUsed = Number(lockedWallet.usedCredits) || 0;
       let txType = 'Allocation';
+      // Keep the in-scope `wallet` object consistent with the locked values so
+      // every later reference (status checks, the ledger row) uses fresh data.
+      wallet = { ...wallet, ...lockedWallet };
 
       // Every branch keeps the reporting identity exact:
       //     Credits Remaining = Total Credits Allocated − Credits Used

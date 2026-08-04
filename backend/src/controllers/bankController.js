@@ -288,7 +288,14 @@ exports.verifyAccount = async (req, res) => {
   const actorId = req.user?.id || 'SYSTEM';
   const actorName = req.user?.name || req.user?.email || 'HR Administrator';
 
-  const incomingRequest = { ifsc: normIfsc, accountNumber: cleanAccount, employeeId };
+  // Logged on every verification attempt. The account number is masked to the
+  // last 4 digits, matching how `outgoingProviderRequest` is already masked —
+  // logging it in full here defeated that masking on the very same log line.
+  const incomingRequest = {
+    ifsc: normIfsc,
+    accountNumber: cleanAccount ? '***' + String(cleanAccount).slice(-4) : null,
+    employeeId,
+  };
 
   // Validate IFSC format
   if (!IFSC_RE.test(normIfsc)) {

@@ -84,9 +84,16 @@ function respondError(res, error, opts = {}) {
   // Prisma validation error (bad argument / wrong type) — almost always a
   // client-side payload problem, surface as 400 with the concise reason.
   if (error && (error.name === 'PrismaClientValidationError' || error.name === 'PrismaClientKnownRequestError')) {
-    const concise = String(error.message || '').split('\n').filter(Boolean).pop();
+    // Prisma's message is multi-line and its opening lines carry the query text
+    // and an ABSOLUTE server file path. Only the final line is the human reason,
+    // and it is still dropped if it looks like a path/SQL so nothing about the
+    // server's internals can reach the client. Full detail goes to the log.
+    console.error('[prisma] invalid query:', error.message);
+    const last = String(error.message || '').split('\n').filter(Boolean).pop();
+    const leaksInternals = !last || /[\\/]|[A-Za-z]:\\|invocation|prisma\./i.test(last);
+    const concise = leaksInternals ? '' : last.trim();
     return res.status(400).json({
-      error: `The data sent for this ${resource} was invalid. ${concise ? concise.trim() : ''}`.trim(),
+      error: `The data sent for this ${resource} was invalid. ${concise}`.trim(),
       code: 'VALIDATION',
     });
   }

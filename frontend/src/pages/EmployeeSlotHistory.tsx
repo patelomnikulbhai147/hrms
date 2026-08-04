@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   RefreshCw, Search, FileDown, FileSpreadsheet, Printer, Zap, History,
   Users, Layers, PlusCircle, IndianRupee, CalendarDays, ShieldCheck,
@@ -398,7 +399,9 @@ export const EmployeeSlotHistory: React.FC<Props> = ({ role }) => {
                     </Thead>
                     <Tbody>
                       {pageRows.map((h) => (
-                        <Tr key={h.id} onClick={() => setDetail(h)} className="hover:bg-brand-50/40">
+                        // tabIndex -1 makes the row a programmatic focus target so
+                        // closing the drawer can hand focus back to it.
+                        <Tr key={h.id} data-tx-row={h.id} tabIndex={-1} onClick={() => setDetail(h)} className="hover:bg-brand-50/40">
                           <Td className="align-top">
                             <span className="block text-[12.5px] font-semibold text-ink tabular-nums">{formatDate(h.createdAt)}</span>
                             <span className="block text-[11px] font-medium text-ink-muted mt-0.5 max-w-[150px] truncate" title={txCreatedBy(h)}>
@@ -468,6 +471,7 @@ export const EmployeeSlotHistory: React.FC<Props> = ({ role }) => {
                     <button
                       key={h.id}
                       type="button"
+                      data-tx-row={h.id}
                       onClick={() => setDetail(h)}
                       className="text-left rounded-xl border border-hairline bg-surface p-3.5 space-y-2 hover:border-brand-300 transition-colors"
                     >
@@ -516,35 +520,95 @@ export const EmployeeSlotHistory: React.FC<Props> = ({ role }) => {
         </>
       )}
 
-      {/* Detail side panel */}
-      {detail && (
-        <DetailPanel
-          row={detail}
-          onClose={() => setDetail(null)}
-          onDownloadInvoice={downloadInvoice}
-          onPrintInvoice={printInvoice}
-        />
-      )}
+      {/* Detail side panel — always mounted so it can animate BOTH ways; it
+          renders nothing (and costs nothing) while `row` is null. */}
+      <DetailPanel
+        row={detail}
+        onClose={() => setDetail(null)}
+        onDownloadInvoice={downloadInvoice}
+        onPrintInvoice={printInvoice}
+      />
     </div>
   );
 };
 
 // ── Transaction detail slide-over ────────────────────────────────────────────
-// Portalled to <body> so the page transform never clips the overlay (see the
-// same fix in Modal.tsx).
+// Portalled to <body> so no page container can clip, shrink or reposition it —
+// the drawer overlays the page and the page keeps its own layout untouched.
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
 const DetailPanel: React.FC<{
-  row: any;
+  row: any | null;
   onClose: () => void;
   onDownloadInvoice: (inv: any) => void;
   onPrintInvoice: (inv: any) => void;
 }> = ({ row, onClose, onDownloadInvoice, onPrintInvoice }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const rowId = row?.id ?? null;
+  const open = rowId != null;
 
-  const pay = row.payment;
+  // `onClose` is a fresh closure on every parent render. Reading it through a ref
+  // keeps it OUT of the effect deps below — otherwise the effect tore down and
+  // re-ran on every unrelated re-render, yanking focus back to the table and
+  // re-arming the scroll lock while the drawer was still open.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; });
+
+  // Remember what opened the drawer, so focus can be handed back on close.
+  useEffect(() => {
+    if (open) openerRef.current = (document.activeElement as HTMLElement) || null;
+  }, [open]);
+
+  // Escape, focus trap and body-scroll lock — installed only while open, and
+  // every one of them undone on close (the scroll lock restores the PREVIOUS
+  // value rather than assuming it was ''), so nothing leaks into the page.
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!panel.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+      else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    // Focus the close button once the panel has mounted, so Tab starts inside.
+    const focusTimer = window.setTimeout(
+      () => panelRef.current?.querySelector<HTMLElement>('[data-drawer-close]')?.focus(), 60);
+
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+      window.clearTimeout(focusTimer);
+      // Back to the transaction that was clicked. A table <tr> is not natively
+      // focusable, so activeElement was <body> — fall back to the row by id.
+      // BOTH layouts are always in the DOM (the desktop table is `hidden lg:block`,
+      // the card grid `lg:hidden`), so the fallback must pick the VISIBLE one —
+      // focusing a display:none element silently does nothing.
+      // getClientRects() is the reliable test here — offsetParent is unreliable
+      // for table rows, which is exactly what the desktop layout uses.
+      const visible = (el: HTMLElement | null | undefined) => !!el && el.getClientRects().length > 0;
+      const opener = openerRef.current;
+      const target = visible(opener) && opener !== document.body && document.contains(opener!)
+        ? opener
+        : Array.from(document.querySelectorAll<HTMLElement>(`[data-tx-row="${rowId}"]`)).find(visible);
+      target?.focus?.();
+    };
+  }, [open, rowId]);
+
+  const pay = row?.payment;
   const Item = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <div className="flex items-start justify-between gap-4 py-1.5">
       <span className="text-[12px] font-medium text-ink-muted shrink-0">{label}</span>
@@ -552,30 +616,56 @@ const DetailPanel: React.FC<{
     </div>
   );
   const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="rounded-xl border border-hairline bg-surface-muted/50 px-4 py-3">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-1.5">{title}</p>
+    <div className="rounded-xl border border-hairline bg-surface-muted/50 p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted mb-2">{title}</p>
       {children}
     </div>
   );
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]">
-      <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} />
-      <aside
-        role="dialog"
-        aria-label="Transaction details"
-        className="absolute right-0 top-0 h-full w-full sm:max-w-md bg-surface shadow-2xl border-l border-hairline flex flex-col"
-      >
-        <div className="px-5 py-4 border-b border-hairline flex items-center justify-between gap-3 shrink-0">
-          <div className="min-w-0">
-            <p className="text-[14.5px] font-bold text-ink font-heading truncate">Transaction Details</p>
-            <p className="text-[12px] font-medium text-ink-secondary truncate tabular-nums">{txId(row)}</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close details"
-            className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-muted transition-colors"><X size={17} /></button>
-        </div>
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-[80]" role="presentation">
+          {/* Scrim. The colour is set INLINE, deliberately.
+              `bg-slate-900/40` looks right but the legacy utility bridge in
+              index.css remaps that exact class onto an OPAQUE surface token
+              (`--surface-raised`, white in light mode) with !important. Used as a
+              full-viewport scrim it therefore painted a solid white sheet over
+              the whole app — the "page goes blank" bug. Modal.tsx already sets
+              its backdrop inline for the same reason; this follows it. */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.28, ease: 'easeInOut' }}
+            className="absolute inset-0"
+            style={{ backgroundColor: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(2px)' }}
+            onClick={onClose}
+          />
+          <motion.aside
+            ref={panelRef as any}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Transaction details"
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ duration: 0.28, ease: 'easeInOut' }}
+            // Mobile full-bleed → tablet 420px → desktop 500px.
+            className="fixed top-0 right-0 h-[100dvh] w-full max-w-full sm:w-[420px] lg:w-[500px] bg-surface shadow-2xl border-l border-hairline flex flex-col"
+          >
+            {/* Sticky header — shrink-0 in a flex column, so it never scrolls away. */}
+            <div className="px-5 py-4 border-b border-hairline bg-surface flex items-center justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <p className="text-[14.5px] font-bold text-ink font-heading truncate">Transaction Details</p>
+                <p className="text-[12px] font-medium text-ink-secondary truncate tabular-nums">{txId(row)}</p>
+              </div>
+              <button type="button" data-drawer-close onClick={onClose} aria-label="Close details"
+                className="p-2 rounded-lg text-ink-muted hover:text-ink hover:bg-surface-muted transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40"><X size={17} /></button>
+            </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+            {/* The ONLY scrollable region while the drawer is open. */}
+            <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-4 space-y-4">
           <Section title="Purchase Details">
             <Item label="Date" value={formatDateTime(row.createdAt)} />
             <Item label="Type" value={<Badge variant={TX_BADGE[row.type] || 'gray'}>{txType(row)}</Badge>} />
@@ -635,9 +725,11 @@ const DetailPanel: React.FC<{
             {row.updatedAt && row.updatedAt !== row.createdAt && <Item label="Last Updated" value={formatDateTime(row.updatedAt)} />}
             {row.reason && <Item label="Notes" value={row.reason} />}
           </Section>
+            </div>
+          </motion.aside>
         </div>
-      </aside>
-    </div>,
+      )}
+    </AnimatePresence>,
     document.body
   );
 };

@@ -345,28 +345,12 @@ export const Documents: React.FC<DocumentsProps> = ({
     || brandingCompanies.find((c: any) => String(c.id) === String(activeCompanyId))
     || currentCompany;
 
-  // Failsafe fetch if list is 0 but we know this branch should have employees
-  useEffect(() => {
-    if (list.length === 0 && companyEmployees.length > 0 && activeCompanyId) {
-      console.log('Failsafe fetching documents for:', activeCompanyId);
-      const token = localStorage.getItem('hrms_token');
-      if (!token) return;
-      fetch(`/api/documents`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'x-workspace-id': activeCompanyId,
-          'Content-Type': 'application/json'
-        }
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data && Array.isArray(data) && data.length > 0) {
-          onUpdateDocuments([...documents.filter(d => d.companyId !== activeCompanyId), ...data]);
-        }
-      })
-      .catch(err => console.error('Failsafe fetch failed:', err));
-    }
-  }, [list.length, companyEmployees.length, activeCompanyId]);
+  // (Removed) A "failsafe" documents fetch used to live here. It read a
+  // localStorage key that is never written, so it could never run; it also
+  // called a RELATIVE `/api/documents`, which in dev hits the Vite server and
+  // returns index.html rather than JSON. Documents are loaded through the shared
+  // api client (which resolves VITE_API_BASE_URL), so this duplicate path is not
+  // needed and only produced a JSON parse error when it did execute.
 
   // Compliance state
   const [search, setSearch] = useState('');

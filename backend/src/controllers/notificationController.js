@@ -407,6 +407,8 @@ exports.markAllRead = async (req, res) => {
   }
 };
 
+exports.scopeWhere = scopeWhere;
+
 exports.delete = async (req, res) => {
   try {
     const id = idParam(req.params.id);

@@ -133,7 +133,15 @@ const plan = (key) => requirePlanModule(key);
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authRoutes);
-app.use('/api/app', require('./src/app/routes')); // Mobile App API (separate from website /api/*)
+app.use('/api/mobile', require('./src/routes/employeeRoutes'));
+
+// ── NEW MOBILE APP API ────────────────────────────────────────────────────────
+// Next-gen Mobile APIs with isolated authentication and JWT scope.
+app.use('/api/app/auth', require('./src/routes/mobileAuthRoutes')); // Legacy backward compatibility
+app.use('/api/app/v1/auth', require('./src/routes/mobileAuthRoutes')); // Versioned Authentication
+app.use('/api/app/v1/employee', require('./src/routes/employeeMobileAuthRoutes')); // Employee Mobile Auth
+app.use('/api/app/v1', require('./src/routes/mobileAppRoutes')); // New Mobile App API System
+app.use('/api/app', require('./src/app/routes')); // Legacy Mobile App API (separate from website /api/*)
 app.use('/api/companies', companyRoutes);
 app.use('/api/support-sessions', require('./src/routes/supportSessionRoutes'));
 app.use('/api/company-profile', pii('CompanyProfile'), require('./src/routes/companyProfileRoutes'));
@@ -298,8 +306,33 @@ app.use((err, req, res, next) => {
   if (err.type === 'entity.too.large' || err.status === 413) {
     return res.status(413).json({ error: 'The uploaded data is too large. Please use a smaller file.', code: 'PAYLOAD_TOO_LARGE' });
   }
+  // A malformed id/filter reaching Prisma is a BAD REQUEST, not a server fault.
+  // Prisma's validation message embeds the query shape and absolute server file
+  // paths, so it must never reach the client: answer 400 with a generic message
+  // and keep the detail in the server log.
+  const prismaName = err?.name || '';
+  if (prismaName === 'PrismaClientValidationError') {
+    console.error(`Invalid query on ${req.method} ${req.originalUrl}:`, err.message);
+    return res.status(400).json({ error: 'One or more values in the request were not valid.', code: 'INVALID_REQUEST' });
+  }
+  // Known Prisma runtime errors carry a stable code; map the common ones and
+  // never echo the raw message (it can contain table/column names and paths).
+  if (prismaName === 'PrismaClientKnownRequestError') {
+    console.error(`Database error on ${req.method} ${req.originalUrl}: ${err.code}`, err.message);
+    const map = {
+      P2002: [409, 'That record already exists.', 'DUPLICATE'],
+      P2003: [400, 'A related record referenced by this request does not exist.', 'FK_CONSTRAINT'],
+      P2025: [404, 'The requested record was not found.', 'NOT_FOUND'],
+    };
+    const [status, message, code] = map[err.code] || [400, 'The request could not be completed.', 'DB_ERROR'];
+    return res.status(status).json({ error: message, code });
+  }
+
   console.error(`Unhandled Error on ${req.method} ${req.originalUrl}:`, err);
-  res.status(err.status || 500).json({ error: err.message || 'Internal Server Error', code: 'INTERNAL' });
+  // An unexpected failure must not leak internals (stack frames, file paths, SQL)
+  // to the client; those stay in the log above.
+  const safeMessage = err.status && err.status < 500 && err.message ? err.message : 'Internal Server Error';
+  res.status(err.status || 500).json({ error: safeMessage, code: 'INTERNAL' });
 });
 
 const server = app.listen(PORT, () => {

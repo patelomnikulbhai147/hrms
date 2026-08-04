@@ -12,6 +12,7 @@
 const prisma = require('../../config/prisma');
 const { getIssuer } = require('../invoiceIssuerStore');
 const { amountInWords } = require('../../utils/amountInWords');
+const { resolvePlaceOfSupply } = require('../../utils/placeOfSupply');
 
 const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -56,9 +57,13 @@ async function createForOrder(orderId) {
 
   // Inter-state supply → IGST; same state (or unknown) → CGST+SGST, with the
   // rounding remainder folded into SGST (same convention as subscription billing).
-  const companyState = String(company?.state || '').trim().toLowerCase();
-  const issuerState = String(issuer.state || '').trim().toLowerCase();
-  const interState = Boolean(companyState && issuerState && companyState !== issuerState);
+  // Resolved through the SHARED place-of-supply helper so this invoice always
+  // matches the quote and the order it was raised from.
+  const pos = resolvePlaceOfSupply(issuer.state, company?.state);
+  const interState = pos.interState;
+  if (pos.warning) {
+    console.warn(`[recharge-invoice] order ${order.orderId}: ${pos.warning}`);
+  }
   const gstAmount = r2(order.gstAmount);
   const cgst = interState ? 0 : r2(gstAmount / 2);
   const sgst = interState ? 0 : r2(gstAmount - cgst);

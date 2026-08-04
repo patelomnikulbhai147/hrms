@@ -6,6 +6,7 @@ import { api } from '@/api/apiClient';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ui } from '@/components/ui/feedback';
+import { PremiumRequiredScreen } from '@/components/subscription/PremiumLock';
 import { formatDateTime } from '@/utils/formatDate';
 
 interface Props { role?: string | null }
@@ -63,9 +64,12 @@ export const CustomDomain: React.FC<Props> = ({ role }) => {
       setState('ready');
     } catch (e: any) {
       const msg = String(e?.message || '');
-      // Distinguish the real failure instead of one generic message.
-      if (/premium plan|upgrade your subscription/i.test(msg)) setState('upgrade');
-      else if (/do not have access|only a company head/i.test(msg)) { setErrMsg(msg); setState('denied'); }
+      // The plan gate answers with a CODE, like every other subscription signal in
+      // the app (EMPLOYEE_LIMIT_REACHED, SUPPORT_SESSION_REQUIRED) — never with
+      // prose. Matching the code instead of the sentence means a reworded 403 can
+      // no longer silently fall through to "could not load".
+      if (e?.code === 'PLAN_UPGRADE_REQUIRED') setState('upgrade');
+      else if (e?.status === 403) { setErrMsg(msg); setState('denied'); }
       else { setErrMsg(msg || 'The server could not be reached.'); setState('error'); }
     }
   }, []);
@@ -152,6 +156,22 @@ export const CustomDomain: React.FC<Props> = ({ role }) => {
   const instructions = data?.instructions;
   const flowIdx = mapping ? STATUS_FLOW.indexOf(mapping.status) : -1;
 
+  // ── Plan gate ──────────────────────────────────────────────────────────────
+  // Custom Domain has NO purchase flow of its own. It is an ordinary premium
+  // module: App's route guard blocks it up-front from the same entitlements
+  // every other premium page uses, and if the API still reports the module as
+  // out-of-plan (a session whose cached profile predates a plan change) the page
+  // renders the SHARED PremiumRequiredScreen — the identical screen Invoicing,
+  // Custom Report Builder and the rest show. No bespoke upsell lives here.
+  if (state === 'upgrade') {
+    return (
+      <PremiumRequiredScreen
+        moduleLabel="Custom Domain (Beta)"
+        onUpgrade={() => window.dispatchEvent(new CustomEvent('hrms:upgrade-plan'))}
+      />
+    );
+  }
+
   const wlField = (key: string, label: string, placeholder = '', type: 'text' | 'email' = 'text') => (
     <div>
       <span className={LABEL}>{label}</span>
@@ -190,16 +210,6 @@ export const CustomDomain: React.FC<Props> = ({ role }) => {
           {[36, 160, 120].map((h, i) => (
             <div key={i} className="rounded-card border border-hairline bg-surface-muted" style={{ height: h }} />
           ))}
-        </div>
-      ) : state === 'upgrade' ? (
-        /* Plan does not include Custom Domain → upgrade card, no config controls */
-        <div className="rounded-card border border-brand-200 bg-brand-50/40 p-6 text-center space-y-3">
-          <Globe className="w-8 h-8 text-brand-500 mx-auto" />
-          <p className="text-[15px] font-bold text-ink">Custom Domain is a premium feature</p>
-          <p className="text-[12.5px] font-medium text-ink-secondary max-w-md mx-auto">
-            Custom Domain (Beta) is included with every paid plan. Upgrade your subscription to run ZeniaHR on your own domain.
-          </p>
-          <Button variant="primary" size="sm" onClick={() => window.dispatchEvent(new CustomEvent('hrms:upgrade-plan'))}>Upgrade Plan</Button>
         </div>
       ) : state === 'denied' ? (
         <p className="text-[13px] font-semibold text-ink bg-surface-muted border border-hairline rounded-xl px-4 py-3 inline-flex items-center gap-2">

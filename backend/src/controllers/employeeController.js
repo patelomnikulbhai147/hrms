@@ -2,6 +2,7 @@ const prisma = require('../config/prisma');
 const { generateEmployeeCode, validateCustomCode } = require('../utils/employeeCode');
 const idParam = require('../utils/idParam');
 const { coerceEntityIds } = require('../utils/idParam');
+const { toPositiveInt } = require('../utils/numericId');
 const { findDuplicate, buildIndex, matchAgainstIndex } = require('../utils/employeeDedup');
 const respondError = require('../utils/respondError');
 const { OFFBOARDED_STATUSES, lockRejection } = require('../utils/employeeStatus');
@@ -9,6 +10,16 @@ const { prepareEmployeeWriteData, applyCreateDefaults, describePrismaWriteError 
 const { validateEmployeePayload, validationErrorBody } = require('../utils/employeeRequiredFields');
 const { buildEmployeeScope, NOT_OFFBOARDED, IS_OFFBOARDED } = require('../utils/employeeScope');
 const locationMaster = require('./locationMasterController');
+
+// The period a seeded payroll draft belongs to. These drafts used to be pinned
+// to a literal 'June' / 2026, so every employee created or imported after that
+// month landed in the wrong (and eventually long-past) payroll cycle.
+const PAYROLL_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'];
+const currentPayrollPeriod = () => {
+  const now = new Date();
+  return { month: PAYROLL_MONTH_NAMES[now.getMonth()], year: now.getFullYear() };
+};
 
 // Remember any custom state/city on an employee payload for dropdown reuse
 // (best-effort, never blocks the save).
@@ -260,7 +271,10 @@ exports.createEmployee = async (req, res) => {
 
     if (data.companyId) {
       const comp = await prisma.company.findUnique({ where: { id: data.companyId } });
-      if (!comp) data.companyId = 1;
+      // An unresolvable company is a BAD REQUEST. Silently rewriting it to
+      // company 1 filed the employee into an unrelated tenant — a cross-tenant
+      // data leak triggered by nothing more than a typo'd id.
+      if (!comp) return res.status(400).json({ error: 'The selected company does not exist.' });
     }
 
     if (data.branchId) {
@@ -349,7 +363,10 @@ exports.createEmployee = async (req, res) => {
       try {
         const company = await prisma.company.findUnique({ where: { id: employee.companyId } });
         const basicPercent = company?.basicPercent || 50;
-        const ctcMonthly = Math.round(employee.salary / 12);
+        // `Employee.salary` is the MONTHLY gross (see recalcOne) — dividing by 12
+        // seeded this draft at one twelfth of the real pay.
+        const ctcMonthly = Math.round(employee.salary);
+        const seedPeriod = currentPayrollPeriod();
         const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
         const hra = Math.round(basicSalary * 0.4);
         const special = Math.max(0, ctcMonthly - basicSalary - hra);
@@ -368,8 +385,8 @@ exports.createEmployee = async (req, res) => {
             employeeId: employee.id,
             employeeName: employee.name,
             department: employee.department,
-            month: 'June',
-            year: 2026,
+            month: seedPeriod.month,
+            year: seedPeriod.year,
             basicSalary,
             allowances,
             deductions,
@@ -447,6 +464,12 @@ exports.bulkCreate = async (req, res) => {
       for (const [companyId, addCount] of newPerCompany) {
         const guard = await limitSvc.assertCapacity(companyId, addCount);
         if (!guard.ok) {
+          // An UNRESOLVED company is not a plan-limit problem — keep the guard's
+          // own status and message rather than reporting a bogus
+          // "your plan allows up to 0 employees".
+          if (!guard.cap.resolved) {
+            return res.status(guard.status || 400).json({ ...guard.body, importCount: addCount, imported: 0 });
+          }
           const slots = guard.cap.remaining;
           return res.status(403).json({
             ...guard.body,
@@ -585,7 +608,10 @@ exports.bulkCreate = async (req, res) => {
              if (emp.status !== 'Active' || !emp.salary) continue;
              const company = await prisma.company.findUnique({ where: { id: emp.companyId } });
              const basicPercent = company?.basicPercent || 50;
-             const ctcMonthly = Math.round(emp.salary / 12);
+             // `Employee.salary` is the MONTHLY gross (see recalcOne) — dividing
+             // by 12 seeded a draft at one twelfth of the real pay.
+             const ctcMonthly = Math.round(emp.salary);
+             const seedPeriod = currentPayrollPeriod();
              const basicSalary = Math.round(ctcMonthly * (basicPercent / 100));
              const hra = Math.round(basicSalary * 0.4);
              const special = Math.max(0, ctcMonthly - basicSalary - hra);
@@ -602,8 +628,8 @@ exports.bulkCreate = async (req, res) => {
                where: {
                  employeeId_month_year_companyId: {
                    employeeId: emp.id,
-                   month: 'June',
-                   year: 2026,
+                   month: seedPeriod.month,
+                   year: seedPeriod.year,
                    companyId: emp.companyId
                  }
                },
@@ -613,8 +639,8 @@ exports.bulkCreate = async (req, res) => {
                  employeeId: emp.id,
                  employeeName: emp.name,
                  department: emp.department,
-                 month: 'June',
-                 year: 2026,
+                 month: seedPeriod.month,
+                 year: seedPeriod.year,
                  basicSalary,
                  allowances,
                  deductions,
@@ -663,7 +689,12 @@ exports.bulkCreate = async (req, res) => {
 exports.getEmployeeById = async (req, res) => {
   try {
     const { id } = req.params;
-    const employee = await prisma.employee.findUnique({ where: { id: idParam(id) } });
+    // `idParam` passes a non-numeric value through unchanged, which then throws
+    // inside Prisma — answered as a 500 whose message embedded the query and the
+    // absolute server path. A malformed id is a bad request, so reject it here.
+    const employeeDbId = toPositiveInt(id);
+    if (employeeDbId === undefined) return res.status(400).json({ error: 'Invalid employee id.' });
+    const employee = await prisma.employee.findUnique({ where: { id: employeeDbId } });
     if (!employee) return res.status(404).json({ error: 'Employee not found.' });
 
     if (req.user && req.user.role !== 'Super Admin') {
@@ -685,8 +716,9 @@ exports.getEmployeeById = async (req, res) => {
 
     res.json(employee);
   } catch (error) {
-    console.error('[employee:get] failed:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    // respondError maps Prisma faults to a safe 4xx and keeps the detail in the
+    // log — never echo error.message, it can carry query text and file paths.
+    return respondError(res, error, { action: 'load employee', resource: 'employee' });
   }
 };
 
@@ -773,7 +805,8 @@ exports.updateEmployee = async (req, res) => {
 
     if (data.companyId) {
       const comp = await prisma.company.findUnique({ where: { id: data.companyId } });
-      if (!comp) data.companyId = 1;
+      // Never silently re-home the employee into company 1 (see create()).
+      if (!comp) return res.status(400).json({ error: 'The selected company does not exist.' });
     }
 
     if (data.branchId) {

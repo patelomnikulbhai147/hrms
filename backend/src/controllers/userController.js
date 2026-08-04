@@ -76,6 +76,26 @@ exports.resetPassword = async (req, res) => {
       return res.status(404).json({ error: 'User not found.' });
     }
 
+    // Tenant isolation — resetting a password IS an account takeover, so it must
+    // carry the same guards as updateUser/deleteUser (which already have them):
+    // never across companies, and never against a Super Admin. Without this a
+    // holder of `users.edit` in ANY tenant could overwrite the credentials of a
+    // user in ANOTHER tenant — verified exploitable before this check existed.
+    const scope = permissionManagerScope(req);
+    if (!scope.all) {
+      if (user.role === 'Super Admin') {
+        return res.status(403).json({ error: 'You cannot modify a Super Admin account.' });
+      }
+      const callerCompany = await resolveTopCompany(req.user.companyId, req.user.branchId);
+      const targetCompany = await resolveTopCompany(user.companyId, user.branchId);
+      if (String(callerCompany) !== String(targetCompany)) {
+        return res.status(403).json({ error: 'You can only manage users within your own company.' });
+      }
+      if (scope.branch && req.user.branchId && user.branchId && String(user.branchId) !== String(req.user.branchId)) {
+        return res.status(403).json({ error: 'You can only manage users within your assigned branch.' });
+      }
+    }
+
     // Generate a fresh bcrypt hash and save it to passwordHash — the SINGLE source
     // of truth for authentication. The legacy plaintext `password` column is
     // deliberately NOT stored anymore (it could desync from passwordHash and was a

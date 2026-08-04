@@ -192,8 +192,18 @@ function payableDaysFor(policy, counts) {
   return round2(Math.max(0, payable));
 }
 
-function computeMoneyDays(policy, counts, lastDay) {
-  const workingDays = round2(workingDaysFor(policy, { lastDay, weeklyOff: counts.weeklyOff, holiday: counts.holiday }));
+/**
+ * `counts`      — days the employee is actually being PAID for (the numerator).
+ * `denomCounts` — days in the STANDARD month (the proration denominator).
+ *
+ * They differ only when an employment starts or ends mid-month. For a leaver the
+ * numerator stops at the exit date while the denominator stays the whole month,
+ * which is what makes the salary prorate: someone who exits on 15 July with
+ * perfect attendance is paid 13/27 of the month, not 13/13 of it. Defaulting
+ * `denomCounts` to `counts` keeps every existing caller byte-identical.
+ */
+function computeMoneyDays(policy, counts, lastDay, denomCounts = counts) {
+  const workingDays = round2(workingDaysFor(policy, { lastDay, weeklyOff: denomCounts.weeklyOff, holiday: denomCounts.holiday }));
   const payableDays = payableDaysFor(policy, counts);
   return { workingDays, payableDays };
 }

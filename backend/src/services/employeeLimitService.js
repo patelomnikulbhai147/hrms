@@ -74,29 +74,92 @@ async function extraSlotsFor(headId) {
   return Math.max(0, Number(row?.extraEmployeeSlots) || 0);
 }
 
+/**
+ * The subscription's own seat grant and its purchased add-ons, in one read.
+ *
+ * NOTE: `subscriptionForPlan` deliberately returns null for every non-Custom
+ * plan, so it can NOT be used to read these columns — they must come from the
+ * subscription row directly or a standard-plan tenant would silently lose both
+ * its purchased seats and its add-on slots.
+ */
+async function seatSourcesFor(headId) {
+  const row = await prisma.companySubscription
+    .findUnique({
+      where: { companyId: Number(headId) },
+      select: { extraEmployeeSlots: true, subscriptionSeats: true },
+    })
+    .catch(() => null);
+  return {
+    extraSlots: Math.max(0, Number(row?.extraEmployeeSlots) || 0),
+    subscriptionSeats:
+      row?.subscriptionSeats == null ? null : Math.max(0, Number(row.subscriptionSeats) || 0),
+  };
+}
+
 // Full capacity snapshot for a company/branch id. `limit === null` ⇒ unlimited.
 // limit = base plan limit + purchased extra slots;
 // current = active Employee rows + active login users without a profile.
 async function getCapacity(companyId) {
+  // ── FAIL CLOSED ────────────────────────────────────────────────────────────
+  // This used to return `{ unlimited: true, remaining: Infinity }` whenever the
+  // company could not be resolved, which meant ANY unresolvable company/branch
+  // id silently bypassed the plan's employee limit through assertCapacity.
+  // A limit check must never fail open.
+  //
+  // Two distinct unresolved cases, deliberately reported differently:
+  //   NO_COMPANY_CONTEXT — no company id supplied at all (e.g. a Super Admin,
+  //     who has no company of their own). `limit: null` keeps the existing
+  //     display behaviour for that account; enforcement still refuses, because
+  //     an employee cannot be created without a company.
+  //   COMPANY_NOT_FOUND — an id WAS supplied but does not resolve. Capacity is
+  //     zero: nothing may be created against a company that does not exist.
+  //
+  // `resolved: false` is what assertCapacity gates on, so both cases deny.
+  const requested = Number(companyId);
+  if (!companyId || !Number.isFinite(requested) || requested <= 0) {
+    return {
+      resolved: false, reason: 'NO_COMPANY_CONTEXT',
+      plan: '', baseLimit: null, planBase: null, subscriptionSeats: null, extraSlots: 0,
+      limit: null, current: 0, currentEmployees: 0, currentUnlinkedUsers: 0,
+      remaining: 0, unlimited: false,
+    };
+  }
   const head = await resolveHead(companyId);
   if (!head) {
-    return { plan: '', baseLimit: null, extraSlots: 0, limit: null, current: 0, currentEmployees: 0, currentUnlinkedUsers: 0, remaining: Infinity, unlimited: true };
+    return {
+      resolved: false, reason: 'COMPANY_NOT_FOUND',
+      plan: '', baseLimit: 0, planBase: 0, subscriptionSeats: null, extraSlots: 0,
+      limit: 0, current: 0, currentEmployees: 0, currentUnlinkedUsers: 0,
+      remaining: 0, unlimited: false,
+    };
   }
   const sub = await subscriptionForPlan(head.id, head.plan);
   const max = resolveEntitlements(head.plan, sub).limits?.maxEmployees;
   const unlimited = max == null || Number(max) < 0;
-  const extraSlots = await extraSlotsFor(head.id);
+  const { extraSlots, subscriptionSeats } = await seatSourcesFor(head.id);
   const ids = await tenantCompanyIds(head.id);
   const [currentEmployees, currentUnlinkedUsers] = await Promise.all([
     countTenantEmployees(ids),
     countUnlinkedActiveUsers(ids),
   ]);
   const current = currentEmployees + currentUnlinkedUsers;
-  const baseLimit = unlimited ? null : Number(max);
+  // Reached only when the company resolved, so this snapshot is authoritative.
+  // Base = the seats the SUBSCRIPTION grants. `subscriptionSeats` is what the
+  // customer actually bought on this plan and may exceed the plan's code-map
+  // base; NULL means "just the plan base" (every pre-migration row). Purchased
+  // add-on slots stack ON TOP and are a separate bucket, so a renewal restating
+  // the seat count can never consume them.
+  const planBase = unlimited ? null : Number(max);
+  const seatOverride = subscriptionSeats;
+  const baseLimit = unlimited ? null : Math.max(planBase, seatOverride ?? planBase);
   const limit = unlimited ? null : baseLimit + extraSlots;
   return {
+    resolved: true,
+    reason: null,
     plan: head.plan || '',
     baseLimit,
+    planBase,
+    subscriptionSeats: seatOverride,
     extraSlots,
     limit,
     current,
@@ -111,6 +174,24 @@ async function getCapacity(companyId) {
 // `addCount` lets bulk import ask for N seats at once.
 async function assertCapacity(companyId, addCount = 1) {
   const cap = await getCapacity(companyId);
+  // Unresolvable company ⇒ DENY with a proper error. Previously this path
+  // reported `unlimited` and every plan limit was bypassed.
+  if (!cap.resolved) {
+    const notFound = cap.reason === 'COMPANY_NOT_FOUND';
+    return {
+      ok: false,
+      cap,
+      status: notFound ? 404 : 400,
+      body: {
+        code: cap.reason,
+        error: notFound
+          ? 'The company for this request could not be found, so the employee limit cannot be verified.'
+          : 'No company was specified for this request, so the employee limit cannot be verified.',
+        requestedCompanyId: companyId ?? null,
+        requested: addCount,
+      },
+    };
+  }
   if (cap.unlimited) return { ok: true, cap };
   if (cap.current + addCount > cap.limit) {
     return {

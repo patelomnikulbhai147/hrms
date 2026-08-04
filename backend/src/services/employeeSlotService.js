@@ -20,6 +20,8 @@ const { resolveHead, getCapacity } = require('./employeeLimitService');
 const { resolveEntitlements } = require('./planEntitlements');
 const AuditService = require('./auditService');
 const { normalizeBillingCycle } = require('../utils/billingCycle');
+const { lockRowForUpdate } = require('../utils/rowLock');
+const { gstTypeFor: sharedGstTypeFor } = require('../utils/placeOfSupply');
 
 // There is NO minimum payment amount for slot purchases — the only floor is
 // MIN_SLOTS below. (A minimum-amount rule exists ONLY in the Verification
@@ -77,14 +79,14 @@ function tierFor(newLimit) {
 /**
  * Intra- vs inter-state supply. Origin = the platform's registered GST state
  * (invoice issuer settings); destination = the company's billing state.
- * Same state — or either side unknown — → CGST+SGST; different → IGST.
- * (Matches rechargeInvoiceService.createForOrder so the quote and the final
- * invoice can never disagree.)
+ *
+ * Delegates to utils/placeOfSupply — the ONE resolver shared by the quote, the
+ * payment order, the recharge invoice and the subscription invoice, so no two
+ * of them can ever decide the split differently. (This local copy previously
+ * normalised states slightly differently from the other call sites.)
  */
 function gstTypeFor(companyState, originState) {
-  const a = String(companyState || '').trim().toLowerCase();
-  const b = String(originState || '').trim().toLowerCase();
-  return a && b && a !== b ? 'IGST' : 'CGST_SGST';
+  return sharedGstTypeFor(companyState, originState);
 }
 
 /** Everything a slot quote needs, loaded once (overview quotes many amounts). */
@@ -223,18 +225,41 @@ async function grantSlotsInTx(tx, {
   // Yearly tenant whose row is materialised here stays Yearly.
   let sub = await tx.companySubscription.findUnique({ where: { companyId: head.id } });
   if (!sub) {
-    sub = await tx.companySubscription.create({
-      data: {
-        companyId: head.id,
-        plan: head.plan || 'Free',
-        billingCycle: normalizeBillingCycle(head.billingCycle),
-      },
-    });
+    // Two concurrent first-time grants can both miss here; companyId is unique,
+    // so the loser re-reads the winner's row instead of failing the payment.
+    try {
+      sub = await tx.companySubscription.create({
+        data: {
+          companyId: head.id,
+          plan: head.plan || 'Free',
+          billingCycle: normalizeBillingCycle(head.billingCycle),
+        },
+      });
+    } catch (e) {
+      if (e?.code !== 'P2002') throw e;
+      sub = await tx.companySubscription.findUnique({ where: { companyId: head.id } });
+    }
   }
+
+  // ── Serialise concurrent grants on this company ────────────────────────────
+  // extraEmployeeSlots is read here and written back absolutely below. Without
+  // an exclusive lock, two settlements (e.g. the client /verify and the webhook
+  // for a DIFFERENT order) can both read the same balance and the second write
+  // silently discards the first — the customer pays for two packs and receives
+  // one, while both transaction rows claim success.
+  //
+  // The balance MUST come from the locking read itself: a plain findUnique here
+  // would return this transaction's REPEATABLE-READ snapshot (the pre-lock
+  // value) and the lost update would survive the lock.
+  const locked = await lockRowForUpdate(
+    tx, 'CompanySubscription', 'companyId', head.id, ['extraEmployeeSlots']
+  );
+  const currentExtra = Math.max(0, Number(locked?.extraEmployeeSlots) || 0);
 
   const baseMax = resolveEntitlements(head.plan, head.plan === 'Custom' ? sub : null).limits?.maxEmployees;
   const unlimited = baseMax == null || Number(baseMax) < 0;
-  const oldExtra = Math.max(0, Number(sub.extraEmployeeSlots) || 0);
+  // From the LOCKED current read — never from `sub`, which is snapshot data.
+  const oldExtra = currentExtra;
   const newExtra = Math.max(0, oldExtra + Number(slots));
   const appliedDelta = newExtra - oldExtra; // may differ from `slots` when clamped
   const oldLimit = unlimited ? null : Number(baseMax) + oldExtra;
