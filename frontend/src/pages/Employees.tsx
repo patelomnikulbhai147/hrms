@@ -243,7 +243,10 @@ export const Employees: React.FC<EmployeesProps> = ({
   const isBranchWorkspace = !!currentComp?.parentCompanyId && !currentComp?.isHeadOffice;
   const parentCompanyId = isBranchWorkspace ? currentComp.parentCompanyId : activeCompanyId;
   const dynamicBranches = useMemo(() => companies.filter(c => c.parentCompanyId === parentCompanyId && c.status !== 'Archived'), [companies, parentCompanyId]);
-  const branchOptions = useMemo(() => dynamicBranches.map(b => b.branchName || b.name), [dynamicBranches]);
+  const branchOptions = useMemo(() => {
+    const opts = dynamicBranches.map(b => b.branchName || b.name);
+    return opts.length > 0 ? opts : ['Head Branch'];
+  }, [dynamicBranches]);
   // When the top-right scope selector points at a branch, that branch is the
   // single source of truth for any new temporary employee — auto-assigned and
   // not user-changeable. At company scope this is blank and the user must pick.
@@ -548,7 +551,8 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Open Quick Add honouring the active scope: at branch scope the branch is
   // pre-assigned (and locked in the modal); at company scope it starts blank.
   const openQuickAdd = () => {
-    setQuickForm({ name: '', mobile: '', branch: activeBranchName, department: '' });
+    const defaultBranch = isBranchWorkspace ? activeBranchName : (branchOptions.length === 1 ? branchOptions[0] : '');
+    setQuickForm({ name: '', mobile: '', branch: defaultBranch, department: '' });
     setMobileDup(null);
     setQuickOpen(true);
   };
