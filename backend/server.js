@@ -7,6 +7,8 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const authRoutes = require('./src/routes/authRoutes');
 const companyRoutes = require('./src/routes/companyRoutes');
@@ -43,6 +45,32 @@ const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
   : true;
 app.use(cors({ origin: corsOrigin, credentials: true }));
+
+// Security Headers
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }
+}));
+
+// Global API Rate Limiting (Prevent DoS)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 500, // limit each IP to 500 requests per windowMs
+  message: 'Too many requests from this IP, please try again after 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+// Apply global limiter to all routes except webhooks (which are bound before this)
+app.use(apiLimiter);
+
+// Auth Specific Rate Limiting (Prevent Brute Force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs for auth routes
+  message: 'Too many login attempts from this IP, please try again after 15 minutes.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // ── Phase 6: attendance device PUSH receiver (ADMS-style) ────────────────────
 // Mounted BEFORE the JSON/urlencoded parsers so the raw device body is captured
@@ -132,13 +160,13 @@ const plan = (key) => requirePlanModule(key);
 
 // Routes
 app.use('/api/audit', require('./src/routes/auditRoutes'));
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/mobile', require('./src/routes/employeeRoutes'));
 
 // ── NEW MOBILE APP API ────────────────────────────────────────────────────────
 // Next-gen Mobile APIs with isolated authentication and JWT scope.
-app.use('/api/app/auth', require('./src/routes/mobileAuthRoutes')); // Legacy backward compatibility
-app.use('/api/app/v1/auth', require('./src/routes/mobileAuthRoutes')); // Versioned Authentication
+app.use('/api/app/auth', authLimiter, require('./src/routes/mobileAuthRoutes')); // Legacy backward compatibility
+app.use('/api/app/v1/auth', authLimiter, require('./src/routes/mobileAuthRoutes')); // Versioned Authentication
 app.use('/api/app/v1/employee', require('./src/routes/employeeMobileAuthRoutes')); // Employee Mobile Auth
 app.use('/api/app/v1', require('./src/routes/mobileAppRoutes')); // New Mobile App API System
 app.use('/api/app/v1/employee/attendance', require('./src/routes/mobileEmployeeAttendanceRoutes'));

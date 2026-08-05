@@ -38,15 +38,15 @@ const MODULE_CATALOG = [
   { key: 'reports', label: 'Reports', premium: false }, // module open; per-report gating below
   { key: 'company-profile', label: 'Company Profile', premium: false },
   { key: 'settings', label: 'Settings', premium: false },
-  { key: 'invoicing', label: 'Invoice Management', premium: true },
+  { key: 'invoicing', label: 'Invoice Management', premium: false },
   { key: 'loans', label: 'Employee Loans', premium: true },
   { key: 'compliance', label: 'Statutory Compliance', premium: true },
-  { key: 'custom-reports', label: 'Custom Report Builder', premium: true },
-  { key: 'communication', label: 'Communication Center', premium: true },
+  { key: 'custom-reports', label: 'Custom Report Builder', premium: false },
+  { key: 'communication', label: 'Communication Center', premium: false },
   { key: 'tasks', label: 'Task Manager', premium: true },
   { key: 'tenders', label: 'Tender Management', premium: true },
   { key: 'contracts', label: 'Contract Management', premium: true },
-  { key: 'custom-domain', label: 'Custom Domain (Beta)', premium: true },
+  { key: 'custom-domain', label: 'Custom Domain (Beta)', premium: false },
 ];
 
 // The plan-GATEABLE (premium) module keys — the ONLY ones a plan can lock/unlock.

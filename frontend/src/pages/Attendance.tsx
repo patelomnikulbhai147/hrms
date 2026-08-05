@@ -504,10 +504,20 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   // Always computed LIVE from the raw `attendance` source of truth, so every field
   // (Present/Absent/Leave/Half/WFH/Holiday/WeeklyOff/OT/WorkDays/LOP/Payable) recalcs
   // the instant any day is edited in Daily or Weekly — no manual refresh needed.
-  const periodSummaries = useMemo(
-    () => periodEmployees.map(e => summarizeEmployeePeriod(e, periodDates, attendance, leaves, overtimeData)),
-    [periodEmployees, periodDates, attendance, leaves, overtimeData]
-  );
+  const periodSummaries = useMemo(() => {
+    // Index for O(1) lookups
+    const attMap = new Map<string, AttendanceRecord>();
+    for (const a of attendance) attMap.set(`${a.employeeId}_${a.date}`, a);
+    
+    const leavesMap = new Map<string, LeaveRequest[]>();
+    for (const l of leaves) {
+      const eid = String(l.employeeId);
+      if (!leavesMap.has(eid)) leavesMap.set(eid, []);
+      leavesMap.get(eid)!.push(l);
+    }
+    
+    return periodEmployees.map(e => summarizeEmployeePeriod(e, periodDates, attMap, leavesMap, overtimeData));
+  }, [periodEmployees, periodDates, attendance, leaves, overtimeData]);
 
   // Monthly display rows = live computed roll-up, with a saved payroll override
   // (dbSummaries, edited via the Monthly "Edit" modal) overlaid when present. This
@@ -577,17 +587,28 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const clampPast = (v: string) => (v && v > today ? today : v);
   
   // Generate daily records
-  const dailyRecords = uniqueEmployees.map(emp => {
-    const existing = attendance.find(a => a.employeeId === emp.id && a.date === selectedDate);
-    if (existing) return existing;
-    
-    // Auto Leave Detection
-    const isOnLeave = leaves.find(l => 
-      l.employeeId === emp.id && 
-      l.status === 'Approved' && 
-      selectedDate >= l.fromDate && 
-      selectedDate <= l.toDate
-    );
+  const dailyRecords = useMemo(() => {
+    const attMap = new Map<string, AttendanceRecord>();
+    for (const a of attendance) attMap.set(`${a.employeeId}_${a.date}`, a);
+
+    const leavesMap = new Map<string, LeaveRequest[]>();
+    for (const l of leaves) {
+      const eid = String(l.employeeId);
+      if (!leavesMap.has(eid)) leavesMap.set(eid, []);
+      leavesMap.get(eid)!.push(l);
+    }
+
+    return uniqueEmployees.map(emp => {
+      const existing = attMap.get(`${emp.id}_${selectedDate}`);
+      if (existing) return existing;
+      
+      // Auto Leave Detection
+      const empLeaves = leavesMap.get(String(emp.id));
+      const isOnLeave = empLeaves?.find(l => 
+        l.status === 'Approved' && 
+        selectedDate >= l.fromDate && 
+        selectedDate <= l.toDate
+      );
 
     // Auto Weekly Off (Simple assumption: Sunday = Weekly Off unless specified)
     const isSunday = new Date(selectedDate).getDay() === 0;
@@ -608,6 +629,7 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
       flags: [] as AttendanceRecord['flags']
     };
   });
+  }, [uniqueEmployees, attendance, leaves, selectedDate]);
 
   const empCodeById = (eid: any) => activeUniqueEmployees.find(e => String(e.id) === String(eid))?.employeeId || '';
   // ── The Attendance Entry table's rows ──────────────────────────────────────

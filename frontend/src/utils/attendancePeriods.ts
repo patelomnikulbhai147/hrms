@@ -117,16 +117,27 @@ export function statusCode(status: string): string {
 export function resolveStatus(
   empId: string,
   date: string,
-  attendance: AttendanceRecord[],
-  leaves: LeaveRequest[]
+  attendance: AttendanceRecord[] | Map<string, AttendanceRecord>,
+  leaves: LeaveRequest[] | Map<string, LeaveRequest[]>
 ): { status: string; record?: AttendanceRecord; leaveType?: string } {
-  // Match by STRING id — the API may deliver employeeId as a number while the grid
-  // passes it as a string (or vice-versa); a strict === would then silently miss the
-  // saved row and fall through to the computed default (looking like a "revert").
-  const existing = attendance.find(a => String(a.employeeId) === String(empId) && a.date === date);
+  const eIdStr = String(empId);
+  
+  let existing;
+  if (attendance instanceof Map) {
+    existing = attendance.get(`${eIdStr}_${date}`);
+  } else {
+    existing = attendance.find(a => String(a.employeeId) === eIdStr && a.date === date);
+  }
   if (existing) return { status: existing.status, record: existing };
 
-  const onLeave = leaves.find(l => String(l.employeeId) === String(empId) && l.status === 'Approved' && date >= l.fromDate && date <= l.toDate);
+  let empLeaves;
+  if (leaves instanceof Map) {
+    empLeaves = leaves.get(eIdStr);
+  } else {
+    empLeaves = leaves.filter(l => String(l.employeeId) === eIdStr);
+  }
+  
+  const onLeave = empLeaves?.find(l => l.status === 'Approved' && date >= l.fromDate && date <= l.toDate);
   if (onLeave) return { status: 'Leave', leaveType: (onLeave as any).leaveType };
 
   const isSunday = parseISO(date).getDay() === 0;
@@ -187,8 +198,8 @@ const otBelongsTo = (o: any, emp: Employee) =>
 export function summarizeEmployeePeriod(
   emp: Employee,
   dates: string[],
-  attendance: AttendanceRecord[],
-  leaves: LeaveRequest[],
+  attendance: AttendanceRecord[] | Map<string, AttendanceRecord>,
+  leaves: LeaveRequest[] | Map<string, LeaveRequest[]>,
   overtime: any[] = []
 ): EmployeePeriodSummary {
   const s: EmployeePeriodSummary = {
@@ -244,13 +255,25 @@ export function summarizeYear(
   overtime: any[] = []
 ): MonthlyAggregate[] {
   const result: MonthlyAggregate[] = [];
+  
+  // Index for O(1) lookups
+  const attMap = new Map<string, AttendanceRecord>();
+  for (const a of attendance) attMap.set(`${a.employeeId}_${a.date}`, a);
+  
+  const leavesMap = new Map<string, LeaveRequest[]>();
+  for (const l of leaves) {
+    const eid = String(l.employeeId);
+    if (!leavesMap.has(eid)) leavesMap.set(eid, []);
+    leavesMap.get(eid)!.push(l);
+  }
+
   for (let m = 0; m < 12; m++) {
     const start = toISO(new Date(year, m, 1));
     const end = toISO(new Date(year, m + 1, 0));
     const dates = eachDateInRange(start, end);
     let present = 0, absent = 0, leave = 0, half = 0, wfh = 0, otHours = 0, workingDays = 0;
     for (const emp of employees) {
-      const sum = summarizeEmployeePeriod(emp, dates, attendance, leaves, overtime);
+      const sum = summarizeEmployeePeriod(emp, dates, attMap, leavesMap, overtime);
       present += sum.present; absent += sum.absent; leave += sum.leave;
       half += sum.half; wfh += sum.wfh; otHours += sum.otHours; workingDays += sum.workingDays;
     }

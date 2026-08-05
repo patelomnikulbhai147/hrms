@@ -40,11 +40,10 @@ const FREE_LOCKED: LockKey[] = [
   'loans',           // Employee Loans (Finance & Compliance)
   'compliance',      // Statutory Compliance (Finance & Compliance)
   'custom-reports',  // Custom Report Builder (synthetic key; shares `reports` perm)
-  'custom-domain',   // White Label & Custom Domain (synthetic key; shares `settings` perm)
 ];
 
 // Sidebar page ids locked for FREE that a permission key can't express.
-const FREE_LOCKED_PAGES = ['custom-report-builder', 'custom-domain'];
+const FREE_LOCKED_PAGES = ['custom-report-builder'];
 
 // ⚠️  MIRROR of backend FREE_ALLOWED_REPORTS — the ONLY compliance reports a FREE
 //     plan may generate. Keys are the literal report catalog keys. Keep in sync.

@@ -10,7 +10,7 @@ const { protect } = require('../middleware/authMiddleware');
 const { requirePlanModule } = require('../middleware/subscriptionMiddleware');
 const controller = require('../controllers/customDomainController');
 
-router.use(protect, requirePlanModule('custom-domain'));
+router.use(protect);
 
 router.get('/overview', controller.getOverview);
 router.post('/domains', controller.addDomain);
