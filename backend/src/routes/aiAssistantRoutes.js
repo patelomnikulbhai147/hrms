@@ -107,10 +107,9 @@ const INTENTS = [
   { id: 'branch_breakdown',         patterns: [/\b(branch|office\s+wise|location\s+wise)\b/] },
 
   // Attendance
-  { id: 'attendance_today',         patterns: [/\b(present\s+today|attendance\s+today|today.*attendance|today.*present|marked.*today)\b/] },
-  { id: 'absent_today',             patterns: [/\b(absent\s+today|today.*absent|not\s+present|not\s+mark)\b/] },
-  { id: 'late_today',               patterns: [/\b(late\s+today|today.*late|late\s+coming|late\s+arrival)\b/] },
   { id: 'not_marked_today',         patterns: [/\b(not\s+marked|no\s+attendance|missing\s+attendance)\b/] },
+  { id: 'absent_today',             patterns: [/\b(absent\s+today|today.*absent|not\s+present)\b/] },
+  { id: 'attendance_today',         patterns: [/\b(present\s+today|attendance\s+today|today.*attendance|today.*present|marked.*today)\b/] },
 
   // Leave
   { id: 'leave_today',              patterns: [/\b(on\s+leave\s+today|leave\s+today|today.*leave)\b/] },
@@ -297,23 +296,6 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
       return `**Absent Today (${today.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}):**\n• Active Employees: **${activeTotal}**\n• Present: **${presentCount}**\n• On Approved Leave: **${onLeaveToday}**\n• Marked Absent: **${absentCount}**\n• Unaccounted: **${Math.max(0, activeTotal - presentCount - onLeaveToday - absentCount)}**`;
     }
 
-    case 'late_today': {
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const companyId = scope.companyId;
-      const lateCount = await prisma.attendance.count({
-        where: { ...(companyId ? { employee: { companyId } } : {}), date: todayStr, isLate: true }
-      });
-      const late = await prisma.attendance.findMany({
-        where: { ...(companyId ? { employee: { companyId } } : {}), date: todayStr, isLate: true },
-        include: { employee: { select: { name: true, department: true } } },
-        take: 10
-      });
-      let msg = `**${lateCount} employee(s) came in late today.**`;
-      if (late.length > 0) msg += '\n\n' + late.map(a => `• ${a.employee?.name} (${a.employee?.department || ''})`).join('\n');
-      return msg;
-    }
-
     case 'not_marked_today': {
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
@@ -410,12 +392,14 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
       const agg = await prisma.payroll.aggregate({
         where: payrollWhere,
-        _sum: { netSalary: true, grossSalary: true, deductions: true },
+        _sum: { netSalary: true, basicSalary: true, allowances: true, deductions: true },
         _count: { id: true }
       });
 
       const net = agg._sum.netSalary || 0;
-      const gross = agg._sum.grossSalary || 0;
+      const basic = agg._sum.basicSalary || 0;
+      const allowances = agg._sum.allowances || 0;
+      const gross = basic + allowances;
       const deductions = agg._sum.deductions || 0;
       const count = agg._count.id || 0;
 
