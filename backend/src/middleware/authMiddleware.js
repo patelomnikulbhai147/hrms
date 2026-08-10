@@ -111,3 +111,34 @@ exports.protect = async (req, res, next) => {
     return res.status(401).json({ error: 'Not authorized, token failed' });
   }
 };
+
+exports.portalProtect = async (req, res, next) => {
+  let token;
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: 'Not authorized, no token provided' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    if (decoded.scope !== 'portal') {
+      return res.status(403).json({ error: 'Invalid token scope' });
+    }
+
+    const prisma = require('../config/prisma');
+    const user = await prisma.portalUser.findUnique({ where: { id: decoded.id } });
+    
+    if (!user || user.status !== 'Active') {
+      return res.status(401).json({ error: 'Portal user not found or inactive' });
+    }
+
+    req.portalUser = user;
+    next();
+  } catch (error) {
+    console.error('Portal Auth Middleware Error:', error);
+    return res.status(401).json({ error: 'Not authorized, token failed' });
+  }
+};

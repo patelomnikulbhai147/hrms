@@ -1,0 +1,62 @@
+
+// --- PHASE 6: SaaS Enterprise & Security ---
+
+model SaaSMarketplaceItem {
+  id           Int      @id @default(autoincrement())
+  name         String
+  type         String   // Credit, Storage, Addon, Branch, AppStorePlugin
+  price        Float
+  billingCycle String   // Monthly, Yearly, One-time
+  description  String?  @db.Text
+  createdAt    DateTime @default(now())
+}
+
+model ApiCredential {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  appName     String
+  apiKey      String   @unique
+  apiSecret   String
+  rateLimit   Int      @default(1000)
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model WebhookSubscription {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  event       String
+  targetUrl   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model SystemAuditLog {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  userId      Int?
+  action      String
+  ipAddress   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model SecurityPolicy {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  require2FA        Boolean  @default(false)
+  ssoProvider       String?
+  ipWhitelist       String?  @db.Text
+  sessionTimeoutMin Int      @default(60)
+  updatedAt         DateTime @updatedAt
+}
+
+model StorageQuota {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  maxStorageBytes   BigInt
+  usedStorageBytes  BigInt   @default(0)
+  updatedAt         DateTime @updatedAt
+}

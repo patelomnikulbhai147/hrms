@@ -15,6 +15,7 @@ import { resolveLayout, type InvoiceLayout } from '@/components/invoicing/invoic
 import { resolveIssuer, parseBank, serialiseBank, BANK_FIELDS } from '@/components/invoicing/serviceInvoice';
 import { ASSET_RULES, acceptAttr, allowedLabel, prepareAsset, type AssetKey } from '@/components/invoicing/invoiceAssets';
 import { ServiceInvoiceEditor } from '@/components/invoicing/ServiceInvoiceEditor';
+import { InvoiceTemplateDashboard } from '@/components/invoicing/InvoiceTemplateDashboard';
 import { useIssuerCompany } from '@/components/invoicing/invoiceIdentity';
 // One definition of each master form, shared with the Create-Invoice pickers.
 import { CustomerModal, ProductModal } from '@/components/invoicing/MasterModals';
@@ -25,6 +26,7 @@ import { PaymentReminderCenterModal } from '@/components/invoicing/PaymentRemind
 // preview, the Create-Invoice preview and the print/PDF path are provably ONE
 // code path — a gallery preview cannot drift from what actually prints.
 import { renderInvoiceHtml, printInvoiceDocument } from '@/components/invoicing/invoiceRender';
+
 import { Input, Select } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
@@ -102,7 +104,8 @@ const OPERATION_TABS = [
 // "Invoice Designer" is renamed "Templates & Branding"; its tab id stays
 // `designer` so the existing render switch and saved design payload are untouched.
 const ADMIN_TABS = [
-  { id: 'designer', label: 'Templates & Branding', icon: Palette },
+  { id: 'invoice-templates', label: 'Invoice Templates', icon: FileText },
+  { id: 'designer', label: 'Legacy Branding', icon: Palette },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const;
 const TABS = [...OPERATION_TABS, ...ADMIN_TABS] as const;
@@ -235,6 +238,9 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
       {tab === 'customers' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Customer" />}
       {tab === 'vendors' && <CustomersTab canEdit={canEdit} canManage={canManage} onViewProfile={openCustomerProfile} partyType="Vendor" />}
       {tab === 'products' && <ProductsTab canEdit={canEdit} canManage={canManage} />}
+      {tab === 'invoice-templates' && (canBranding
+        ? <InvoiceTemplateDashboard />
+        : <Empty icon={<FileText size={26} />} title="Invoice Templates restricted" sub="Only the Company Head or an authorized admin can configure invoice templates." />)}
       {tab === 'designer' && (canBranding
         ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
         : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}

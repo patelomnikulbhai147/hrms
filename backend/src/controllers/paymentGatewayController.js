@@ -487,7 +487,30 @@ exports.cashfreeWebhook = async (req, res) => {
   //    DIFFERENT eventKeys for the same payment cannot double-credit.
   let result = 'ignored';
   try {
-    if (orderId && /^PAYMENT_/.test(String(eventType))) {
+    if (orderId && orderId.startsWith('WALLET_') && /^PAYMENT_/.test(String(eventType))) {
+      // It's a Wallet Recharge
+      if (eventType === 'PAYMENT_SUCCESS_WEBHOOK') {
+        const payment = payload?.data?.payment || {};
+        const amount = payment.payment_amount;
+        const companyIdStr = payload?.data?.order?.order_tags?.companyId;
+        const companyId = parseInt(companyIdStr, 10);
+        
+        if (companyId && amount > 0) {
+          const WalletService = require('../services/walletService');
+          await WalletService.addBalance(
+            companyId, 
+            amount, 
+            'Recharge', 
+            payment.cf_payment_id || orderId, 
+            'Cashfree Webhook', 
+            'Cashfree Payment Gateway'
+          );
+          result = 'wallet-credited';
+        } else {
+          result = 'ignored-wallet-missing-data';
+        }
+      }
+    } else if (orderId && /^PAYMENT_/.test(String(eventType))) {
       const { outcome } = await paymentOrderService.verifyAndSettle(orderId, { trigger: 'webhook', actorName: 'Cashfree Webhook' });
       result = outcome;
     } else if (orderId && /REFUND/.test(String(eventType))) {

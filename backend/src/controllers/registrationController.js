@@ -145,15 +145,17 @@ exports.registerCompanyStart = async (req, res) => {
       { expiresIn: `${OTP_EXPIRY_MINUTES}m` }
     );
 
-    const delivery = await sendOtpEmail(companyEmail, otp, head.name, OTP_EXPIRY_MINUTES);
+    const delivery = await sendOtpEmail(headEmail, otp, head.name, OTP_EXPIRY_MINUTES, null, 'registration');
 
-    // SMTP configured but the provider rejected → be honest, don't pretend it sent.
-    if (!delivery.delivered && delivery.configured) {
+    // If the email was not delivered (either SMTP rejected it, or SMTP is missing in production),
+    // we must not pretend it was sent. The only exception is local development where SMTP is deliberately
+    // omitted so we can return the devOtp in the JSON response.
+    if (!delivery.delivered && (delivery.configured || process.env.NODE_ENV === 'production')) {
       return res.status(502).json({ error: 'We could not send the verification email right now. Please try again in a few minutes.' });
     }
 
     const payload = {
-      message: `A verification code has been sent to ${companyEmail}.`,
+      message: `A verification code has been sent to ${headEmail}.`,
       verificationToken,
       expiresInMinutes: OTP_EXPIRY_MINUTES,
     };

@@ -148,7 +148,7 @@ function sanitizeCustomerPhone(raw) {
  * payment_orders), which makes creation replay-safe: Cashfree rejects a
  * duplicate order_id instead of double-charging.
  */
-async function createOrder({ orderId, amount, currency = 'INR', customer, note = null, meta = null, expiryMinutes = 30 }) {
+async function createOrder({ orderId, amount, currency = 'INR', customer, note = null, meta = null, tags = null, expiryMinutes = 30 }) {
   const body = {
     order_id: orderId,
     order_amount: Number(Number(amount).toFixed(2)),
@@ -161,6 +161,7 @@ async function createOrder({ orderId, amount, currency = 'INR', customer, note =
     },
     order_note: note || undefined,
     order_meta: meta || undefined,
+    order_tags: tags || undefined,
     order_expiry_time: new Date(Date.now() + expiryMinutes * 60 * 1000).toISOString(),
   };
   return request('POST', '/orders', { body });

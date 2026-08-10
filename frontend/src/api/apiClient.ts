@@ -737,6 +737,15 @@ export const api = {
 
   // Invoice Management — isolated financial module (/api/invoicing).
   invoicing: {
+    downloadPdf: async (invoiceId: number): Promise<Blob> => {
+      const res = await fetch(`${BASE_URL}/invoicing/invoices/${invoiceId}/pdf`, { headers: getHeaders() });
+      if (!res.ok) {
+        let msg = 'Could not download the invoice PDF.';
+        try { msg = (await res.json())?.error || msg; } catch { /* keep default */ }
+        throw new Error(msg);
+      }
+      return res.blob();
+    },
     dashboard: async () => apiFetch(`${BASE_URL}/invoicing/dashboard`, { headers: getHeaders() }),
     // Customers
     listCustomers: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/customers${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
@@ -775,6 +784,24 @@ export const api = {
     saveLayout: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/layouts${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
     setLayoutDefault: async (id: any, active: boolean) => apiFetch(`${BASE_URL}/invoicing/layouts/${id}/default`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ active }) }),
     deleteLayout: async (id: any) => apiFetch(`${BASE_URL}/invoicing/layouts/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    getTemplate: async (id: any) => apiFetch(`${BASE_URL}/invoicing/templates/${id}`, { headers: getHeaders() }),
+    saveTemplate: async (id: any, data: any) => apiFetch(`${BASE_URL}/invoicing/templates${id ? `/${id}` : ''}`, { method: id ? 'PUT' : 'POST', headers: getHeaders(), body: JSON.stringify(data) }),
+    deleteTemplate: async (id: any) => apiFetch(`${BASE_URL}/invoicing/templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
+  },
+  
+  invoiceTemplates: {
+    active: async (branchId?: number | null) => apiFetch(`${BASE_URL}/invoice-templates/active${branchId ? `?branchId=${branchId}` : ''}`, { headers: getHeaders() }),
+    list: async () => apiFetch(`${BASE_URL}/invoice-templates`, { headers: getHeaders() }),
+    getOne: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}`, { headers: getHeaders() }),
+    create: async (payload: any) => apiFetch(`${BASE_URL}/invoice-templates`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) }),
+    update: async (id: number, payload: any) => apiFetch(`${BASE_URL}/invoice-templates/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload) }),
+    remove: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
+    activate: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}/activate`, { method: 'PUT', headers: getHeaders() }),
+    duplicate: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}/duplicate`, { method: 'POST', headers: getHeaders() }),
+    preview: async (content: string) => { 
+      const res = await fetch(`${BASE_URL}/invoice-templates/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ content }) }); 
+      return res.text();
+    }
   },
 
   // Employee Loan Management — loans, EMI schedule (ledger), approval workflow,
@@ -1597,5 +1624,23 @@ export const api = {
     versions: async (branchLevel = false) => { return await apiFetch(`${BASE_URL}/deduction-policy/versions${branchLevel ? '?branchLevel=true' : ''}`, { headers: getHeaders() }); },
     save: async (data: { config: any; enabled?: boolean; reason?: string; branchLevel?: boolean }) => { return await apiFetch(`${BASE_URL}/deduction-policy`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     recalculate: async (data: { month?: string; year?: number } = {}) => { return await apiFetch(`${BASE_URL}/deduction-policy/recalculate`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); }
+  },
+
+  // ── Enterprise Wallet & Payroll Credit System ─────────────────────────────
+  wallet: {
+    getSummary: async () => { return await apiFetch(`${BASE_URL}/wallet/summary`, { headers: getHeaders() }); },
+    getTransactions: async (params?: { type?: string; status?: string; startDate?: string; endDate?: string; search?: string; page?: number; limit?: number; }) => {
+      const qs = params ? '?' + new URLSearchParams(
+        Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== '').map(([k, v]) => [k, String(v)]))
+      ).toString() : '';
+      return await apiFetch(`${BASE_URL}/wallet/transactions${qs}`, { headers: getHeaders() });
+    },
+    getEstimate: async () => { return await apiFetch(`${BASE_URL}/wallet/estimate`, { headers: getHeaders() }); },
+    createRechargeOrder: async (data: { amount: number; note?: string }) => {
+      return await apiFetch(`${BASE_URL}/wallet/create-order`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
+    },
+    verifyPayment: async (data: { order_id: string }) => {
+      return await apiFetch(`${BASE_URL}/wallet/recharge/verify`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
+    },
   }
 };

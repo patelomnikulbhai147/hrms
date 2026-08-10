@@ -50,6 +50,8 @@ router.post('/invoices/:id/duplicate', inv.duplicate);
 router.patch('/invoices/:id/status', inv.setStatus);
 router.post('/invoices/:id/log', inv.logAction);
 router.post('/invoices/:id/email', inv.emailInvoice); // additive — email the invoice with its PDF attached
+router.get('/invoices/:id/html', inv.getHtml);
+router.get('/invoices/:id/pdf', inv.getPdf);
 router.get('/invoices/:id/reminder-center', inv.getReminderCenter);
 router.post('/invoices/:id/remind', inv.sendReminder);
 router.patch('/invoices/:id/reschedule', inv.rescheduleDueDate);

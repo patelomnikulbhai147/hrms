@@ -803,7 +803,39 @@ exports.generate = async (req, res) => {
       return res.status(400).json({ error: 'No active employees found to generate payroll for.' });
     }
 
+
+    // ── Wallet Balance Guard ──────────────────────────────────────────────────
+    // Before generating payroll, check if the company wallet has sufficient
+    // balance to cover the payroll credits (per pricing plan).
+    // This does NOT deduct the balance here — deduction happens post-approval.
+    let requiredWalletDeduction = 0;
+    if (periodCompanyId) {
+      try {
+        const WalletService = require('../services/walletService');
+        const wallet = await WalletService.getWallet(periodCompanyId);
+        const estimate = await WalletService.estimatePayrollCost(periodCompanyId);
+        
+        if (estimate.totalCost > 0 && wallet.balance < estimate.totalCost) {
+          return res.status(402).json({
+            error: 'Insufficient wallet balance to generate payroll.',
+            code: 'INSUFFICIENT_WALLET_BALANCE',
+            walletBalance: wallet.balance,
+            requiredCredits: estimate.totalCost,
+            shortfall: estimate.totalCost - wallet.balance,
+            activeEmployees: estimate.activeEmployees,
+            costPerEmployee: estimate.costPerEmployee,
+          });
+        }
+        requiredWalletDeduction = estimate.totalCost;
+      } catch (walletErr) {
+        // Log but do NOT block payroll if wallet check itself fails — wallet is
+        // an add-on; broken wallet must not halt salary processing.
+        console.error('[payroll.generate] wallet balance check failed (non-blocking):', walletErr.message);
+      }
+    }
+
     let totalAmount = 0;
+
     const payrollRecordsToCreate = [];
 
     for (const emp of employees) {
@@ -996,6 +1028,33 @@ exports.generate = async (req, res) => {
         'synchronize attendance and regenerate before approving or paying them.'
       );
     }
+
+    if (requiredWalletDeduction > 0) {
+      try {
+        const WalletService = require('../services/walletService');
+        await WalletService.deductBalance(
+          periodCompanyId,
+          requiredWalletDeduction,
+          'Payroll',
+          `PR-${month}-${year}-${result.id}`,
+          req.user?.name || 'System',
+          result.id
+        );
+        // Create an audit log for the wallet deduction
+        await prisma.auditLog.create({
+          data: {
+            action: 'WALLET_DEDUCTION',
+            module: 'Wallet',
+            targetId: String(result.id),
+            details: `Deducted ₹${requiredWalletDeduction} for Payroll Generation (${month} ${year}).`,
+            userId: req.user?.id || 1
+          }
+        });
+      } catch (e) {
+        console.error('[payroll.generate] Wallet deduction failed:', e);
+      }
+    }
+
     res.status(201).json({
       message: parts.join(' '),
       data: result,

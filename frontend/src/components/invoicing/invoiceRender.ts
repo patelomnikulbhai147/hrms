@@ -33,17 +33,34 @@ export function renderInvoiceHtml(
   inv: any,
   company: any,
   design: InvoiceDesign | undefined,
-  layout: InvoiceLayout | null | undefined,
+  layout: InvoiceLayout | null | undefined | any,
   opts: RenderInvoiceOpts = {},
   settings?: any,
 ): string {
   if (layout) {
-    return layoutIsElementModel(layout)
-      ? invoiceDocHtml(inv, company, canvasDesignFromLayout(layout), opts)
-      : canvasDocHtml(inv, company, layout, opts);
+    let resolvedLayout = layout;
+    if (typeof resolvedLayout === 'string') {
+      try {
+        resolvedLayout = JSON.parse(resolvedLayout);
+      } catch {
+        // Raw string / HTML
+      }
+    }
+
+    if (typeof resolvedLayout === 'object' && resolvedLayout !== null) {
+      console.log('[INVOICE RENDERER TEMPLATE]', {
+        type: 'CANVAS_LAYOUT',
+        elementsCount: resolvedLayout.elements?.length || resolvedLayout.blocks?.length || 0
+      });
+      return layoutIsElementModel(resolvedLayout)
+        ? invoiceDocHtml(inv, company, canvasDesignFromLayout(resolvedLayout), opts)
+        : canvasDocHtml(inv, company, resolvedLayout, opts);
+    }
   }
-  // The Dispatch & Destination switch lives with the other template settings, so
-  // print / PDF / email honour it exactly as the on-screen document does.
+
+  console.log('[INVOICE RENDERER TEMPLATE]', {
+    type: 'BUILTIN_DEFAULT'
+  });
   return serviceInvoiceHtml(inv, company, settings, { ...opts, showLogistics: settings?.showLogistics !== false });
 }
 

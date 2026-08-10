@@ -105,21 +105,51 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
 
   // ── THE TEMPLATE COMES FROM THE TEMPLATE GALLERY ───────────────────────────
   // Create Invoice does not decide what an invoice looks like: it loads whatever
-  // template is marked default in Templates & Branding. No default saved ⇒ the
-  // built-in "Professional Tax Invoice", which is itself a gallery entry.
-  // `activeLayout` is null for the built-in and a canvas layout otherwise.
+  // template is marked active in Templates & Branding -> Template Gallery.
   const [activeLayout, setActiveLayout] = useState<any>(null);
   const [templateName, setTemplateName] = useState<string>(SYSTEM_TEMPLATE_NAME);
+
   const loadDefaultTemplate = useCallback(async () => {
     try {
-      const rows = (await api.invoicing.listLayouts())?.layouts || [];
-      const active = rows.find((l: any) => l.isDefault);
-      let parsed = active?.layout;
-      if (typeof parsed === 'string') { try { parsed = JSON.parse(parsed); } catch { parsed = null; } }
-      setActiveLayout(active && parsed ? parsed : null);
-      setTemplateName(active && parsed ? (active.name || 'Custom Template') : SYSTEM_TEMPLATE_NAME);
-    } catch { setActiveLayout(null); setTemplateName(SYSTEM_TEMPLATE_NAME); }
-  }, []);
+      const active = await api.invoiceTemplates.active();
+      console.log('[ACTIVE INVOICE TEMPLATE]', {
+        companyId: company?.id,
+        branchId: companyState?.branchId,
+        templateId: active?.id,
+        templateName: active?.name,
+        versionId: active?.version || active?.versions?.[0]?.id
+      });
+
+      if (!active || active.isDefault || active.id === null) {
+        setActiveLayout(null);
+        setTemplateName(SYSTEM_TEMPLATE_NAME);
+        return;
+      }
+
+      let parsed: any = active.content;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+        } catch {
+          // If not JSON, leave as raw string
+        }
+      }
+
+      setActiveLayout(parsed);
+      setTemplateName(active.name || SYSTEM_TEMPLATE_NAME);
+
+      console.log('[CREATE INVOICE TEMPLATE]', {
+        templateId: active.id,
+        templateName: active.name,
+        versionId: active.version || active.versions?.[0]?.id
+      });
+    } catch (e) {
+      console.error('[ACTIVE INVOICE TEMPLATE] Error loading active template:', e);
+      setActiveLayout(null);
+      setTemplateName(SYSTEM_TEMPLATE_NAME);
+    }
+  }, [company?.id, companyState?.branchId]);
+
   useEffect(() => { loadDefaultTemplate(); }, [loadDefaultTemplate]);
   // Changing the default in the gallery re-templates Create Invoice immediately.
   useEffect(() => {
@@ -355,15 +385,23 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
     renderInvoiceHtml({ ...doc, ...computeInvoice(doc.items, intraState), intraState, brandingOverride: override },
       issuerCompany, undefined, activeLayout, { print }, settings);
 
-  // Print / PDF from the SAME definition the screen renders → identical output.
-  // Printed via a hidden iframe so the dialog can never wedge this tab (a
-  // same-origin popup shares our renderer process — that was the freeze).
-  // `printing` is cleared in `finally`, so the button always comes back.
+  // Print / PDF from the backend endpoint
   const printDoc = async () => {
-    if (printing) return;                       // ignore a double click
+    if (!invoiceId) { ui.toast.error('Save the invoice before downloading the PDF.'); return; }
+    if (printing) return;
     setPrinting(true);
-    try { await printInvoiceDocument(renderWithDefaultTemplate(true)); }
-    catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')); }
+    try { 
+      const blob = await api.invoicing.downloadPdf(invoiceId);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Invoice-${doc.invoiceNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    }
+    catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not download the PDF.')); }
     finally { setPrinting(false); }
   };
 
@@ -373,9 +411,7 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
     if (!to) { ui.toast.error('Add the customer email on the invoice first.'); return; }
     setEmailing(true);
     try {
-      // Send the SAME document the screen shows → the attached PDF is identical.
-      const html = renderWithDefaultTemplate(false);
-      const res = await api.invoicing.emailInvoice(invoiceId, { to, html });
+      const res = await api.invoicing.emailInvoice(invoiceId, { to });
       ui.toast[res?.delivered ? 'success' : 'info'](res?.delivered
         ? `Invoice emailed to ${to} with the PDF attached.`
         : 'SMTP is not configured — the email was logged on the server instead.');
@@ -430,7 +466,9 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
         <FileText size={12} className="text-brand-500" />
         <span className="text-[11px] text-slate-500">Template</span>
         <span className="text-[11px] font-bold text-slate-700">{templateName}</span>
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">Default</span>
+        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">
+          {activeLayout ? 'ACTIVE' : 'DEFAULT'}
+        </span>
         <span className="text-[10px] text-slate-400">— change it in Templates &amp; Branding → Template Gallery.</span>
       </div>
 

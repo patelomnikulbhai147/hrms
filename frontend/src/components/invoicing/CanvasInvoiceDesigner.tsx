@@ -20,7 +20,7 @@ import {
   Landmark, PenTool, FileText, StickyNote, QrCode, Barcode, Stamp, Wallet,
   Square, Circle, Minus, Plus, Layers, Save, RotateCcw,
   Printer, ZoomIn, ZoomOut, Copy, Trash2, ArrowUp, ArrowDown,
-  Upload, Pencil, Eye, Check, X, AlertTriangle, Star
+  Upload, Pencil, Eye, Check, X, AlertTriangle, Star, ArrowLeft
 } from 'lucide-react';
 import { formatDate } from '@/utils/formatDate';
 import { qrDataUrl } from '@/utils/cardCodes';
@@ -118,7 +118,14 @@ function applyChange(els: CanvasElement[], id: string, changes: Partial<CanvasEl
   return els.map(e => (e.id === id ? next : e));
 }
 
-export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean; seedLayout?: any }> = ({ company, canManage, seedLayout }) => {
+export const CanvasInvoiceDesigner: React.FC<{ 
+  company: any; 
+  canManage: boolean; 
+  seedLayout?: any; 
+  onSaveLayout?: (data: any) => Promise<void>; 
+  onCancel?: () => void;
+  isGalleryMode?: boolean;
+}> = ({ company, canManage, seedLayout, onSaveLayout, onCancel, isGalleryMode }) => {
   const [settings, setSettings] = useState<any>(null);
   const [elements, setElements] = useState<CanvasElement[]>([]);
   // Multi-select. The LAST id is the primary: it drives the Properties panel,
@@ -152,6 +159,7 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
   const [saveStatus, setSaveStatus] = useState('Active');
   const [saveMakeDefault, setSaveMakeDefault] = useState(false);
   const [saveSaving, setSaveSaving] = useState(false);
+  const [saveIntent, setSaveIntent] = useState<'draft' | 'active'>('draft');
   // The id of the saved template currently open for editing. Non-null → Save
   // UPDATES that row instead of creating a duplicate (Step 7).
   const [editingTemplateId, setEditingTemplateId] = useState<string | number | null>(null);
@@ -503,6 +511,15 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
     if (DEBUG_SAVE) console.debug('[template-save] →', { targetId, name: nameToUse, blocks: layoutData.blocks.length, isRetry });
     setSaveSaving(true);
     try {
+      if (onSaveLayout) {
+        await onSaveLayout({ name: nameToUse, layout: layoutData, status: saveIntent === 'active' ? 'Active' : 'Draft' });
+        setEditingTemplateId(targetId ?? null);
+        setDupClash(null);
+        setIsSaveModalOpen(false);
+        ui.toast.success('Template saved successfully.');
+        return;
+      }
+      
       // `saveLayout(id,…)` PUTs when id is set, POSTs when null.
       const saved = await api.invoicing.saveLayout(targetId ?? null, { name: nameToUse, layout: layoutData });
       if (DEBUG_SAVE) console.debug('[template-save] ✓ saved', saved?.id);
@@ -893,26 +910,37 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
       {/* ── Toolbar ── */}
       <div className="flex items-center justify-between p-2 bg-white border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={undo} disabled={historyIdx <= 0} icon={<RotateCcw size={14} />} title="Undo (Ctrl+Z)" />
-          <Button size="sm" variant="outline" onClick={redo} disabled={historyIdx >= history.length - 1} icon={<RotateCcw size={14} className="rotate-180" />} title="Redo (Ctrl+Y)" />
-          <div className="w-px h-5 bg-slate-200 mx-1" />
+          {isGalleryMode && onCancel && (
+            <Button variant="ghost" size="sm" onClick={onCancel} className="mr-2 text-slate-500 hover:text-slate-700">
+              <ArrowLeft size={16} className="mr-1" /> Back
+            </Button>
+          )}
+          <div className="flex items-center gap-1 border-r border-slate-200 pr-3 mr-1">
+            <Button size="sm" variant="outline" onClick={undo} disabled={historyIdx <= 0} icon={<RotateCcw size={14} />} title="Undo (Ctrl+Z)" />
+            <Button size="sm" variant="outline" onClick={redo} disabled={historyIdx >= history.length - 1} icon={<RotateCcw size={14} className="rotate-180" />} title="Redo (Ctrl+Y)" />
+          </div>
           <Button size="sm" variant="outline" onClick={() => setShowGrid(!showGrid)}>{showGrid ? 'Hide Grid' : 'Show Grid'}</Button>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setZoom(z => Math.max(0.3, +(z - 0.1).toFixed(2)))} className="p-1 text-slate-500 hover:text-brand-600" title="Zoom out"><ZoomOut size={13} /></button>
           <span className="text-xs font-bold w-10 text-center">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.min(2.0, +(z + 0.1).toFixed(2)))} className="p-1 text-slate-500 hover:text-brand-600" title="Zoom in"><ZoomIn size={13} /></button>
-          <div className="w-px h-5 bg-slate-200 mx-1" />
-          {/* When a saved template is open, show which one + a way to start fresh. */}
-          {editingTemplateId != null && (
-            <span className="hidden md:flex items-center gap-1.5 text-[11px] font-semibold text-brand-700 bg-brand-50 border border-brand-200 rounded-full px-2 py-1">
-              Editing: {savedLayouts.find(l => String(l.id) === String(editingTemplateId))?.name || 'template'}
-              <button onClick={() => { setEditingTemplateId(null); ui.toast.info('Started a new template. Save will create a new one.'); }}
-                className="text-brand-400 hover:text-brand-700" title="Start a new template">✕</button>
-            </span>
-          )}
+          <div className="h-6 w-px bg-slate-200 mx-1" />
           <Button size="sm" variant="outline" icon={<Printer size={13} />} onClick={generateSample}>Preview PDF</Button>
-          <Button size="sm" icon={<Save size={13} />} disabled={!canManage} onClick={saveAsCustomTemplate}>{editingTemplateId != null ? 'Update Template' : 'Save Template'}</Button>
+          {isGalleryMode ? (
+            <>
+              <Button size="sm" variant="outline" onClick={() => { setSaveIntent('draft'); setIsSaveModalOpen(true); }} className="gap-2 shadow-sm h-8" disabled={!canManage}>
+                <Save size={14} /> Save Draft
+              </Button>
+              <Button size="sm" onClick={() => { setSaveIntent('active'); setIsSaveModalOpen(true); }} className="bg-brand-600 hover:bg-brand-700 text-white gap-2 px-4 shadow-sm h-8" disabled={!canManage}>
+                <Save size={14} /> Save & Activate
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" onClick={() => setIsSaveModalOpen(true)} className="bg-brand-600 hover:bg-brand-700 text-white gap-2 px-4 shadow-sm h-8" disabled={!canManage}>
+              <Save size={14} /> Save Template
+            </Button>
+          )}
         </div>
       </div>
 
@@ -1361,7 +1389,7 @@ export const CanvasInvoiceDesigner: React.FC<{ company: any; canManage: boolean;
               <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => setIsSaveModalOpen(false)}>Cancel</Button>
                 <Button variant="primary" size="sm" disabled={saveSaving || !nameValid} onClick={submitSaveTemplate}>
-                  {saveSaving ? 'Saving…' : editingTemplateId != null ? 'Update Template' : 'Save Template'}
+                  {saveSaving ? 'Saving...' : (editingTemplateId != null ? 'Update Template' : (isGalleryMode && saveIntent === 'active' ? 'Save & Activate' : 'Save Template'))}
                 </Button>
               </div>
             )}

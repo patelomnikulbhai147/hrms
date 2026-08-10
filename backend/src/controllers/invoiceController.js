@@ -10,6 +10,8 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const calc = require('../services/invoiceCalc');
 const { canView, canEdit, canManage, actorOf, targetCompanyId, scopedWhere, isSuperAdmin } = require('../utils/invoiceScope');
+const { resolveInvoiceTemplate, resolveHistoricalTemplate, renderInvoiceHtml } = require('../services/invoiceTemplateService');
+const { htmlToPdf } = require('../services/invoicePdfMailer');
 
 const STATUSES = ['Draft', 'Generated', 'Sent', 'Viewed', 'Partially Paid', 'Paid', 'Closed', 'Cancelled'];
 const audit = (companyId, invoiceId, action, by, details) =>
@@ -237,8 +239,22 @@ exports.create = async (req, res) => {
       invoiceNumber = await nextInvoiceNumber(companyId, req.body.invoiceDate);
     }
     const status = req.body.status === 'Generated' || req.body.finalize ? 'Generated' : (STATUSES.includes(req.body.status) ? req.body.status : 'Draft');
+    
+    // Resolve active template
+    const template = await resolveInvoiceTemplate(companyId, req.body.branchId || null);
+    
     const invoice = await prisma.invoice.create({
-      data: { ...data, invoiceNumber, status, balanceDue: data.grandTotal, amountPaid: 0, createdBy: actorOf(req), updatedBy: actorOf(req) },
+      data: { 
+        ...data, 
+        invoiceNumber, 
+        status, 
+        balanceDue: data.grandTotal, 
+        amountPaid: 0, 
+        templateId: template.id,
+        templateVersionId: template.versions?.[0]?.id || null,
+        createdBy: actorOf(req), 
+        updatedBy: actorOf(req) 
+      },
     });
     await writeItems(companyId, invoice.id, lines);
     audit(companyId, invoice.id, 'CREATED', actorOf(req), `${invoiceNumber} · ${invoice.billToName} · ₹${invoice.grandTotal}`);
@@ -264,7 +280,20 @@ exports.update = async (req, res) => {
     const balanceDue = calc.r2(Math.max(0, data.grandTotal - amountPaid));
     let status = STATUSES.includes(req.body.status) ? req.body.status : existing.status;
     if (amountPaid > 0 && !['Cancelled', 'Closed'].includes(status)) status = amountPaid + 0.01 < data.grandTotal ? 'Partially Paid' : 'Paid';
-    const invoice = await prisma.invoice.update({ where: { id }, data: { ...data, balanceDue, status, updatedBy: actorOf(req) } });
+    
+    const template = await resolveInvoiceTemplate(existing.companyId, req.body.branchId || null);
+
+    const invoice = await prisma.invoice.update({ 
+      where: { id }, 
+      data: { 
+        ...data, 
+        balanceDue, 
+        status, 
+        templateId: template.id,
+        templateVersionId: template.versions?.[0]?.id || null,
+        updatedBy: actorOf(req) 
+      } 
+    });
     await writeItems(existing.companyId, id, lines);
     audit(existing.companyId, id, 'UPDATED', actorOf(req), `${invoice.invoiceNumber} · ₹${invoice.grandTotal}`);
     const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
@@ -302,8 +331,22 @@ exports.duplicate = async (req, res) => {
     const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
     const invoiceNumber = await nextInvoiceNumber(src.companyId, new Date().toISOString().slice(0, 10));
     const { id: _i, createdAt: _c, updatedAt: _u, ...rest } = src;
+    
+    const template = await resolveInvoiceTemplate(src.companyId, null);
+
     const clone = await prisma.invoice.create({
-      data: { ...rest, invoiceNumber, status: 'Draft', amountPaid: 0, balanceDue: src.grandTotal, invoiceDate: new Date().toISOString().slice(0, 10), createdBy: actorOf(req), updatedBy: actorOf(req) },
+      data: { 
+        ...rest, 
+        invoiceNumber, 
+        status: 'Draft', 
+        amountPaid: 0, 
+        balanceDue: src.grandTotal, 
+        invoiceDate: new Date().toISOString().slice(0, 10), 
+        templateId: template.id,
+        templateVersionId: template.versions?.[0]?.id || null,
+        createdBy: actorOf(req), 
+        updatedBy: actorOf(req) 
+      },
     });
     await writeItems(src.companyId, clone.id, items);
     audit(src.companyId, clone.id, 'CREATED', actorOf(req), `Duplicated from ${src.invoiceNumber}`);
@@ -450,14 +493,21 @@ exports.emailInvoice = async (req, res) => {
     const to = String(req.body?.to || invoice.billToEmail || '').trim();
     if (!to) return res.status(400).json({ error: 'No customer email address for this invoice.' });
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: `"${to}" is not a valid email address.` });
-    const html = String(req.body?.html || '');
+    
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId } }).catch(() => null);
+    
+    // Server-side template resolution
+    const template = await resolveHistoricalTemplate(invoice.companyId, invoice.templateId, invoice.templateVersionId);
+    const html = renderInvoiceHtml(template.content, { invoice, items, company });
+
     if (!html.trim()) return res.status(400).json({ error: 'Nothing to send — the invoice document was empty.' });
 
-    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { name: true } }).catch(() => null);
+
     const { emailInvoicePdf } = require('../services/invoicePdfMailer');
     const result = await emailInvoicePdf({
       to, cc: req.body?.cc || undefined, subject: req.body?.subject, message: req.body?.message,
-      html, invoice, companyName: company?.name,
+      html, invoice, companyName: company?.name, companyId: invoice.companyId
     });
     if (result.error && !result.delivered) return res.status(502).json({ error: result.error });
 
@@ -676,4 +726,45 @@ exports.sendThankYou = async (req, res) => {
     audit(invoice.companyId, id, 'THANK_YOU_SENT', actorOf(req), `Thank you note sent to ${toEmail}`);
     res.json({ ok: true });
   } catch (e) { console.error('invoice.sendThankYou', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+// ── GET HTML AND PDF (Server-side rendering) ──────────────────────────────────
+exports.getHtml = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId } });
+
+    const template = await resolveHistoricalTemplate(invoice.companyId, invoice.templateId, invoice.templateVersionId);
+    const html = renderInvoiceHtml(template.content, { invoice, items, company });
+
+    res.send(html);
+  } catch (e) { console.error('invoice.getHtml', e); res.status(500).json({ error: e.message || 'Server error' }); }
+};
+
+exports.getPdf = async (req, res) => {
+  try {
+    if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
+    const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
+    const id = idParam(req.params.id);
+    const invoice = await prisma.invoice.findFirst({ where: { id, ...base } });
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found.' });
+
+    const items = await prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } });
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId } });
+
+    const template = await resolveHistoricalTemplate(invoice.companyId, invoice.templateId, invoice.templateVersionId);
+    const html = renderInvoiceHtml(template.content, { invoice, items, company });
+
+    const pdfBuffer = await htmlToPdf(html);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="Invoice-${invoice.invoiceNumber}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (e) { console.error('invoice.getPdf', e); res.status(500).json({ error: e.message || 'Server error' }); }
 };

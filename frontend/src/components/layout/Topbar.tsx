@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { WalletBadge } from '@/components/wallet/WalletBadge';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { useDismissable } from '@/hooks/useDismissable';
 import { Menu, Bell, ChevronDown, ChevronRight, LogOut, ShieldAlert, X, Sun, Moon, Building2, Search, MapPin, Star, History, KeyRound, CheckCircle2 } from 'lucide-react';
@@ -50,6 +51,7 @@ interface TopbarProps {
   toggleTheme: () => void;
   authProfile: UserAccount | null;
   onLogout?: () => void;
+  onNavigateToWallet?: (action?: 'recharge' | 'view') => void;
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
@@ -69,7 +71,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   theme = 'dark',
   toggleTheme,
   authProfile,
-  onLogout
+  onLogout,
+  onNavigateToWallet
 }) => {
 
   const [notifOpen, setNotifOpen] = useState(false);
@@ -520,6 +523,15 @@ export const Topbar: React.FC<TopbarProps> = ({
                 />
               </div>
             </button>
+          )}
+
+          {/* Wallet Balance Badge */}
+          {!isMasquerading && role !== 'Super Admin' && (
+            <WalletBadge
+              role={role}
+              activeCompanyId={activeCompanyId}
+              onNavigateToWallet={onNavigateToWallet}
+            />
           )}
 
           {/* Notifications */}

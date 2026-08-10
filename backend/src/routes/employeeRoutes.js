@@ -14,6 +14,10 @@ router.get('/next-code', requirePermission('employees', 'view'), employeeControl
 router.get('/cards', requirePermission('employees', 'view'), employeeController.employeeCards);
 router.post('/validate-code', requirePermission('employees', 'view'), employeeController.validateCode);
 router.get('/status-report', requirePermission('employees', 'view'), employeeController.statusReport);
+// Server-side employee search for Employee Analytics — debounced, paginated, company-isolated.
+router.get('/search', requirePermission('employees', 'view'), employeeController.searchEmployees);
+// Per-employee analytics (attendance, leave, payroll aggregations) for Employee Analytics page.
+router.get('/:id/analytics', requirePermission('employees', 'view'), employeeController.getEmployeeAnalytics);
 // Declared AFTER the literal paths above so '/next-code' and '/status-report'
 // are never swallowed by the ':id' parameter.
 router.get('/:id', requirePermission('employees', 'view'), employeeController.getEmployeeById);
@@ -26,3 +30,4 @@ router.post('/:id/re-onboard', requirePermission('employees', 'create'), employe
 router.delete('/:id', requirePermission('employees', 'delete'), employeeController.deleteEmployee);
 
 module.exports = router;
+

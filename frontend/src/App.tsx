@@ -4,6 +4,7 @@ import { getAccessibleWorkspaceIds, buildWorkspaceHierarchy } from '@/utils/work
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar, type PageId } from '@/components/layout/Sidebar';
 import { Topbar } from '@/components/layout/Topbar';
+import { ModulePlaceholder } from '@/components/layout/ModulePlaceholder';
 const Dashboard = React.lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const NotificationsPage = React.lazy(() => import('@/pages/Notifications').then(m => ({ default: m.Notifications })));
 const SelectWorkspace = React.lazy(() => import('@/pages/SelectWorkspace').then(m => ({ default: m.SelectWorkspace })));
@@ -46,6 +47,25 @@ const PlansView = React.lazy(() => import('@/pages/PlansView').then(m => ({ defa
 const CustomDomain = React.lazy(() => import('@/pages/CustomDomain').then(m => ({ default: m.CustomDomain })));
 const EmployeeSlotHistory = React.lazy(() => import('@/pages/EmployeeSlotHistory').then(m => ({ default: m.EmployeeSlotHistory })));
 const VerificationCreditsPage = React.lazy(() => import('@/pages/VerificationCredits').then(m => ({ default: m.VerificationCredits })));
+const WalletDashboard = React.lazy(() => import('@/pages/WalletDashboard').then(m => ({ default: m.WalletDashboard })));
+const TemplateManagement = React.lazy(() => import('@/pages/TemplateManagement/TemplateLibrary').then(m => ({ default: m.TemplateLibrary })));
+const DocumentVault = React.lazy(() => import('@/pages/DocumentManagement/DocumentVault').then(m => ({ default: m.DocumentVault })));
+const VendorManagement = React.lazy(() => import('@/pages/VendorManagement').then(m => ({ default: m.VendorManagement })));
+const AssetManagement = React.lazy(() => import('@/pages/AssetManagement').then(m => ({ default: m.AssetManagement })));
+const VisitorManagement = React.lazy(() => import('@/pages/VisitorManagement').then(m => ({ default: m.VisitorManagement })));
+const FacilityBooking = React.lazy(() => import('@/pages/FacilityBooking').then(m => ({ default: m.FacilityBooking })));
+const EmployeeSelfService = React.lazy(() => import('@/pages/ESS/EmployeeSelfService').then(m => ({ default: m.EmployeeSelfService })));
+const PerformanceManagement = React.lazy(() => import('@/pages/PerformanceManagement').then(m => ({ default: m.PerformanceManagement })));
+const LearningManagement = React.lazy(() => import('@/pages/LearningManagement').then(m => ({ default: m.LearningManagement })));
+const KnowledgeBase = React.lazy(() => import('@/pages/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })));
+const InternalCommunication = React.lazy(() => import('@/pages/InternalCommunication').then(m => ({ default: m.InternalCommunication })));
+const AIAssistant = React.lazy(() => import('@/pages/AIAssistant').then(m => ({ default: m.AIAssistant })));
+const RecruitmentCRM = React.lazy(() => import('@/pages/RecruitmentCRM').then(m => ({ default: m.RecruitmentCRM })));
+
+const WorkflowEngine = React.lazy(() => import('@/pages/WorkflowEngine').then(m => ({ default: m.WorkflowEngine })));
+const IntegrationHub = React.lazy(() => import('@/pages/IntegrationHub').then(m => ({ default: m.IntegrationHub })));
+const SaaSAdminDashboard = React.lazy(() => import('@/pages/SaaSAdminDashboard').then(m => ({ default: m.SaaSAdminDashboard })));
+const SecurityCenter = React.lazy(() => import('@/pages/SecurityCenter').then(m => ({ default: m.SecurityCenter })));
 import type { UserAccount, AppModules } from '@/pages/Login';
 import { moduleLockedFor, pageLockedFor } from '@/config/planEntitlements';
 import { PremiumRequiredScreen } from '@/components/subscription/PremiumLock';
@@ -116,7 +136,24 @@ const pageTitles: Record<PageId, string> = {
   'subscription-invoice': 'Invoice',
   communication: 'Communication Center',
   notifications: 'Notifications',
-  'select-workspace': 'Select Workspace'
+  'select-workspace': 'Select Workspace',
+  'payroll-wallet': 'Payroll Wallet',
+  'document-vault': 'Document Vault',
+  'vendor-management': 'Vendor Management',
+  'asset-management': 'Asset Management',
+  'visitor-management': 'Visitor Management',
+  'facility-booking': 'Facility Booking',
+  'ess-dashboard': 'Employee Self-Service',
+  'performance-management': 'Performance Management',
+  'lms': 'Learning Management',
+  'knowledge-base': 'Knowledge Base',
+  'internal-communication': 'Internal Communication',
+  'ai-assistant': 'AI Assistant',
+  'recruitment-crm': 'Recruitment CRM',
+  'workflow-engine': 'Workflow Automation',
+  'integration-hub': 'Integration Hub',
+  'saas-admin-dashboard': 'SaaS Admin',
+  'security-center': 'Security Center'
 };
 
 // Page ids that map 1:1 to a URL path (/dashboard, /users, …) for real SPA
@@ -125,7 +162,11 @@ const PAGE_IDS = [
   'dashboard', 'companies', 'employee-cards', 'employees', 'leaves', 'payroll', 'invoice-management', 'finance-compliance', 'loan-management', 'compliance-management', 'bonus', 'attendance',
   'attendance-integration', 'attendance-sync', 'documents', 'reports', 'custom-report-builder', 'custom-domain', 'settings', 'billing', 'verification-credits', 'users', 'tasks', 'tenders', 'contracts', 'audit',
   'company-profile', 'company-edit', 'subscription-manage', 'subscription-invoice', 'communication', 'notifications', 'select-workspace',
-  'employee-slot-history', 'verification-wallet',
+  'employee-slot-history', 'verification-wallet', 'payroll-wallet', 'document-vault',
+  'vendor-management', 'asset-management', 'visitor-management', 'facility-booking',
+  'ess-dashboard', 'performance-management', 'lms', 'knowledge-base', 'internal-communication', 'ai-assistant',
+  'recruitment-crm', 'workflow-engine', 'integration-hub',
+  'saas-admin-dashboard', 'security-center'
 ] as const;
 const pathToPage = (pathname: string): PageId | null => {
   const seg = (pathname || '').replace(/^\/+/, '').split('/')[0];
@@ -582,6 +623,9 @@ export default function App() {
   const [limitInfo, setLimitInfo] = useState<any | null>(null);
   const [slotsModalOpen, setSlotsModalOpen] = useState(false);
   const [upgradeWizardOpen, setUpgradeWizardOpen] = useState(false);
+  // Wallet: flag set when "Recharge Wallet" is clicked from WalletBadge.
+  // WalletDashboard reads this to auto-open the recharge modal on mount.
+  const [walletOpenRecharge, setWalletOpenRecharge] = useState(false);
   // Names of critical datasets whose fetch failed — drives a visible banner so a
   // backend/DB error never again silently looks like "all records are gone".
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1449,11 +1493,33 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         : currentPage === 'employee-slot-history' ? 'dashboard'
         // Verification Credits (company wallet page) likewise rides Dashboard.
         : currentPage === 'verification-wallet' ? 'dashboard'
+        // Payroll Wallet rides Dashboard (Company Head / HR).
+        : currentPage === 'payroll-wallet' ? 'dashboard'
         // Finance & Compliance aggregates loans + compliance: allow if the user
         // can view EITHER (resolve to whichever key they actually hold).
         : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
         : currentPage === 'loan-management' ? 'loans'
         : currentPage === 'compliance-management' ? 'compliance'
+        // ── Modules that ride on `settings` permission ─────────────────────
+        : currentPage === 'security-center' ? 'settings'
+        : currentPage === 'workflow-engine' ? 'settings'
+        : currentPage === 'integration-hub' ? 'settings'
+        // ── Modules that ride on `dashboard` permission ─────────────────────
+        : currentPage === 'ess-dashboard' ? 'dashboard'
+        : currentPage === 'ai-assistant' ? 'dashboard'
+        // ── Other modules with their own permission keys ────────────────────
+        : currentPage === 'vendor-management' ? 'vendors'
+        : currentPage === 'asset-management' ? 'assets'
+        : currentPage === 'visitor-management' ? 'visitors'
+        : currentPage === 'facility-booking' ? 'facilities'
+        : currentPage === 'performance-management' ? 'performance'
+        : currentPage === 'lms' ? 'lms'
+        : currentPage === 'knowledge-base' ? 'knowledge'
+        : currentPage === 'internal-communication' ? 'social'
+        : currentPage === 'recruitment-crm' ? 'recruitment'
+        : currentPage === 'template-management' ? 'templates'
+        : currentPage === 'document-vault' ? 'vault'
+        : currentPage === 'saas-admin-dashboard' ? 'dashboard'
         : currentPage) as AppModules;
       const isAllowed = checkCanView(permCurrent, authProfile, permissionRole);
       
@@ -1557,11 +1623,33 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       : currentPage === 'employee-slot-history' ? 'dashboard'
       // Verification Credits (company wallet page) likewise rides Dashboard.
       : currentPage === 'verification-wallet' ? 'dashboard'
+      // Payroll Wallet rides Dashboard (Company Head / HR).
+      : currentPage === 'payroll-wallet' ? 'dashboard'
       // Finance & Compliance aggregates loans + compliance: allow if the user
       // can view EITHER (resolve to whichever key they actually hold).
       : currentPage === 'finance-compliance' ? (checkCanView('loans' as AppModules, authProfile, permissionRole) ? 'loans' : 'compliance')
       : currentPage === 'loan-management' ? 'loans'
       : currentPage === 'compliance-management' ? 'compliance'
+      // ── Modules that ride on `settings` permission ──────────────────────
+      : currentPage === 'security-center' ? 'settings'
+      : currentPage === 'workflow-engine' ? 'settings'
+      : currentPage === 'integration-hub' ? 'settings'
+      // ── Modules that ride on `dashboard` permission ─────────────────────
+      : currentPage === 'ess-dashboard' ? 'dashboard'
+      : currentPage === 'ai-assistant' ? 'dashboard'
+      : currentPage === 'saas-admin-dashboard' ? 'dashboard'
+      // ── Other modules with their own permission keys ────────────────────
+      : currentPage === 'vendor-management' ? 'vendors'
+      : currentPage === 'asset-management' ? 'assets'
+      : currentPage === 'visitor-management' ? 'visitors'
+      : currentPage === 'facility-booking' ? 'facilities'
+      : currentPage === 'performance-management' ? 'performance'
+      : currentPage === 'lms' ? 'lms'
+      : currentPage === 'knowledge-base' ? 'knowledge'
+      : currentPage === 'internal-communication' ? 'social'
+      : currentPage === 'recruitment-crm' ? 'recruitment'
+      : currentPage === 'template-management' ? 'templates'
+      : currentPage === 'document-vault' ? 'vault'
       : currentPage) as AppModules;
 
     // ── Subscription / plan gate (direct-URL block) ──────────────────────────
@@ -1988,6 +2076,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
             companyName={companies.find(c => String(c.id) === String(activeCompanyId))?.name || null}
           />
         );
+      case 'payroll-wallet':
+        return (
+          <WalletDashboard
+            role={resolvedRole}
+            openRecharge={walletOpenRecharge}
+            onModalClose={() => setWalletOpenRecharge(false)}
+          />
+        );
       case 'communication':
         return <CommunicationCenter role={resolvedRole} />;
       case 'settings':
@@ -2011,32 +2107,54 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         );
       case 'audit':
         return <AuditTrail role={permissionRole} />;
+      case 'template-management':
+        return <TemplateManagement />;
+      case 'document-vault':
+        return <DocumentVault />;
+      case 'vendor-management':
+        return <VendorManagement activeCompanyId={resolvedCompanyId} />;
+      case 'asset-management':
+        return <AssetManagement activeCompanyId={resolvedCompanyId} />;
+      case 'visitor-management':
+        return <VisitorManagement activeCompanyId={resolvedCompanyId} />;
+      case 'facility-booking':
+        return <FacilityBooking activeCompanyId={resolvedCompanyId} />;
+      case 'ess-dashboard':
+        return <EmployeeSelfService activeCompanyId={resolvedCompanyId} role={resolvedRole} authProfile={authProfile} employees={activeEmployees} />;
+      case 'performance-management':
+        return <PerformanceManagement activeCompanyId={resolvedCompanyId} />;
+      case 'lms':
+        return <LearningManagement activeCompanyId={resolvedCompanyId} />;
+      case 'knowledge-base':
+        return <KnowledgeBase activeCompanyId={resolvedCompanyId} />;
+      case 'internal-communication':
+        return <InternalCommunication activeCompanyId={resolvedCompanyId} />;
+      case 'ai-assistant':
+        return <AIAssistant activeCompanyId={resolvedCompanyId} role={resolvedRole} authProfile={authProfile} />;
+      case 'recruitment-crm':
+        return <RecruitmentCRM activeCompanyId={resolvedCompanyId} />;
+      case 'workflow-engine':
+        return <WorkflowEngine activeCompanyId={resolvedCompanyId} role={resolvedRole} />;
+      case 'integration-hub':
+        console.log("Current Page: integration-hub", "Component Rendered: IntegrationHub");
+        return <IntegrationHub />;
+      case 'saas-admin-dashboard':
+        return <SaaSAdminDashboard />;
+      case 'security-center':
+        console.log("Current Page: security-center", "Component Rendered: SecurityCenter");
+        return <SecurityCenter />;
       default:
+        console.error(`Unknown module requested: ${currentPage}`);
         return (
-          <Dashboard
-            role={resolvedRole}
-            onNavigate={handleNavigate}
-            activeCompanyId={resolvedCompanyId}
-            onStartMasquerade={handleStartMasquerade}
-            onSelectWorkspace={handleCompanyChange}
-            companies={companies}
-            employees={activeEmployees}
-            attendance={attendance}
-            leaves={leaves}
-            payroll={payroll}
-            documents={documents}
-            plans={plans}
-            notifications={notifications}
-            onUpdateNotifications={setNotifications}
-            onUpdateCompanies={handleUpdateCompanies}
-            onUpdatePayments={handleUpdatePayments}
-            onUpdateEmployees={handleUpdateEmployees}
-            onUpdatePayroll={handleUpdatePayroll}
-            superAdminStats={superAdminStats}
-          />
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center" style={{ minHeight: '60vh' }}>
+            <ShieldAlert className="w-12 h-12 mb-4" style={{ color: '#dc2626' }} />
+            <h2 className="text-2xl font-bold mb-2 text-slate-900">Module Not Found</h2>
+            <p className="max-w-md text-slate-500">The module "{currentPage}" does not exist or you do not have permission to view it.</p>
+          </div>
         );
     }
   };
+
 
   return (
     <PermissionProvider authProfile={authProfile} role={permissionRole} companies={companies} activeCompanyId={resolvedCompanyId}>
@@ -2114,6 +2232,14 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
           theme={theme}
           toggleTheme={toggleTheme}
           authProfile={authProfile}
+          onNavigateToWallet={(action) => {
+            // Navigate to the Payroll Wallet page
+            handleNavigate('payroll-wallet' as PageId);
+            // If the user clicked "Recharge Wallet" specifically, auto-open the modal
+            if (action === 'recharge') {
+              setWalletOpenRecharge(true);
+            }
+          }}
         />
 
         <main className="flex-1 overflow-y-auto bg-transparent p-4 md:p-6">

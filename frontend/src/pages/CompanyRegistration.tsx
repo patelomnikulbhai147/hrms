@@ -350,7 +350,7 @@ export const CompanyRegistration: React.FC<CompanyRegistrationProps> = ({ onBack
               <div className="w-14 h-14 rounded-2xl bg-[#EEF4FF] flex items-center justify-center mx-auto"><Mail size={26} className="text-[#16284A]" /></div>
               <div>
                 <h2 className="text-[18px] font-bold text-slate-900">Verify your email</h2>
-                <p className="text-[13px] text-slate-500 mt-1">We sent a 6-digit code to <b>{company.email}</b>.</p>
+                <p className="text-[13px] text-slate-500 mt-1">We sent a 6-digit code to <b>{head.email}</b>.</p>
               </div>
               {devOtp && (
                 <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-700 font-semibold">

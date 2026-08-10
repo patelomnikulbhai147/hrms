@@ -132,21 +132,36 @@ const sendPayslipEmail = async ({ to, employeeName, period, companyName, company
  * `companyId` is optional: a reset for an address not yet attached to a company
  * (e.g. during self-registration) correctly falls back to ZeniaHR.
  */
-const sendOtpEmail = async (to, otp, name, expiryMinutes = 10, companyId = null) => {
+const sendOtpEmail = async (to, otp, name, expiryMinutes = 10, companyId = null, purpose = 'reset') => {
   const branding = await getEmailBranding(companyId);
   const brand = branding.name;
   const support = branding.supportEmail;
-  const subject = `${brand} Password Reset Verification Code`;
   const greetingName = name ? ` ${name}` : '';
 
-  const text =
-    `${brand} — Password Reset Request\n\n` +
-    `Hi${greetingName},\n\n` +
-    `Your verification code is: ${otp}\n\n` +
-    `This code is valid for ${expiryMinutes} minutes.\n\n` +
-    `If you didn't request this, you can safely ignore this email — your password ` +
-    `will remain unchanged.\n\n` +
-    `Need help? Contact ${support}\n\n${signOffText(branding)}`;
+  const isReg = purpose === 'registration';
+  const subject = isReg 
+    ? `${brand} Email Verification Code`
+    : `${brand} Password Reset Verification Code`;
+
+  const title = isReg ? 'Verify Your Email' : 'Password Reset Request';
+  const description = isReg
+    ? `Hi${greetingName}, thank you for registering with ${brand}. Use the verification code below to verify your email address and complete your registration.`
+    : `Hi${greetingName}, we received a request to reset your ${brand} password. Use the verification code below to continue.`;
+
+  const text = isReg
+    ? `${brand} — Email Verification\n\n` +
+      `Hi${greetingName},\n\n` +
+      `Your verification code is: ${otp}\n\n` +
+      `This code is valid for ${expiryMinutes} minutes.\n\n` +
+      `If you didn't request this, you can safely ignore this email.\n\n` +
+      `Need help? Contact ${support}\n\n${signOffText(branding)}`
+    : `${brand} — Password Reset Request\n\n` +
+      `Hi${greetingName},\n\n` +
+      `Your verification code is: ${otp}\n\n` +
+      `This code is valid for ${expiryMinutes} minutes.\n\n` +
+      `If you didn't request this, you can safely ignore this email — your password ` +
+      `will remain unchanged.\n\n` +
+      `Need help? Contact ${support}\n\n${signOffText(branding)}`;
 
   // Header: the company's own logo when it has one, else a styled wordmark of
   // its name (also what image-blocking clients fall back to).
@@ -164,9 +179,9 @@ const sendOtpEmail = async (to, otp, name, expiryMinutes = 10, companyId = null)
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:32px 28px 8px 28px;">
-          <h1 style="margin:0 0 8px 0;font-size:18px;color:#0f172a;">Password Reset Request</h1>
+          <h1 style="margin:0 0 8px 0;font-size:18px;color:#0f172a;">${title}</h1>
           <p style="margin:0 0 18px 0;font-size:14px;line-height:1.6;color:#475569;">
-            Hi${greetingName}, we received a request to reset your ${brand} password. Use the verification code below to continue.
+            ${description}
           </p>
           <!-- Code -->
           <div style="text-align:center;margin:8px 0 18px 0;">
@@ -179,7 +194,7 @@ const sendOtpEmail = async (to, otp, name, expiryMinutes = 10, companyId = null)
           </p>
           <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 14px;margin:0 0 8px 0;">
             <p style="margin:0;font-size:12px;line-height:1.5;color:#9a3412;">
-              🔒 If you didn't request this, you can safely ignore this email — your password will remain unchanged. Never share this code with anyone.
+              🔒 If you didn't request this, you can safely ignore this email. Never share this code with anyone.
             </p>
           </div>
         </td></tr>

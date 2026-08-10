@@ -1147,3 +1147,221 @@ exports.statusReport = async (req, res) => {
     return respondError(res, error);
   }
 };
+
+// ── Employee Search (for Employee Analytics) ──────────────────────────────────
+// Server-side, debounced-friendly, paginated search across name/id/email/mobile/
+// department/designation/biometricId. Strictly company and branch isolated on the backend.
+exports.searchEmployees = async (req, res) => {
+  try {
+    const { q = '', page = 1, limit = 20 } = req.query;
+
+    // SINGLE SOURCE OF TRUTH (utils/employeeScope.js): Enforces strict company and branch isolation.
+    // Automatically uses req.query.companyId or req.headers['x-workspace-id'] and req.user scope.
+    const scope = buildEmployeeScope(req);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const take = Math.min(Number(limit), 50); // cap at 50
+
+    const searchTerm = q.trim();
+    const searchFilter = searchTerm ? {
+      OR: [
+        { name: { contains: searchTerm } },
+        { employeeId: { contains: searchTerm } },
+        { email: { contains: searchTerm } },
+        { phone: { contains: searchTerm } },
+        { department: { contains: searchTerm } },
+        { designation: { contains: searchTerm } },
+        { biometricId: { contains: searchTerm } },
+      ],
+    } : {};
+
+    // Combine the strict scope with the search filter, ignoring archived/offboarded employees.
+    const baseWhere = scope.withStatus(NOT_OFFBOARDED);
+    const whereClause = {
+      AND: [
+        baseWhere,
+        ...(searchTerm ? [searchFilter] : [])
+      ]
+    };
+
+    const [total, employees] = await Promise.all([
+      prisma.employee.count({ where: whereClause }),
+      prisma.employee.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          employeeId: true,
+          name: true,
+          email: true,
+          phone: true,
+          department: true,
+          designation: true,
+          profilePhoto: true,
+          status: true,
+          branchId: true,
+          companyId: true,
+          branch: { select: { branchName: true } },
+        },
+        skip,
+        take,
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    res.json({
+      data: employees,
+      total,
+      page: Number(page),
+      limit: take,
+      totalPages: Math.ceil(total / take),
+    });
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
+
+// ── Employee Analytics (aggregated real data) ─────────────────────────────────
+// Returns attendance summary, leave summary, payroll summary for a single
+// employee within a date range. All aggregations happen server-side (no N+1).
+exports.getEmployeeAnalytics = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dateRange = 'thisMonth' } = req.query;
+
+    // Enforce strict company and branch isolation using single source of truth.
+    const scope = buildEmployeeScope(req);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+
+    const employee = await prisma.employee.findFirst({
+      where: {
+        AND: [
+          { id: idParam(id) },
+          scope.baseWhere
+        ]
+      },
+      include: {
+        branch: { select: { branchName: true } },
+      },
+    });
+    
+    // If employee is null, either it doesn't exist or it's outside the user's authorized branches/company.
+    if (!employee) return res.status(404).json({ error: 'Employee not found or access denied.' });
+
+    // Date range computation
+    const now = new Date();
+    let startDate, endDate = now;
+    switch (dateRange) {
+      case 'lastMonth':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'last3Months':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        break;
+      case 'last6Months':
+        startDate = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        break;
+      case 'thisYear':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default: // thisMonth
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    // Run all queries in parallel for performance
+    const [attendanceRecords, leaveRequests, payrollRecords, assets, documents] = await Promise.all([
+      prisma.attendanceRecord.findMany({
+        where: { employeeId: employee.id, date: { gte: startDate, lte: endDate } },
+        select: { date: true, status: true, checkIn: true, checkOut: true, workingHours: true, isLate: true, isEarlyLeave: true },
+        orderBy: { date: 'asc' },
+      }),
+      prisma.leaveRequest.findMany({
+        where: { employeeId: employee.id },
+        select: { leaveType: true, status: true, startDate: true, endDate: true, days: true },
+      }),
+      prisma.payrollRecord.findMany({
+        where: { employeeId: employee.id },
+        select: { month: true, year: true, basicSalary: true, grossSalary: true, netSalary: true, totalDeductions: true, pfEmployee: true, esiEmployee: true, tds: true, overtimePay: true, status: true },
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        take: 12,
+      }),
+      prisma.asset.findMany({
+        where: { assignedToId: employee.id },
+        select: { assetCode: true, assetType: true, name: true, allocationDate: true, status: true, warrantyExpiry: true },
+      }).catch(() => []),
+      prisma.employeeDocument.findMany({
+        where: { employeeId: employee.id },
+        select: { documentType: true, verificationStatus: true, expiryDate: true, createdAt: true },
+      }).catch(() => []),
+    ]);
+
+    // Attendance aggregations
+    const totalDays = attendanceRecords.length;
+    const present = attendanceRecords.filter(r => r.status === 'Present').length;
+    const absent = attendanceRecords.filter(r => r.status === 'Absent').length;
+    const halfDay = attendanceRecords.filter(r => r.status === 'Half Day').length;
+    const late = attendanceRecords.filter(r => r.isLate).length;
+    const earlyLeave = attendanceRecords.filter(r => r.isEarlyLeave).length;
+    const presentWithHours = attendanceRecords.filter(r => r.workingHours > 0);
+    const avgWorkingHours = presentWithHours.length > 0
+      ? (presentWithHours.reduce((sum, r) => sum + (r.workingHours || 0), 0) / presentWithHours.length).toFixed(1)
+      : 0;
+    const attendancePct = totalDays > 0 ? ((present + halfDay * 0.5) / totalDays * 100).toFixed(1) : 0;
+
+    // Leave aggregations
+    const leaveByType = {};
+    let usedLeave = 0, pendingLeave = 0, approvedLeave = 0, rejectedLeave = 0;
+    leaveRequests.forEach(l => {
+      const days = l.days || 1;
+      if (!leaveByType[l.leaveType]) leaveByType[l.leaveType] = { total: 0, approved: 0, pending: 0, rejected: 0 };
+      leaveByType[l.leaveType].total += days;
+      if (l.status === 'Approved') { approvedLeave += days; leaveByType[l.leaveType].approved += days; usedLeave += days; }
+      else if (l.status === 'Pending') { pendingLeave += days; leaveByType[l.leaveType].pending += days; }
+      else if (l.status === 'Rejected') { rejectedLeave += days; leaveByType[l.leaveType].rejected += days; }
+    });
+
+    // Payroll aggregations
+    const latestPayroll = payrollRecords[0] || null;
+    const ytdNetSalary = payrollRecords.filter(p => p.year === now.getFullYear()).reduce((s, p) => s + (p.netSalary || 0), 0);
+
+    res.json({
+      employee: {
+        id: employee.id,
+        employeeId: employee.employeeId,
+        name: employee.name,
+        email: employee.email,
+        mobile: employee.phone,
+        department: employee.department,
+        designation: employee.designation,
+        profilePhoto: employee.profilePhoto,
+        status: employee.status,
+        joinDate: employee.joinDate,
+        workLocation: employee.workLocation,
+        reportingManager: employee.reportingManager,
+        branch: employee.branch?.branchName || null,
+      },
+      attendance: {
+        totalDays, present, absent, halfDay, late, earlyLeave,
+        attendancePct, avgWorkingHours,
+        dateRange: { start: startDate, end: endDate },
+        records: attendanceRecords,
+      },
+      leave: {
+        totalUsed: usedLeave, pending: pendingLeave, approved: approvedLeave, rejected: rejectedLeave,
+        byType: leaveByType,
+        requests: leaveRequests,
+      },
+      payroll: {
+        current: latestPayroll,
+        ytdNetSalary,
+        history: payrollRecords,
+      },
+      assets,
+      documents,
+    });
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
+

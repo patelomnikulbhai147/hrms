@@ -2,7 +2,8 @@ import React from 'react';
 import {
   LayoutDashboard, Users as UsersIcon, CalendarDays, DollarSign,
   FileText, BarChart3, Settings, Building2, CreditCard, ShieldCheck, CalendarCheck,
-  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark, RefreshCcw, Wand2
+  ClipboardList, Briefcase, History, IdCard, FileSignature, MessageSquare, PlugZap, ReceiptText, HandCoins, Landmark, RefreshCcw, Wand2, Wallet, HardDrive,
+  Laptop, UserCheck, PieChart, GitMerge, Blocks, Target, BookOpen, Book, Sparkles, Globe, Shield
 } from 'lucide-react';
 import type { Role } from '@/data/mockData';
 import type { AppModules } from '@/pages/Login';
@@ -26,7 +27,23 @@ export type PageId =
   | 'company-profile' | 'communication' | 'invoice-management' | 'finance-compliance' | 'loan-management' | 'compliance-management'
   | 'notifications' | 'custom-report-builder' | 'company-edit' | 'subscription-manage'
   | 'subscription-invoice'
-  | 'plans' | 'custom-domain' | 'employee-slot-history' | 'verification-wallet';
+  | 'plans' | 'custom-domain' | 'employee-slot-history' | 'verification-wallet' | 'payroll-wallet'  | 'template-management'
+  | 'document-vault'
+  | 'vendor-management'
+  | 'asset-management'
+  | 'visitor-management'
+  | 'facility-booking'
+  | 'ess-dashboard'
+  | 'performance-management'
+  | 'lms'
+  | 'knowledge-base'
+  | 'internal-communication'
+  | 'ai-assistant'
+  | 'recruitment-crm'
+  | 'workflow-engine'
+  | 'integration-hub'
+  | 'saas-admin-dashboard'
+  | 'security-center';
 
 export interface ModuleRegistryEntry {
   /** Unique page/nav id (also the React key). */
@@ -118,11 +135,28 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   // Documents" distinguishes it from Finance & Compliance ▸ Documents, which is
   // a separate statutory-document repository.
   { id: 'documents', label: 'Employee Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
+  { id: 'vendor-management', label: 'Vendor Management', icon: <Building2 size={15} />, roles: ['Company Head', 'HR'], permission: 'vendors', inMatrix: true },
+  { id: 'asset-management', label: 'Asset Management', icon: <Laptop size={15} />, roles: ['Company Head', 'HR'], permission: 'assets', inMatrix: true },
+  { id: 'visitor-management', label: 'Visitor Management', icon: <UserCheck size={15} />, roles: ['Company Head', 'HR'], permission: 'visitors', inMatrix: true },
+  { id: 'facility-booking', label: 'Facility Booking', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'facilities', inMatrix: true },
   { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
   // Custom Report Builder — drag & drop report designer. Shares the `reports`
   // permission (no separate matrix row — inMatrix:false), like Employee Cards
   // shares `employees`. Company Head / HR / Finance who can see Reports get it.
+  { id: 'saas-admin-dashboard', label: 'SaaS Admin', icon: <Globe size={15} />, roles: ['Super Admin'], permission: 'dashboard', inMatrix: false },
+  { id: 'security-center', label: 'Security Center', icon: <Shield size={15} />, roles: ['Super Admin', 'Company Head'], permission: 'settings', inMatrix: true },
   { id: 'custom-report-builder', label: 'Custom Report Builder', icon: <Wand2 size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'reports', inMatrix: false, beta: true },
+  { id: 'ess-dashboard', label: 'Employee Self-Service', icon: <UserCheck size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'dashboard', inMatrix: true, beta: true },
+  { id: 'recruitment-crm', label: 'Recruitment CRM', icon: <Briefcase size={15} />, roles: ['Company Head', 'HR'], permission: 'recruitment', inMatrix: true, beta: true },
+  { id: 'workflow-engine', label: 'Workflow Automation', icon: <GitMerge size={15} />, roles: ['Company Head', 'HR'], permission: 'settings', inMatrix: true, beta: true },
+  { id: 'integration-hub', label: 'Integration Hub', icon: <Blocks size={15} />, roles: ['Company Head'], permission: 'settings', inMatrix: true, beta: true },
+  { id: 'performance-management', label: 'Performance Management', icon: <Target size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'performance', inMatrix: true, beta: true },
+  { id: 'lms', label: 'Learning Management', icon: <BookOpen size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'lms', inMatrix: true, beta: true },
+  { id: 'knowledge-base', label: 'Knowledge Base', icon: <Book size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'knowledge', inMatrix: true },
+  { id: 'internal-communication', label: 'Internal Communication', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'social', inMatrix: true },
+  { id: 'ai-assistant', label: 'AI Assistant', icon: <Sparkles size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'dashboard', inMatrix: true },
+  { id: 'template-management', label: 'Template Management', icon: <FileText size={15} />, roles: ['Super Admin', 'Company Head'], permission: 'templates', inMatrix: true, beta: true },
+  { id: 'document-vault', label: 'Document Vault', icon: <HardDrive size={15} />, roles: ['Company Head', 'HR'], permission: 'vault', inMatrix: true, beta: true },
   { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true, beta: true },
   { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks', inMatrix: true },
   { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },
@@ -136,6 +170,7 @@ export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
   // Super-Admin portal above. Rides the dashboard permission (no matrix row);
   // the page + backend both refuse the Employee role themselves.
   { id: 'verification-wallet', label: 'Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: false },
+  { id: 'payroll-wallet', label: 'Payroll Wallet', icon: <Wallet size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'payroll', inMatrix: false },
   { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'settings', inMatrix: true },
   { id: 'users', label: 'User Management', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'users', inMatrix: true },
   { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'], permission: 'audit', inMatrix: true, platformOnly: true },

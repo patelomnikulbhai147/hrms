@@ -55,8 +55,8 @@ app.use(helmet({
 // Global API Rate Limiting (Prevent DoS)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // limit each IP to 500 requests per windowMs
-  message: 'Too many requests from this IP, please try again after 15 minutes.',
+  max: process.env.NODE_ENV === 'production' ? 500 : 50000, // limit each IP to 500 requests per windowMs (50000 in dev)
+  message: { error: 'Too many requests from this IP, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -66,8 +66,8 @@ app.use(apiLimiter);
 // Auth Specific Rate Limiting (Prevent Brute Force)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 requests per windowMs for auth routes
-  message: 'Too many login attempts from this IP, please try again after 15 minutes.',
+  max: process.env.NODE_ENV === 'production' ? 20 : 50000, // limit each IP to 20 requests per windowMs for auth routes (50000 in dev)
+  message: { error: 'Too many login attempts from this IP, please try again after 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -162,6 +162,35 @@ const plan = (key) => requirePlanModule(key);
 app.use('/api/audit', require('./src/routes/auditRoutes'));
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/mobile', require('./src/routes/employeeRoutes'));
+app.use('/verify', require('./src/routes/verifyRoutes'));
+
+// Phase 4 Routes
+app.use('/api/portal/auth', require('./src/routes/portalAuthRoutes'));
+app.use('/api/vault', require('./src/routes/vaultRoutes'));
+app.use('/api/share', require('./src/routes/shareRoutes'));
+
+// Phase 5 Sprint 1 Routes
+app.use('/api/vendors', require('./src/routes/vendorRoutes'));
+app.use('/api/assets', require('./src/routes/assetRoutes'));
+app.use('/api/visitors', require('./src/routes/visitorRoutes'));
+app.use('/api/facilities', require('./src/routes/facilityRoutes'));
+
+// Phase 5 Sprint 2 Routes
+app.use('/api/performance', require('./src/routes/performanceRoutes'));
+app.use('/api/lms', require('./src/routes/lmsRoutes'));
+app.use('/api/knowledge', require('./src/routes/knowledgeRoutes'));
+app.use('/api/social', require('./src/routes/socialRoutes'));
+app.use('/api/ai', require('./src/routes/aiAssistantRoutes'));
+
+// Phase 5 Sprint 3 Routes
+app.use('/api/recruitment', require('./src/routes/recruitmentRoutes'));
+app.use('/api/workflows', require('./src/routes/workflowRoutes'));
+app.use('/api/integrations', require('./src/routes/integrationRoutes'));
+
+// Phase 6 Routes (SaaS Enterprise & Security)
+app.use('/api/saas', require('./src/routes/saasRoutes'));
+app.use('/api/developer', require('./src/routes/developerRoutes'));
+app.use('/api/security', require('./src/routes/securityRoutes'));
 
 // ── NEW MOBILE APP API ────────────────────────────────────────────────────────
 // Next-gen Mobile APIs with isolated authentication and JWT scope.
@@ -199,6 +228,7 @@ app.use('/api/contracts', pii('Contracts'), plan('contracts'), require('./src/ro
 app.use('/api/contract-sites', pii('Contracts'), plan('contracts'), require('./src/routes/siteRoutes'));
 app.use('/api/deployments', pii('Contracts'), plan('contracts'), require('./src/routes/deploymentRoutes'));
 app.use('/api/documents', pii('Documents'), documentRoutes);
+app.use('/api/templates', _protect, require('./src/routes/templateRoutes'));
 app.use('/api/payments', paymentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/payroll', pii('Payroll'), payrollRoutes);
@@ -209,6 +239,7 @@ app.use('/api/payroll-components', pii('Payroll'), require('./src/routes/payroll
 app.use('/api/deduction-policy', require('./src/routes/deductionPolicyRoutes'));
 // Invoice Management — isolated financial module (own invoice_* tables only).
 app.use('/api/invoicing', _protect, require('./src/routes/invoiceRoutes'));
+app.use('/api/invoice-templates', _protect, require('./src/routes/invoiceTemplateRoutes'));
 app.use('/api/loans', _protect, plan('loans'), require('./src/routes/loanRoutes'));
 app.use('/api/compliance-mgmt', _protect, plan('compliance'), require('./src/routes/complianceMgmtRoutes'));
 // Employee Card Designer — per-company card templates (isolated card_templates).
@@ -236,6 +267,7 @@ app.use('/api/nominees', pii('Nominees'), require('./src/routes/nomineeRoutes'))
 app.use('/api/ifsc', require('./src/routes/ifscRoutes'));
 app.use('/api/bank', require('./src/routes/bankRoutes'));
 app.use('/api/verification-credits', require('./src/routes/verificationCreditRoutes'));
+app.use('/api/wallet', pii('Wallet'), require('./src/routes/walletRoutes'));
 app.use('/api/super-admin/verification-credits', require('./src/routes/superAdminVerificationRoutes'));
 // Employee slot add-on management (limits enforced by employeeLimitService;
 // online purchases ride the shared Cashfree payment spine).
@@ -416,6 +448,9 @@ const server = app.listen(PORT, () => {
   // REPORT_SCHEDULER=off.
   try { require('./src/services/customReportScheduler').start(); }
   catch (e) { console.error('[report-scheduler] failed to start:', e.message); }
+  // Start the Document automation scheduler (cron tasks for templates)
+  try { require('./src/services/documentScheduleService').initSchedules(); }
+  catch (e) { console.error('[document-scheduler] failed to start:', e.message); }
 });
 
 // ── Phase 6 diagnostics: capture NON-HTTP traffic on the HTTP port ───────────

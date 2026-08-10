@@ -84,7 +84,7 @@ model Company {
   // First-login onboarding ledger (per head-office company):
   //   { firstLoginCompleted, onboardingCompleted, usedSampleWorkspace,
   //     sampleDataRemoved, choice, completedAt }
-  // Stored as JSON (like offboardingState) — barely counts toward the row limit.
+  // Stored as JSON (like offboardingState) â€” barely counts toward the row limit.
   onboardingState             Json?
   createdAt                   DateTime            @default(now())
   updatedAt                   DateTime            @updatedAt
@@ -95,7 +95,7 @@ model Company {
   primaryColor                String?
   profTaxRate                 Float?
   themeStyle                  String?
-  // ── Company branding (managed via Settings → Company Profile & Branding) ──
+  // â”€â”€ Company branding (managed via Settings â†’ Company Profile & Branding) â”€â”€
   shortName                   String?
   tagline                     String?
   website                     String?
@@ -103,7 +103,7 @@ model Company {
   contactNumber               String?
   address                     String?             @db.Text
   description                 String?             @db.Text
-  // ── Company profile identity (Settings → Company Profile & Branding) ──
+  // â”€â”€ Company profile identity (Settings â†’ Company Profile & Branding) â”€â”€
   companyCode                 String?
   registrationNumber          String?
   panNumber                   String?
@@ -129,7 +129,7 @@ model Company {
   branchRenewalDate           String?
   companyIndustry             String?
   customDepartments           Json                @default(dbgenerated("(JSON_ARRAY())"))
-  departmentMeta              Json?               // rich per-department metadata keyed by name (code/description/status/color/order/head/…)
+  departmentMeta              Json? // rich per-department metadata keyed by name (code/description/status/color/order/head/â€¦)
   departmentTemplateType      String?
   employeeCapacity            Int?
   footerText                  String?
@@ -147,8 +147,8 @@ model Company {
   storageUsed                 String?
   subscriptionPrice           Float?
   isArchived                  Boolean             @default(false)
-  // ── Company Master: extended single-source-of-truth fields (all optional,
-  //    additive & backward-compatible — see updates 2026-06) ──────────────────
+  // â”€â”€ Company Master: extended single-source-of-truth fields (all optional,
+  //    additive & backward-compatible â€” see updates 2026-06) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Identity
   legalName                   String?
   displayName                 String?
@@ -203,8 +203,8 @@ model Company {
   gstCertificateImage         String?             @db.LongText
   panCardImage                String?             @db.LongText
   registrationCertImage       String?             @db.LongText
-  // ── Company Profile module: extra single-source-of-truth fields (additive &
-  //    nullable — see Company Profile module, 2026-06) ─────────────────────────
+  // â”€â”€ Company Profile module: extra single-source-of-truth fields (additive &
+  //    nullable â€” see Company Profile module, 2026-06) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // NOTE: these are @db.Text (not VARCHAR) because the Company table is already
   // near MySQL's 65535-byte row limit; TEXT columns barely count toward it.
   companyType                 String?             @db.Text // Private Ltd / LLP / Partnership / Proprietorship / Trust / NGO / Government
@@ -242,42 +242,46 @@ model Company {
   leaveBalances               LeaveBalance[]
   attendanceSummaries         AttendanceSummary[]
   attendanceDevices           AttendanceDevice[]
+  wallet                      Wallet?
+  documentTemplates           DocumentTemplate[]
+  templateAssignments         TemplateAssignment[]
+  templateUsageLogs           TemplateUsageLog[]
 }
 
 model Branch {
-  id                Int                @id @default(autoincrement())
-  companyId         Int
-  branchNo          Int?
-  branchName        String
-  location          String?
-  headcount         Int                @default(0)
-  status            String             @default("Active")
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  isArchived        Boolean            @default(false)
-  adminEmail        String?
-  adminName         String?
-  basicPercent      Float              @default(50)
-  branchCode        String?
-  email             String?
-  employeeCapacity  Int                @default(200)
-  esicRate          Float              @default(3.25)
-  overtimeRate      Float              @default(1.5)
-  pfRate            Float              @default(12)
-  phone             String?
-  profTaxRate       Float              @default(200)
+  id               Int      @id @default(autoincrement())
+  companyId        Int
+  branchNo         Int?
+  branchName       String
+  location         String?
+  headcount        Int      @default(0)
+  status           String   @default("Active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  isArchived       Boolean  @default(false)
+  adminEmail       String?
+  adminName        String?
+  basicPercent     Float    @default(50)
+  branchCode       String?
+  email            String?
+  employeeCapacity Int      @default(200)
+  esicRate         Float    @default(3.25)
+  overtimeRate     Float    @default(1.5)
+  pfRate           Float    @default(12)
+  phone            String?
+  profTaxRate      Float    @default(200)
 
-  // ── Branch offboarding (soft) ──
-  // Offboarding NEVER deletes a branch or its employees — it flips `status` to
+  // â”€â”€ Branch offboarding (soft) â”€â”€
+  // Offboarding NEVER deletes a branch or its employees â€” it flips `status` to
   // 'Offboarded' + isArchived and records who/why/when here so the decision is
   // queryable and reportable. Attendance, payroll, leave, documents and audit
   // history are all retained by design.
-  offboardReason         String?   @db.Text
-  offboardEffectiveDate  DateTime?
-  offboardedAt           DateTime?
-  offboardedBy           String?
+  offboardReason           String?   @db.Text
+  offboardEffectiveDate    DateTime?
+  offboardedAt             DateTime?
+  offboardedBy             String?
   // How employees were handled: 'transfer' | 'archive' | 'inactive'.
-  offboardEmployeeAction String?
+  offboardEmployeeAction   String?
   // Branch employees were transferred to, when offboardEmployeeAction='transfer'.
   offboardTransferBranchId Int?
 
@@ -287,9 +291,9 @@ model Branch {
   attendanceDevices AttendanceDevice[]
 }
 
-// ── Biometric attendance devices (Phase 1: registry only) ───────────────────
+// â”€â”€ Biometric attendance devices (Phase 1: registry only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Registers physical attendance devices per company/branch. This table does NOT
-// store attendance punches — the existing `attendance` table remains the single
+// store attendance punches â€” the existing `attendance` table remains the single
 // source of attendance truth. No device connectivity or sync logic lives here.
 model AttendanceDevice {
   id                  Int       @id @default(autoincrement())
@@ -305,12 +309,12 @@ model AttendanceDevice {
   lastTestAt          DateTime? // Phase 5: last "Test Connection" run
   lastTestStatus      String? // CONNECTED / FAILED
   lastTestResponseMs  Int? // round-trip connect time in ms
-  // ── Phase 2: device configuration storage (vendor-driven; no sync yet) ──
+  // â”€â”€ Phase 2: device configuration storage (vendor-driven; no sync yet) â”€â”€
   attendanceVendor    String? // vendor name; validated against the attendance_vendors registry (NOT a hardcoded list)
   apiBaseUrl          String?   @db.Text // per-device API base URL (overrides the vendor default; fully configurable)
   corporateId         String? // vendor portal corporate / company id
   apiUsername         String? // vendor API username
-  apiPassword         String?   @db.Text // vendor API password — stored ENCRYPTED (AES-256-GCM), never returned in plaintext
+  apiPassword         String?   @db.Text // vendor API password â€” stored ENCRYPTED (AES-256-GCM), never returned in plaintext
   deviceLocation      String? // free-text physical location
   syncEnabled         Boolean   @default(false) // future-sync opt-in flag (no effect yet)
   syncIntervalMinutes Int? // optional per-device sync cadence (config only; no scheduler yet)
@@ -324,17 +328,17 @@ model AttendanceDevice {
   @@map("attendance_devices")
 }
 
-// ── Attendance vendor registry ──────────────────────────────────────────────
+// â”€â”€ Attendance vendor registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Configurable catalog of attendance API vendors. New vendors (eSSL, Matrix,
-// ZKTeco, BioMax, …) are added as ROWS here (via the Super-Admin vendor API or a
-// seed) — NOT by changing code. Per-vendor defaults (base URL, auth type, free
+// ZKTeco, BioMax, â€¦) are added as ROWS here (via the Super-Admin vendor API or a
+// seed) â€” NOT by changing code. Per-vendor defaults (base URL, auth type, free
 // settings JSON) live here so nothing vendor-specific is hardcoded in the app.
 model AttendanceVendor {
   id             Int      @id @default(autoincrement())
   name           String   @unique // canonical name, e.g. "E-TimeOffice"
   displayName    String? // friendly label, e.g. "E-TimeOffice (Pulpit Mobility)"
   defaultBaseUrl String?  @db.Text // default API base URL (editable; used to prefill a device)
-  authType       String? // BASIC / TOKEN / NONE — informational
+  authType       String? // BASIC / TOKEN / NONE â€” informational
   isActive       Boolean  @default(true)
   notes          String?  @db.Text
   settings       String?  @db.LongText // arbitrary JSON for vendor-specific options (no code change needed)
@@ -345,9 +349,9 @@ model AttendanceVendor {
   @@map("attendance_vendors")
 }
 
-// ── Pre-Phase 5 safety: attendance import log ───────────────────────────────
+// â”€â”€ Pre-Phase 5 safety: attendance import log â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // One row per evaluated punch recording the matching VERDICT. This is an audit
-// trail only — it is NOT the attendance table and never marks anyone present.
+// trail only â€” it is NOT the attendance table and never marks anyone present.
 model AttendanceImportLog {
   id            Int      @id @default(autoincrement())
   companyId     Int
@@ -366,7 +370,7 @@ model AttendanceImportLog {
   @@map("attendance_import_logs")
 }
 
-// ── Pre-Phase 5 safety: unmatched attendance queue ──────────────────────────
+// â”€â”€ Pre-Phase 5 safety: unmatched attendance queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Punches that could NOT be safely matched (blank code / no match / duplicate
 // code) are parked here for an admin to resolve. No attendance is created.
 model UnmatchedAttendance {
@@ -387,13 +391,13 @@ model UnmatchedAttendance {
   @@map("unmatched_attendance_queue")
 }
 
-// ── E-TimeOffice pull-API integration (Phase 5: live sync) ──────────────────
+// â”€â”€ E-TimeOffice pull-API integration (Phase 5: live sync) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Per-company connection to the E-TimeOffice attendance cloud. The pull sync
 // reads punches via the documented REST API and upserts them into the existing
-// `attendance` table (single source of truth) — every punch routed through
-// attendanceMatcher.resolvePunch so RULES 1–5 stay enforced. Credentials are
+// `attendance` table (single source of truth) â€” every punch routed through
+// attendanceMatcher.resolvePunch so RULES 1â€“5 stay enforced. Credentials are
 // stored ENCRYPTED (AES-256-GCM via secretCrypto) and never returned plaintext.
-// Relation-less (companyId Int only) — mirrors AttendanceImportLog so the large
+// Relation-less (companyId Int only) â€” mirrors AttendanceImportLog so the large
 // Company model is untouched.
 model EtimeConnection {
   id                  Int       @id @default(autoincrement())
@@ -404,7 +408,7 @@ model EtimeConnection {
   apiUsername         String?
   apiPassword         String?   @db.Text // AES-256-GCM ciphertext ("enc:v1:..."); never returned plaintext
   empCode             String    @default("ALL") // Empcode filter for the pull (ALL = every employee)
-  // ── Merged from the retired "Attendance Devices" module (single source of truth) ──
+  // â”€â”€ Merged from the retired "Attendance Devices" module (single source of truth) â”€â”€
   vendor              String    @default("E-TimeOffice") // validated against the attendance_vendors registry
   branchId            Int? // optional branch this connection's devices belong to
   deviceSerialNumber  String? // optional device serial (metadata)
@@ -425,7 +429,7 @@ model EtimeConnection {
   @@map("etimeoffice_connections")
 }
 
-// One row per sync RUN (manual or scheduled) — the run-level log the spec asks
+// One row per sync RUN (manual or scheduled) â€” the run-level log the spec asks
 // for (start/end, imported/failed/duplicates, status, error). Per-PUNCH verdicts
 // continue to use the existing attendance_import_logs table.
 model AttendanceSyncLog {
@@ -455,7 +459,7 @@ model AttendanceSyncLog {
   @@map("attendance_sync_logs")
 }
 
-// ── Bonus Management — separate bonus transaction system ─────────────────────
+// â”€â”€ Bonus Management â€” separate bonus transaction system â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Deliberately decoupled from the Employee table: bonus changes yearly, supports
 // multiple types, must keep full audit history, and integrates with payroll.
 
@@ -579,10 +583,10 @@ model BonusAuditLog {
   @@map("bonus_audit_logs")
 }
 
-// ── Location master list (custom states/cities saved for reuse) ──────────────
+// â”€â”€ Location master list (custom states/cities saved for reuse) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Backs the creatable State/City comboboxes: custom entries are stored here so
 // they appear in the dropdown for everyone next time. State & City are
-// independent — there is intentionally no state→city relationship.
+// independent â€” there is intentionally no stateâ†’city relationship.
 model LocationMaster {
   id        Int      @id @default(autoincrement())
   type      String // 'city' | 'state'
@@ -594,7 +598,7 @@ model LocationMaster {
   @@map("location_masters")
 }
 
-// ── Geography masters: Country → State → City ───────────────────────────────
+// â”€â”€ Geography masters: Country â†’ State â†’ City â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Relational reference data for the Employee Personal-Info location fields and the
 // Nationality field. Seeded from the bundled dataset (India's states/UTs + cities,
 // and the international country list) and extended at runtime with custom entries:
@@ -638,7 +642,7 @@ model CityMaster {
   @@map("city_masters")
 }
 
-// ── Government compliance report audit trail ─────────────────────────────────
+// â”€â”€ Government compliance report audit trail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Every generate/download of a statutory report is logged here (who, what,
 // filters used, when) for the compliance audit trail.
 model ComplianceReportLog {
@@ -659,10 +663,10 @@ model ComplianceReportLog {
   @@map("compliance_report_logs")
 }
 
-// ── EPFO ECR generation history (isolated PF report) ─────────────────────────
+// â”€â”€ EPFO ECR generation history (isolated PF report) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Append-only log of every generated Electronic Challan cum Return, with the
 // exact file body stored so it can be re-downloaded. Isolated scalar companyId
-// (no relation) — additive; touches no existing model.
+// (no relation) â€” additive; touches no existing model.
 model EcrHistory {
   id              Int      @id @default(autoincrement())
   companyId       Int
@@ -685,9 +689,9 @@ model EcrHistory {
   @@map("ecr_history")
 }
 
-// ── Raw device push log (Phase 6: ADMS-style receiver, DEBUG only) ───────────
+// â”€â”€ Raw device push log (Phase 6: ADMS-style receiver, DEBUG only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Captures every inbound request from an attendance device exactly as received.
-// This is a debug/inspection table — it is NOT the attendance table and is never
+// This is a debug/inspection table â€” it is NOT the attendance table and is never
 // used to mark anyone present. No FK to a device (the pusher may be unidentified).
 model DevicePushLog {
   id               Int      @id @default(autoincrement())
@@ -704,7 +708,7 @@ model DevicePushLog {
   biometricId      String?
   punchTime        String?
   punchType        String?
-  // Phase 7A — eTimeOffice XML-over-TCP handshake fields + the exact ACK we sent
+  // Phase 7A â€” eTimeOffice XML-over-TCP handshake fields + the exact ACK we sent
   terminalType     String?
   deviceUid        String?
   deviceSerialNo   String?
@@ -718,116 +722,116 @@ model DevicePushLog {
 }
 
 model Employee {
-  id                  Int                 @id @default(autoincrement())
-  employeeId          String              @unique
-  legacyEmployeeId    String?
-  companyId           Int
-  branchId            Int?
-  shiftId             Int?
-  biometricId         String?             @db.VarChar(50)
-  name                String
-  firstName           String?
-  lastName            String?
-  email               String
-  phone               String?
-  department          String
-  designation         String
-  role                String              @default("Staff")
-  status              String              @default("Active")
-  joinDate            DateTime
-  exitDate            DateTime?
-  exitReason          String?
-  location            String?
-  avatar              String?             @db.LongText
-  salary              Float               @default(0)
-  manager             String?
-  pan                 String?
-  aadhaar             String?
-  uan                 String?
-  pfNumber            String?
-  esiNumber           String?
-  wcPolicyNumber      String?             @db.VarChar(100) // Workmen Compensation (WC) insurance policy no. — optional
-  bankName            String?
-  accountNumber       String?
-  ifsc                String?
-  // ── IFSC-resolved bank details (auto-fetched from the IFSC code) ──
-  accountHolderName   String?
-  bankBranch          String?
-  bankAddress         String?             @db.Text
-  bankCity            String?
-  bankDistrict        String?
-  bankState           String?
-  micr                String?             @db.VarChar(32)
-  swift               String?             @db.VarChar(32)
-  // ── Bank verification outcome, denormalised onto the employee so the profile
+  id                          Int                 @id @default(autoincrement())
+  employeeId                  String              @unique
+  legacyEmployeeId            String?
+  companyId                   Int
+  branchId                    Int?
+  shiftId                     Int?
+  biometricId                 String?             @db.VarChar(50)
+  name                        String
+  firstName                   String?
+  lastName                    String?
+  email                       String
+  phone                       String?
+  department                  String
+  designation                 String
+  role                        String              @default("Staff")
+  status                      String              @default("Active")
+  joinDate                    DateTime
+  exitDate                    DateTime?
+  exitReason                  String?
+  location                    String?
+  avatar                      String?             @db.LongText
+  salary                      Float               @default(0)
+  manager                     String?
+  pan                         String?
+  aadhaar                     String?
+  uan                         String?
+  pfNumber                    String?
+  esiNumber                   String?
+  wcPolicyNumber              String?             @db.VarChar(100) // Workmen Compensation (WC) insurance policy no. â€” optional
+  bankName                    String?
+  accountNumber               String?
+  ifsc                        String?
+  // â”€â”€ IFSC-resolved bank details (auto-fetched from the IFSC code) â”€â”€
+  accountHolderName           String?
+  bankBranch                  String?
+  bankAddress                 String?             @db.Text
+  bankCity                    String?
+  bankDistrict                String?
+  bankState                   String?
+  micr                        String?             @db.VarChar(32)
+  swift                       String?             @db.VarChar(32)
+  // â”€â”€ Bank verification outcome, denormalised onto the employee so the profile
   //    can show "Bank Verified" without replaying the verification history.
   //    The full record lives in BankVerificationAuditLog, joined on
-  //    bankVerificationRefId. Never a substitute for that history — a summary of it.
-  bankVerificationStatus      String?     @db.VarChar(32) // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / UNVERIFIED / MANUAL
-  bankVerificationRefId       String?     @db.VarChar(191)
-  bankVerificationId          String?     @db.VarChar(191)
+  //    bankVerificationRefId. Never a substitute for that history â€” a summary of it.
+  bankVerificationStatus      String?             @db.VarChar(32) // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / UNVERIFIED / MANUAL
+  bankVerificationRefId       String?             @db.VarChar(191)
+  bankVerificationId          String?             @db.VarChar(191)
   bankVerifiedAt              DateTime?
-  bankVerifiedBy              String?     @db.VarChar(191)
-  bankVerificationProvider    String?     @db.VarChar(64)
-  bankVerificationEnvironment String?     @db.VarChar(32)
-  bankNameMatchResult         String?     @db.VarChar(32)
+  bankVerifiedBy              String?             @db.VarChar(191)
+  bankVerificationProvider    String?             @db.VarChar(64)
+  bankVerificationEnvironment String?             @db.VarChar(32)
+  bankNameMatchResult         String?             @db.VarChar(32)
   bankNameMatchScore          Int?
-  offboardingState    Json?
-  employmentHistory   Json?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  documents           Json?
-  aadhaarName         String?
-  aadhaarUpload       String?             @db.LongText
-  branchLocation      String?
-  category            String?
-  dob                 String?
-  emergencyContact    String?
-  employmentType      String?
-  fatherSpouseName    String?
-  gender              String?
-  maritalStatus       String?
-  middleName          String?
-  nationality         String?
-  state               String? // employee home state (Personal Info)
-  city                String? // employee home city (dependent on state)
-  panUpload           String?             @db.LongText
-  permanentAddress    String?             @db.Text
-  photoUpload         String?             @db.LongText
-  presentAddress      String?             @db.Text
-  relationType        String?
-  signatureUpload     String?             @db.LongText
+  offboardingState            Json?
+  employmentHistory           Json?
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+  documents                   Json?
+  aadhaarName                 String?
+  aadhaarUpload               String?             @db.LongText
+  branchLocation              String?
+  category                    String?
+  dob                         String?
+  emergencyContact            String?
+  employmentType              String?
+  fatherSpouseName            String?
+  gender                      String?
+  maritalStatus               String?
+  middleName                  String?
+  nationality                 String?
+  state                       String? // employee home state (Personal Info)
+  city                        String? // employee home city (dependent on state)
+  panUpload                   String?             @db.LongText
+  permanentAddress            String?             @db.Text
+  photoUpload                 String?             @db.LongText
+  presentAddress              String?             @db.Text
+  relationType                String?
+  signatureUpload             String?             @db.LongText
   // Extended HR employment assignment captured at temp-employee approval (grade,
   // level, confirmation date, probation, wage/skill category, PF/ESI/PT, bonus
   // eligibility, weekly-off, attendance/leave/holiday policy choices). A RECORD
-  // only — payroll/attendance/leave engines read their own config, untouched.
-  employmentMeta      Json?
-  // ── Bonus configuration (per-employee, managed from Employee + Payroll) ──
+  // only â€” payroll/attendance/leave engines read their own config, untouched.
+  employmentMeta              Json?
+  // â”€â”€ Bonus configuration (per-employee, managed from Employee + Payroll) â”€â”€
   // Recurring bonus rule that flows into payroll. One-time bonuses (festival /
   // performance) live in the EmployeeBonus table instead.
-  bonusApplicable     Boolean             @default(false)
-  bonusType           String? // Monthly / Quarterly / Half-Yearly / Yearly / Performance / Festival / Custom
-  bonusCalcMethod     String? // "Fixed Amount" | "Percentage of Salary"
-  bonusValue          Float? // flat amount, or percent of salary, per bonusCalcMethod
-  bonusEffectiveDate  DateTime?
-  bonusEndDate        DateTime?
-  bonusNotes          String?             @db.Text
-  attendance          Attendance[]
-  branch              Branch?             @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  company             Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  shift               Shift?              @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  leaveRequests       LeaveRequest[]
-  payroll             Payroll[]
-  overtimes           Overtime[]
-  leaveBalances       LeaveBalance[]
-  attendanceSummaries AttendanceSummary[]
-  employeeBonuses     EmployeeBonus[]
-  deployments         Deployment[]
+  bonusApplicable             Boolean             @default(false)
+  bonusType                   String? // Monthly / Quarterly / Half-Yearly / Yearly / Performance / Festival / Custom
+  bonusCalcMethod             String? // "Fixed Amount" | "Percentage of Salary"
+  bonusValue                  Float? // flat amount, or percent of salary, per bonusCalcMethod
+  bonusEffectiveDate          DateTime?
+  bonusEndDate                DateTime?
+  bonusNotes                  String?             @db.Text
+  attendance                  Attendance[]
+  branch                      Branch?             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  company                     Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shift                       Shift?              @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  leaveRequests               LeaveRequest[]
+  payroll                     Payroll[]
+  overtimes                   Overtime[]
+  leaveBalances               LeaveBalance[]
+  attendanceSummaries         AttendanceSummary[]
+  employeeBonuses             EmployeeBonus[]
+  deployments                 Deployment[]
 
   @@unique([companyId, phone])
 }
 
-// ── Temporary Employee (Quick Registration) ─────────────────────────────────
+// â”€â”€ Temporary Employee (Quick Registration) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Fully ADDITIVE & ISOLATED: a temporary/onboarding employee created by HR with
 // only Name + Mobile + Branch. Lives in its own table (no relations to Employee/
 // payroll/attendance) so existing flows are never affected. On conversion a real
@@ -890,7 +894,7 @@ model TemporaryEmployee {
   @@index([status])
 }
 
-// ── Per-employee bonus ledger — the new bonus model ──────────────────────────
+// â”€â”€ Per-employee bonus ledger â€” the new bonus model â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Every bonus that touches an employee: recurring config snapshots applied each
 // payroll cycle, and one-time festival/performance bonuses issued from Payroll.
 // Keeps full history; generic AuditLog records create/update/delete/apply/paid.
@@ -927,78 +931,78 @@ model EmployeeBonus {
 }
 
 model Payroll {
-  id               Int       @id @default(autoincrement())
-  companyId        Int       @default(1)
-  employeeId       Int
-  employeeName     String    @default("Unknown")
-  department       String    @default("General")
-  month            String
-  year             Int       @default(2026)
-  basicSalary      Float     @default(0)
-  allowances       Float     @default(0)
-  deductions       Float     @default(0)
-  netSalary        Float     @default(0)
-  payrollStatus    String    @default("draft")
-  paymentStatus    String    @default("pending")
-  payslipGenerated Boolean   @default(false)
-  // ── Attendance-derived figures (single source of truth = AttendanceSummary) ──
-  presentDays      Float     @default(0)
-  clDays           Float     @default(0)
-  plDays           Float     @default(0)
-  slDays           Float     @default(0)
-  lwpDays          Float     @default(0)
-  halfDays         Float     @default(0)
-  otHours          Float     @default(0)
-  payableDays      Float     @default(0)
+  id                 Int       @id @default(autoincrement())
+  companyId          Int       @default(1)
+  employeeId         Int
+  employeeName       String    @default("Unknown")
+  department         String    @default("General")
+  month              String
+  year               Int       @default(2026)
+  basicSalary        Float     @default(0)
+  allowances         Float     @default(0)
+  deductions         Float     @default(0)
+  netSalary          Float     @default(0)
+  payrollStatus      String    @default("draft")
+  paymentStatus      String    @default("pending")
+  payslipGenerated   Boolean   @default(false)
+  // â”€â”€ Attendance-derived figures (single source of truth = AttendanceSummary) â”€â”€
+  presentDays        Float     @default(0)
+  clDays             Float     @default(0)
+  plDays             Float     @default(0)
+  slDays             Float     @default(0)
+  lwpDays            Float     @default(0)
+  halfDays           Float     @default(0)
+  otHours            Float     @default(0)
+  payableDays        Float     @default(0)
   // Full attendance snapshot mirrored from the AttendanceSummary at sync time, so
   // the payslip / salary register / reports can show the exact synced figures
   // (working/weekly-off/holiday) WITHOUT re-deriving attendance in payroll.
-  workingDays      Float     @default(0)
-  weeklyOffDays    Float     @default(0)
-  holidayDays      Float     @default(0)
+  workingDays        Float     @default(0)
+  weeklyOffDays      Float     @default(0)
+  holidayDays        Float     @default(0)
   // Set when attendance was written to payroll via Attendance Synchronization.
-  // Null → this month has NOT been synchronized (salary actions stay blocked).
+  // Null â†’ this month has NOT been synchronized (salary actions stay blocked).
   attendanceSyncedAt DateTime?
-  attendanceSource String?
-  isOutdated       Boolean   @default(false)
-  summarySyncedAt  DateTime?
-  processedOn      String?
-  paymentDate      String?
-  dueDate          String?
-  paymentMethod    String?
-  paidBy           String?
-  bonus            Float?
+  attendanceSource   String?
+  isOutdated         Boolean   @default(false)
+  summarySyncedAt    DateTime?
+  processedOn        String?
+  paymentDate        String?
+  dueDate            String?
+  paymentMethod      String?
+  paidBy             String?
+  bonus              Float?
   // Overtime surfaced as its own payroll line (the amount is still part of
   // `allowances` for net-salary math; this column lets the UI show it separately
   // without double-counting). Bonus is folded INTO netSalary (Basic + Allowances
-  // + Overtime + Bonus − Deductions).
-  overtime         Float?    @default(0)
-  tax              Float?
+  // + Overtime + Bonus âˆ’ Deductions).
+  overtime           Float?    @default(0)
+  tax                Float?
   // Loan EMI auto-deducted from this payroll (part of `deductions`; surfaced
   // separately so the payslip can show a Loan EMI line without polluting the
-  // "Other deductions" bucket). Written by the loan→payroll settle hook.
-  loanDeduction    Float?    @default(0)
+  // "Other deductions" bucket). Written by the loanâ†’payroll settle hook.
+  loanDeduction      Float?    @default(0)
   // Version of the Attendance & Salary Deduction Policy this row was computed
   // under (DeductionPolicy.version). Null = pre-policy / legacy record. Existing
   // records keep their version until the user explicitly recalculates, so a
   // payslip always reflects the rules it was generated with.
-  policyVersion    Int?
-  notes            String?
-  companyPayrollId String?
-  branchPayrollId  String?
-  // ── Payslip lifecycle tracking (audit history) ──
-  payslipFileName  String?
-  generatedAt      DateTime?
-  downloadedAt     DateTime?
-  downloadCount    Int       @default(0)
-  emailSentAt      DateTime?
-  approvedAt       DateTime?
-  approvedBy       String?
-  lockedAt         DateTime?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  policyVersion      Int?
+  notes              String?
+  companyPayrollId   String?
+  branchPayrollId    String?
+  // â”€â”€ Payslip lifecycle tracking (audit history) â”€â”€
+  payslipFileName    String?
+  generatedAt        DateTime?
+  downloadedAt       DateTime?
+  downloadCount      Int       @default(0)
+  emailSentAt        DateTime?
+  approvedAt         DateTime?
+  approvedBy         String?
+  lockedAt           DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee           Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, month, year, companyId])
 }
@@ -1140,7 +1144,7 @@ model LeaveCreditConfig {
   plPerMonth          Float    @default(1.5)
   slPerMonth          Float    @default(1)
   carryForward        Float    @default(5)
-  // ── Carry-forward & encashment policy ──
+  // â”€â”€ Carry-forward & encashment policy â”€â”€
   carryForwardEnabled Boolean  @default(true)
   maxCarryForward     Float    @default(5)
   allowEncashment     Boolean  @default(false)
@@ -1175,37 +1179,37 @@ model LeaveBalance {
 }
 
 model AttendanceSummary {
-  id          Int      @id @default(autoincrement())
-  companyId   Int
-  employeeId  Int
-  month       String
-  year        Int      @default(2026)
-  presentDays Float    @default(0)
-  absentDays  Float    @default(0)
-  cl          Float    @default(0)
-  pl          Float    @default(0)
-  sl          Float    @default(0)
-  lwp         Float    @default(0)
-  halfDays    Float    @default(0)
-  otHours     Float    @default(0)
-  shift       String?
-  payableDays Float    @default(0)
-  // Attendance snapshot fields — the single source of truth the Payroll engine
-  // reads. workingDays = daysInMonth − weeklyOff − holiday (payroll's proration
+  id               Int       @id @default(autoincrement())
+  companyId        Int
+  employeeId       Int
+  month            String
+  year             Int       @default(2026)
+  presentDays      Float     @default(0)
+  absentDays       Float     @default(0)
+  cl               Float     @default(0)
+  pl               Float     @default(0)
+  sl               Float     @default(0)
+  lwp              Float     @default(0)
+  halfDays         Float     @default(0)
+  otHours          Float     @default(0)
+  shift            String?
+  payableDays      Float     @default(0)
+  // Attendance snapshot fields â€” the single source of truth the Payroll engine
+  // reads. workingDays = daysInMonth âˆ’ weeklyOff âˆ’ holiday (payroll's proration
   // denominator). weeklyOff/holiday are kept explicit so the Salary Worksheet and
   // Salary Slip can show them and match the Attendance Synchronization page exactly.
-  workingDays      Float   @default(0)
-  weeklyOffDays    Float   @default(0)
-  holidayDays      Float   @default(0)
+  workingDays      Float     @default(0)
+  weeklyOffDays    Float     @default(0)
+  holidayDays      Float     @default(0)
   attendanceStatus String? // Complete | Partial | Missing (recorded days vs working days)
   attendanceSource String? // e.g. Biometric / Manual / System Computed
   syncedAt         DateTime? // set on "Confirm & Write to Payroll"
-  locked      Boolean  @default(false)
-  updatedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  locked           Boolean   @default(false)
+  updatedBy        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@unique([employeeId, month, year])
 }
@@ -1228,7 +1232,7 @@ model Document {
   category         String? // Company Profile grouping: Legal / Tax / Labour / Business / Financial / Insurance / HR / Other
   issuingAuthority String? // who issued the document (Company Profile docs)
   issueDate        String? // optional issue date (ISO yyyy-mm-dd)
-  expiryDate       String? // optional expiry date — drives "Expiring Soon" / "Expired"
+  expiryDate       String? // optional expiry date â€” drives "Expiring Soon" / "Expired"
   renewalDate      String? // optional next-renewal date
   remarks          String?  @db.Text // upload / verification remarks
   verifiedBy       String? // audit: who verified/rejected
@@ -1241,9 +1245,9 @@ model Document {
   company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 }
 
-// Company Profile → Contacts & Management. One row per key person (Founder, CEO,
+// Company Profile â†’ Contacts & Management. One row per key person (Founder, CEO,
 // Managing Director, Director, Company Secretary, HR Head, Finance Head,
-// Compliance Officer, Authorized Signatory, …). Photo & signature are base64.
+// Compliance Officer, Authorized Signatory, â€¦). Photo & signature are base64.
 model CompanyContact {
   id          Int      @id @default(autoincrement())
   companyId   Int
@@ -1262,7 +1266,7 @@ model CompanyContact {
   @@index([companyId])
 }
 
-// Company Profile → Basic Information → Owner(s) / Director(s). Additive, isolated
+// Company Profile â†’ Basic Information â†’ Owner(s) / Director(s). Additive, isolated
 // table (kept separate from CompanyContact key-personnel). Exactly one row per
 // company may be the primary contact (enforced in the controller). The primary
 // owner feeds the {{owner_*}} document/report placeholders.
@@ -1285,8 +1289,8 @@ model CompanyOwner {
   @@index([companyId])
 }
 
-// Company Profile → Statutory & Compliance. One row per compliance item the
-// company tracks (PF/ESI/GST/Labour License/FSSAI/insurance/…). The catalog +
+// Company Profile â†’ Statutory & Compliance. One row per compliance item the
+// company tracks (PF/ESI/GST/Labour License/FSSAI/insurance/â€¦). The catalog +
 // mandatory grouping lives on the frontend; registration numbers are prefilled
 // from the Company record (no duplicate entry). The certificate file + prior
 // versions are stored inline (base64). Status is computed from the dates.
@@ -1350,14 +1354,14 @@ model Notification {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ── Broadcast provenance (all nullable; only set on type = "broadcast") ─────
-  // Who sent it — kept as a denormalised snapshot, not a relation, so the bell
+  // â”€â”€ Broadcast provenance (all nullable; only set on type = "broadcast") â”€â”€â”€â”€â”€
+  // Who sent it â€” kept as a denormalised snapshot, not a relation, so the bell
   // can render "Sent by Company Head" without a join, and so the record still
   // reads correctly after the sender is renamed or offboarded.
-  senderId       Int?
-  senderName     String?
-  senderRole     String?
-  senderBranchId Int?
+  senderId         Int?
+  senderName       String?
+  senderRole       String?
+  senderBranchId   Int?
   // What was targeted. This is the AUDIT of the dispatch, kept per delivered row
   // so a cross-branch delivery would be provable after the fact rather than
   // having to be inferred from who happens to hold the row.
@@ -1375,7 +1379,7 @@ model AuditLog {
   id        Int      @id @default(autoincrement())
   userId    Int
   // Denormalised tenant. The trail previously had no company column at all, so
-  // scoping it to a tenant meant joining through `user` — and the table (25k rows
+  // scoping it to a tenant meant joining through `user` â€” and the table (25k rows
   // and growing) was indexed only on id and userId, so every such read scanned.
   // Nullable because platform-level and system actions genuinely belong to no
   // single company. Added by ALTER, not db push (that would drop columns).
@@ -1406,10 +1410,10 @@ model SubscriptionPlan {
   updatedAt           DateTime @updatedAt
 }
 
-// ── NEW Employee-Based Subscription System (Beta) ────────────────────────────
+// â”€â”€ NEW Employee-Based Subscription System (Beta) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // FULLY ADDITIVE & ISOLATED. Runs ALONGSIDE the existing SubscriptionPlan /
 // Billing system and never reads or writes its tables. Billing model:
-//   monthly = peakEmployeeCount × employeePrice + purchasedBranchSlots × branchPrice
+//   monthly = peakEmployeeCount Ã— employeePrice + purchasedBranchSlots Ã— branchPrice
 // All three tables are standalone (scalar FKs only) so they cannot affect any
 // existing relationship, customer, or calculation.
 
@@ -1417,8 +1421,8 @@ model SubscriptionPlan {
 model EmployeeSubscription {
   id                   Int       @id @default(autoincrement())
   companyId            Int       @unique
-  employeePrice        Float? // per-company override; null → use global default
-  branchPrice          Float? // per-company override; null → use global default
+  employeePrice        Float? // per-company override; null â†’ use global default
+  branchPrice          Float? // per-company override; null â†’ use global default
   peakEmployeeCount    Int       @default(0) // high-water mark; never auto-decreases
   purchasedBranchSlots Int       @default(1) // every company starts with 1 slot
   discountPercent      Float     @default(0)
@@ -1452,7 +1456,7 @@ model SubscriptionBillingAudit {
   @@index([companyId])
 }
 
-// ── Subscription Management (Super Admin) ────────────────────────────────────
+// â”€â”€ Subscription Management (Super Admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // ONE row per company = its live subscription. Additive & isolated (scalar
 // companyId, no relations). The plan tier is ALSO mirrored onto Company.plan so
 // the existing permission engine (planEntitlements + subscriptionMiddleware)
@@ -1460,39 +1464,39 @@ model SubscriptionBillingAudit {
 // billing-period, derived from the plan tier + cycle (code map) EXCEPT for
 // Custom, whose price + entitlement allow-lists are stored here.
 model CompanySubscription {
-  id               Int       @id @default(autoincrement())
-  companyId        Int       @unique
-  plan             String    @default("Free") // Free / Starter / Professional / Enterprise / Custom
-  billingCycle     String    @default("Quarterly") // Quarterly / Yearly
-  status           String    @default("Active") // Active / Suspended / Expired / Cancelled
-  pricePerEmployee Float? // Custom (or a per-company override); standard tiers derive from the code map
-  discountPercent  Float     @default(0)
-  renewalDate      DateTime?
-  // Custom-plan overrides (null → derive from the plan's code-map defaults):
-  employeeLimit    Int?
-  branchLimit      Int?
-  storageMB        Int?
-  adminUserLimit   Int?
-  customModules    Json? // Custom: allowed module permission keys
-  customReports    Json? // Custom: allowed report keys (or "all")
-  customFeatures   Json? // Custom: forward-looking feature flags
+  id                 Int       @id @default(autoincrement())
+  companyId          Int       @unique
+  plan               String    @default("Free") // Free / Starter / Professional / Enterprise / Custom
+  billingCycle       String    @default("Quarterly") // Quarterly / Yearly
+  status             String    @default("Active") // Active / Suspended / Expired / Cancelled
+  pricePerEmployee   Float? // Custom (or a per-company override); standard tiers derive from the code map
+  discountPercent    Float     @default(0)
+  renewalDate        DateTime?
+  // Custom-plan overrides (null â†’ derive from the plan's code-map defaults):
+  employeeLimit      Int?
+  branchLimit        Int?
+  storageMB          Int?
+  adminUserLimit     Int?
+  customModules      Json? // Custom: allowed module permission keys
+  customReports      Json? // Custom: allowed report keys (or "all")
+  customFeatures     Json? // Custom: forward-looking feature flags
   // Seats granted by the SUBSCRIPTION itself (what the customer bought on the
-  // plan, which may exceed the plan's code-map base). NULL → use the plan base.
+  // plan, which may exceed the plan's code-map base). NULL â†’ use the plan base.
   // Written ONLY by a settled subscription payment. Kept separate from
   // extraEmployeeSlots so a renewal can restate the subscription's own seat
   // count without touching independently purchased add-ons.
-  subscriptionSeats Int?
+  subscriptionSeats  Int?
   // Purchased add-on employee slots. Stacks ON TOP of the plan's base limit
   // (effective limit = plan limit + extraEmployeeSlots) and never overwrites
-  // the plan. Written ONLY by a settled slot-pack payment or a Super Admin —
+  // the plan. Written ONLY by a settled slot-pack payment or a Super Admin â€”
   // subscription settlement must NEVER write this column.
-  extraEmployeeSlots Int     @default(0)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  extraEmployeeSlots Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
-// ── Employee slot add-on packs (Super-Admin configurable) ────────────────────
-// A pack = "+N employee slots for ₹price". Packs under the online-payment
+// â”€â”€ Employee slot add-on packs (Super-Admin configurable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// A pack = "+N employee slots for â‚¹price". Packs under the online-payment
 // minimum are sold through the contact-sales path, not the gateway.
 model EmployeeSlotPack {
   id        Int      @id @default(autoincrement())
@@ -1551,9 +1555,9 @@ model SubscriptionHistory {
   @@index([companyId])
 }
 
-// ── Subscription Billing (Super Admin) ───────────────────────────────────────
+// â”€â”€ Subscription Billing (Super Admin) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // A REAL GST invoice per company subscription billing period. Additive & isolated
-// (scalar companyId, no relations) — distinct from the company-side Invoice model
+// (scalar companyId, no relations) â€” distinct from the company-side Invoice model
 // (companies invoicing THEIR customers). Every invoice is linked to a company +
 // plan + headcount + cycle and carries a full GST breakdown. Snapshots company
 // identity so a historical invoice never changes if the company later edits.
@@ -1592,36 +1596,36 @@ model SubscriptionInvoice {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  // ── Interactive invoice editor (Super Admin) — all additive/nullable ──
+  // â”€â”€ Interactive invoice editor (Super Admin) â€” all additive/nullable â”€â”€
   // Editable line items ([{id,description,hsn,quantity,rate,discountPercent,
-  // taxPercent}]). NULL → legacy headcount×rate invoice; the editor seeds one
+  // taxPercent}]). NULL â†’ legacy headcountÃ—rate invoice; the editor seeds one
   // item from those columns on first edit and keeps the legacy totals in sync.
-  lineItems        Json?
-  pan              String?
-  contactPerson    String?
-  companyPhone     String?
-  bankDetails      String?   @db.Text
-  roundOff         Float     @default(0)
-  editUnlocked     Boolean   @default(false) // Paid/Cancelled invoices explicitly unlocked for edit
-  finalizedAt      DateTime?
+  lineItems     Json?
+  pan           String?
+  contactPerson String?
+  companyPhone  String?
+  bankDetails   String?   @db.Text
+  roundOff      Float     @default(0)
+  editUnlocked  Boolean   @default(false) // Paid/Cancelled invoices explicitly unlocked for edit
+  finalizedAt   DateTime?
 
   @@index([companyId])
   @@index([status])
 }
 
 // Append-only edit trail for the Subscription invoice editor: one row per changed
-// field per save (old → new, who, why). Isolated scalar invoiceId (no relation).
+// field per save (old â†’ new, who, why). Isolated scalar invoiceId (no relation).
 model SubscriptionInvoiceAudit {
-  id          Int      @id @default(autoincrement())
-  invoiceId   Int
-  invoiceNo   String?
-  field       String
-  oldValue    String?  @db.Text
-  newValue    String?  @db.Text
-  action      String   @default("EDIT") // EDIT / FINALIZE / UNLOCK
-  reason      String?  @db.Text
-  changedBy   String?
-  createdAt   DateTime @default(now())
+  id        Int      @id @default(autoincrement())
+  invoiceId Int
+  invoiceNo String?
+  field     String
+  oldValue  String?  @db.Text
+  newValue  String?  @db.Text
+  action    String   @default("EDIT") // EDIT / FINALIZE / UNLOCK
+  reason    String?  @db.Text
+  changedBy String?
+  createdAt DateTime @default(now())
 
   @@index([invoiceId])
   @@map("subscription_invoice_audit")
@@ -1643,7 +1647,7 @@ model SubscriptionInvoicePayment {
   @@index([invoiceId])
 }
 
-// ── Task Manager ─────────────────────────────────────────────────────────────
+// â”€â”€ Task Manager â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Standalone tables (scalar foreign keys, no relations on existing models) so
 // adding this module cannot alter or break any existing relationship.
 model Task {
@@ -1688,7 +1692,7 @@ model TaskComment {
   @@index([taskId])
 }
 
-// ── Tender Information (future-ready; placeholder data for now) ───────────────
+// â”€â”€ Tender Information (future-ready; placeholder data for now) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 model Tender {
   id                  Int      @id @default(autoincrement())
   tenderNumber        String?
@@ -1702,7 +1706,7 @@ model Tender {
   category            String? // Government / Private / HR Service / Recruitment / Vendor
   companyId           Int?
   notes               String?  @db.Text
-  // ── Tenders & Contracts lifecycle additions ──
+  // â”€â”€ Tenders & Contracts lifecycle additions â”€â”€
   clientName          String?
   branchId            Int?
   serviceType         String? // e.g. Security / Housekeeping / Manpower
@@ -1718,7 +1722,7 @@ model Tender {
   @@index([companyId])
 }
 
-// ── Contract (auto-created from a Won tender) ──────────────────────────────
+// â”€â”€ Contract (auto-created from a Won tender) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 model Contract {
   id             Int      @id @default(autoincrement())
   contractNumber String?
@@ -1733,7 +1737,7 @@ model Contract {
   status         String   @default("Active") // Active / Expiring Soon / Expired / Closed
   documentPath   String?
   notes          String?  @db.Text
-  // ── Enterprise contract data (additive — never replaces the columns above) ──
+  // â”€â”€ Enterprise contract data (additive â€” never replaces the columns above) â”€â”€
   // All extended sections (contract info extras, client, timeline, financial,
   // bank guarantee, security deposit, performance guarantee, tender snapshot,
   // approval, renewal, compliance) live here as one structured object.
@@ -1753,7 +1757,7 @@ model Contract {
   @@map("contracts")
 }
 
-// ── Site under a contract (a contract can have many sites) ──────────────────
+// â”€â”€ Site under a contract (a contract can have many sites) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 model ContractSite {
   id                Int      @id @default(autoincrement())
   contractId        Int
@@ -1774,7 +1778,7 @@ model ContractSite {
   @@map("contract_sites")
 }
 
-// ── Deployment of an employee to a site (split across sites supported) ──────
+// â”€â”€ Deployment of an employee to a site (split across sites supported) â”€â”€â”€â”€â”€â”€
 model Deployment {
   id                Int      @id @default(autoincrement())
   contractId        Int
@@ -1801,7 +1805,7 @@ model Deployment {
   @@map("deployments")
 }
 
-// ── Communication Center (Phase 1 foundation — storage only, NO sending) ──────
+// â”€â”€ Communication Center (Phase 1 foundation â€” storage only, NO sending) â”€â”€â”€â”€â”€â”€
 // Fully independent module: scalar companyId (no Company relation) so it never
 // touches the wide Company table or other modules. Designed so Phase 2 channels
 // (WhatsApp/SMS/Email/Push) slot in via the existing channel/status/recipients
@@ -1821,12 +1825,12 @@ model CommunicationTemplate {
   layout                   String?  @db.LongText // drag-and-drop designer layout (stored only in Phase 1)
   festivalName             String?
   festivalDate             String?
-  // ── WhatsApp readiness (Phase 1 — stored only, never sent) ──────────────────
+  // â”€â”€ WhatsApp readiness (Phase 1 â€” stored only, never sent) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   whatsappCompatible       Boolean  @default(false) // template can be used over WhatsApp
   whatsappRichText         Boolean  @default(false) // body uses WhatsApp rich text (*bold* / _italic_)
   whatsappCaption          String?  @db.Text // caption shown beneath the image when sent as media
-  // ── Enterprise workflow (additive) ──────────────────────────────────────────
-  masterTemplateId         Int?     // provenance: the master library template this was copied from (null = authored in-company)
+  // â”€â”€ Enterprise workflow (additive) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  masterTemplateId         Int? // provenance: the master library template this was copied from (null = authored in-company)
   libraryState             String   @default("enabled") // company-library management: enabled / disabled / archived
   createdBy                String?
   createdAt                DateTime @default(now())
@@ -1837,7 +1841,7 @@ model CommunicationTemplate {
   @@map("communication_templates")
 }
 
-// ── Master Template Library (Super-Admin governed, global — companies COPY, never modify) ──
+// â”€â”€ Master Template Library (Super-Admin governed, global â€” companies COPY, never modify) â”€â”€
 // Platform-level catalog of professional templates. Company Head / HR browse this
 // and copy a template into their own communication_templates (which sets
 // masterTemplateId provenance). The master rows themselves are NEVER edited by a
@@ -1846,12 +1850,12 @@ model CommunicationTemplate {
 model CommunicationMasterTemplate {
   id                 Int      @id @default(autoincrement())
   title              String
-  category           String   // Birthday / Work Anniversary / Joining / Promotion / Confirmation / Leave / Attendance / Payroll / Payslip / Loan / Compliance / Festival / Holiday / Announcement / Custom
-  festivalKey        String   @default("") // sub-key for Festival/Holiday (diwali, christmas, holi, eid, new-year, …) — "" for non-festival
+  category           String // Birthday / Work Anniversary / Joining / Promotion / Confirmation / Leave / Attendance / Payroll / Payslip / Loan / Compliance / Festival / Holiday / Announcement / Custom
+  festivalKey        String   @default("") // sub-key for Festival/Holiday (diwali, christmas, holi, eid, new-year, â€¦) â€” "" for non-festival
   subject            String?  @db.Text
   body               String?  @db.Text
   placeholders       String?  @db.Text
-  layout             String?  @db.LongText // design JSON (theme/layout/art) — identical shape to communication_templates.layout
+  layout             String?  @db.LongText // design JSON (theme/layout/art) â€” identical shape to communication_templates.layout
   backgroundImage    String?  @db.LongText
   whatsappCompatible Boolean  @default(true)
   whatsappCaption    String?  @db.Text
@@ -1865,22 +1869,22 @@ model CommunicationMasterTemplate {
   @@map("communication_master_templates")
 }
 
-// ── Event → Template Mapping (per company) ──────────────────────────────────────
+// â”€â”€ Event â†’ Template Mapping (per company) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // THE workflow spine: for each event a company picks ONE company template + which
 // channels are on + whether the automation is enabled. Saving a mapping keeps the
 // underlying canonical automation_rule in sync (template + on/off) so the EXISTING
-// scheduler/engine send it automatically — no engine rewrite. One row per
+// scheduler/engine send it automatically â€” no engine rewrite. One row per
 // (company, event, festivalKey).
 model CommunicationEventMapping {
   id               Int      @id @default(autoincrement())
   companyId        Int
-  eventKey         String   // birthday / anniversary / joining / promotion / confirmation / leave_approved / attendance / payroll / payslip / loan / compliance / festival / holiday / announcement / custom
-  festivalKey      String   @default("") // festival/holiday sub-event (diwali, christmas, …); "" otherwise
-  hrmateTemplateId Int?     // chosen company template (communication_templates.id); null = NOT configured
+  eventKey         String // birthday / anniversary / joining / promotion / confirmation / leave_approved / attendance / payroll / payslip / loan / compliance / festival / holiday / announcement / custom
+  festivalKey      String   @default("") // festival/holiday sub-event (diwali, christmas, â€¦); "" otherwise
+  hrmateTemplateId Int? // chosen company template (communication_templates.id); null = NOT configured
   whatsappEnabled  Boolean  @default(true)
   emailEnabled     Boolean  @default(false)
   enabled          Boolean  @default(false) // is this event's automation switched on
-  ruleId           Int?     // the canonical automation_rule kept in sync with this mapping
+  ruleId           Int? // the canonical automation_rule kept in sync with this mapping
   createdBy        String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -1899,7 +1903,7 @@ model CommunicationSchedule {
   scheduleDate String?
   scheduleTime String?
   recurrence   String   @default("none") // none / daily / weekly / monthly / yearly
-  recipients   String?  @db.Text // JSON (criteria or ids) — stored only, never executed in Phase 1
+  recipients   String?  @db.Text // JSON (criteria or ids) â€” stored only, never executed in Phase 1
   status       String   @default("Scheduled") // Scheduled / Paused / Cancelled
   createdBy    String?
   createdAt    DateTime @default(now())
@@ -1957,7 +1961,7 @@ model CommunicationSettings {
   @@map("communication_settings")
 }
 
-// Holiday Calendar (Phase 1) — company holiday master. Drives future automatic
+// Holiday Calendar (Phase 1) â€” company holiday master. Drives future automatic
 // festival greetings & announcements (Phase 2). Fully isolated (scalar companyId,
 // no Company relation) to stay independent and avoid the Company row-size limit.
 model CommunicationHoliday {
@@ -1965,7 +1969,7 @@ model CommunicationHoliday {
   companyId             Int
   name                  String
   category              String   @default("Public Holiday") // Public / Optional / National / Religious / Regional / Company
-  date                  String   // YYYY-MM-DD
+  date                  String // YYYY-MM-DD
   applicableBranches    String?  @db.Text // JSON array of branch ids, or "all"
   applicableDepartments String?  @db.Text // JSON array of departments, or "all"
   description           String?  @db.Text
@@ -1982,108 +1986,108 @@ model CommunicationHoliday {
   @@map("communication_holidays")
 }
 
-// ── WhatsApp integration foundation (Phase 1 — NO messages are ever sent) ──────
+// â”€â”€ WhatsApp integration foundation (Phase 1 â€” NO messages are ever sent) â”€â”€â”€â”€â”€â”€
 // Prepares HRMate for the Meta WhatsApp Business Cloud API. Phase 1 only stores
 // configuration, queues simulated messages, and writes simulated delivery logs.
 // Fully isolated (scalar companyId, no Company relation) like the rest of the
 // Communication Center. In Phase 2 the WhatsAppService gains a real Meta client;
 // nothing else about these tables needs to change.
 
-// One row per company — connection + development-mode + (future) Meta credentials.
+// One row per company â€” connection + development-mode + (future) Meta credentials.
 model WhatsAppSettings {
-  id               Int      @id @default(autoincrement())
-  companyId        Int      @unique
-  enabled          Boolean  @default(false) // master ON/OFF for WhatsApp communication
-  connectionStatus String   @default("not_connected") // not_connected / pending / connected
-  // Development Mode — when ON every message is redirected to developerTestNumber.
-  developmentMode    Boolean @default(true)
-  developerTestNumber String? // e.g. +91XXXXXXXXXX — the single test recipient
-  // Future Meta credentials — captured in Phase 2 (UI shows them disabled now).
+  id                        Int       @id @default(autoincrement())
+  companyId                 Int       @unique
+  enabled                   Boolean   @default(false) // master ON/OFF for WhatsApp communication
+  connectionStatus          String    @default("not_connected") // not_connected / pending / connected
+  // Development Mode â€” when ON every message is redirected to developerTestNumber.
+  developmentMode           Boolean   @default(true)
+  developerTestNumber       String? // e.g. +91XXXXXXXXXX â€” the single test recipient
+  // Future Meta credentials â€” captured in Phase 2 (UI shows them disabled now).
   metaBusinessId            String?
   whatsappBusinessAccountId String?
   phoneNumberId             String?
-  permanentAccessToken      String?  @db.Text // stored ENCRYPTED at rest (secretCrypto)
-  verifyToken               String?  @db.Text // stored ENCRYPTED at rest (secretCrypto)
+  permanentAccessToken      String?   @db.Text // stored ENCRYPTED at rest (secretCrypto)
+  verifyToken               String?   @db.Text // stored ENCRYPTED at rest (secretCrypto)
   webhookUrl                String?
-  // Phase 2 — live Meta connection state (set by the connection test).
-  apiVersion       String?         // e.g. "v21.0"
-  phoneVerified    Boolean  @default(false)
-  tokenValid       Boolean  @default(false)
-  lastConnectedAt  DateTime?
-  // Phase 2.5 — credential health history & production readiness.
-  businessVerified  Boolean  @default(false)
-  environment       String?         // "sandbox" / "production"
-  tokenExpired      Boolean  @default(false)
-  lastSuccessAt     DateTime?
-  lastFailureAt     DateTime?
-  lastError         String?  @db.Text
-  lastHttpStatus    Int?
-  lastMetaErrorCode String?
-  lastTestedAt      DateTime?
-  // Phase 5 — webhook health + Meta account signals (all additive, nullable).
-  webhookVerified      Boolean  @default(false) // GET verification handshake succeeded
-  lastWebhookAt        DateTime?                 // last inbound status webhook received
-  webhookFailureReason String?  @db.Text
-  qualityRating        String?                   // GREEN / YELLOW / RED (if Meta returns it)
-  messagingLimitTier   String?                   // e.g. TIER_1K / TIER_10K (if available)
-  // Image-template integration — render HRMate gallery designs and send them as
+  // Phase 2 â€” live Meta connection state (set by the connection test).
+  apiVersion                String? // e.g. "v21.0"
+  phoneVerified             Boolean   @default(false)
+  tokenValid                Boolean   @default(false)
+  lastConnectedAt           DateTime?
+  // Phase 2.5 â€” credential health history & production readiness.
+  businessVerified          Boolean   @default(false)
+  environment               String? // "sandbox" / "production"
+  tokenExpired              Boolean   @default(false)
+  lastSuccessAt             DateTime?
+  lastFailureAt             DateTime?
+  lastError                 String?   @db.Text
+  lastHttpStatus            Int?
+  lastMetaErrorCode         String?
+  lastTestedAt              DateTime?
+  // Phase 5 â€” webhook health + Meta account signals (all additive, nullable).
+  webhookVerified           Boolean   @default(false) // GET verification handshake succeeded
+  lastWebhookAt             DateTime? // last inbound status webhook received
+  webhookFailureReason      String?   @db.Text
+  qualityRating             String? // GREEN / YELLOW / RED (if Meta returns it)
+  messagingLimitTier        String? // e.g. TIER_1K / TIER_10K (if available)
+  // Image-template integration â€” render HRMate gallery designs and send them as
   // approved WhatsApp IMAGE templates (header media). All additive, nullable.
-  imageTemplateDefault String?                   // Meta template name used when no mapping matches
-  imageTemplateLang    String?                   // default Meta template language code (e.g. en_US)
-  imageTemplateMap     String?  @db.Text         // JSON: { byCategory:{cat:tplName}, byTemplateId:{id:tplName} }
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  imageTemplateDefault      String? // Meta template name used when no mapping matches
+  imageTemplateLang         String? // default Meta template language code (e.g. en_US)
+  imageTemplateMap          String?   @db.Text // JSON: { byCategory:{cat:tplName}, byTemplateId:{id:tplName} }
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
 
   @@map("whatsapp_settings")
 }
 
-// ── Phase 3 — WhatsApp Business Template Management & Approval ─────────────────
+// â”€â”€ Phase 3 â€” WhatsApp Business Template Management & Approval â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Synced catalog of the company's Meta-approved WhatsApp message templates. This
-// is SEPARATE from communication_templates (HRMate greeting templates) — never
+// is SEPARATE from communication_templates (HRMate greeting templates) â€” never
 // overwrites them. Fully isolated (scalar companyId).
 model WhatsAppMetaTemplate {
-  id                 Int      @id @default(autoincrement())
+  id                 Int       @id @default(autoincrement())
   companyId          Int
   metaTemplateId     String?
   name               String
-  category           String?  // MARKETING / UTILITY / AUTHENTICATION
-  language           String?  // e.g. en, en_US, gu, hi
-  status             String?  // APPROVED / PENDING / REJECTED / DISABLED / PAUSED
-  components         String?  @db.Text // JSON array from Meta
-  version            String?  // content hash (Meta has no version field) to detect edits
-  bodyVariableCount  Int      @default(0)
-  headerFormat       String?  // TEXT / IMAGE / DOCUMENT / VIDEO / null
+  category           String? // MARKETING / UTILITY / AUTHENTICATION
+  language           String? // e.g. en, en_US, gu, hi
+  status             String? // APPROVED / PENDING / REJECTED / DISABLED / PAUSED
+  components         String?   @db.Text // JSON array from Meta
+  version            String? // content hash (Meta has no version field) to detect edits
+  bodyVariableCount  Int       @default(0)
+  headerFormat       String? // TEXT / IMAGE / DOCUMENT / VIDEO / null
   previousStatus     String?
   lastStatusChangeAt DateTime?
   lastSyncedAt       DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([companyId])
   @@map("whatsapp_meta_templates")
 }
 
-// Maps one HRMate (communication_templates) template → one Meta template, per
-// language, with a positional variable map ({{1}}→employee_name, …). Scalar
+// Maps one HRMate (communication_templates) template â†’ one Meta template, per
+// language, with a positional variable map ({{1}}â†’employee_name, â€¦). Scalar
 // hrmateTemplateId (no FK) keeps the module isolated.
 model WhatsAppTemplateMapping {
-  id                  Int      @id @default(autoincrement())
-  companyId           Int
-  hrmateTemplateId    Int?
-  hrmateTemplateName  String?
-  metaTemplateName    String
-  metaTemplateId      String?
-  language            String   @default("en")
-  status              String?  // snapshot of Meta status (refreshed on sync)
-  variableMap         String?  @db.Text // JSON { "1": "employee_name", ... }
-  headerMediaType     String?  // none / image / document / video
-  headerMediaUrl      String?  @db.Text
-  active              Boolean  @default(false) // usable only when Meta status APPROVED
-  lastModifiedAt      DateTime?
-  lastApprovalStatus  String?
+  id                   Int       @id @default(autoincrement())
+  companyId            Int
+  hrmateTemplateId     Int?
+  hrmateTemplateName   String?
+  metaTemplateName     String
+  metaTemplateId       String?
+  language             String    @default("en")
+  status               String? // snapshot of Meta status (refreshed on sync)
+  variableMap          String?   @db.Text // JSON { "1": "employee_name", ... }
+  headerMediaType      String? // none / image / document / video
+  headerMediaUrl       String?   @db.Text
+  active               Boolean   @default(false) // usable only when Meta status APPROVED
+  lastModifiedAt       DateTime?
+  lastApprovalStatus   String?
   lastApprovalChangeAt DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@index([companyId])
   @@map("whatsapp_template_mappings")
@@ -2095,7 +2099,7 @@ model WhatsAppTemplateEvent {
   companyId    Int
   templateName String?
   language     String?
-  event        String   // synced / status_change / version_change / mapped / mapping_updated / test_sent
+  event        String // synced / status_change / version_change / mapped / mapping_updated / test_sent
   fromValue    String?
   toValue      String?
   detail       String?  @db.Text
@@ -2105,34 +2109,34 @@ model WhatsAppTemplateEvent {
   @@map("whatsapp_template_events")
 }
 
-// ── Phase 4 — Communication Automation Engine ─────────────────────────────────
+// â”€â”€ Phase 4 â€” Communication Automation Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Generic rules engine that drives ALL communications (birthday/anniversary/
 // festival/announcement/salary/payslip/leave/attendance/custom) over the SAME
-// workflow: resolve recipients → eligibility → render → generate QUEUE entries
+// workflow: resolve recipients â†’ eligibility â†’ render â†’ generate QUEUE entries
 // (never sends directly). Fully isolated (scalar companyId).
 model AutomationRule {
-  id                 Int      @id @default(autoincrement())
+  id                 Int       @id @default(autoincrement())
   companyId          Int
   name               String
-  eventType          String   // birthday/anniversary/festival/announcement/salary_credited/payslip/leave_approved/attendance_reminder/custom
-  triggerType        String   @default("manual") // daily/weekly/monthly/yearly/specific_date/employee_birthday/employee_anniversary/company_holiday/manual/api
-  recipientScope     String   @default("all_active") // today_birthday/today_anniversary/all_active/specific_employee/not_checked_in
-  channel            String   @default("whatsapp")
-  templateMappingId  Int?     // WhatsAppTemplateMapping (preferred)
-  hrmateTemplateId   Int?     // or a communication_templates fallback
-  language           String   @default("en")
-  scheduleTime       String?  // HH:mm
-  scheduleDay        Int?     // 0–6 (weekly) or 1–31 (monthly)
-  scheduleMonth      Int?     // 1–12 (yearly)
-  specificDate       String?  // YYYY-MM-DD
+  eventType          String // birthday/anniversary/festival/announcement/salary_credited/payslip/leave_approved/attendance_reminder/custom
+  triggerType        String    @default("manual") // daily/weekly/monthly/yearly/specific_date/employee_birthday/employee_anniversary/company_holiday/manual/api
+  recipientScope     String    @default("all_active") // today_birthday/today_anniversary/all_active/specific_employee/not_checked_in
+  channel            String    @default("whatsapp")
+  templateMappingId  Int? // WhatsAppTemplateMapping (preferred)
+  hrmateTemplateId   Int? // or a communication_templates fallback
+  language           String    @default("en")
+  scheduleTime       String? // HH:mm
+  scheduleDay        Int? // 0â€“6 (weekly) or 1â€“31 (monthly)
+  scheduleMonth      Int? // 1â€“12 (yearly)
+  specificDate       String? // YYYY-MM-DD
   specificEmployeeId Int?
-  status             String   @default("active") // active/paused
-  dryRun             Boolean  @default(false)
-  timezone           String?  // IANA tz for scheduleTime matching (default Asia/Kolkata)
+  status             String    @default("active") // active/paused
+  dryRun             Boolean   @default(false)
+  timezone           String? // IANA tz for scheduleTime matching (default Asia/Kolkata)
   createdBy          String?
   lastRunAt          DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([companyId])
   @@map("automation_rules")
@@ -2142,32 +2146,32 @@ model AutomationRule {
 model AutomationRun {
   id                  Int      @id @default(autoincrement())
   companyId           Int
-  ruleId             Int?
-  ruleName           String?
-  mode               String   @default("run") // run / preview / dry_run
-  triggerType        String?
-  recipientsEvaluated Int     @default(0)
-  eligibleRecipients Int      @default(0)
-  queuedMessages     Int      @default(0)
-  skippedMessages    Int      @default(0)
-  errorsCount        Int      @default(0)
-  sentMessages       Int?     // 'send' mode: messages actually delivered to Meta (200 + wamid)
-  failedMessages     Int?     // 'send' mode: messages that failed at Meta
-  durationMs         Int?
-  detail             String?  @db.Text // JSON: per-recipient outcomes (sample), errors
-  createdAt          DateTime @default(now())
+  ruleId              Int?
+  ruleName            String?
+  mode                String   @default("run") // run / preview / dry_run
+  triggerType         String?
+  recipientsEvaluated Int      @default(0)
+  eligibleRecipients  Int      @default(0)
+  queuedMessages      Int      @default(0)
+  skippedMessages     Int      @default(0)
+  errorsCount         Int      @default(0)
+  sentMessages        Int? // 'send' mode: messages actually delivered to Meta (200 + wamid)
+  failedMessages      Int? // 'send' mode: messages that failed at Meta
+  durationMs          Int?
+  detail              String?  @db.Text // JSON: per-recipient outcomes (sample), errors
+  createdAt           DateTime @default(now())
 
   @@index([companyId])
   @@index([ruleId])
   @@map("automation_runs")
 }
 
-// Phase 2.5 — internal API request history for the Meta Cloud API. NEVER stores
+// Phase 2.5 â€” internal API request history for the Meta Cloud API. NEVER stores
 // credentials; only operational metadata (endpoint/method/status/duration).
 model WhatsAppRequestLog {
   id            Int      @id @default(autoincrement())
   companyId     Int
-  operation     String?         // connection_test / send_test
+  operation     String? // connection_test / send_test
   endpoint      String?  @db.Text
   method        String?
   httpStatus    Int?
@@ -2181,26 +2185,26 @@ model WhatsAppRequestLog {
   @@map("whatsapp_request_logs")
 }
 
-// Outbound message queue. Phase 1 only ever stores rows (status Pending) — the
+// Outbound message queue. Phase 1 only ever stores rows (status Pending) â€” the
 // queue is NEVER drained against a real API. Statuses model the full lifecycle so
-// Phase 2 can flip them: Pending → Processing → Sent / Failed.
+// Phase 2 can flip them: Pending â†’ Processing â†’ Sent / Failed.
 model WhatsAppQueue {
-  id             Int      @id @default(autoincrement())
-  companyId      Int
-  employeeId     Int?
-  employeeName   String?
-  templateId     Int?
-  templateName   String?
-  originalNumber String?  // the employee's real mobile (audit trail)
-  resolvedNumber String?  // where it WOULD go (dev test number when dev mode ON)
-  payload        String?  @db.Text // rendered message snapshot (JSON) — no PII rendering in Phase 1
-  status         String   @default("Pending") // Pending / Processing / Sent / Failed
-  attempts       Int      @default(0)
-  errorMessage   String?  @db.Text
-  developmentMode Boolean @default(true)
-  simulated      Boolean  @default(true) // Phase 1 rows are always simulated
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int?
+  employeeName    String?
+  templateId      Int?
+  templateName    String?
+  originalNumber  String? // the employee's real mobile (audit trail)
+  resolvedNumber  String? // where it WOULD go (dev test number when dev mode ON)
+  payload         String?  @db.Text // rendered message snapshot (JSON) â€” no PII rendering in Phase 1
+  status          String   @default("Pending") // Pending / Processing / Sent / Failed
+  attempts        Int      @default(0)
+  errorMessage    String?  @db.Text
+  developmentMode Boolean  @default(true)
+  simulated       Boolean  @default(true) // Phase 1 rows are always simulated
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([companyId])
   @@index([status])
@@ -2210,37 +2214,37 @@ model WhatsAppQueue {
 // Delivery audit log. Records every attempt (simulated in Phase 1) with the
 // original vs. actually-sent number so dev-mode redirection is fully traceable.
 model WhatsAppDeliveryLog {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   companyId        Int
   employeeId       Int?
   employeeName     String?
-  originalNumber   String?  // the employee's real mobile
-  actualSentNumber String?  // dev test number when dev mode ON, else originalNumber
+  originalNumber   String? // the employee's real mobile
+  actualSentNumber String? // dev test number when dev mode ON, else originalNumber
   templateId       Int?
   templateName     String?
-  status           String   @default("Pending") // Pending / Simulated / Sent / Failed
-  errorMessage     String?  @db.Text
-  developmentMode  Boolean  @default(true)
-  simulated        Boolean  @default(true)
-  // Phase 1.5 diagnostics (additive, nullable) — richer delivery log.
-  queueId          Int?            // linked whatsapp_queue row
-  messagePreview   String?  @db.Text // rendered message snapshot for the log view
-  processingMs     Int?            // simulated processing time (ms)
-  // Phase 2 — real Meta Cloud API delivery metadata (additive, nullable).
-  provider         String?         // e.g. "Meta Cloud API" (null = simulated)
-  metaMessageId    String?         // wamid returned by Meta on success
-  errorCode        String?         // Meta error code on failure
-  httpStatus       Int?            // HTTP status from the Graph API call
-  // Phase 5 — delivery lifecycle, driven by the Meta status webhook (additive).
-  metaStatus       String?         // last Meta webhook status: sent/delivered/read/failed
-  sentAt           DateTime?       // Meta "sent" timestamp
-  deliveredAt      DateTime?       // Meta "delivered" timestamp
-  readAt           DateTime?       // Meta "read" timestamp
-  failedAt         DateTime?       // Meta "failed" timestamp
-  failureReason    String?  @db.Text
-  automationRuleId Int?            // originating automation rule (for search/inspector)
-  branch           String?         // recipient branch snapshot (for search/inspector)
-  createdAt        DateTime @default(now())
+  status           String    @default("Pending") // Pending / Simulated / Sent / Failed
+  errorMessage     String?   @db.Text
+  developmentMode  Boolean   @default(true)
+  simulated        Boolean   @default(true)
+  // Phase 1.5 diagnostics (additive, nullable) â€” richer delivery log.
+  queueId          Int? // linked whatsapp_queue row
+  messagePreview   String?   @db.Text // rendered message snapshot for the log view
+  processingMs     Int? // simulated processing time (ms)
+  // Phase 2 â€” real Meta Cloud API delivery metadata (additive, nullable).
+  provider         String? // e.g. "Meta Cloud API" (null = simulated)
+  metaMessageId    String? // wamid returned by Meta on success
+  errorCode        String? // Meta error code on failure
+  httpStatus       Int? // HTTP status from the Graph API call
+  // Phase 5 â€” delivery lifecycle, driven by the Meta status webhook (additive).
+  metaStatus       String? // last Meta webhook status: sent/delivered/read/failed
+  sentAt           DateTime? // Meta "sent" timestamp
+  deliveredAt      DateTime? // Meta "delivered" timestamp
+  readAt           DateTime? // Meta "read" timestamp
+  failedAt         DateTime? // Meta "failed" timestamp
+  failureReason    String?   @db.Text
+  automationRuleId Int? // originating automation rule (for search/inspector)
+  branch           String? // recipient branch snapshot (for search/inspector)
+  createdAt        DateTime  @default(now())
 
   @@index([companyId])
   @@index([status])
@@ -2248,20 +2252,20 @@ model WhatsAppDeliveryLog {
   @@map("whatsapp_delivery_logs")
 }
 
-// Phase 5 — raw Meta status webhook events (one row per status transition per
+// Phase 5 â€” raw Meta status webhook events (one row per status transition per
 // message). Fully isolated (scalar companyId). Idempotent via (metaMessageId,
 // status) uniqueness so Meta's at-least-once delivery never double-records.
 model WhatsAppWebhookEvent {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   companyId     Int
-  metaMessageId String?  // wamid the event refers to
-  status        String   // sent / delivered / read / failed
-  recipient     String?  // recipient wa_id
+  metaMessageId String? // wamid the event refers to
+  status        String // sent / delivered / read / failed
+  recipient     String? // recipient wa_id
   eventAt       DateTime? // timestamp Meta reported for the status
   errorCode     String?
-  errorTitle    String?  @db.Text
-  raw           String?  @db.Text // raw event JSON (for the inspector)
-  createdAt     DateTime @default(now())
+  errorTitle    String?   @db.Text
+  raw           String?   @db.Text // raw event JSON (for the inspector)
+  createdAt     DateTime  @default(now())
 
   @@unique([metaMessageId, status], name: "wamid_status")
   @@index([companyId])
@@ -2269,7 +2273,7 @@ model WhatsAppWebhookEvent {
   @@map("whatsapp_webhook_events")
 }
 
-// Support Session — the ONLY audited way a Super Admin (platform admin) may enter
+// Support Session â€” the ONLY audited way a Super Admin (platform admin) may enter
 // a company's HR environment. Multi-tenant privacy: without an active session the
 // backend blocks Super Admin from all employee-PII APIs. Fully isolated (scalar
 // ids, no relations) to stay independent.
@@ -2295,44 +2299,44 @@ model SupportSession {
   @@map("support_sessions")
 }
 
-// ── Payroll Component Builder ────────────────────────────────────────────────
+// â”€â”€ Payroll Component Builder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Enterprise payroll component master (Allowance / Deduction / Reimbursement /
 // Bonus / Incentive / Employer Contribution / Loan / Recovery / Custom). Full
 // CRUD, taxability, statutory impact, formula/calculation config, effective
 // dates and lifecycle status. Relation-less (companyId Int only) so the maxed-out
-// Company model is never touched — mirrors the bonus/etime additive models.
+// Company model is never touched â€” mirrors the bonus/etime additive models.
 // `usageCount` gates hard-delete: a component that has been used by a payroll run
 // can only be archived/deactivated, never permanently deleted.
 model PayrollComponent {
-  id                Int      @id @default(autoincrement())
+  id                Int       @id @default(autoincrement())
   companyId         Int
   componentName     String
   displayName       String?
   shortCode         String?
-  description       String?  @db.Text
+  description       String?   @db.Text
   componentType     String // Allowance / Deduction / Reimbursement / Bonus / Incentive / Employer Contribution / Loan / Recovery / Custom
-  payrollCategory   String   @default("Fixed") // Fixed / Variable / Attendance Based / Performance Based / Formula Based / Manual Entry
-  calculationMethod String   @default("Fixed Amount") // Fixed Amount / Percentage of Basic / Percentage of Gross / Formula Builder / Manual
-  amount            Float?   @default(0) // for "Fixed Amount"
-  percentage        Float?   @default(0) // for the "Percentage of …" methods
-  formula           String?  @db.Text // for "Formula Builder"
-  taxable           String   @default("Taxable") // Taxable / Non-Taxable / Partially Taxable
-  taxablePercent    Float?   @default(0) // for "Partially Taxable"
-  pfApplicable      Boolean  @default(false)
-  esicApplicable    Boolean  @default(false)
-  ptApplicable      Boolean  @default(false)
-  lwfApplicable     Boolean  @default(false)
-  tdsApplicable     Boolean  @default(false)
+  payrollCategory   String    @default("Fixed") // Fixed / Variable / Attendance Based / Performance Based / Formula Based / Manual Entry
+  calculationMethod String    @default("Fixed Amount") // Fixed Amount / Percentage of Basic / Percentage of Gross / Formula Builder / Manual
+  amount            Float?    @default(0) // for "Fixed Amount"
+  percentage        Float?    @default(0) // for the "Percentage of â€¦" methods
+  formula           String?   @db.Text // for "Formula Builder"
+  taxable           String    @default("Taxable") // Taxable / Non-Taxable / Partially Taxable
+  taxablePercent    Float?    @default(0) // for "Partially Taxable"
+  pfApplicable      Boolean   @default(false)
+  esicApplicable    Boolean   @default(false)
+  ptApplicable      Boolean   @default(false)
+  lwfApplicable     Boolean   @default(false)
+  tdsApplicable     Boolean   @default(false)
   effectiveFrom     String? // yyyy-MM-dd
   effectiveTo       String? // yyyy-MM-dd
-  status            String   @default("Active") // Active / Inactive / Archived
-  displayOrder      Int      @default(0)
-  usageCount        Int      @default(0) // >0 → protected from hard-delete
+  status            String    @default("Active") // Active / Inactive / Archived
+  displayOrder      Int       @default(0)
+  usageCount        Int       @default(0) // >0 â†’ protected from hard-delete
   lastUsedAt        DateTime?
   createdBy         String?
   updatedBy         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([companyId])
   @@index([companyId, componentType])
@@ -2357,18 +2361,18 @@ model PayrollComponentAudit {
   @@map("payroll_component_audits")
 }
 
-// ── Invoice Management (isolated financial module) ───────────────────────────
+// â”€â”€ Invoice Management (isolated financial module) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // A self-contained billing module. ALL models are relation-less (companyId Int
 // only, mirrors the bonus/etime/payroll-component pattern) so the maxed-out
 // Company model and every existing table are UNTOUCHED. No FK to Employee/Payroll
-// /Attendance — this module cannot affect HR/payroll data. Additive migration via
+// /Attendance â€” this module cannot affect HR/payroll data. Additive migration via
 // scripts/addInvoiceModule.js; NEVER `prisma db push`.
 
 model InvoiceCustomer {
   id            Int      @id @default(autoincrement())
   companyId     Int
   partyType     String   @default("Customer")
-  customerCode  String?  // Client Master code e.g. CLI-000001 (assigned once, per company)
+  customerCode  String? // Client Master code e.g. CLI-000001 (assigned once, per company)
   companyName   String
   contactPerson String?
   gstin         String?
@@ -2380,8 +2384,8 @@ model InvoiceCustomer {
   city          String?
   state         String?
   country       String?  @default("India")
-  paymentTerms  String?  // default payment terms auto-filled onto new invoices
-  creditDays    Int?     // default credit period → seeds invoice due date
+  paymentTerms  String? // default payment terms auto-filled onto new invoices
+  creditDays    Int? // default credit period â†’ seeds invoice due date
   isActive      Boolean  @default(true)
   notes         String?  @db.Text
   createdBy     String?
@@ -2415,80 +2419,82 @@ model InvoiceProduct {
 }
 
 model Invoice {
-  id            Int      @id @default(autoincrement())
-  companyId     Int
-  transactionType String @default("Collect Payment")
-  invoiceNumber String
-  customerId    Int?
+  id                Int     @id @default(autoincrement())
+  companyId         Int
+  transactionType   String  @default("Collect Payment")
+  invoiceNumber     String
+  customerId        Int?
   // Customer snapshot (invoice stays immutable if the customer record changes).
-  billToName    String
-  billToGstin   String?
-  billToAddress String?  @db.Text
+  billToName        String
+  billToGstin       String?
+  billToAddress     String? @db.Text
   billToShipAddress String? @db.Text // ship-to snapshot (from client master; optional, default-hidden)
 
-  // ── Dispatch & Destination (GST invoice logistics) ────────────────────────
+  // â”€â”€ Dispatch & Destination (GST invoice logistics) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Scalar columns rather than a JSON blob: vehicleNumber / lrNumber are exactly
   // what gets reconciled against e-way bills, and JSON would make that
-  // unqueryable. All nullable — a service invoice simply leaves them blank and
+  // unqueryable. All nullable â€” a service invoice simply leaves them blank and
   // the sections then render nothing.
   // The DELIVERY ADDRESS deliberately reuses billToShipAddress above instead of
   // adding a second address column that could disagree with it.
-  dispatchFrom      String? @db.VarChar(160) // warehouse / branch the goods leave from
-  dispatchAddress   String? @db.Text
-  dispatchCity      String? @db.VarChar(100)
-  dispatchState     String? @db.VarChar(100)
-  dispatchPincode   String? @db.VarChar(12)
-  dispatchDate      String? @db.VarChar(10)  // yyyy-MM-dd, same convention as invoiceDate
-  dispatchThrough   String? @db.VarChar(160) // courier / transporter
-  vehicleNumber     String? @db.VarChar(40)
-  lrNumber          String? @db.VarChar(60)  // LR / AWB
+  dispatchFrom    String? @db.VarChar(160) // warehouse / branch the goods leave from
+  dispatchAddress String? @db.Text
+  dispatchCity    String? @db.VarChar(100)
+  dispatchState   String? @db.VarChar(100)
+  dispatchPincode String? @db.VarChar(12)
+  dispatchDate    String? @db.VarChar(10) // yyyy-MM-dd, same convention as invoiceDate
+  dispatchThrough String? @db.VarChar(160) // courier / transporter
+  vehicleNumber   String? @db.VarChar(40)
+  lrNumber        String? @db.VarChar(60) // LR / AWB
 
-  shipToName        String? @db.VarChar(160)
-  shipToCity        String? @db.VarChar(100)
-  shipToState       String? @db.VarChar(100)
-  shipToPincode     String? @db.VarChar(12)
-  shipToCountry     String? @db.VarChar(100)
-  billToEmail   String?
-  billToPhone   String?
-  billToState   String?
-  invoiceDate   String // yyyy-MM-dd
-  dueDate       String?
-  // Service-invoice header references (ALL optional & additive — existing rows
+  shipToName       String?  @db.VarChar(160)
+  shipToCity       String?  @db.VarChar(100)
+  shipToState      String?  @db.VarChar(100)
+  shipToPincode    String?  @db.VarChar(12)
+  shipToCountry    String?  @db.VarChar(100)
+  billToEmail      String?
+  billToPhone      String?
+  billToState      String?
+  invoiceDate      String // yyyy-MM-dd
+  dueDate          String?
+  // Service-invoice header references (ALL optional & additive â€” existing rows
   // stay NULL and simply hide the line). Used by the professional template.
-  contractNo    String?  @db.VarChar(100)
-  referenceNo   String?  @db.VarChar(100)
-  poNumber      String?  @db.VarChar(100)
-  billingPeriod String?  @db.VarChar(100)
-  currency      String   @default("INR")
-  paymentTerms  String?
-  placeOfSupply String? // customer state → decides CGST+SGST vs IGST
-  // Status workflow: Draft→Generated→Sent→Viewed→Partially Paid→Paid→Closed | Cancelled
-  status        String   @default("Draft")
-  // Money (server-computed; all ≥ 0).
-  subtotal      Float    @default(0)
-  discountTotal Float    @default(0)
-  taxableAmount Float    @default(0)
-  cgst          Float    @default(0)
-  sgst          Float    @default(0)
-  igst          Float    @default(0)
-  roundOff      Float    @default(0)
-  grandTotal    Float    @default(0)
-  amountPaid    Float    @default(0)
-  balanceDue    Float    @default(0)
+  contractNo       String?  @db.VarChar(100)
+  referenceNo      String?  @db.VarChar(100)
+  poNumber         String?  @db.VarChar(100)
+  billingPeriod    String?  @db.VarChar(100)
+  currency         String   @default("INR")
+  paymentTerms     String?
+  placeOfSupply    String? // customer state â†’ decides CGST+SGST vs IGST
+  // Status workflow: Draftâ†’Generatedâ†’Sentâ†’Viewedâ†’Partially Paidâ†’Paidâ†’Closed | Cancelled
+  status           String   @default("Draft")
+  // Money (server-computed; all â‰¥ 0).
+  subtotal         Float    @default(0)
+  discountTotal    Float    @default(0)
+  taxableAmount    Float    @default(0)
+  cgst             Float    @default(0)
+  sgst             Float    @default(0)
+  igst             Float    @default(0)
+  roundOff         Float    @default(0)
+  grandTotal       Float    @default(0)
+  amountPaid       Float    @default(0)
+  balanceDue       Float    @default(0)
   // Presentation / payment info.
-  notes            String? @db.Text
-  termsConditions  String? @db.Text
+  notes            String?  @db.Text
+  termsConditions  String?  @db.Text
   paymentMode      String?
-  bankDetails      String? @db.Text
+  bankDetails      String?  @db.Text
   upiId            String?
   // Per-invoice branding OVERRIDE as JSON {logo,signature,stamp,qr}. NULL (the
   // default) = this invoice uses the company / Company-Profile branding.
-  brandingOverride String? @db.Text
-  isRecurringChild Boolean @default(false)
-  createdBy     String?
-  updatedBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  brandingOverride String?  @db.Text
+  isRecurringChild Boolean  @default(false)
+    templateId         Int?
+    templateVersionId  Int?
+  createdBy        String?
+  updatedBy        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -2557,7 +2563,7 @@ model InvoiceSettings {
   upiId               String?
   logoUrl             String?  @db.Text
   signatureUrl        String?  @db.Text
-  // Invoice Branding assets (additive, optional; blank → Company Profile).
+  // Invoice Branding assets (additive, optional; blank â†’ Company Profile).
   stampUrl            String?  @db.Text
   qrUrl               String?  @db.Text
   themeColor          String?  @default("#4F7CFF")
@@ -2591,7 +2597,7 @@ model InvoiceReminder {
   id          Int      @id @default(autoincrement())
   companyId   Int
   invoiceId   Int
-  channel     String   // Email, WhatsApp, SMS, In-App Notification
+  channel     String // Email, WhatsApp, SMS, In-App Notification
   sentBy      String?
   status      String   @default("Delivered") // Opened, Delivered, Failed
   recipient   String?
@@ -2605,13 +2611,13 @@ model InvoiceReminder {
   @@map("invoice_reminders")
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  EMPLOYEE LOAN MANAGEMENT  (relation-less, companyId-scoped — like Invoice*)
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  EMPLOYEE LOAN MANAGEMENT  (relation-less, companyId-scoped â€” like Invoice*)
 //  Deeply integrated with payroll: an Approved/Disbursed/Running loan's monthly
 //  EMI is auto-deducted when payroll is (re)computed, its installment ledger is
 //  settled idempotently (keyed by payrollId), and outstanding is always DERIVED
-//  (principal − Σ paid principal) so repeated recalcs can never drift.
-// ═══════════════════════════════════════════════════════════════════════════
+//  (principal âˆ’ Î£ paid principal) so repeated recalcs can never drift.
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 model LoanType {
   id                  Int      @id @default(autoincrement())
@@ -2637,46 +2643,46 @@ model LoanType {
 }
 
 model Loan {
-  id                 Int       @id @default(autoincrement())
-  companyId          Int
-  branchId           Int?
-  employeeId         Int
-  employeeName       String    @default("Unknown")
-  department         String?
-  loanNumber         String
-  loanTypeId         Int?
-  loanTypeName       String    @default("Loan")
-  principalAmount    Float     @default(0)
-  interestType       String    @default("Flat") // Flat / Reducing / None
-  interestRate       Float     @default(0) // annual %
-  totalInterest      Float     @default(0)
-  totalPayable       Float     @default(0) // principal + totalInterest
-  tenureMonths       Int       @default(1)
-  emiAmount          Float     @default(0)
-  startDate          String? // yyyy-MM-dd
-  endDate            String? // yyyy-MM-dd
-  deductionStartMonth String   @default("January")
-  deductionStartYear  Int      @default(2026)
-  approvalAuthority  String?
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  branchId            Int?
+  employeeId          Int
+  employeeName        String    @default("Unknown")
+  department          String?
+  loanNumber          String
+  loanTypeId          Int?
+  loanTypeName        String    @default("Loan")
+  principalAmount     Float     @default(0)
+  interestType        String    @default("Flat") // Flat / Reducing / None
+  interestRate        Float     @default(0) // annual %
+  totalInterest       Float     @default(0)
+  totalPayable        Float     @default(0) // principal + totalInterest
+  tenureMonths        Int       @default(1)
+  emiAmount           Float     @default(0)
+  startDate           String? // yyyy-MM-dd
+  endDate             String? // yyyy-MM-dd
+  deductionStartMonth String    @default("January")
+  deductionStartYear  Int       @default(2026)
+  approvalAuthority   String?
   // Reason / purpose the money is requested for (esp. Salary Advances). Distinct
   // from `remarks`, which is internal HR/Finance commentary.
-  purpose            String?   @db.Text
-  remarks            String?   @db.Text
-  attachments        String?   @db.Text // JSON array of {name,data,mimeType}
-  // Workflow: Draft → Pending Approval → Approved → (Rejected) → Disbursed →
-  // Running → Completed → Closed
-  status             String    @default("Draft")
-  rejectionReason    String?
-  disbursedDate      String?
-  requestedBy        String?
-  approvedBy         String?
-  approvedAt         DateTime?
-  closedAt           DateTime?
+  purpose             String?   @db.Text
+  remarks             String?   @db.Text
+  attachments         String?   @db.Text // JSON array of {name,data,mimeType}
+  // Workflow: Draft â†’ Pending Approval â†’ Approved â†’ (Rejected) â†’ Disbursed â†’
+  // Running â†’ Completed â†’ Closed
+  status              String    @default("Draft")
+  rejectionReason     String?
+  disbursedDate       String?
+  requestedBy         String?
+  approvedBy          String?
+  approvedAt          DateTime?
+  closedAt            DateTime?
   // Reminder stages already fired for this loan's next-due EMI (["7","1","overdue"])
-  // — the scheduler dedupes against this so a stage never re-sends.
-  remindersSent      Json?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  // â€” the scheduler dedupes against this so a stage never re-sends.
+  remindersSent       Json?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@unique([companyId, loanNumber])
   @@index([companyId])
@@ -2685,7 +2691,7 @@ model Loan {
   @@map("loans")
 }
 
-// ── Employee Card Designer templates ─────────────────────────────────────────
+// â”€â”€ Employee Card Designer templates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Relation-less, companyId-scoped (no Company FK) so it never touches the maxed
 // Company model. Each row is a full portable card design spec (front+back). Built
 // -in templates ship in the frontend; only custom/edited ones persist here.
@@ -2696,8 +2702,8 @@ model CardTemplate {
   category    String   @default("Custom")
   size        String   @default("CR80")
   orientation String   @default("portrait")
-  builtinId   String?  // origin builtin id when duplicated/edited
-  spec        Json     // { theme, frontBg, backBg, elements[] }
+  builtinId   String? // origin builtin id when duplicated/edited
+  spec        Json // { theme, frontBg, backBg, elements[] }
   isDefault   Boolean  @default(false)
   shared      Boolean  @default(false) // Super-Admin: visible to all companies
   createdBy   String?
@@ -2711,12 +2717,12 @@ model CardTemplate {
 // Which Employee ID-card template a company has made ACTIVE. Additive & isolated
 // (relation-less, one row per company) so it can point at EITHER a built-in
 // template (frontend id, e.g. "glassmorphism") OR a saved custom template
-// ("db:<n>") — the card_templates.isDefault flag can only mark custom rows, so
+// ("db:<n>") â€” the card_templates.isDefault flag can only mark custom rows, so
 // this table is the single source of truth for the company's active card design.
 model CardActiveTemplate {
   id         Int      @id @default(autoincrement())
   companyId  Int      @unique
-  templateId String   // built-in id (e.g. "glassmorphism") or "db:<n>" for a custom template
+  templateId String // built-in id (e.g. "glassmorphism") or "db:<n>" for a custom template
   updatedBy  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -2724,14 +2730,14 @@ model CardActiveTemplate {
   @@map("card_active_templates")
 }
 
-// Visual drag-and-drop Invoice Designer — per-company named canvas layouts.
+// Visual drag-and-drop Invoice Designer â€” per-company named canvas layouts.
 // Additive & isolated: the classic flow templates (invoice_settings.designJson)
 // are untouched; an invoice only renders a canvas layout when one is set active.
 model InvoiceLayout {
   id         Int      @id @default(autoincrement())
   companyId  Int
   name       String
-  layoutJson String   @db.Text // { page, blocks[] } — the canvas design spec (JSON)
+  layoutJson String   @db.Text // { page, blocks[] } â€” the canvas design spec (JSON)
   isDefault  Boolean  @default(false) // the company's ACTIVE canvas layout (0 or 1)
   createdBy  String?
   updatedBy  String?
@@ -2757,7 +2763,7 @@ model LoanInstallment {
   closingBalance     Float     @default(0)
   status             String    @default("Pending") // Pending / Paid / Skipped
   paidAmount         Float     @default(0)
-  paidDate          DateTime?
+  paidDate           DateTime?
   paidByPayrollId    Int? // idempotency key: which payroll settled this installment
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -2786,42 +2792,42 @@ model LoanAudit {
   @@map("loan_audits")
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-//  COMPLIANCE MANAGEMENT — statutory filing calendar / due-date tracker.
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  COMPLIANCE MANAGEMENT â€” statutory filing calendar / due-date tracker.
 //  Complements the existing 133-report statutory ENGINE (complianceReport
 //  controller) and the ComplianceRecord registration/licence tracker: this adds
-//  the periodic FILING obligations (PF/ESI/PT/TDS/GST/LWF/Bonus…) with due dates,
+//  the periodic FILING obligations (PF/ESI/PT/TDS/GST/LWF/Bonusâ€¦) with due dates,
 //  status, statutory amounts (derived from payroll) and challan documents.
 //  Relation-less, companyId-scoped. Does NOT change payroll or statutory math.
-// ═══════════════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 model ComplianceFiling {
-  id               Int      @id @default(autoincrement())
-  companyId        Int
-  category         String // PF / ESI / PT / TDS / GST / LWF / Bonus / Gratuity / Factory Act / Labour License / Custom
-  title            String
-  frequency        String   @default("Monthly") // Monthly / Quarterly / Half-Yearly / Annual / One-Time
-  periodLabel      String // "Jul 2026" / "Q1 2026-27" / "FY 2026-27"
-  periodMonth      Int      @default(0) // 1..12 for monthly/quarterly anchor; 0 for annual
-  periodYear       Int
-  dueDate          String // yyyy-MM-dd
-  status           String   @default("Pending") // Pending / Filed / Overdue / Waived
-  amount           Float?   @default(0) // statutory liability (derived from payroll, editable)
-  filedDate        String?
-  referenceNumber  String? // challan / ARN / acknowledgement no.
-  challanFileData  String?  @db.LongText // uploaded challan (base64)
-  challanFileName  String?
-  challanMimeType  String?
-  versionHistory   Json? // prior challan uploads
-  reminderDays     Int      @default(7)
-  assignedTo       String?
-  remarks          String?  @db.Text
-  autoGenerated    Boolean  @default(false)
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  category        String // PF / ESI / PT / TDS / GST / LWF / Bonus / Gratuity / Factory Act / Labour License / Custom
+  title           String
+  frequency       String   @default("Monthly") // Monthly / Quarterly / Half-Yearly / Annual / One-Time
+  periodLabel     String // "Jul 2026" / "Q1 2026-27" / "FY 2026-27"
+  periodMonth     Int      @default(0) // 1..12 for monthly/quarterly anchor; 0 for annual
+  periodYear      Int
+  dueDate         String // yyyy-MM-dd
+  status          String   @default("Pending") // Pending / Filed / Overdue / Waived
+  amount          Float?   @default(0) // statutory liability (derived from payroll, editable)
+  filedDate       String?
+  referenceNumber String? // challan / ARN / acknowledgement no.
+  challanFileData String?  @db.LongText // uploaded challan (base64)
+  challanFileName String?
+  challanMimeType String?
+  versionHistory  Json? // prior challan uploads
+  reminderDays    Int      @default(7)
+  assignedTo      String?
+  remarks         String?  @db.Text
+  autoGenerated   Boolean  @default(false)
   // Reminder stages already fired for this filing (["30","15","7","1","overdue"])
-  // — the scheduler dedupes against this so a stage never re-sends.
-  remindersSent    Json?
-  createdBy        String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // â€” the scheduler dedupes against this so a stage never re-sends.
+  remindersSent   Json?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([companyId, category, periodMonth, periodYear])
   @@index([companyId])
@@ -2844,13 +2850,13 @@ model ComplianceFilingAudit {
   @@map("compliance_filing_audits")
 }
 
-// Attendance & Salary Deduction Policy — the MASTER calculation config that
-// drives every attendance→salary computation (LOP basis, weekly-off/holiday
+// Attendance & Salary Deduction Policy â€” the MASTER calculation config that
+// drives every attendanceâ†’salary computation (LOP basis, weekly-off/holiday
 // pay, absent / half-day / LWP deduction, sandwich policy, OT multiplier).
 // Isolated table (plain companyId/branchId Int, no relation) following the
 // compliance_* pattern. Every save INSERTS a new row = a new immutable version;
 // the highest `version` for a (companyId, branchId) scope is the effective
-// policy. branchId = null → company-wide policy; a non-null branchId row is a
+// policy. branchId = null â†’ company-wide policy; a non-null branchId row is a
 // branch-level override that wins for that branch when present. Payroll rows
 // stamp the version they were computed under (Payroll.policyVersion), so old
 // payslips keep their rules until an explicit recalculation.
@@ -2870,7 +2876,7 @@ model DeductionPolicy {
   @@map("deduction_policy")
 }
 
-// Finance & Compliance → Documents. An isolated statutory-document repository
+// Finance & Compliance â†’ Documents. An isolated statutory-document repository
 // (Loan/Advance agreements, PF/ESI/PT/LWF challans, GST/TDS returns, Bonus &
 // Gratuity registers, custom docs). Deliberately SEPARATE from the generic
 // `Document` model so it never mixes with the general Documents module. File is
@@ -2882,7 +2888,7 @@ model ComplianceDocument {
   companyId      Int
   branchId       Int? // optional branch scope
   name           String
-  category       String // Employee Loan Agreement / PF Challan / ESI Challan / …
+  category       String // Employee Loan Agreement / PF Challan / ESI Challan / â€¦
   complianceType String? // PF / ESI / PT / LWF / GST / TDS / Bonus / Gratuity (optional tag)
   employeeId     Int?
   employeeName   String?
@@ -2893,7 +2899,7 @@ model ComplianceDocument {
   size           String?
   url            String?  @db.Text // optional external link instead of/along with a file
   issueDate      String? // ISO yyyy-mm-dd
-  expiryDate     String? // ISO yyyy-mm-dd — drives "Expiring Soon" / "Expired"
+  expiryDate     String? // ISO yyyy-mm-dd â€” drives "Expiring Soon" / "Expired"
   description    String?  @db.Text
   tags           String? // comma-separated tags
   status         String   @default("Pending") // Pending / Verified / Active / Rejected / Expired / Archived
@@ -2915,7 +2921,7 @@ model ComplianceDocument {
   @@map("compliance_documents")
 }
 
-// Leave-type master — WHICH leave types a company offers, and WHO is eligible.
+// Leave-type master â€” WHICH leave types a company offers, and WHO is eligible.
 //
 // Gender-based eligibility is a business rule, not a UI preference: a male
 // employee must not be able to apply for Maternity Leave through the form OR by
@@ -2929,7 +2935,7 @@ model ComplianceDocument {
 model LeaveTypePolicy {
   id             Int      @id @default(autoincrement())
   companyId      Int // parent company id (branch ids resolve to the parent)
-  code           String // stable key: annual, casual, sick, maternity, paternity…
+  code           String // stable key: annual, casual, sick, maternity, paternityâ€¦
   label          String // what HR sees and what the request stores
   eligibleGender String   @default("All")
   enabled        Boolean  @default(true)
@@ -2944,7 +2950,7 @@ model LeaveTypePolicy {
   @@map("leave_type_policy")
 }
 
-// ── Multi-Tenant Bank Verification Platform (BYO API Architecture) ──────────────
+// â”€â”€ Multi-Tenant Bank Verification Platform (BYO API Architecture) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Stores company-specific bank verification provider settings with encrypted credentials.
 model CompanyBankVerificationSettings {
   id                      Int       @id @default(autoincrement())
@@ -2962,7 +2968,7 @@ model CompanyBankVerificationSettings {
   webhookSecretEncrypted  String?   @db.Text
   environment             String    @default("Sandbox") // Sandbox / Production
   isEnabled               Boolean   @default(false)
-  lastConnectionStatus    String?   // connected / failed / invalid_token / unreachable
+  lastConnectionStatus    String? // connected / failed / invalid_token / unreachable
   lastConnectionCheckedAt DateTime?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
@@ -2971,13 +2977,13 @@ model CompanyBankVerificationSettings {
 }
 
 // Immutable audit log of every bank account verification request per tenant.
-// Rows are never updated or deleted — one row per verification attempt, forever.
+// Rows are never updated or deleted â€” one row per verification attempt, forever.
 //
 // The columns below the original block are the enterprise verification record:
 // every field the provider returns is extracted into a typed column AND kept
 // verbatim in `rawResponse`, so a field Cashfree adds tomorrow is still stored
 // without a schema change. `rawRequest` is the outbound payload with credentials
-// stripped — client secrets/keys/tokens are never written here.
+// stripped â€” client secrets/keys/tokens are never written here.
 model BankVerificationAuditLog {
   id                  Int      @id @default(autoincrement())
   companyId           Int
@@ -2989,59 +2995,59 @@ model BankVerificationAuditLog {
   referenceId         String?
   requestTime         DateTime @default(now())
   responseTimeMs      Int?
-  status              String   // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / MANUAL_OVERRIDE / RATE_LIMITED / ERROR
+  status              String // VERIFIED / FAILED / VERIFICATION_INCOMPLETE / MANUAL_OVERRIDE / RATE_LIMITED / ERROR
   errorMessage        String?  @db.Text
   createdAt           DateTime @default(now())
 
-  // ── Who / where (§1, §2, §7) ──────────────────────────────────────────────
-  employeeId          Int?
-  employeeCode        String?  @db.VarChar(64)
-  branchId            Int?
-  branchName          String?  @db.VarChar(191)
-  department          String?  @db.VarChar(191)
-  designation         String?  @db.VarChar(191)
-  employeeEmail       String?  @db.VarChar(191)
-  employeePhone       String?  @db.VarChar(32)
-  verifiedById        Int?
-  verifiedByName      String?  @db.VarChar(191)
-  verifiedByRole      String?  @db.VarChar(64)
+  // â”€â”€ Who / where (Â§1, Â§2, Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  employeeId     Int?
+  employeeCode   String? @db.VarChar(64)
+  branchId       Int?
+  branchName     String? @db.VarChar(191)
+  department     String? @db.VarChar(191)
+  designation    String? @db.VarChar(191)
+  employeeEmail  String? @db.VarChar(191)
+  employeePhone  String? @db.VarChar(32)
+  verifiedById   Int?
+  verifiedByName String? @db.VarChar(191)
+  verifiedByRole String? @db.VarChar(64)
 
-  // ── Provider identity & environment (§1, §6) ──────────────────────────────
-  environment         String?  @db.VarChar(32)  // Production / Sandbox
-  verificationId      String?  @db.VarChar(191) // provider-side verification id
-  requestId           String?  @db.VarChar(191) // provider-side request/trace id
-  verificationSource  String?  @db.VarChar(64)
+  // â”€â”€ Provider identity & environment (Â§1, Â§6) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  environment        String? @db.VarChar(32) // Production / Sandbox
+  verificationId     String? @db.VarChar(191) // provider-side verification id
+  requestId          String? @db.VarChar(191) // provider-side request/trace id
+  verificationSource String? @db.VarChar(64)
 
-  // ── Bank response payload (§3) ────────────────────────────────────────────
-  accountHolderName   String?  @db.VarChar(191)
-  bankName            String?  @db.VarChar(191)
-  branchName2         String?  @db.VarChar(191) // bank branch (distinct from company branch)
-  branchAddress       String?  @db.Text
-  city                String?  @db.VarChar(128)
-  district            String?  @db.VarChar(128)
-  state               String?  @db.VarChar(128)
-  micr                String?  @db.VarChar(32)
-  swift               String?  @db.VarChar(32)
-  utr                 String?  @db.VarChar(64)
-  accountStatus       String?  @db.VarChar(64)
-  accountStatusCode   String?  @db.VarChar(64)
-  verificationMessage String?  @db.Text
+  // â”€â”€ Bank response payload (Â§3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  accountHolderName   String? @db.VarChar(191)
+  bankName            String? @db.VarChar(191)
+  branchName2         String? @db.VarChar(191) // bank branch (distinct from company branch)
+  branchAddress       String? @db.Text
+  city                String? @db.VarChar(128)
+  district            String? @db.VarChar(128)
+  state               String? @db.VarChar(128)
+  micr                String? @db.VarChar(32)
+  swift               String? @db.VarChar(32)
+  utr                 String? @db.VarChar(64)
+  accountStatus       String? @db.VarChar(64)
+  accountStatusCode   String? @db.VarChar(64)
+  verificationMessage String? @db.Text
 
-  // ── Name match (§4) ───────────────────────────────────────────────────────
-  enteredName         String?  @db.VarChar(191)
-  nameMatchResult     String?  @db.VarChar(32) // EXACT_MATCH / PARTIAL_MATCH / MISMATCH
-  nameMatchScore      Int?                     // 0–100
-  nameMatchSource     String?  @db.VarChar(32) // PROVIDER / COMPUTED
+  // â”€â”€ Name match (Â§4) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  enteredName     String? @db.VarChar(191)
+  nameMatchResult String? @db.VarChar(32) // EXACT_MATCH / PARTIAL_MATCH / MISMATCH
+  nameMatchScore  Int? // 0â€“100
+  nameMatchSource String? @db.VarChar(32) // PROVIDER / COMPUTED
 
-  // ── API log (§6, §10) ─────────────────────────────────────────────────────
-  requestTimestamp    DateTime?
-  responseTimestamp   DateTime?
-  httpStatus          Int?
-  retryCount          Int      @default(0)
-  rawRequest          Json?    // credentials stripped
-  rawResponse         Json?    // verbatim provider body — future fields included
+  // â”€â”€ API log (Â§6, Â§10) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  requestTimestamp  DateTime?
+  responseTimestamp DateTime?
+  httpStatus        Int?
+  retryCount        Int       @default(0)
+  rawRequest        Json? // credentials stripped
+  rawResponse       Json? // verbatim provider body â€” future fields included
 
-  // ── Billing (§6, §7) ──────────────────────────────────────────────────────
+  // â”€â”€ Billing (Â§6, Â§7) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   verificationCost    Int?
   walletBalanceBefore Int?
   walletBalanceAfter  Int?
@@ -3054,7 +3060,7 @@ model BankVerificationAuditLog {
   @@map("bank_verification_audit_logs")
 }
 
-// ── Enterprise Bank Verification Credit Management System ───────────────────────
+// â”€â”€ Enterprise Bank Verification Credit Management System â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Stores verification credit balance, usage, and expiry per tenant and service type.
 model VerificationCreditWallet {
   id               Int       @id @default(autoincrement())
@@ -3076,22 +3082,22 @@ model VerificationCreditWallet {
 
 // Immutable ledger of all credit allocations, additions, deductions, resets, and verifications.
 model VerificationCreditTransaction {
-  id               Int       @id @default(autoincrement())
-  transactionId    String    @unique // stable ledger tx ID (e.g. TX-CR-20260727-0001)
-  companyId        Int
-  employeeId       Int?
-  verificationId   String?   // reference to verification audit log or external ref
-  serviceType      String    @default("BANK_VERIFICATION")
-  transactionType  String    // Credit / Debit / Allocation / Reset / Expired / Addition / Deduction
-  credits          Int       // number of credits added or deducted
-  openingBalance   Int
-  closingBalance   Int
-  provider         String    @default("ZeniaHR Verification Gateway")
-  referenceId      String?
-  remarks          String?   @db.Text
-  createdBy        String?   // Super Admin or System
-  verifiedBy       String?   // Employee / HR who triggered verification
-  createdAt        DateTime  @default(now())
+  id              Int      @id @default(autoincrement())
+  transactionId   String   @unique // stable ledger tx ID (e.g. TX-CR-20260727-0001)
+  companyId       Int
+  employeeId      Int?
+  verificationId  String? // reference to verification audit log or external ref
+  serviceType     String   @default("BANK_VERIFICATION")
+  transactionType String // Credit / Debit / Allocation / Reset / Expired / Addition / Deduction
+  credits         Int // number of credits added or deducted
+  openingBalance  Int
+  closingBalance  Int
+  provider        String   @default("ZeniaHR Verification Gateway")
+  referenceId     String?
+  remarks         String?  @db.Text
+  createdBy       String? // Super Admin or System
+  verifiedBy      String? // Employee / HR who triggered verification
+  createdAt       DateTime @default(now())
 
   @@index([companyId])
   @@index([transactionId])
@@ -3099,15 +3105,15 @@ model VerificationCreditTransaction {
   @@map("verification_credit_transactions")
 }
 
-// ── Payment Gateway (Cashfree PG) — reusable self-service payment spine ──────
+// â”€â”€ Payment Gateway (Cashfree PG) â€” reusable self-service payment spine â”€â”€â”€â”€â”€â”€
 // One row per merchant order. Tenant identity (companyId/branchId/userId) is
 // written ONCE at order creation from the authenticated session and is the ONLY
-// source of truth for settlement — webhook/client payloads never override it.
+// source of truth for settlement â€” webhook/client payloads never override it.
 // The pricing snapshot (sellingPriceSnapshot/gst/creditsPurchased) is frozen at
 // creation; settlement must never recalculate from live settings.
 model PaymentOrder {
   id                   Int       @id @default(autoincrement())
-  orderId              String    @unique // our merchant order id (PGO-…)
+  orderId              String    @unique // our merchant order id (PGO-â€¦)
   provider             String    @default("CASHFREE_PG")
   purpose              String    @default("VERIFICATION_CREDIT_RECHARGE")
   cfOrderId            String?
@@ -3127,7 +3133,7 @@ model PaymentOrder {
   totalAmount          Float
   currency             String    @default("INR")
   sellingPriceSnapshot Float // per-credit selling price at order creation
-  providerCostSnapshot Float     @default(0) // internal margin input — never sent to tenants
+  providerCostSnapshot Float     @default(0) // internal margin input â€” never sent to tenants
   creditsPurchased     Int
   packageId            Int?
   packageName          String?
@@ -3158,7 +3164,7 @@ model PaymentOrder {
   @@map("payment_orders")
 }
 
-// Every webhook delivery, valid or not — the system of record for gateway
+// Every webhook delivery, valid or not â€” the system of record for gateway
 // callbacks (AuditService intentionally drops writes with no authenticated
 // user, which a webhook never has). eventKey is the dedupe constraint.
 model PaymentWebhookEvent {
@@ -3181,7 +3187,7 @@ model PaymentWebhookEvent {
 }
 
 // A gateway-reported refund NEVER auto-removes credits (they may be spent).
-// It creates this record, flags the order, notifies Super Admin — who decides
+// It creates this record, flags the order, notifies Super Admin â€” who decides
 // whether to deduct credits manually (creditsAdjusted trail).
 model PaymentRefund {
   id              Int       @id @default(autoincrement())
@@ -3205,7 +3211,7 @@ model PaymentRefund {
 
 // Super-Admin-only pricing configuration (single GLOBAL row). providerCost is
 // internal-only: it exists for margin reporting and must never reach a tenant
-// response — company users see only "amount → credits".
+// response â€” company users see only "amount â†’ credits".
 model VerificationRechargeSettings {
   id                    Int      @id @default(autoincrement())
   scope                 String   @unique @default("GLOBAL")
@@ -3227,7 +3233,7 @@ model VerificationRechargeSettings {
 }
 
 // Quick-pick recharge packages. Credits are always computed from the CURRENT
-// selling price at quote/order time — a package stores only the amount, so a
+// selling price at quote/order time â€” a package stores only the amount, so a
 // price change updates every package consistently.
 model VerificationRechargePackage {
   id          Int      @id @default(autoincrement())
@@ -3242,14 +3248,14 @@ model VerificationRechargePackage {
   @@map("verification_recharge_packages")
 }
 
-// Recharge tax invoice — created AFTER the settlement commit (an invoice
+// Recharge tax invoice â€” created AFTER the settlement commit (an invoice
 // failure must never roll back credits; regenerate instead). orderId is unique:
 // one settled order can never produce two invoices.
 model VerificationRechargeInvoice {
   id               Int       @id @default(autoincrement())
   invoiceNo        String    @unique // VCR-YYYY-0001 (credits) / ESP-YYYY-0001 (slots)
   orderId          String    @unique
-  // Which paid product this invoice bills — drives the line-item label and
+  // Which paid product this invoice bills â€” drives the line-item label and
   // number prefix. The table serves all self-service purchases.
   purpose          String    @default("VERIFICATION_CREDIT_RECHARGE")
   companyId        Int
@@ -3281,61 +3287,129 @@ model VerificationRechargeInvoice {
 
 // Lightweight tenant verification settings for mode and provider selection.
 model VerificationSettings {
-  id                  Int      @id @default(autoincrement())
-  companyId           Int      @unique
-  verificationMode    String   @default("Manual") // Manual / API
-  provider            String   @default("ZeniaHR Verification Gateway")
-  status              String   @default("Connected") // Connected / Disconnected / Suspended
-  costPerVerification Int      @default(1)
-  // §12 — when on, payroll salary transfer requires a VERIFIED bank account.
+  id                            Int      @id @default(autoincrement())
+  companyId                     Int      @unique
+  verificationMode              String   @default("Manual") // Manual / API
+  provider                      String   @default("ZeniaHR Verification Gateway")
+  status                        String   @default("Connected") // Connected / Disconnected / Suspended
+  costPerVerification           Int      @default(1)
+  // Â§12 â€” when on, payroll salary transfer requires a VERIFIED bank account.
   // Off by default: turning it on is a deliberate tenant policy decision, never
   // something a module upgrade imposes on existing payroll runs.
-  requireVerifiedBankForPayroll Boolean @default(false)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  requireVerifiedBankForPayroll Boolean  @default(false)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 
   @@map("verification_settings")
 }
 
-// ── White Label & Custom Domain (Beta) ───────────────────────────────────────
-// One domain ↔ one company (both unique). Status machine:
-// PENDING_DNS → DNS_VERIFIED → SSL_PENDING → SSL_ISSUED → ACTIVE, plus
-// FAILED / DISABLED. Never hardcode mappings — this table is the router.
+// â”€â”€ White Label & Custom Domain (Beta) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// One domain â†” one company (both unique). Status machine:
+// PENDING_DNS â†’ DNS_VERIFIED â†’ SSL_PENDING â†’ SSL_ISSUED â†’ ACTIVE, plus
+// FAILED / DISABLED. Never hardcode mappings â€” this table is the router.
 model DomainMapping {
-  id            Int       @id @default(autoincrement())
-  uuid          String?   @unique // stable public identifier
-  companyId     Int       @unique
-  domain        String    @unique // lowercased FQDN, e.g. hr.company.com
-  subdomain     String? // first label, e.g. "hr"
-  status        String    @default("PENDING_DNS")
-  sslStatus     String    @default("NONE") // NONE / PENDING / ISSUED / RENEWAL_FAILED
-  sslProvider   String? // certbot / manual / mock (frozen at issue time)
-  healthStatus  String    @default("UNKNOWN") // UNKNOWN / HEALTHY / DEGRADED / DOWN
-  healthDetail  String?   @db.Text // JSON of the last health probe
-  dnsType       String    @default("CNAME") // CNAME / A
-  dnsTarget     String // what the customer must point at
-  dnsProvider   String? // customer-declared provider (informational)
-  cnameHost     String? // frozen instruction snapshot
-  cnameValue    String?
-  txtHost       String?
-  txtValue      String?
-  verificationMethod String @default("DNS")
-  verifyToken   String // TXT token (_zenia-verify) for ownership proof
-  dnsCheckedAt  DateTime?
-  dnsVerifiedAt DateTime?
-  sslIssuedAt   DateTime?
-  sslExpiresAt  DateTime?
-  activatedAt   DateTime?
-  lastError     String?   @db.Text
-  failCount     Int       @default(0)
-  disabledBy    String?
-  disabledAt    DateTime?
-  createdBy     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                 Int       @id @default(autoincrement())
+  uuid               String?   @unique // stable public identifier
+  companyId          Int       @unique
+  domain             String    @unique // lowercased FQDN, e.g. hr.company.com
+  subdomain          String? // first label, e.g. "hr"
+  status             String    @default("PENDING_DNS")
+  sslStatus          String    @default("NONE") // NONE / PENDING / ISSUED / RENEWAL_FAILED
+  sslProvider        String? // certbot / manual / mock (frozen at issue time)
+  healthStatus       String    @default("UNKNOWN") // UNKNOWN / HEALTHY / DEGRADED / DOWN
+  healthDetail       String?   @db.Text // JSON of the last health probe
+  dnsType            String    @default("CNAME") // CNAME / A
+  dnsTarget          String // what the customer must point at
+  dnsProvider        String? // customer-declared provider (informational)
+  cnameHost          String? // frozen instruction snapshot
+  cnameValue         String?
+  txtHost            String?
+  txtValue           String?
+  verificationMethod String    @default("DNS")
+  verifyToken        String // TXT token (_zenia-verify) for ownership proof
+  dnsCheckedAt       DateTime?
+  dnsVerifiedAt      DateTime?
+  sslIssuedAt        DateTime?
+  sslExpiresAt       DateTime?
+  activatedAt        DateTime?
+  lastError          String?   @db.Text
+  failCount          Int       @default(0)
+  disabledBy         String?
+  disabledAt         DateTime?
+  createdBy          String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@index([status])
   @@map("domain_mappings")
+}
+
+model DocumentTemplate {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  branchId        Int?
+  name            String
+  type            String
+  status          String   @default("Draft")
+  designType      String   @default("HTML")
+  content         String?  @db.LongText
+  backgroundImage String?  @db.LongText
+  version         Int      @default(1)
+  isGlobal        Boolean  @default(false)
+  description     String?  @db.Text
+  workflowStatus  String   @default("Draft")
+  language        String   @default("en")
+  parentTemplateId Int?
+  createdBy       Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  versions        TemplateVersion[]
+  assignments     TemplateAssignment[]
+  usageLogs       TemplateUsageLog[]
+  approvals       TemplateApproval[]
+  schedules       DocumentSchedule[]
+
+  @@index([companyId])
+  @@index([type])
+  @@map("document_templates")
+}
+
+model TemplateApproval {
+  id          Int      @id @default(autoincrement())
+  templateId  Int
+  userId      Int
+  status      String   @default("Pending") // Pending / Approved / Rejected
+  comments    String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([userId])
+  @@map("template_approvals")
+}
+
+model DocumentSchedule {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  templateId  Int
+  name        String
+  cronExpr    String
+  targetGroup String?  // e.g., "All Employees", "Sales Dept"
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([templateId])
+  @@map("document_schedules")
 }
 
 // Per-company white-label branding shown on the custom-domain login page and
@@ -3393,4 +3467,560 @@ model MobileSession {
   @@index([userId])
   @@index([deviceId])
   @@map("mobile_sessions")
+}
+
+model Wallet {
+  id             Int                 @id @default(autoincrement())
+  companyId      Int                 @unique
+  balance        Float               @default(0.0)
+  lastRechargeAt DateTime?
+  status         String              @default("Active") // Active, Suspended
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  company        Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactions   WalletTransaction[]
+}
+
+model WalletTransaction {
+  id              Int      @id @default(autoincrement())
+  walletId        Int
+  type            String // Recharge, Payroll, Refund, Adjustment
+  amount          Float
+  balanceBefore   Float
+  balanceAfter    Float
+  referenceNumber String?
+  paymentGateway  String?
+  payrollId       Int?
+  createdBy       String // System, User Name
+  createdAt       DateTime @default(now())
+  wallet          Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+model PricingMaster {
+  id             Int      @id @default(autoincrement())
+  tierName       String   @unique // Free, 0-100, 100-500, Custom
+  minEmployees   Int
+  maxEmployees   Int?
+  quarterlyPrice Float
+  yearlyPrice    Float
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model TemplateVersion {
+  id              Int      @id @default(autoincrement())
+  templateId      Int
+  version         Int
+  designType      String
+  content         String?  @db.LongText
+  backgroundImage String?  @db.LongText
+  changeSummary   String?  @db.Text
+  createdBy       Int?
+  createdAt       DateTime @default(now())
+
+  template        DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateAssignment {
+  id              Int      @id @default(autoincrement())
+  templateId      Int
+  companyId       Int
+  targetType      String
+  targetId        Int?
+  assignedBy      Int?
+  createdAt       DateTime @default(now())
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  template        DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, targetType, targetId])
+}
+
+model TemplateUsageLog {
+  id              Int      @id @default(autoincrement())
+  templateId      Int
+  companyId       Int
+  moduleUsedIn    String
+  targetEntityId  Int?
+  generatedBy     Int?
+  documentHash    String?  @unique @db.VarChar(128)
+  emailStatus     String?  // Sent / Opened / Failed
+  whatsappStatus  String?  // Sent / Read / Failed
+  openedAt        DateTime?
+  downloadedAt    DateTime?
+  createdAt       DateTime @default(now())
+
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  template        DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+// ==================================================
+// PHASE 4: CLIENT PORTAL & DOCUMENT MANAGEMENT
+// ==================================================
+
+model PortalUser {
+  id           Int      @id @default(autoincrement())
+  companyId    Int
+  name         String
+  email        String   @unique
+  passwordHash String
+  type         String   @default("Client") // Client, Vendor, Auditor
+  status       String   @default("Active")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model DocumentFolder {
+  id        Int      @id @default(autoincrement())
+  companyId Int
+  parentId  Int?
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  parent    DocumentFolder?  @relation("FolderHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children  DocumentFolder[] @relation("FolderHierarchy")
+  documents DocumentVault[]
+}
+
+model DocumentVault {
+  id             Int      @id @default(autoincrement())
+  companyId      Int
+  folderId       Int?
+  name           String
+  originalName   String?
+  fileType       String
+  size           Int
+  url            String   @db.LongText
+  uploadedBy     Int?
+  tags           Json?
+  category       String?
+  ocrText        String?  @db.LongText
+  extractedData  Json?
+  retentionUntil DateTime?
+  isArchived     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  folder         DocumentFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+}
+
+model DocumentShareLink {
+  id               Int      @id @default(autoincrement())
+  documentId       Int
+  companyId        Int
+  token            String   @unique
+  expiresAt        DateTime?
+  maxDownloads     Int?
+  downloadCount    Int      @default(0)
+  passwordHash     String?  
+  requireOtp       Boolean  @default(false)
+  watermark        Boolean  @default(false)
+  disablePrint     Boolean  @default(false)
+  createdAt        DateTime @default(now())
+}
+
+model DocumentApprovalWorkflow {
+  id           Int      @id @default(autoincrement())
+  documentId   Int
+  companyId    Int
+  level        Int      @default(1)
+  approverRole String
+  approverId   Int?
+  status       String   @default("Pending") // Pending, Approved, Rejected
+  comments     String?  @db.Text
+  signatureUrl String?  @db.LongText
+  actionAt     DateTime?
+  createdAt    DateTime @default(now())
+}
+
+model DocumentRequest {
+  id            Int      @id @default(autoincrement())
+  companyId     Int
+  requesterType String   // Client, Employee
+  requesterId   Int
+  documentType  String
+  status        String   @default("Pending") // Pending, Approved, Generated
+  reason        String?  @db.Text
+  generatedDocId Int?    
+  createdAt     DateTime @default(now())
+}
+
+model DocumentAuditLog {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  documentId  Int?
+  action      String   // View, Download, Print, Share, Approve
+  performedBy String   // e.g., "PortalUser:12", "User:5"
+  ipAddress   String?
+  details     Json?
+  createdAt   DateTime @default(now())
+}
+
+// --- SPRINT 1: Operations & Assets ---
+
+model Vendor {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  name            String
+  contactName     String?
+  email           String?
+  phone           String?
+  serviceType     String?
+  status          String    @default("Active")
+  rating          Float     @default(0.0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  documents       VendorDocument[]
+  invoices        VendorInvoice[]
+  @@index([companyId])
+}
+
+model VendorDocument {
+  id         Int      @id @default(autoincrement())
+  vendorId   Int
+  name       String
+  fileUrl    String   @db.LongText
+  createdAt  DateTime @default(now())
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model VendorInvoice {
+  id         Int      @id @default(autoincrement())
+  vendorId   Int
+  amount     Float
+  status     String   @default("Pending")
+  dueDate    DateTime?
+  vendor     Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model Asset {
+  id              Int       @id @default(autoincrement())
+  companyId       Int
+  assetCode       String    @unique
+  name            String
+  category        String
+  status          String    @default("Available") // Available, Allocated, Maintenance, Disposed
+  purchaseDate    DateTime?
+  warrantyExpiry  DateTime?
+  value           Float?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  allocations     AssetAllocation[]
+  @@index([companyId])
+}
+
+model AssetAllocation {
+  id          Int       @id @default(autoincrement())
+  assetId     Int
+  employeeId  Int
+  allocatedAt DateTime  @default(now())
+  returnedAt  DateTime?
+  asset       Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+}
+
+model Visitor {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String
+  phone       String
+  purpose     String
+  hostId      Int?      // Employee ID
+  status      String    @default("Pending") // Pending, Approved, Entered, Exited
+  expectedAt  DateTime?
+  enteredAt   DateTime?
+  exitedAt    DateTime?
+  qrCodeToken String?   @unique
+  createdAt   DateTime  @default(now())
+  @@index([companyId])
+}
+
+model Facility {
+  id          Int       @id @default(autoincrement())
+  companyId   Int
+  name        String
+  type        String    // MeetingRoom, Vehicle, Equipment
+  capacity    Int?
+  status      String    @default("Active")
+  bookings    FacilityBooking[]
+  @@index([companyId])
+}
+
+model FacilityBooking {
+  id          Int       @id @default(autoincrement())
+  facilityId  Int
+  employeeId  Int
+  startTime   DateTime
+  endTime     DateTime
+  purpose     String?
+  status      String    @default("Approved")
+  facility    Facility  @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+}
+
+// --- SPRINT 2: Employee Experience & Learning ---
+
+model PerformanceGoal {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  title       String
+  description String?  @db.Text
+  type        String   @default("KPI") // KPI, OKR
+  target      String?
+  progress    Int      @default(0)
+  status      String   @default("Active")
+  dueDate     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([companyId])
+}
+
+model PerformanceReview {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  employeeId      Int
+  reviewerId      Int?
+  reviewPeriod    String   // e.g. "Q1 2026", "Annual 2026"
+  selfRating      Float?
+  selfComment     String?  @db.Text
+  managerRating   Float?
+  managerComment  String?  @db.Text
+  status          String   @default("Pending") // Pending Self, Pending Manager, Completed
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([companyId])
+}
+
+model Course {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  title       String
+  description String?  @db.Text
+  category    String?
+  isMandatory Boolean  @default(false)
+  status      String   @default("Draft")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  modules     CourseModule[]
+  progress    CourseProgress[]
+  @@index([companyId])
+}
+
+model CourseModule {
+  id          Int      @id @default(autoincrement())
+  courseId    Int
+  title       String
+  type        String   // Video, PDF, Quiz
+  contentUrl  String?  @db.LongText
+  order       Int      @default(0)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model CourseProgress {
+  id          Int      @id @default(autoincrement())
+  courseId    Int
+  employeeId  Int
+  progress    Int      @default(0) // percentage
+  status      String   @default("Not Started") // Not Started, In Progress, Completed
+  completedAt DateTime?
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeCategory {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  name        String
+  description String?
+  articles    KnowledgeArticle[]
+  @@index([companyId])
+}
+
+model KnowledgeArticle {
+  id          Int      @id @default(autoincrement())
+  categoryId  Int
+  title       String
+  content     String   @db.LongText
+  authorId    Int?
+  status      String   @default("Published")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  category    KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model SocialPost {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  authorId    Int
+  content     String   @db.LongText
+  type        String   @default("Post") // Post, Announcement, Poll, Recognition
+  likesCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  @@index([companyId])
+}
+
+model AiChatHistory {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  employeeId  Int
+  message     String   @db.Text
+  response    String   @db.Text
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+// --- SPRINT 3: Recruitment, BI, & Workflow ---
+
+model JobPosting {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  title           String
+  department      String?
+  location        String?
+  type            String   @default("Full-Time") // Full-Time, Part-Time, Contract
+  description     String   @db.LongText
+  requirements    String?  @db.LongText
+  status          String   @default("Open") // Draft, Open, Closed, On-Hold
+  vacancies       Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  candidates      Candidate[]
+  @@index([companyId])
+}
+
+model Candidate {
+  id              Int      @id @default(autoincrement())
+  jobId           Int
+  companyId       Int
+  firstName       String
+  lastName        String
+  email           String
+  phone           String?
+  resumeUrl       String?  @db.LongText
+  skills          String?  @db.Text
+  status          String   @default("Applied") // Applied, Screening, Interview, Offered, Hired, Rejected
+  rating          Float    @default(0.0)
+  aiMatchScore    Int?     // Percentage match from AI parsing
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  job             JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  interviews      Interview[]
+  @@index([companyId])
+}
+
+model Interview {
+  id              Int      @id @default(autoincrement())
+  candidateId     Int
+  panelId         Int?     // Employee ID
+  scheduledAt     DateTime
+  status          String   @default("Scheduled") // Scheduled, Completed, Cancelled
+  feedback        String?  @db.Text
+  rating          Float?
+  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model Workflow {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  name            String
+  triggerEvent    String   // e.g. "OnEmployeeOnboard", "OnLeaveRequest"
+  status          String   @default("Active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  actions         WorkflowAction[]
+  @@index([companyId])
+}
+
+model WorkflowAction {
+  id              Int      @id @default(autoincrement())
+  workflowId      Int
+  type            String   // Email, SMS, Webhook, Task
+  config          Json     // Target endpoints, payload templates
+  order           Int      @default(0)
+  workflow        Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model IntegrationConnection {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  provider        String   // Google Workspace, Slack, SAP
+  status          String   @default("Disconnected") // Connected, Disconnected, Error
+  credentials     Json?    // Encrypted OAuth tokens / API keys
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([companyId])
+}
+
+model NotificationTemplate {
+  id              Int      @id @default(autoincrement())
+  companyId       Int
+  name            String
+  channel         String   // Email, SMS, WhatsApp, Push
+  subject         String?
+  body            String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([companyId])
+}
+
+// --- PHASE 6: SaaS Enterprise & Security ---
+
+model SaaSMarketplaceItem {
+  id           Int      @id @default(autoincrement())
+  name         String
+  type         String   // Credit, Storage, Addon, Branch, AppStorePlugin
+  price        Float
+  billingCycle String   // Monthly, Yearly, One-time
+  description  String?  @db.Text
+  createdAt    DateTime @default(now())
+}
+
+model ApiCredential {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  appName     String
+  apiKey      String   @unique
+  apiSecret   String
+  rateLimit   Int      @default(1000)
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model WebhookSubscription {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  event       String
+  targetUrl   String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model SystemAuditLog {
+  id          Int      @id @default(autoincrement())
+  companyId   Int
+  userId      Int?
+  action      String
+  ipAddress   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  @@index([companyId])
+}
+
+model SecurityPolicy {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  require2FA        Boolean  @default(false)
+  ssoProvider       String?
+  ipWhitelist       String?  @db.Text
+  sessionTimeoutMin Int      @default(60)
+  updatedAt         DateTime @updatedAt
+}
+
+model StorageQuota {
+  id                Int      @id @default(autoincrement())
+  companyId         Int      @unique
+  maxStorageBytes   BigInt
+  usedStorageBytes  BigInt   @default(0)
+  updatedAt         DateTime @updatedAt
 }

@@ -26,7 +26,10 @@ export interface ModulePermissions {
   import?: boolean;
 }
 
-export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents' | 'reports' | 'settings' | 'users' | 'tasks' | 'tenders' | 'contracts' | 'company-profile' | 'communication' | 'audit' | 'invoicing' | 'loans' | 'compliance';
+export type AppModules = 'dashboard' | 'companies' | 'billing' | 'employees' | 'leaves' | 'payroll' | 'attendance' | 'documents'  | 'reports' | 'recruitment' | 'expenses' | 'training' | 'analytics'
+  | 'goals' | 'company' | 'tasks' | 'tenders' | 'contracts' | 'audit' | 'communication'
+  | 'company-profile' | 'templates' | 'vault'
+  | 'vendors' | 'assets' | 'visitors' | 'facilities';
 
 export interface UserAccount {
   id: string;
@@ -220,8 +223,9 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
           setCaptchaToken('');
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to check CAPTCHA status:', err);
+      setError(err.message || 'Failed to connect to authentication server.');
     }
   };
 
