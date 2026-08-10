@@ -128,15 +128,15 @@ const INTENTS = [
   { id: 'not_marked_today',         type: 'data', patterns: [/\b(not\s+marked|no\s+attendance|missing\s+attendance)\b/i] },
   { id: 'absent_today',             type: 'data', patterns: [/\b(absent\s+today|today.*absent|not\s+present)\b/i] },
   { id: 'attendance_today',         type: 'data', patterns: [/\b(present\s+today|attendance\s+today|today.*attendance|today.*present|marked.*today)\b/i] },
-  { id: 'employee_count_active',    type: 'data', patterns: [/\b(active\s+employee|employee.*active|headcount|head\s*count|how\s+many\s+employee|total\s+employee|total\s+staff|team\s+size|staff\s+count|number\s+of\s+employee)\b/i] },
-  { id: 'employee_count_all',       type: 'data', patterns: [/\b(all\s+employee|every\s+employee|list.*employee)\b/i] },
-  { id: 'new_joiners',              type: 'data', patterns: [/\b(join|new\s+hire|new\s+employee|joined|onboard)\b/i] },
+  { id: 'employee_count_active',    type: 'data', patterns: [/\b(active\s+employees?|employees?.*active|headcounts?|head\s*count|how\s+many\s+employees?|total\s+employees?|total\s+staff|team\s+size|staff\s+count|number\s+of\s+employees?)\b/i] },
+  { id: 'employee_count_all',       type: 'data', patterns: [/\b(all\s+employees?|every\s+employee|list.*employees?)\b/i] },
+  { id: 'new_joiners',              type: 'data', patterns: [/\b(join|new\s+hires?|new\s+employees?|joined|onboard)\b/i] },
   { id: 'exits',                    type: 'data', patterns: [/\b(exit|left|resign|terminat|offboard|who\s+left)\b/i] },
   { id: 'department_breakdown',     type: 'data', patterns: [/\b(department|team\s+wise|dept|dept\s+count|by\s+department)\b/i] },
   { id: 'branch_breakdown',         type: 'data', patterns: [/\b(branch|office\s+wise|location\s+wise)\b/i] },
   { id: 'leave_today',              type: 'data', patterns: [/\b(on\s+leave\s+today|leave\s+today|today.*leave)\b/i] },
-  { id: 'pending_leave',            type: 'data', patterns: [/\b(pending\s+leave|leave\s+request|awaiting\s+approval|leave\s+pending)\b/i] },
-  { id: 'leave_balance',            type: 'data', patterns: [/\b(leave\s+balance|remaining\s+leave|leave\s+left|balance.*leave)\b/i] },
+  { id: 'pending_leave',            type: 'data', patterns: [/\b(pending\s+leaves?|leave\s+requests?|awaiting\s+approval|leave\s+pending)\b/i] },
+  { id: 'leave_balance',            type: 'data', patterns: [/\b(leave\s+balances?|remaining\s+leaves?|leaves?\s+left|balances?.*leave)\b/i] },
   { id: 'payroll_summary',          type: 'data', patterns: [/\b(payroll|salary\s+cost|wage|total\s+salary|payroll\s+cost|payroll\s+total|payroll\s+processed)\b/i] },
   { id: 'employee_attendance',      type: 'data', patterns: [/\b(attendance\s+of|attendance\s+for|.*'s\s+attendance)\b/i] },
   { id: 'employee_leave_balance',   type: 'data', patterns: [/\b(leave\s+balance\s+of|.*'s\s+leave\s+balance|balance.*of\s+employee)\b/i] },
@@ -155,13 +155,15 @@ function detectIntent(q) {
 }
 
 function extractEmployeeName(q) {
+  // Strip question lead-ins like "What is ", "Who is ", "Show ", "Give me "
+  const cleaned = q.replace(/^(what|who|show|get|give\s+me)\s+(is|are|the|a|an)?\s+/i, '').trim();
   const patterns = [
     /\bof\s+([A-Z][a-zA-Z\s]{2,30})/i,
     /\bfor\s+([A-Z][a-zA-Z\s]{2,30})/i,
     /([A-Z][a-zA-Z\s]{2,30})'s\s+/i,
   ];
   for (const p of patterns) {
-    const m = q.match(p);
+    const m = cleaned.match(p);
     if (m) {
       const name = m[1].trim();
       if (!['the', 'our', 'this', 'my', 'a', 'an'].includes(name.toLowerCase())) return name;
