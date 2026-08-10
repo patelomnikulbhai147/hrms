@@ -19,7 +19,7 @@ cd "$REPO_DIR"
 # Skip Puppeteer's Chromium download (not needed to build) and raise V8's heap
 # so the Vite build doesn't OOM on small (1GB) instances. Pair with a swap file.
 export PUPPETEER_SKIP_DOWNLOAD=true
-export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=768}"
+export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=1200}"
 npm ci || npm install
 npm run build
 
