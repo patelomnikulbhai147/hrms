@@ -1365,3 +1365,81 @@ exports.getEmployeeAnalytics = async (req, res) => {
   }
 };
 
+// ── GET /api/employees/search ─────────────────────────────────────────────────
+// Lightweight, paginated employee search for the Employee Self-Service /
+// Employee Analytics page. Company-isolated via buildEmployeeScope.
+// Query params: q (search string), page, limit
+// Returns: { data: EmployeeSearchResult[], total, page, limit, totalPages }
+exports.searchEmployees = async (req, res) => {
+  try {
+    const scope = buildEmployeeScope(req);
+    if (!scope.ok) return res.status(scope.status).json(scope.body);
+
+    // Only active / non-offboarded employees are searchable via ESS
+    let where = scope.withStatus(NOT_OFFBOARDED);
+
+    const q = String(req.query.q || '').trim();
+    if (q) {
+      where = {
+        AND: [
+          where,
+          {
+            OR: [
+              { name:        { contains: q } },
+              { firstName:   { contains: q } },
+              { lastName:    { contains: q } },
+              { employeeId:  { contains: q } },
+              { department:  { contains: q } },
+              { designation: { contains: q } },
+              { email:       { contains: q } },
+              { phone:       { contains: q } },
+            ],
+          },
+        ],
+      };
+    }
+
+    const pageNum  = Math.max(1, parseInt(req.query.page  || '1',  10));
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit || '25', 10)));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const [total, employees] = await Promise.all([
+      prisma.employee.count({ where }),
+      prisma.employee.findMany({
+        where,
+        skip,
+        take: limitNum,
+        orderBy: { employeeId: 'asc' },
+        select: {
+          id:          true,
+          employeeId:  true,
+          name:        true,
+          email:       true,
+          phone:       true,
+          department:  true,
+          designation: true,
+          status:      true,
+          profilePhoto: true,
+          branch: { select: { branchName: true } },
+        },
+      }),
+    ]);
+
+    const data = employees.map((e) => ({
+      id:           e.id,
+      employeeId:   e.employeeId,
+      name:         e.name,
+      email:        e.email  || '',
+      mobile:       e.phone  || '',
+      department:   e.department  || '',
+      designation:  e.designation || '',
+      profilePhoto: e.profilePhoto || null,
+      status:       e.status,
+      branch:       e.branch || null,
+    }));
+
+    res.json({ data, total, page: pageNum, limit: limitNum, totalPages: Math.max(1, Math.ceil(total / limitNum)) });
+  } catch (error) {
+    return respondError(res, error);
+  }
+};
