@@ -264,7 +264,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
     case 'attendance_today': {
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const companyId = scope.companyId;
 
       const [presentCount, halfDayCount, activeTotal] = await Promise.all([
@@ -278,7 +278,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
     case 'absent_today': {
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const companyId = scope.companyId;
 
       const [absentCount, activeTotal, onLeaveToday] = await Promise.all([
@@ -288,8 +288,8 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
           where: {
             ...(companyId ? { employee: { companyId } } : {}),
             status: 'Approved',
-            startDate: { lte: todayStr },
-            endDate: { gte: todayStr }
+            fromDate: { lte: todayStr },
+            toDate: { gte: todayStr }
           }
         })
       ]);
@@ -299,7 +299,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
     case 'late_today': {
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const companyId = scope.companyId;
       const lateCount = await prisma.attendance.count({
         where: { ...(companyId ? { employee: { companyId } } : {}), date: todayStr, isLate: true }
@@ -316,7 +316,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
     case 'not_marked_today': {
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const companyId = scope.companyId;
       const [activeTotal, markedCount] = await Promise.all([
         prisma.employee.count({ where: { ...scope, status: { notIn: OFFBOARDED } } }),
@@ -327,14 +327,14 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
     case 'leave_today': {
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const companyId = scope.companyId;
       const [count, list] = await Promise.all([
         prisma.leaveRequest.count({
-          where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', startDate: { lte: todayStr }, endDate: { gte: todayStr } }
+          where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', fromDate: { lte: todayStr }, toDate: { gte: todayStr } }
         }),
         prisma.leaveRequest.findMany({
-          where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', startDate: { lte: todayStr }, endDate: { gte: todayStr } },
+          where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', fromDate: { lte: todayStr }, toDate: { gte: todayStr } },
           include: { employee: { select: { name: true, department: true } } },
           take: 10
         })
@@ -358,7 +358,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
       ]);
       let msg = `There are **${count} pending leave request(s)** awaiting approval.`;
       if (list.length > 0) {
-        msg += '\n\n**Most Recent:**\n' + list.map(l => `• ${l.employee?.name} (${l.employee?.department || ''}) — ${l.leaveType}, ${l.days} day(s) from ${new Date(l.startDate).toLocaleDateString('en-IN')}`).join('\n');
+        msg += '\n\n**Most Recent:**\n' + list.map(l => `• ${l.employee?.name} (${l.employee?.department || ''}) — ${l.leaveType}, ${l.days} day(s) from ${l.fromDate}`).join('\n');
       }
       return msg;
     }
@@ -410,20 +410,18 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
 
       const agg = await prisma.payroll.aggregate({
         where: payrollWhere,
-        _sum: { netSalary: true, grossSalary: true, totalDeductions: true, pfEmployee: true, esiEmployee: true },
+        _sum: { netSalary: true, grossSalary: true, deductions: true },
         _count: { id: true }
       });
 
       const net = agg._sum.netSalary || 0;
       const gross = agg._sum.grossSalary || 0;
-      const deductions = agg._sum.totalDeductions || 0;
-      const pf = agg._sum.pfEmployee || 0;
-      const esi = agg._sum.esiEmployee || 0;
+      const deductions = agg._sum.deductions || 0;
       const count = agg._count.id || 0;
 
       if (count === 0) return `No payroll records found for **${dr.label}**. Payroll may not have been processed yet.`;
 
-      return `**Payroll Summary — ${dr.label}:**\n• Employees Processed: **${count}**\n• Gross Payroll: **${formatINR(gross)}**\n• Total Deductions: **${formatINR(deductions)}** (PF: ${formatINR(pf)}, ESI: ${formatINR(esi)})\n• Net Payroll (Take-home): **${formatINR(net)}**`;
+      return `**Payroll Summary — ${dr.label}:**\n• Employees Processed: **${count}**\n• Gross Payroll: **${formatINR(gross)}**\n• Total Deductions: **${formatINR(deductions)}**\n• Net Payroll (Take-home): **${formatINR(net)}**`;
     }
 
     case 'employee_attendance': {
@@ -439,8 +437,10 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
       if (emps.length > 1) return `I found **${emps.length} employees** matching "${nameHint}":\n` + emps.map(e => `• ${e.name} (${e.department || 'N/A'})`).join('\n') + '\n\nPlease be more specific (e.g., full name).';
       const emp = emps[0];
       const dr = parseDateRange(qLow);
+      const startStr = dr.start.toISOString().split('T')[0];
+      const endStr = dr.end.toISOString().split('T')[0];
       const records = await prisma.attendance.findMany({
-        where: { employeeId: emp.id, date: { gte: dr.start, lte: dr.end } },
+        where: { employeeId: emp.id, date: { gte: startStr, lte: endStr } },
         orderBy: { date: 'desc' }
       });
       const present = records.filter(r => r.status === 'Present').length;
@@ -474,7 +474,7 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
       });
       let msg = `**Salary Info for ${emp.name} (${emp.designation || ''}):**\n• Basic Salary: **${formatINR(emp.salary)}**`;
       if (lastPayroll) {
-        msg += `\n• Last Payroll (${lastPayroll.month} ${lastPayroll.year}):\n  - Gross: **${formatINR(lastPayroll.grossSalary)}**\n  - Net Take-home: **${formatINR(lastPayroll.netSalary)}**\n  - Deductions: **${formatINR(lastPayroll.totalDeductions)}**`;
+        msg += `\n• Last Payroll (${lastPayroll.month} ${lastPayroll.year}):\n  - Gross: **${formatINR(lastPayroll.grossSalary)}**\n  - Net Take-home: **${formatINR(lastPayroll.netSalary)}**\n  - Deductions: **${formatINR(lastPayroll.deductions)}**`;
       }
       return msg;
     }
@@ -499,14 +499,14 @@ async function resolveIntent(intent, q, scope, user, dateRange) {
     case 'dashboard_summary': {
       const companyId = scope.companyId;
       const today = new Date();
-      const todayStr = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const todayStr = today.toISOString().split('T')[0];
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
       const [active, pending, presentToday, onLeave, newJoiners] = await Promise.all([
         prisma.employee.count({ where: { ...scope, status: { notIn: OFFBOARDED } } }),
         prisma.leaveRequest.count({ where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Pending' } }),
         prisma.attendance.count({ where: { ...(companyId ? { employee: { companyId } } : {}), date: todayStr, status: 'Present' } }),
-        prisma.leaveRequest.count({ where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', startDate: { lte: todayStr }, endDate: { gte: todayStr } } }),
+        prisma.leaveRequest.count({ where: { ...(companyId ? { employee: { companyId } } : {}), status: 'Approved', fromDate: { lte: todayStr }, toDate: { gte: todayStr } } }),
         prisma.employee.count({ where: { ...scope, joinDate: { gte: monthStart }, status: { not: 'Archived' } } }),
       ]);
 
