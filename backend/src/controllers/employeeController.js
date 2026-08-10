@@ -1419,7 +1419,7 @@ exports.searchEmployees = async (req, res) => {
           department:  true,
           designation: true,
           status:      true,
-          profilePhoto: true,
+          avatar:      true,
           branch: { select: { branchName: true } },
         },
       }),
@@ -1433,7 +1433,7 @@ exports.searchEmployees = async (req, res) => {
       mobile:       e.phone  || '',
       department:   e.department  || '',
       designation:  e.designation || '',
-      profilePhoto: e.profilePhoto || null,
+      profilePhoto: e.avatar || null,
       status:       e.status,
       branch:       e.branch || null,
     }));
