@@ -11,10 +11,12 @@ interface AIProps {
 const QUICK_QUESTIONS = [
   'How many active employees are there?',
   'How many employees were absent today?',
+  'How many are on leave today?',
   'What is the total payroll this month?',
   'Show pending leave requests.',
   'How many employees joined this month?',
   'Show department headcount breakdown.',
+  'Who exited this month?',
 ];
 
 export const AIAssistant = ({ activeCompanyId, role, authProfile }: AIProps) => {
