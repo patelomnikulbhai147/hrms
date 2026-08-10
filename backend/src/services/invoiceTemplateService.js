@@ -1,7 +1,6 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const handlebars = require('handlebars');
-const { format } = require('date-fns');
 const canvasRenderer = require('./canvasRenderer');
 
 // Register Handlebars helpers for currency and date formatting
