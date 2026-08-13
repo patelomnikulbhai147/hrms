@@ -184,26 +184,26 @@ const getFailedAttemptsInfo = async (email) => {
     }
   }
 
-  const captchaRequired = sec.alwaysEnabled || failedCount >= sec.failedAttemptsLimit;
+  const captchaRequired = sec.captchaEnabled !== false;
 
   return {
     failedCount,
     lockedOut,
     timeRemaining,
     captchaRequired,
-    captchaType: sec.captchaType,
+    captchaType: sec.captchaType || 'internal',
     googleV2SiteKey: sec.googleV2SiteKey,
     googleV3SiteKey: sec.googleV3SiteKey
   };
 };
 
 exports.getCaptchaStatus = async (req, res) => {
+  const sec = integrationSettings.getSecuritySettings();
   const rawIdentifier = req.body.email || req.body.username;
   if (!rawIdentifier) {
-    const sec = integrationSettings.getSecuritySettings();
     return res.json({
-      captchaRequired: sec.captchaEnabled && sec.alwaysEnabled,
-      captchaType: sec.captchaType,
+      captchaRequired: sec.captchaEnabled !== false,
+      captchaType: sec.captchaType || 'internal',
       googleV2SiteKey: sec.googleV2SiteKey,
       googleV3SiteKey: sec.googleV3SiteKey,
       lockedOut: false,
