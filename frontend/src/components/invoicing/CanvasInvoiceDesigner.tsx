@@ -915,6 +915,14 @@ export const CanvasInvoiceDesigner: React.FC<{
               <ArrowLeft size={16} className="mr-1" /> Back
             </Button>
           )}
+          {saveName && (
+            <div className="flex items-center gap-2 border-r border-slate-200 pr-3 mr-1">
+              <span className="font-extrabold text-xs text-slate-800 truncate max-w-[180px]">{saveName}</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {editingTemplateId ? 'EDITING TEMPLATE' : 'TEMPLATE BUILDER'}
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-1 border-r border-slate-200 pr-3 mr-1">
             <Button size="sm" variant="outline" onClick={undo} disabled={historyIdx <= 0} icon={<RotateCcw size={14} />} title="Undo (Ctrl+Z)" />
             <Button size="sm" variant="outline" onClick={redo} disabled={historyIdx >= history.length - 1} icon={<RotateCcw size={14} className="rotate-180" />} title="Redo (Ctrl+Y)" />

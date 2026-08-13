@@ -1,16 +1,28 @@
 import { CANVAS_TEMPLATES } from './canvasTemplates';
+import { SYSTEM_TEMPLATE_NAME, SYSTEM_TEMPLATE_CATEGORY } from './invoiceRender';
 
 export interface GalleryTemplate {
   id: string;
   name: string;
   description: string;
   thumbnail: string;
-  content: string; // Will store the JSON stringified canvas layout
+  content: string; // Will store the JSON stringified canvas layout or '__SYSTEM_DEFAULT__'
+  category?: string;
+  isSystemDefault?: boolean;
 }
 
-// We select a subset of the canvas templates to serve as the 8 gallery templates
-// mapping them to the expected names the user sees.
+export const DEFAULT_GALLERY_TEMPLATE: GalleryTemplate = {
+  id: 'system-default',
+  name: SYSTEM_TEMPLATE_NAME,
+  description: 'Built-in template — always available, cannot be deleted. Professional tax invoice with full GST compliance.',
+  thumbnail: 'system-default.png',
+  content: '__SYSTEM_DEFAULT__',
+  category: SYSTEM_TEMPLATE_CATEGORY,
+  isSystemDefault: true,
+};
+
 export const GALLERY_TEMPLATES: GalleryTemplate[] = [
+  DEFAULT_GALLERY_TEMPLATE,
   {
     id: 'modern-professional',
     name: 'Modern Professional',
@@ -59,12 +71,5 @@ export const GALLERY_TEMPLATES: GalleryTemplate[] = [
     description: 'Designed for freelancers and agencies, highlighting descriptions and terms.',
     thumbnail: 'service-business.png',
     content: JSON.stringify(CANVAS_TEMPLATES.find(t => t.id === 'tpl_srv_1'))
-  },
-  {
-    id: 'premium-dark',
-    name: 'Premium Dark',
-    description: 'A striking dark-themed header for modern tech companies and creative agencies.',
-    thumbnail: 'premium-dark.png',
-    content: JSON.stringify(CANVAS_TEMPLATES.find(t => t.id === 'tpl_bus_2'))
   }
 ];

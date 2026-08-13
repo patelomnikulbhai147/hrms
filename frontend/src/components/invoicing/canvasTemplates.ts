@@ -6,9 +6,9 @@ const GRID = 10;
 
 function genId() { return Math.random().toString(36).substr(2, 9); }
 
-type LayoutStyle = 'standard' | 'centered' | 'modern-split' | 'minimal' | 'banner';
+export type LayoutStyle = 'standard' | 'centered' | 'modern-split' | 'minimal' | 'banner';
 
-function generateTemplateElements(style: LayoutStyle, colors: { bg: string; primary: string; secondary: string; text: string; tableHeaderBg: string }): CanvasElement[] {
+export function generateTemplateElements(style: LayoutStyle, colors: { bg: string; primary: string; secondary: string; text: string; tableHeaderBg: string }): CanvasElement[] {
   const els: CanvasElement[] = [];
   
   if (style === 'banner') {

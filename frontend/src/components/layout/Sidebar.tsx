@@ -121,19 +121,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       'flex flex-col h-full transition-all duration-300 ease-in-out flex-shrink-0 z-20 relative',
       'bg-gradient-to-b from-[#1E293B] to-[#161F2E] text-slate-300',
       'shadow-[1px_0_0_rgba(15,23,42,0.06)]',
-      collapsed ? 'w-[68px]' : 'w-64'
+      collapsed ? 'w-[64px]' : 'w-[224px]'
     )}>
       {/* Logo */}
-      <div className={cn('flex items-center gap-3 px-4 h-[72px] border-b border-white/10 relative z-10', collapsed && 'justify-center px-0')}>
+      <div className={cn('flex items-center gap-2.5 px-3.5 h-[62px] border-b border-white/10 relative z-10', collapsed && 'justify-center px-0')}>
         {role === 'Super Admin' && !isMasquerading ? (
           <>
-            <ZeniaLogo size={38} radius={220} className="rounded-[22%] shadow-[0_4px_14px_rgba(0,0,0,0.3)]" />
+            <ZeniaLogo size={34} radius={220} className="rounded-[22%] shadow-[0_4px_14px_rgba(0,0,0,0.3)] flex-shrink-0" />
             {!collapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[16px] font-bold text-[#FFFFFF] leading-tight font-heading tracking-tight">
+                <p className="text-[14.5px] font-bold text-[#FFFFFF] leading-tight font-heading tracking-tight truncate">
                   {BRAND_NAME}
                 </p>
-                <p className="text-[10px] text-brand-300 mt-0.5 uppercase tracking-widest font-bold">
+                <p className="text-[9.5px] text-brand-300 mt-0.5 uppercase tracking-widest font-bold">
                   SUPER ADMIN
                 </p>
               </div>
@@ -145,6 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             logo={branding.logo}
             role={isMasquerading ? 'Masquerading' : role}
             compact={collapsed}
+            size={34}
             tone="onDark"
           />
         )}
@@ -152,84 +153,83 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Prominent Back to Super Admin Button when masquerading */}
       {isMasquerading && (
-        <div className="px-3 py-3 border-b border-white/10 bg-amber-500/10 relative z-10">
+        <div className="px-2.5 py-2 border-b border-white/10 bg-amber-500/10 relative z-10">
           <button
             onClick={onExitMasquerade}
             className={cn(
-              "w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold bg-[#F59E0B] text-white hover:bg-[#D97706] transition-all duration-200 shadow-sm active:scale-[0.97]",
+              "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11.5px] font-bold bg-[#F59E0B] text-white hover:bg-[#D97706] transition-all duration-200 shadow-sm active:scale-[0.97]",
               collapsed && "justify-center px-0"
             )}
             title="Go Back to Super Admin"
           >
-            <ArrowLeft size={14} className="flex-shrink-0" />
+            <ArrowLeft size={13} className="flex-shrink-0" />
             {!collapsed && <span>Exit Masquerade</span>}
           </button>
         </div>
       )}
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1 relative z-10 sidebar-scroll">
-        {visibleItems.map(item => {
+      <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-1 relative z-10 sidebar-scroll">
+        {visibleItems.map((item, index) => {
           const active = currentPage === item.id;
           const locked = isItemLocked(item);
+          const prevItem = index > 0 ? visibleItems[index - 1] : null;
+          const isNewGroup = !!(prevItem && (item as any).group && (prevItem as any).group !== (item as any).group);
           return (
+          <React.Fragment key={item.id}>
+            {isNewGroup && (
+              <div className={cn('border-t border-white/[0.08]', collapsed ? 'my-1 mx-1' : 'my-1.5 mx-0.5')} />
+            )}
           <button
             key={item.id}
-            // Locked (premium) modules stay VISIBLE but do not open — clicking
-            // surfaces the Upgrade dialog. Backend enforcement is the real gate;
-            // this is the UX layer. Never lock the active page out from under a
-            // Super Admin (planImmune already handles that).
             onClick={() => (locked ? setLockedModuleLabel(item.label) : onNavigate(item.id))}
             title={collapsed ? (locked ? `${item.label} — Available in Premium Plan` : item.label) : undefined}
             aria-disabled={locked}
             className={cn(
-              'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[15px] tracking-tight transition-all duration-200 group active:scale-[0.98] relative',
+              'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13.5px] tracking-tight transition-all duration-200 group active:scale-[0.98] relative',
               active && !locked
-                ? 'bg-[#C77E52] text-white font-semibold shadow-[0_6px_16px_-4px_rgba(199,126,82,0.55)]'
+                ? 'bg-[#C77E52] text-white font-semibold shadow-[0_4px_12px_-3px_rgba(199,126,82,0.55)]'
                 : 'text-[#E2E8F0] font-medium hover:bg-[rgba(199,126,82,0.15)] hover:text-white',
               locked && 'opacity-55 hover:opacity-80',
               collapsed && 'justify-center px-0'
             )}
           >
             <span className={cn(
-              'flex-shrink-0 transition-all duration-200 group-hover:scale-105',
+              'flex-shrink-0 transition-all duration-200 group-hover:scale-105 [&>svg]:w-[16px] [&>svg]:h-[16px]',
               active && !locked ? 'text-white' : 'text-[#CBD5E1] group-hover:text-[#E0996A]'
             )}>{item.icon}</span>
             {!collapsed && (
-              <span className="flex-1 text-left min-w-0">
+              <span className="flex-1 text-left min-w-0 leading-snug">
                 {item.id === 'payroll' && role === 'Employee' ? 'My Payslips'
                   : item.label}
               </span>
             )}
-            {/* Lock badge for plan-restricted modules — a small padlock + a hover
-                tooltip. Takes precedence over the Beta badge when both apply. */}
+            {/* Lock badge for plan-restricted modules */}
             {locked ? (
               !collapsed ? (
                 <span
                   aria-label="Available in Premium Plan"
                   title="Available in Premium Plan"
-                  className="flex-shrink-0 inline-flex items-center gap-1 rounded-full px-1.5 py-[2px] text-[9px] font-bold leading-none bg-white/10 text-amber-300"
+                  className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[8.5px] font-bold leading-none bg-white/10 text-amber-300"
                 >
-                  <Lock size={10} strokeWidth={2.5} />
+                  <Lock size={9} strokeWidth={2.5} />
                 </span>
               ) : (
-                <Lock size={11} strokeWidth={2.5} className="absolute top-1.5 right-1.5 text-amber-300" />
+                <Lock size={10} strokeWidth={2.5} className="absolute top-1.5 right-1.5 text-amber-300" />
               )
             ) : (
-              /* Development-status badge — informational only, not clickable. Driven
-                 by the registry `beta` flag so it stays in sync with the module's
-                 in-page "Work in Progress" banner. Hidden when the rail is collapsed. */
               !collapsed && item.beta && (
                 <span
                   aria-label="Under active development"
                   title="Under active development"
-                  className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[9px] font-bold leading-none bg-[#FDE68A] text-[#92400E]"
+                  className="flex-shrink-0 inline-flex items-center gap-0.5 rounded-full px-1.5 py-[1px] text-[8.5px] font-bold leading-none bg-[#FDE68A] text-[#92400E]"
                 >
                   <span aria-hidden>🚧</span>Beta
                 </span>
               )
             )}
           </button>
+          </React.Fragment>
           );
         })}
       </nav>
@@ -244,7 +244,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer */}
       {!collapsed && (
-        <div className="px-4 py-4 border-t border-white/10 bg-transparent relative z-10 flex flex-col gap-3">
+        <div className="px-3 py-3 border-t border-white/10 bg-transparent relative z-10 flex flex-col gap-2">
           <p className="text-[10px] text-slate-500 font-bold tracking-wider">{BRAND_NAME}</p>
         </div>
       )}

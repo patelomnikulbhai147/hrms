@@ -208,6 +208,28 @@ exports.activate = async (req, res) => {
   }
 };
 
+exports.activateDefault = async (req, res) => {
+  try {
+    const companyId = targetCompanyId(req);
+    if (!companyId) return res.status(403).json({ error: 'Select a company.' });
+
+    await prisma.documentTemplate.updateMany({
+      where: { companyId, type: 'Invoice', status: 'Active' },
+      data: { status: 'Draft' }
+    });
+
+    await prisma.invoiceLayout.updateMany({
+      where: { companyId, isDefault: true },
+      data: { isDefault: false }
+    });
+
+    res.json({ ok: true, isDefault: true, name: 'Default Template', message: 'Default Template activated successfully' });
+  } catch (e) {
+    console.error('invoiceTemplate.activateDefault', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 exports.duplicate = async (req, res) => {
   try {
     const companyId = targetCompanyId(req);
@@ -264,10 +286,9 @@ exports.preview = async (req, res) => {
     // Map gstNumber to gstin for preview
     const mappedCompany = company ? { ...company, gstin: company.gstNumber } : null;
 
-    // Dummy invoice data for live preview
     const previewData = {
       company: mappedCompany || { name: 'Demo Company', address: '123 Business St', gstin: '27AADCB2230M1Z2' },
-      invoice: {
+      invoice: req.body.invoice || {
         invoiceNumber: 'INV-2023-001',
         invoiceDate: new Date().toISOString(),
         dueDate: new Date(Date.now() + 86400000 * 7).toISOString(),
@@ -283,7 +304,7 @@ exports.preview = async (req, res) => {
         bankDetails: 'Bank: HDFC Bank\\nAccount: 1234567890\\nIFSC: HDFC0001234',
         notes: 'Thank you for your business!'
       },
-      items: [
+      items: req.body.items || [
         { name: 'Web Development Services', description: 'Frontend and Backend Development', quantity: 1, unit: 'Project', rate: 5000, amount: 5000 },
         { name: 'Server Hosting', description: 'Annual server hosting and maintenance', quantity: 12, unit: 'Months', rate: 416.67, amount: 5000 }
       ]

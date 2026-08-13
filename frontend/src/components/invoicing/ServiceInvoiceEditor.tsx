@@ -16,12 +16,13 @@ import { ui } from '@/components/ui/feedback';
 import { api } from '@/api/apiClient';
 import { getApiErrorMessage } from '@/utils/apiError';
 import { CheckCircle2, Save, Printer, X, Users, Mail, ZoomIn, ZoomOut, FileText } from 'lucide-react';
-import { ServiceInvoiceDocument, type ServiceInvoiceDoc } from './ServiceInvoiceDocument';
-import { serviceInvoiceHtml, blankServiceItem, A4_W, A4_H, computeInvoice } from './serviceInvoice';
+import { ServiceInvoiceDocument } from './ServiceInvoiceDocument';
+import { serviceInvoiceHtml, blankServiceItem, A4_W, A4_H, computeInvoice, type ServiceInvoiceDoc } from './serviceInvoice';
 import { parseOverride, serialiseOverride, type BrandingOverride } from './invoiceAssets';
 import { useIssuerCompany } from './invoiceIdentity';
 import { renderInvoiceHtml, printInvoiceDocument, SYSTEM_TEMPLATE_NAME } from './invoiceRender';
 import { CustomerModal, ProductModal } from './MasterModals';
+import { InvoiceDataEntryForm } from './InvoiceDataEntryForm';
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 const addDaysIso = (iso: string, days: number) => { const d = new Date(iso); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
@@ -108,7 +109,7 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
   // template is marked active in Templates & Branding -> Template Gallery.
   const [activeLayout, setActiveLayout] = useState<any>(null);
   const [templateName, setTemplateName] = useState<string>(SYSTEM_TEMPLATE_NAME);
-
+  const [htmlPreview, setHtmlPreview] = useState<string>('');
   const loadDefaultTemplate = useCallback(async () => {
     try {
       const active = await api.invoiceTemplates.active();
@@ -311,6 +312,31 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
   const intraState = !doc.billToState || !companyState
     || String(doc.billToState).trim().toLowerCase() === String(companyState).trim().toLowerCase();
 
+  useEffect(() => {
+    if (!activeLayout) return;
+    
+    // If activeLayout is a JSON canvas, it's rendered synchronously by renderWithDefaultTemplate
+    if (typeof activeLayout === 'object') return;
+    
+    const fetchPreview = async () => {
+      try {
+        const computedDoc = { ...doc, ...computeInvoice(doc.items, intraState) };
+        const html = await api.invoiceTemplates.preview({ 
+          content: activeLayout, 
+          invoice: computedDoc,
+          items: computedDoc.items
+        });
+        setHtmlPreview(html);
+      } catch (err) {
+        console.error('Failed to load HTML preview:', err);
+      }
+    };
+    
+    // Debounce preview fetch
+    const timeout = setTimeout(fetchPreview, 300);
+    return () => clearTimeout(timeout);
+  }, [activeLayout, doc, intraState]);
+
   // Fill the inline Bill-To block from the Client Master (a convenience, not a
   // form — every filled value stays editable on the invoice).
   const pickCustomer = (id: string) => {
@@ -458,8 +484,6 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
         <Button size="sm" variant="ghost" icon={<X size={13} />} onClick={onDone}>Cancel</Button>
       </div>
 
-      {/* The invoice — scaled to fit, never clipped; horizontal scroll only if
-          the user zooms beyond the available width. */}
       {/* Which template this invoice is being produced with — loaded from the
           Template Gallery default, never hardcoded here. */}
       <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
@@ -472,37 +496,43 @@ export const ServiceInvoiceEditor: React.FC<Props> = ({ editId, preselectCustome
         <span className="text-[10px] text-slate-400">— change it in Templates &amp; Branding → Template Gallery.</span>
       </div>
 
-      <div className="w-full overflow-x-auto rounded-xl bg-slate-100/70 p-3">
-        <div style={{ width: A4_W * scale, height: docH * scale, margin: '0 auto' }}>
-          <div ref={docRef} style={{ width: A4_W, transform: `scale(${scale})`, transformOrigin: 'top left', boxShadow: '0 1px 12px rgba(15,23,42,.12)' }}>
-            {activeLayout
-              // A DESIGNED template is the default: show the real document it will
-              // print, rendered by the shared renderer. Field editing stays on the
-              // built-in view (a canvas design has no inline-editable fields), so
-              // the values are entered there and printed through this template.
-              ? <iframe title="Invoice preview" srcDoc={renderWithDefaultTemplate(false)}
-                  style={{ width: A4_W, height: docH, border: 0, background: '#fff' }} />
-              : <ServiceInvoiceDocument doc={doc} onChange={patch} company={issuerCompany} settings={settings}
-                  intraState={intraState} readOnly={!canEdit} override={override} onOverrideChange={setOverride}
-                  // Template switch: businesses whose invoice format has no
-                  // consignment (pure services) turn the section off in Settings.
-                  showLogistics={settings?.showLogistics !== false}
-                  customers={customers} products={products}
-                  onPickCustomer={canEdit ? pickCustomer : undefined}
-                  onPickProduct={canEdit ? applyProduct : undefined}
-                  onCreateCustomer={canEdit ? () => setCustomerModal({ companyName: '', country: 'India', isActive: true }) : undefined}
-                  onCreateProduct={canEdit ? (i: number) => { setProductRow(i); setProductModal({ name: '', unit: 'Nos', rate: 0, taxRate: 18, isActive: true }); } : undefined} />}
+      <div className="flex flex-col xl:flex-row gap-4 w-full">
+        {/* LEFT PANE: Data Entry Form */}
+        <div className="flex-1 min-w-0 xl:w-1/2">
+          <InvoiceDataEntryForm
+            doc={doc}
+            onChange={patch}
+            intraState={intraState}
+            canEdit={canEdit}
+            products={products}
+            onSelectProduct={(index, p) => applyProduct(index, p)}
+            onAddNewProduct={(index) => {
+              setProductRow(index);
+              setProductModal({});
+            }}
+          />
+        </div>
+
+        {/* RIGHT PANE: Live Preview */}
+        <div className="xl:w-1/2 xl:sticky xl:top-20 xl:max-h-[calc(100vh-100px)] overflow-hidden flex flex-col items-center">
+          <div className="mb-2 text-xs font-bold text-slate-500 uppercase tracking-wider w-full text-center">Live Preview</div>
+          <div className="w-full overflow-x-auto rounded-xl bg-slate-100/70 p-3 shadow-inner">
+            <div style={{ width: A4_W * scale, height: docH * scale, margin: '0 auto' }}>
+              <div ref={docRef} style={{ width: A4_W, transform: `scale(${scale})`, transformOrigin: 'top left', boxShadow: '0 1px 12px rgba(15,23,42,.12)' }}>
+                {activeLayout
+                  ? <iframe title="Invoice preview" srcDoc={typeof activeLayout === 'object' ? renderWithDefaultTemplate(false) : htmlPreview}
+                      style={{ width: A4_W, height: docH, border: 0, background: '#fff' }} />
+                  : <iframe title="Default Invoice preview" srcDoc={renderWithDefaultTemplate(false)}
+                      style={{ width: A4_W, height: docH, border: 0, background: '#fff' }} />
+                }
+              </div>
+            </div>
           </div>
+          <p className="mt-2 text-center text-[10px] text-slate-400">
+            Rendered with <b className="text-slate-600">{templateName}</b> · grand total <b className="text-slate-600">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b>
+          </p>
         </div>
       </div>
-
-      <p className="mt-2 text-center text-[10px] text-slate-400">
-        {activeLayout
-          ? <>Rendered with your default template <b className="text-slate-600">{templateName}</b> · grand total <b className="text-slate-600">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b> · this is exactly what prints.</>
-          : <>Click any value to edit it directly on the invoice · totals, GST and amount in words update automatically ·
-            grand total <b className="text-slate-600">₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</b> ·
-            this is exactly what prints.</>}
-      </p>
       {/* Create Customer / Product without leaving the invoice — the SAME forms
           the Customers and Products & Services tabs use (MasterModals). */}
       {customerModal && <CustomerModal customer={customerModal} onClose={() => setCustomerModal(null)} onSave={saveNewCustomer} />}

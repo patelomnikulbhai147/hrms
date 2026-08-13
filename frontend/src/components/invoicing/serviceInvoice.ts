@@ -72,9 +72,29 @@ export interface ServiceItem {
   productId?: any;
 }
 
+export interface ServiceInvoiceDoc {
+  transactionType?: string;
+  invoiceNumber?: string; invoiceDate?: string; dueDate?: string;
+  contractNo?: string; referenceNo?: string; poNumber?: string; billingPeriod?: string;
+  billToName?: string; billToAddress?: string; billToCity?: string; billToState?: string;
+  billToCountry?: string; billToGstin?: string; billToPan?: string; billToEmail?: string;
+  billToPhone?: string; billToContact?: string;
+  placeOfSupply?: string; paymentTerms?: string; paymentMode?: string;
+  notes?: string; termsConditions?: string; bankDetails?: string; upiId?: string;
+  amountPaid?: number;
+  billToShipAddress?: string;
+  dispatchFrom?: string; dispatchAddress?: string; dispatchCity?: string;
+  dispatchState?: string; dispatchPincode?: string; dispatchDate?: string;
+  dispatchThrough?: string; vehicleNumber?: string; lrNumber?: string;
+  shipToName?: string; shipToCity?: string; shipToState?: string;
+  shipToPincode?: string; shipToCountry?: string;
+  items: ServiceItem[];
+}
+
 export const blankServiceItem = (): ServiceItem => ({
   id: `it-${Math.round(performance.now() * 1000)}`,
-  name: '', description: '', hsnSac: '', quantity: 1, unit: 'Nos', rate: 0, discountPct: 0, taxRate: 18,
+  name: '', description: '', hsnSac: '', quantity: 1, unit: 'Nos',
+  rate: 0, discountPct: 0, taxRate: 18, productId: null,
 });
 
 // ── MONEY ENGINE (mirror of backend services/invoiceCalc) ────────────────────

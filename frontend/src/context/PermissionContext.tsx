@@ -83,6 +83,13 @@ const NEW_MODULE_ROLE_DEFAULTS: Partial<Record<AppModules, Partial<Record<string
     edit: ['Company Head', 'HR', 'Finance'],
     export: ['Company Head', 'HR', 'Finance'],
   },
+  // Recruitment & ATS Platform. Company Head & HR have full access; Finance has view.
+  recruitment: {
+    view: ['Company Head', 'HR', 'Finance', 'Manager', 'Super Admin'],
+    create: ['Company Head', 'HR'],
+    edit: ['Company Head', 'HR'],
+    export: ['Company Head', 'HR'],
+  },
 };
 const roleDefault = (module: AppModules, action: string, role: string): boolean =>
   NEW_MODULE_ROLE_DEFAULTS[module]?.[action]?.includes(role) ?? false;

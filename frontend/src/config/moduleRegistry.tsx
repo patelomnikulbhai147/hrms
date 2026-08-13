@@ -92,88 +92,64 @@ export interface ModuleRegistryEntry {
    * disappears automatically everywhere it is derived from this registry.
    */
   beta?: boolean;
+  /** Sidebar section group — used to render subtle dividers between logical groups. */
+  group?: string;
 }
 
 // The canonical, ordered list. Order here === sidebar order === matrix order.
 export const MODULE_REGISTRY: ModuleRegistryEntry[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: true },
-  { id: 'companies', label: 'Companies', icon: <Building2 size={15} />, roles: ['Super Admin'], permission: 'companies', inMatrix: true, platformOnly: true },
-  { id: 'billing', label: 'Subscription Management', icon: <CreditCard size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: true, platformOnly: true },
-  { id: 'verification-credits', label: 'Bank Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'billing', inMatrix: false, platformOnly: true },
-  { id: 'employees', label: 'Employees', icon: <UsersIcon size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'employees', inMatrix: true },
-  // Employee Cards is a sub-feature of Employees — it is governed by the
-  // `employees` permission everywhere in the app, so it shares that key here.
-  { id: 'employee-cards', label: 'Employee Cards', icon: <IdCard size={15} />, roles: ['Company Head', 'HR'], permission: 'employees', inMatrix: true, beta: true },
-  { id: 'attendance', label: 'Attendance', icon: <CalendarCheck size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'attendance', inMatrix: true },
-  // Attendance Devices is a sub-feature of Attendance — governed by the
-  // `attendance` permission, so it shares that key here.
-  // Attendance API Integration (E-TimeOffice pull sync) — the single source of
-  // truth for attendance device/vendor integration. Rides on the `attendance`
-  // permission (no separate matrix row — inMatrix:false — so it doesn't duplicate
-  // the Attendance permission row); hidden from the Super-Admin root menu.
-  { id: 'attendance-integration', label: 'Attendance API Integration', icon: <PlugZap size={15} />, roles: ['Super Admin', 'Company Head', 'HR'], permission: 'attendance', inMatrix: false, beta: true },
-  { id: 'leaves', label: 'Leave Management', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR'], permission: 'leaves', inMatrix: true },
-  { id: 'payroll', label: 'Payroll', icon: <DollarSign size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'payroll', inMatrix: true },
-  // Attendance Synchronization — NOT an independent module: it is one step of the
-  // Payroll process. It is reachable ONLY from Payroll → Payroll Workflow → "Sync
-  // Attendance", so it is hidden from the sidebar (hideInSidebar) while remaining a
-  // valid routable page. Governed by the `payroll` permission (no matrix row —
-  // inMatrix:false) so access stays gated exactly like Payroll everywhere.
-  { id: 'attendance-sync', label: 'Attendance Synchronization', icon: <RefreshCcw size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'payroll', inMatrix: false, hideInSidebar: true },
-  { id: 'invoice-management', label: 'Invoice Management', icon: <ReceiptText size={15} />, roles: ['Company Head', 'Finance', 'HR'], permission: 'invoicing', inMatrix: true, beta: true },
-  // Finance & Compliance — the single sidebar entry that unifies Employee Loans
-  // and Statutory Compliance. Visible when the user can VIEW EITHER underlying
-  // module (anyPermission OR-logic). It is NOT itself a matrix row (inMatrix:
-  // false) — access stays governed by the individual `loans` / `compliance`
-  // rows below, which remain in both permission matrices (hideInSidebar keeps
-  // them out of the nav so there is only one menu item).
-  { id: 'finance-compliance', label: 'Finance & Compliance', icon: <Landmark size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', anyPermission: ['loans', 'compliance'], inMatrix: false, beta: true },
-  { id: 'loan-management', label: 'Employee Loan Management', icon: <HandCoins size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'loans', inMatrix: true, hideInSidebar: true },
-  { id: 'compliance-management', label: 'Compliance Management', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'compliance', inMatrix: true, hideInSidebar: true },
-  // Label only — the id, route and `documents` permission are unchanged, so the
-  // permission matrix, saved links and API calls are unaffected. "Employee
-  // Documents" distinguishes it from Finance & Compliance ▸ Documents, which is
-  // a separate statutory-document repository.
-  { id: 'documents', label: 'Employee Documents', icon: <FileText size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'documents', inMatrix: true },
-  { id: 'vendor-management', label: 'Vendor Management', icon: <Building2 size={15} />, roles: ['Company Head', 'HR'], permission: 'vendors', inMatrix: true },
-  { id: 'asset-management', label: 'Asset Management', icon: <Laptop size={15} />, roles: ['Company Head', 'HR'], permission: 'assets', inMatrix: true },
-  { id: 'visitor-management', label: 'Visitor Management', icon: <UserCheck size={15} />, roles: ['Company Head', 'HR'], permission: 'visitors', inMatrix: true },
-  { id: 'facility-booking', label: 'Facility Booking', icon: <CalendarDays size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'facilities', inMatrix: true },
-  { id: 'reports', label: 'Reports', icon: <BarChart3 size={15} />, roles: ['Company Head', 'HR'], permission: 'reports', inMatrix: true },
-  // Custom Report Builder — drag & drop report designer. Shares the `reports`
-  // permission (no separate matrix row — inMatrix:false), like Employee Cards
-  // shares `employees`. Company Head / HR / Finance who can see Reports get it.
-  { id: 'saas-admin-dashboard', label: 'SaaS Admin', icon: <Globe size={15} />, roles: ['Super Admin'], permission: 'dashboard', inMatrix: false },
-  { id: 'security-center', label: 'Security Center', icon: <Shield size={15} />, roles: ['Super Admin', 'Company Head'], permission: 'settings', inMatrix: true },
-  { id: 'custom-report-builder', label: 'Custom Report Builder', icon: <Wand2 size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'reports', inMatrix: false, beta: true },
-  { id: 'ess-dashboard', label: 'Employee Self-Service', icon: <UserCheck size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'dashboard', inMatrix: true, beta: true },
-  { id: 'recruitment-crm', label: 'Recruitment CRM', icon: <Briefcase size={15} />, roles: ['Company Head', 'HR'], permission: 'recruitment', inMatrix: true, beta: true },
-  { id: 'workflow-engine', label: 'Workflow Automation', icon: <GitMerge size={15} />, roles: ['Company Head', 'HR'], permission: 'settings', inMatrix: true, beta: true },
-  { id: 'integration-hub', label: 'Integration Hub', icon: <Blocks size={15} />, roles: ['Company Head'], permission: 'settings', inMatrix: true, beta: true },
-  { id: 'performance-management', label: 'Performance Management', icon: <Target size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'performance', inMatrix: true, beta: true },
-  { id: 'lms', label: 'Learning Management', icon: <BookOpen size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'lms', inMatrix: true, beta: true },
-  { id: 'knowledge-base', label: 'Knowledge Base', icon: <Book size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'knowledge', inMatrix: true },
-  { id: 'internal-communication', label: 'Internal Communication', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'social', inMatrix: true },
-  { id: 'ai-assistant', label: 'AI Assistant', icon: <Sparkles size={15} />, roles: ['Company Head', 'HR', 'Employee'], permission: 'dashboard', inMatrix: true },
-  { id: 'template-management', label: 'Template Management', icon: <FileText size={15} />, roles: ['Super Admin', 'Company Head'], permission: 'templates', inMatrix: true, beta: true },
-  { id: 'document-vault', label: 'Document Vault', icon: <HardDrive size={15} />, roles: ['Company Head', 'HR'], permission: 'vault', inMatrix: true, beta: true },
-  { id: 'communication', label: 'Communication Center', icon: <MessageSquare size={15} />, roles: ['Company Head', 'HR'], permission: 'communication', inMatrix: true, beta: true },
-  { id: 'tasks', label: 'Task Manager', icon: <ClipboardList size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks', inMatrix: true },
-  { id: 'tenders', label: 'Tender Management', icon: <Briefcase size={15} />, roles: ['Company Head'], permission: 'tenders', inMatrix: true },
-  { id: 'contracts', label: 'Contract Management', icon: <FileSignature size={15} />, roles: ['Company Head'], permission: 'contracts', inMatrix: true },
-  { id: 'company-profile', label: 'Company Profile', icon: <Building2 size={15} />, roles: ['Company Head'], permission: 'company-profile', inMatrix: true },
-  // Premium page riding the `settings` permission (same pattern as the Custom
-  // Report Builder on `reports`); the plan lock is by PAGE ID 'custom-domain'.
-  { id: 'custom-domain', label: '🧪 Custom Domain (Beta)', icon: <PlugZap size={15} />, roles: ['Company Head'], permission: 'settings', inMatrix: false, beta: true },
-  // Company-facing Verification Credits page (quota, analytics, verification +
-  // recharge history). Distinct from the platform-only 'verification-credits'
-  // Super-Admin portal above. Rides the dashboard permission (no matrix row);
-  // the page + backend both refuse the Employee role themselves.
-  { id: 'verification-wallet', label: 'Verification Credits', icon: <ShieldCheck size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'dashboard', inMatrix: false },
-  { id: 'payroll-wallet', label: 'Payroll Wallet', icon: <Wallet size={15} />, roles: ['Company Head', 'HR', 'Finance'], permission: 'payroll', inMatrix: false },
-  { id: 'settings', label: 'Settings', icon: <Settings size={15} />, roles: ['Company Head', 'HR', 'Finance', 'Employee'], permission: 'settings', inMatrix: true },
-  { id: 'users', label: 'User Management', icon: <ShieldCheck size={15} />, roles: ['Super Admin'], permission: 'users', inMatrix: true },
-  { id: 'audit', label: 'Audit Trail', icon: <History size={15} />, roles: ['Super Admin'], permission: 'audit', inMatrix: true, platformOnly: true },
+  // ── Core ─────────────────────────────────────────────────────────────────
+  { id: 'dashboard',              label: 'Dashboard',                  icon: <LayoutDashboard size={15} />, roles: ['Super Admin', 'Company Head', 'HR', 'Finance'],             permission: 'dashboard',       inMatrix: true,  group: 'core' },
+  { id: 'companies',              label: 'Companies',                  icon: <Building2 size={15} />,       roles: ['Super Admin'],                                               permission: 'companies',       inMatrix: true,  platformOnly: true, group: 'core' },
+  { id: 'billing',                label: 'Subscription Management',    icon: <CreditCard size={15} />,      roles: ['Super Admin'],                                               permission: 'billing',         inMatrix: true,  platformOnly: true, group: 'core' },
+  { id: 'verification-credits',   label: 'Bank Verification Credits',  icon: <ShieldCheck size={15} />,     roles: ['Super Admin'],                                               permission: 'billing',         inMatrix: false, platformOnly: true, group: 'core' },
+  { id: 'saas-admin-dashboard',   label: 'SaaS Admin',                 icon: <Globe size={15} />,           roles: ['Super Admin'],                                               permission: 'dashboard',       inMatrix: false, group: 'core' },
+  { id: 'users',                  label: 'User Management',            icon: <ShieldCheck size={15} />,     roles: ['Super Admin'],                                               permission: 'users',           inMatrix: true,  group: 'core' },
+  { id: 'audit',                  label: 'Audit Trail',                icon: <History size={15} />,         roles: ['Super Admin'],                                               permission: 'audit',           inMatrix: true,  platformOnly: true, group: 'core' },
+  // ── HR & People ──────────────────────────────────────────────────────────
+  { id: 'employees',              label: 'Employees',                  icon: <UsersIcon size={15} />,       roles: ['Company Head', 'HR', 'Finance'],                             permission: 'employees',       inMatrix: true,  group: 'hr' },
+  { id: 'employee-cards',         label: 'Employee Cards',             icon: <IdCard size={15} />,          roles: ['Company Head', 'HR'],                                        permission: 'employees',       inMatrix: true,  beta: true, group: 'hr' },
+  { id: 'attendance',             label: 'Attendance',                 icon: <CalendarCheck size={15} />,   roles: ['Company Head', 'HR', 'Finance', 'Employee'],                 permission: 'attendance',      inMatrix: true,  group: 'hr' },
+  { id: 'attendance-integration', label: 'Attendance API Integration', icon: <PlugZap size={15} />,         roles: ['Super Admin', 'Company Head', 'HR'],                         permission: 'attendance',      inMatrix: false, beta: true, group: 'hr' },
+  { id: 'leaves',                 label: 'Leave Management',           icon: <CalendarDays size={15} />,    roles: ['Company Head', 'HR'],                                        permission: 'leaves',          inMatrix: true,  group: 'hr' },
+  { id: 'performance-management', label: 'Performance Management',     icon: <Target size={15} />,          roles: ['Company Head', 'HR', 'Employee'],                            permission: 'performance',     inMatrix: true,  beta: true, group: 'hr' },
+  { id: 'recruitment-crm',        label: 'Recruitment CRM',            icon: <Briefcase size={15} />,       roles: ['Super Admin', 'Company Head', 'HR'],                         permission: 'recruitment',     inMatrix: true,  group: 'hr' },
+  // ── Finance & Payroll ────────────────────────────────────────────────────
+  { id: 'payroll',                label: 'Payroll',                    icon: <DollarSign size={15} />,      roles: ['Company Head', 'HR', 'Finance', 'Employee'],                 permission: 'payroll',         inMatrix: true,  group: 'finance' },
+  { id: 'attendance-sync',        label: 'Attendance Synchronization', icon: <RefreshCcw size={15} />,      roles: ['Company Head', 'HR', 'Finance'],                             permission: 'payroll',         inMatrix: false, hideInSidebar: true, group: 'finance' },
+  { id: 'invoice-management',     label: 'Invoice Management',         icon: <ReceiptText size={15} />,     roles: ['Company Head', 'Finance', 'HR'],                             permission: 'invoicing',       inMatrix: true,  beta: true, group: 'finance' },
+  { id: 'finance-compliance',     label: 'Finance & Compliance',       icon: <Landmark size={15} />,        roles: ['Company Head', 'HR', 'Finance'],                             permission: 'loans',           anyPermission: ['loans', 'compliance'], inMatrix: false, beta: true, group: 'finance' },
+  { id: 'loan-management',        label: 'Employee Loan Management',   icon: <HandCoins size={15} />,       roles: ['Company Head', 'HR', 'Finance'],                             permission: 'loans',           inMatrix: true,  hideInSidebar: true, group: 'finance' },
+  { id: 'compliance-management',  label: 'Compliance Management',      icon: <ShieldCheck size={15} />,     roles: ['Company Head', 'HR', 'Finance'],                             permission: 'compliance',      inMatrix: true,  hideInSidebar: true, group: 'finance' },
+  { id: 'tenders',                label: 'Tender Management',          icon: <Briefcase size={15} />,       roles: ['Company Head'],                                              permission: 'tenders',         inMatrix: true,  group: 'finance' },
+  { id: 'contracts',              label: 'Contract Management',        icon: <FileSignature size={15} />,   roles: ['Company Head'],                                              permission: 'contracts',       inMatrix: true,  group: 'finance' },
+  { id: 'payroll-wallet',         label: 'Payroll Wallet',             icon: <Wallet size={15} />,          roles: ['Company Head', 'HR', 'Finance'],                             permission: 'payroll',         inMatrix: false, group: 'finance' },
+  { id: 'verification-wallet',    label: 'Verification Credits',       icon: <ShieldCheck size={15} />,     roles: ['Company Head', 'HR', 'Finance'],                             permission: 'dashboard',       inMatrix: false, group: 'finance' },
+  // ── Operations & Docs ────────────────────────────────────────────────────
+  { id: 'documents',              label: 'Employee Documents',         icon: <FileText size={15} />,        roles: ['Company Head', 'HR', 'Finance'],                             permission: 'documents',       inMatrix: true,  group: 'ops' },
+  { id: 'document-vault',         label: 'Document Vault',             icon: <HardDrive size={15} />,       roles: ['Company Head', 'HR'],                                        permission: 'vault',           inMatrix: true,  beta: true, group: 'ops' },
+  { id: 'vendor-management',      label: 'Vendor Management',          icon: <Building2 size={15} />,       roles: ['Company Head', 'HR'],                                        permission: 'vendors',         inMatrix: true,  group: 'ops' },
+  { id: 'asset-management',       label: 'Asset Management',           icon: <Laptop size={15} />,          roles: ['Company Head', 'HR'],                                        permission: 'assets',          inMatrix: true,  group: 'ops' },
+  { id: 'visitor-management',     label: 'Visitor Management',         icon: <UserCheck size={15} />,       roles: ['Company Head', 'HR'],                                        permission: 'visitors',        inMatrix: true,  group: 'ops' },
+  { id: 'facility-booking',       label: 'Facility Booking',           icon: <CalendarDays size={15} />,    roles: ['Company Head', 'HR', 'Employee'],                            permission: 'facilities',      inMatrix: true,  group: 'ops' },
+  { id: 'tasks',                  label: 'Task Manager',               icon: <ClipboardList size={15} />,   roles: ['Super Admin', 'Company Head', 'HR', 'Finance', 'Employee'], permission: 'tasks',           inMatrix: true,  group: 'ops' },
+  // ── Reports & Tools ──────────────────────────────────────────────────────
+  { id: 'reports',                label: 'Reports',                    icon: <BarChart3 size={15} />,       roles: ['Company Head', 'HR'],                                        permission: 'reports',         inMatrix: true,  group: 'tools' },
+  { id: 'custom-report-builder',  label: 'Custom Report Builder',      icon: <Wand2 size={15} />,           roles: ['Company Head', 'HR', 'Finance'],                             permission: 'reports',         inMatrix: false, beta: true, group: 'tools' },
+  { id: 'security-center',        label: 'Security Center',            icon: <Shield size={15} />,          roles: ['Super Admin', 'Company Head'],                               permission: 'settings',        inMatrix: true,  group: 'tools' },
+  { id: 'workflow-engine',        label: 'Workflow Automation',        icon: <GitMerge size={15} />,        roles: ['Company Head', 'HR'],                                        permission: 'settings',        inMatrix: true,  beta: true, group: 'tools' },
+  { id: 'integration-hub',        label: 'Integration Hub',            icon: <Blocks size={15} />,          roles: ['Company Head'],                                              permission: 'settings',        inMatrix: true,  beta: true, group: 'tools' },
+  { id: 'template-management',    label: 'Template Management',        icon: <FileText size={15} />,        roles: ['Super Admin', 'Company Head'],                               permission: 'templates',       inMatrix: true,  beta: true, group: 'tools' },
+  { id: 'ai-assistant',           label: 'AI Assistant',               icon: <Sparkles size={15} />,        roles: ['Company Head', 'HR', 'Employee'],                            permission: 'dashboard',       inMatrix: true,  group: 'tools' },
+  // ── Learning & Communication ─────────────────────────────────────────────
+  { id: 'lms',                    label: 'Learning Management',        icon: <BookOpen size={15} />,        roles: ['Company Head', 'HR', 'Employee'],                            permission: 'lms',             inMatrix: true,  beta: true, group: 'learn' },
+  { id: 'knowledge-base',         label: 'Knowledge Base',             icon: <Book size={15} />,            roles: ['Company Head', 'HR', 'Employee'],                            permission: 'knowledge',       inMatrix: true,  group: 'learn' },
+  { id: 'internal-communication', label: 'Internal Communication',     icon: <MessageSquare size={15} />,   roles: ['Company Head', 'HR', 'Employee'],                            permission: 'social',          inMatrix: true,  group: 'learn' },
+  { id: 'communication',          label: 'Communication Center',       icon: <MessageSquare size={15} />,   roles: ['Company Head', 'HR'],                                        permission: 'communication',   inMatrix: true,  beta: true, group: 'learn' },
+  // ── Company & Settings ───────────────────────────────────────────────────
+  { id: 'company-profile',        label: 'Company Profile',            icon: <Building2 size={15} />,       roles: ['Company Head'],                                              permission: 'company-profile', inMatrix: true,  group: 'company' },
+  { id: 'custom-domain',          label: '🧪 Custom Domain (Beta)',     icon: <PlugZap size={15} />,         roles: ['Company Head'],                                              permission: 'settings',        inMatrix: false, beta: true, group: 'company' },
+  { id: 'settings',               label: 'Settings',                   icon: <Settings size={15} />,        roles: ['Company Head', 'HR', 'Finance', 'Employee'],                 permission: 'settings',        inMatrix: true,  group: 'company' },
 ];
 
 /** A permission-matrix row: a unique rowId + the permission key it edits + label. */

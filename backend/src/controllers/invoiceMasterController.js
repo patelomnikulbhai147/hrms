@@ -110,7 +110,14 @@ exports.listProducts = async (req, res) => {
     if (!canView(req)) return res.status(403).json({ error: 'No permission.' });
     const base = scopedWhere(req); if (base === null) return res.status(403).json({ error: 'Unauthorized.' });
     const where = { ...base };
-    if (req.query.q) where.OR = [{ name: { contains: String(req.query.q) } }, { hsnSac: { contains: String(req.query.q) } }];
+    if (req.query.q) {
+      const q = String(req.query.q).trim();
+      where.OR = [
+        { name: { contains: q } },
+        { hsnSac: { contains: q } },
+        { description: { contains: q } }
+      ];
+    }
     if (req.query.active === 'true') where.isActive = true;
     res.json(await prisma.invoiceProduct.findMany({ where, orderBy: { name: 'asc' } }));
   } catch (e) { console.error('invoice.listProducts', e); res.status(500).json({ error: e.message || 'Server error' }); }

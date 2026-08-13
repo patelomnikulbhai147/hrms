@@ -112,15 +112,11 @@ export const TemplateMiniPreview: React.FC<TemplateMiniPreviewProps> = ({ conten
     const timer = setTimeout(() => {
       let renderedHtml = '';
       try {
-        const parsed = JSON.parse(content);
-        if (parsed && (parsed.elements || parsed.blocks || Array.isArray(parsed))) {
-          // This is a JSON layout. We use renderInvoiceHtml.
-          const blocks = parsed.elements || parsed.blocks || (Array.isArray(parsed) ? parsed : []);
-          
+        if (content === '__SYSTEM_DEFAULT__') {
           const sampleCompany = {
             name: 'Vishv Enterprise',
             address: '123 Business Avenue, Tech Park, City - 400001',
-            gstNumber: '27AADCB2230M1Z2',
+            gstin: '27AADCB2230M1Z2',
             contactEmail: 'billing@vishventerprise.com',
             contactNumber: '+91 98765 43210'
           };
@@ -129,32 +125,76 @@ export const TemplateMiniPreview: React.FC<TemplateMiniPreviewProps> = ({ conten
             invoiceNumber: 'INV-2026-001',
             invoiceDate: '2026-08-08',
             dueDate: '2026-08-15',
-            billToName: 'Sample Customer Ltd',
-            billToAddress: '456 Client Road, Suite 100',
-            billToGstin: '29ABCDE1234F1Z5',
-            subtotal: 1000.00,
-            discountTotal: 0.00,
-            cgst: 90.00,
-            sgst: 90.00,
+            billToName: 'Acme Retail Pvt Ltd',
+            billToAddress: '4th Floor, Trade Tower, Ahmedabad, Gujarat',
+            billToGstin: '24ABCDE1234F1Z5',
+            subtotal: 38250.00,
+            discountTotal: 750.00,
+            taxableAmount: 38250.00,
+            cgst: 3442.50,
+            sgst: 3442.50,
             igst: 0.00,
-            grandTotal: 1180.00,
+            grandTotal: 45135.00,
             bankDetails: 'Bank: HDFC Bank\nAccount: 1234567890\nIFSC: HDFC0001234',
             notes: 'Thank you for your business!',
             items: [
-              { description: 'Professional Service', quantity: 2, rate: 500.00, amount: 1000.00 }
+              { name: 'Consulting Services', description: 'Implementation - July', quantity: 10, unit: 'hrs', rate: 1500.00, discountPct: 5, taxable: 14250.00, taxRate: 18, amount: 16815.00 },
+              { name: 'Annual Support Plan', description: 'SAC/HSN: 9983', quantity: 1, unit: 'yr', rate: 24000.00, discountPct: 0, taxable: 24000.00, taxRate: 18, amount: 28320.00 }
             ]
           };
 
           renderedHtml = renderInvoiceHtml(
-            sampleInvoice, 
-            sampleCompany, 
-            undefined, // no legacy design
-            { blocks }, // layout
+            sampleInvoice,
+            sampleCompany,
+            undefined,
+            null, // System Default
             { print: false, qrDataUrl: qrDataUrl(sampleInvoice.invoiceNumber, 200) }
           );
         } else {
-          // Fallback to old HTML rendering if needed
-          renderedHtml = renderClientSidePreview(content);
+          const parsed = JSON.parse(content);
+          if (parsed && (parsed.elements || parsed.blocks || Array.isArray(parsed))) {
+            // This is a JSON layout. We use renderInvoiceHtml.
+            const blocks = parsed.elements || parsed.blocks || (Array.isArray(parsed) ? parsed : []);
+            
+            const sampleCompany = {
+              name: 'Vishv Enterprise',
+              address: '123 Business Avenue, Tech Park, City - 400001',
+              gstNumber: '27AADCB2230M1Z2',
+              contactEmail: 'billing@vishventerprise.com',
+              contactNumber: '+91 98765 43210'
+            };
+            
+            const sampleInvoice = {
+              invoiceNumber: 'INV-2026-001',
+              invoiceDate: '2026-08-08',
+              dueDate: '2026-08-15',
+              billToName: 'Sample Customer Ltd',
+              billToAddress: '456 Client Road, Suite 100',
+              billToGstin: '29ABCDE1234F1Z5',
+              subtotal: 1000.00,
+              discountTotal: 0.00,
+              cgst: 90.00,
+              sgst: 90.00,
+              igst: 0.00,
+              grandTotal: 1180.00,
+              bankDetails: 'Bank: HDFC Bank\nAccount: 1234567890\nIFSC: HDFC0001234',
+              notes: 'Thank you for your business!',
+              items: [
+                { description: 'Professional Service', quantity: 2, rate: 500.00, amount: 1000.00 }
+              ]
+            };
+
+            renderedHtml = renderInvoiceHtml(
+              sampleInvoice, 
+              sampleCompany, 
+              undefined, // no legacy design
+              { blocks }, // layout
+              { print: false, qrDataUrl: qrDataUrl(sampleInvoice.invoiceNumber, 200) }
+            );
+          } else {
+            // Fallback to old HTML rendering if needed
+            renderedHtml = renderClientSidePreview(content);
+          }
         }
       } catch (e) {
         // Not JSON, so it's HTML

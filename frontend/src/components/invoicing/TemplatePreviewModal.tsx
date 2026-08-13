@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '@/api/apiClient';
 import { renderInvoiceHtml } from './invoiceRender';
 import { qrDataUrl } from '@/utils/cardCodes';
-import { X, Check } from 'lucide-react';
+import { X, Check, Pencil } from 'lucide-react';
 
 interface TemplatePreviewModalProps {
   isOpen: boolean;
@@ -39,7 +39,46 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
           // If it fails to parse as JSON, maybe it is HTML. We'll handle it.
         }
 
-        if (parsed && (parsed.elements || parsed.blocks || Array.isArray(parsed))) {
+        if (templateContent === '__SYSTEM_DEFAULT__') {
+          const sampleCompany = {
+            name: 'Vishv Enterprise',
+            address: '123 Business Avenue, Tech Park, City - 400001',
+            gstin: '27AADCB2230M1Z2',
+            contactEmail: 'billing@vishventerprise.com',
+            contactNumber: '+91 98765 43210'
+          };
+          
+          const sampleInvoice = {
+            invoiceNumber: 'INV-2026-001',
+            invoiceDate: '2026-08-08',
+            dueDate: '2026-08-15',
+            billToName: 'Acme Retail Pvt Ltd',
+            billToAddress: '4th Floor, Trade Tower, Ahmedabad, Gujarat',
+            billToGstin: '24ABCDE1234F1Z5',
+            subtotal: 38250.00,
+            discountTotal: 750.00,
+            taxableAmount: 38250.00,
+            cgst: 3442.50,
+            sgst: 3442.50,
+            igst: 0.00,
+            grandTotal: 45135.00,
+            bankDetails: 'Bank: HDFC Bank\nAccount: 1234567890\nIFSC: HDFC0001234',
+            notes: 'Thank you for your business!',
+            items: [
+              { name: 'Consulting Services', description: 'Implementation - July', quantity: 10, unit: 'hrs', rate: 1500.00, discountPct: 5, taxable: 14250.00, taxRate: 18, amount: 16815.00 },
+              { name: 'Annual Support Plan', description: 'SAC/HSN: 9983', quantity: 1, unit: 'yr', rate: 24000.00, discountPct: 0, taxable: 24000.00, taxRate: 18, amount: 28320.00 }
+            ]
+          };
+
+          const html = renderInvoiceHtml(
+            sampleInvoice,
+            sampleCompany,
+            undefined,
+            null, // System Default
+            { print: false, qrDataUrl: qrDataUrl(sampleInvoice.invoiceNumber, 200) }
+          );
+          setPreviewHtml(html);
+        } else if (parsed && (parsed.elements || parsed.blocks || Array.isArray(parsed))) {
           // This is a JSON layout. We use renderInvoiceHtml.
           const blocks = parsed.elements || parsed.blocks || (Array.isArray(parsed) ? parsed : []);
           
@@ -82,7 +121,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
           setPreviewHtml(html);
         } else {
           // Fallback to backend API preview for HTML
-          const html = await api.invoiceTemplates.preview(templateContent);
+          const html = await api.invoiceTemplates.preview({ content: templateContent });
           setPreviewHtml(html);
         }
       } catch (err) {
@@ -135,9 +174,10 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
           {!isCustomizing && (
             <button 
               onClick={onCustomize}
-              className="px-6 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded-lg font-medium transition-colors"
+              className="px-6 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 rounded-lg font-medium transition-colors flex items-center gap-2"
             >
-              Customize
+              <Pencil className="w-4 h-4 text-gray-600" />
+              Edit
             </button>
           )}
           
@@ -149,7 +189,7 @@ export const TemplatePreviewModal: React.FC<TemplatePreviewModalProps> = ({
               Cancel
             </button>
             <button 
-              onClick={onUseTemplate}
+              onClick={() => onUseTemplate()}
               className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
             >
               <Check className="w-5 h-5" />

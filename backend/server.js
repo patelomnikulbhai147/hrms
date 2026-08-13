@@ -186,6 +186,7 @@ app.use('/api/ai', require('./src/routes/aiAssistantRoutes'));
 app.use('/api/recruitment', require('./src/routes/recruitmentRoutes'));
 app.use('/api/workflows', require('./src/routes/workflowRoutes'));
 app.use('/api/integrations', require('./src/routes/integrationRoutes'));
+app.use('/api/integration-api-keys', require('./src/routes/integrationRoutes'));
 
 // Phase 6 Routes (SaaS Enterprise & Security)
 app.use('/api/saas', require('./src/routes/saasRoutes'));

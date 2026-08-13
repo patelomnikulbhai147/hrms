@@ -105,7 +105,6 @@ const OPERATION_TABS = [
 // `designer` so the existing render switch and saved design payload are untouched.
 const ADMIN_TABS = [
   { id: 'invoice-templates', label: 'Invoice Templates', icon: FileText },
-  { id: 'designer', label: 'Legacy Branding', icon: Palette },
   { id: 'settings', label: 'Settings', icon: SettingsIcon },
 ] as const;
 const TABS = [...OPERATION_TABS, ...ADMIN_TABS] as const;
@@ -212,22 +211,16 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
           const Icon = t.icon;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'create') setEditInvoiceId(null); }}
-              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs whitespace-nowrap -mb-px nav-tab ${tab === t.id ? 'nav-tab-active' : ''}`}>
+              className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-semibold whitespace-nowrap -mb-px nav-tab ${tab === t.id ? 'nav-tab-active' : ''}`}>
               <Icon size={14} /> {t.label}
             </button>
           );
         };
         const adminTabs = ADMIN_TABS.filter((t) => t.id !== 'designer' || canBranding);
         return (
-          <div className="flex flex-wrap items-center gap-1 border-b border-slate-200">
+          <div className="flex flex-nowrap items-center gap-0.5 sm:gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar pb-px">
             {OPERATION_TABS.map(renderTab)}
-            {adminTabs.length > 0 && (
-              <>
-                <span aria-hidden className="mx-2 hidden h-5 w-px self-center bg-slate-200 sm:block" />
-                <span className="hidden select-none self-center pr-1 text-[9px] font-bold uppercase tracking-wider text-slate-300 sm:block">Setup</span>
-                {adminTabs.map(renderTab)}
-              </>
-            )}
+            {adminTabs.map(renderTab)}
           </div>
         );
       })()}
@@ -241,9 +234,6 @@ export const InvoiceManagement: React.FC<Props> = ({ role, activeCompanyId, comp
       {tab === 'invoice-templates' && (canBranding
         ? <InvoiceTemplateDashboard />
         : <Empty icon={<FileText size={26} />} title="Invoice Templates restricted" sub="Only the Company Head or an authorized admin can configure invoice templates." />)}
-      {tab === 'designer' && (canBranding
-        ? <InvoiceDesigner company={activeCompany} canManage={canBranding} />
-        : <Empty icon={<Palette size={26} />} title="Templates & Branding is restricted" sub="Only the Company Head or an authorized admin can configure invoice templates and branding." />)}
       {tab === 'settings' && <SettingsTab canManage={canManage} company={activeCompany} />}
         </>
       )}
@@ -403,20 +393,17 @@ const InvoicesTab: React.FC<{ canEdit: boolean; canManage: boolean; company: any
   // nothing, so the click silently did nothing at all.
   const print = async (i: any) => {
     try {
-      const full = i.items ? i : await api.invoicing.getInvoice(i.id);
-      await printInvoice(full, company, design, activeLayout, settings);
+      const html = await api.invoicing.getHtml(i.id);
+      printInvoiceDocument(html);
       api.invoicing.logInvoiceAction(i.id, 'PRINTED').catch(() => {});
     } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Could not open the print view.')); }
   };
-  // Email the invoice with the server-rendered PDF attached (additive endpoint).
+  // Email the invoice with the server-rendered PDF attached.
   const emailInvoice = async (i: any) => {
     const to = String(i.billToEmail || '').trim();
     if (!to) { ui.toast.error(`${i.invoiceNumber} has no customer email. Add one on the invoice first.`); return; }
     try {
-      const full = i.items ? i : await api.invoicing.getInvoice(i.id);
-      // The attachment is rendered from the same template that prints.
-      const html = renderInvoiceHtml(full, company, design, activeLayout, {}, settings);
-      const res = await api.invoicing.emailInvoice(i.id, { to, html });
+      const res = await api.invoicing.emailInvoice(i.id, { to });
       if (res?.delivered) ui.toast.success(`Invoice ${i.invoiceNumber} emailed to ${to}.`);
       else ui.toast.info('SMTP is not configured — the email was logged on the server instead.');
       await load();

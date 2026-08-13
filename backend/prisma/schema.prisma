@@ -1714,12 +1714,28 @@ model Tender {
   endDate             String?
   remarks             String?  @db.Text
   convertedContractId Int? // set once a Won tender is converted to a Contract
+  
+  // External Integration
+  source              String? // e.g. "TenderGuruji"
+  externalId          String? // the ID from the external API
+  sourceUrl           String? // link to original tender
+
+  // Submission & Outcome tracking
+  submissionOutcome   String?  @default("NOT_SUBMITTED") // NOT_SUBMITTED / UNDER_EVALUATION / AWARDED / NOT_AWARDED / WITHDRAWN
+  submissionDate      String?
+  submittedAt         DateTime?
+  submittedByUserId   Int?
+  quotedValue         Float?
+
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
   contract Contract?
 
   @@index([companyId])
+  @@index([source, externalId])
+  @@index([status])
+  @@index([closingDate])
 }
 
 // â”€â”€ Contract (auto-created from a Won tender) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3869,54 +3885,196 @@ model AiChatHistory {
   @@index([companyId])
 }
 
-// --- SPRINT 3: Recruitment, BI, & Workflow ---
+// --- SPRINT 3: Recruitment, ATS, BI, & Workflow ---
 
-model JobPosting {
-  id              Int      @id @default(autoincrement())
-  companyId       Int
-  title           String
+model Requirement {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  requirementCode     String    @unique
+  jobTitle            String
+  department          String?
+  hiringManager       String?
+  recruiter           String?
+  numberOfOpenings    Int       @default(1)
+  employmentType      String?   // Full-Time, Part-Time, Contract, Internship
+  location            String?
+  workMode            String?   // On-site, Remote, Hybrid
+  experience          String?   // e.g. "2-4 Years"
+  salaryMin           Int?
+  salaryMax           Int?
+  qualification       String?
+  requiredSkills      String?   @db.Text
+  jobDescription      String?   @db.LongText
+  responsibilities    String?   @db.LongText
+  hiringReason        String?
+  priority            String?   @default("Medium") // Low, Medium, High, Urgent
+  openingDate         String?
+  expectedJoiningDate String?
+  applicationDeadline String?
+  status              String    @default("DRAFT") // DRAFT, OPEN, CLOSED, ARCHIVED
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  jobPosts            JobPost[]
+  applications        Application[]
+  @@index([companyId])
+  @@index([status])
+}
+
+model JobPost {
+  id                  Int       @id @default(autoincrement())
+  companyId           Int
+  jobCode             String    @unique
+  requirementId       Int
+  jobTitle            String
+  department          String?
+  location            String?
+  workMode            String?
+  employmentType      String?
+  salaryMin           Int?
+  salaryMax           Int?
+  experience          String?
+  qualification       String?
+  numberOfOpenings    Int       @default(1)
+  requiredSkills      String?   @db.Text
+  jobDescription      String?   @db.LongText
+  responsibilities    String?   @db.LongText
+  applicationDeadline String?
+  status              String    @default("PUBLISHED") // DRAFT, PUBLISHED, CLOSED
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  requirement         Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  applications        Application[]
+  @@index([companyId])
+  @@index([jobCode])
+}
+
+model Application {
+  id                    Int       @id @default(autoincrement())
+  companyId             Int
+  applicationId         String    @unique // APP-YYYY-XXXXX
+  jobPostId             Int
+  requirementId         Int
+  fullName              String
+  email                 String
+  mobile                String
+  city                  String?
+  state                 String?
+  address               String?   @db.Text
+  highestQualification String?
+  college               String?
+  passingYear           String?
+  course                String?
+  experienceType        String?   // Fresher, Experienced
+  yearsExperience       String?
+  currentCompany        String?
+  currentDesignation    String?
+  candidateSkills       String?   @db.Text
+  coverLetter           String?   @db.LongText
+  resumePath            String    @db.Text
+  analysisStatus        String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  atsMatchScore         Int       @default(0)
+  matchBreakdown        Json?
+  skillsScore           Int       @default(0)
+  experienceScore       Int       @default(0)
+  educationScore        Int       @default(0)
+  projectsScore         Int       @default(0)
+  jobDescriptionScore   Int       @default(0)
+  matchedSkills         Json?
+  missingSkills         Json?
+  warnings              Json?
+  aiSummary             String?   @db.LongText
+  analyzedAt            DateTime?
+  screeningNotes        String?   @db.Text
+  screeningDecision     String?
+  status                String    @default("NEW") // NEW, SCREENING, SHORTLISTED, INTERVIEW, SELECTED, OFFER_SENT, JOINED, REJECTED
+  previousStatus        String?
+  rejectionReason       String?   @db.Text
+  rejectedAt            DateTime?
+  rejectedBy            String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  jobPost               JobPost   @relation(fields: [jobPostId], references: [id], onDelete: Cascade)
+  requirement           Requirement @relation(fields: [requirementId], references: [id], onDelete: Cascade)
+  interviews            RecruitmentInterview[]
+  offers                RecruitmentOffer[]
+  timeline              ApplicationTimeline[]
+  @@index([companyId])
+  @@index([jobPostId])
+  @@index([requirementId])
+  @@index([status])
+}
+
+model ApplicationTimeline {
+  id            Int       @id @default(autoincrement())
+  applicationId Int
+  action        String
+  description   String?   @db.Text
+  createdAt     DateTime  @default(now())
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  @@index([applicationId])
+}
+
+model RecruitmentInterview {
+  id                Int       @id @default(autoincrement())
+  applicationId     Int
+  interviewType     String?   // Online, Phone, In-Person, Technical, HR
+  scheduledDate     String?
+  scheduledTime     String?
+  interviewer       String?
+  location          String?   @db.Text
+  notes             String?   @db.Text
+  token             String?   @unique
+  duration          Int       @default(30)
+  timezone          String    @default("Asia/Kolkata")
+  technicalSkills   Int?
+  communication     Int?
+  problemSolving    Int?
+  cultureFit        Int?
+  overallRating     Int?
+  strengths         String?   @db.Text
+  weaknesses        String?   @db.Text
+  feedbackComments  String?   @db.Text
+  feedbackDecision  String?   // SELECTED, REJECTED, ON_HOLD
+  status            String    @default("PENDING") // PENDING, SCHEDULED, COMPLETED, CANCELLED
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  application       Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  @@index([applicationId])
+  @@index([token])
+}
+
+model RecruitmentOffer {
+  id              Int       @id @default(autoincrement())
+  applicationId   Int
+  designation     String?
   department      String?
+  salary          String?
+  employmentType  String?
   location        String?
-  type            String   @default("Full-Time") // Full-Time, Part-Time, Contract
-  description     String   @db.LongText
-  requirements    String?  @db.LongText
-  status          String   @default("Open") // Draft, Open, Closed, On-Hold
-  vacancies       Int      @default(1)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  candidates      Candidate[]
-  @@index([companyId])
+  joiningDate     String?
+  offerExpiry     String?
+  terms           String?   @db.LongText
+  token           String?   @unique
+  status          String    @default("CREATED") // CREATED, SENT, ACCEPTED, DECLINED, EXPIRED
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  application     Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  @@index([applicationId])
+  @@index([token])
 }
 
-model Candidate {
-  id              Int      @id @default(autoincrement())
-  jobId           Int
-  companyId       Int
-  firstName       String
-  lastName        String
-  email           String
-  phone           String?
-  resumeUrl       String?  @db.LongText
-  skills          String?  @db.Text
-  status          String   @default("Applied") // Applied, Screening, Interview, Offered, Hired, Rejected
-  rating          Float    @default(0.0)
-  aiMatchScore    Int?     // Percentage match from AI parsing
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  job             JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  interviews      Interview[]
+model InterviewScheduleSettings {
+  id            Int       @id @default(autoincrement())
+  companyId     Int       @unique
+  availableFrom String?
+  availableTo   String?
+  workingDays   Json?     // ["Monday", "Tuesday", ...]
+  startTime     String    @default("10:00")
+  endTime       String    @default("17:00")
+  duration      Int       @default(30)
+  timezone      String    @default("Asia/Kolkata")
+  updatedAt     DateTime  @updatedAt
   @@index([companyId])
-}
-
-model Interview {
-  id              Int      @id @default(autoincrement())
-  candidateId     Int
-  panelId         Int?     // Employee ID
-  scheduledAt     DateTime
-  status          String   @default("Scheduled") // Scheduled, Completed, Cancelled
-  feedback        String?  @db.Text
-  rating          Float?
-  candidate       Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 }
 
 model Workflow {
@@ -3943,11 +4101,144 @@ model WorkflowAction {
 model IntegrationConnection {
   id              Int      @id @default(autoincrement())
   companyId       Int
-  provider        String   // Google Workspace, Slack, SAP
-  status          String   @default("Disconnected") // Connected, Disconnected, Error
-  credentials     Json?    // Encrypted OAuth tokens / API keys
+  branchId        Int?
+  provider        String   // google_workspace, slack, sap, tally
+  status          String   @default("Not Configured") // Not Configured, Connected, Disconnected, Error, Syncing, Authentication Required
+  credentials     Json?    // Encrypted credentials / tokens stored at rest
+  syncEnabled     Boolean  @default(true)
+  syncFrequency   String   @default("Hourly") // Manual, Realtime, Hourly, Daily
+  syncDirection   String   @default("Bidirectional") // Import, Export, Bidirectional
+  accountEmail    String?  
+  accountName     String?  
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?  // SUCCESS, FAILED, PARTIAL
+  lastSyncError   String?  @db.Text
+  settings        Json?    // Provider specific settings
+  createdBy       Int?
+  updatedBy       Int?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  syncLogs        IntegrationSyncLog[]
+  webhooks        IntegrationWebhook[]
+  fieldMappings   IntegrationFieldMapping[]
+  events          IntegrationEvent[]
+  auditLogs       IntegrationAuditLog[]
+
+  @@unique([companyId, provider])
+  @@index([companyId])
+  @@index([provider])
+}
+
+model IntegrationSyncLog {
+  id               Int                   @id @default(autoincrement())
+  companyId        Int
+  connectionId     Int
+  provider         String
+  syncType         String                @default("Manual") // Manual, Scheduled, Webhook
+  status           String                @default("PENDING") // PENDING, RUNNING, SUCCESS, PARTIAL, FAILED
+  startedAt        DateTime              @default(now())
+  completedAt      DateTime?
+  recordsProcessed Int                   @default(0)
+  recordsCreated   Int                   @default(0)
+  recordsUpdated   Int                   @default(0)
+  recordsFailed    Int                   @default(0)
+  error            String?               @db.Text
+  details          Json?
+  createdBy        Int?
+  connection       IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([connectionId])
+}
+
+model IntegrationWebhook {
+  id           Int                    @id @default(autoincrement())
+  companyId    Int
+  connectionId Int?
+  provider     String
+  eventId      String?                // Idempotency key
+  eventType    String
+  payload      Json
+  signature    String?
+  status       String                 @default("RECEIVED") // RECEIVED, PROCESSED, FAILED, DUPLICATE
+  processedAt  DateTime?
+  error        String?                @db.Text
+  createdAt    DateTime               @default(now())
+  connection   IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, provider, eventId])
+  @@index([companyId])
+  @@index([provider])
+}
+
+model IntegrationFieldMapping {
+  id           Int                   @id @default(autoincrement())
+  companyId    Int
+  connectionId Int
+  entityType   String                // Employee, Attendance, Leave, Payroll, Invoice
+  sourceField  String
+  targetField  String
+  direction    String                @default("Bidirectional")
+  isCustom     Boolean               @default(false)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  connection   IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([connectionId])
+}
+
+model IntegrationEvent {
+  id           Int                   @id @default(autoincrement())
+  companyId    Int
+  connectionId Int
+  eventType    String
+  entityId     String?
+  entityType   String?
+  status       String                @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  payload      Json?
+  attempts     Int                   @default(0)
+  error        String?               @db.Text
+  createdAt    DateTime              @default(now())
+  connection   IntegrationConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([connectionId])
+}
+
+model IntegrationAuditLog {
+  id           Int                    @id @default(autoincrement())
+  companyId    Int
+  connectionId Int?
+  userId       Int?
+  userEmail    String?
+  provider     String
+  action       String                 // CONNECTED, DISCONNECTED, RECONNECTED, CREDENTIAL_UPDATED, SYNC_STARTED, SYNC_COMPLETED, SYNC_FAILED, WEBHOOK_RECEIVED, API_KEY_CREATED, API_KEY_REVOKED, SETTINGS_CHANGED
+  result       String                 // SUCCESS, FAILURE
+  metadata     Json?
+  createdAt    DateTime               @default(now())
+  connection   IntegrationConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@index([companyId])
+  @@index([provider])
+}
+
+model IntegrationApiKey {
+  id         Int       @id @default(autoincrement())
+  companyId  Int
+  name       String
+  keyHash    String    @unique // SHA-256 hash
+  keyMask    String    // Masked e.g. zen_live_...1234
+  scopes     Json      // JSON array of granted scopes
+  expiresAt  DateTime?
+  status     String    @default("ACTIVE") // ACTIVE, REVOKED, EXPIRED
+  rateLimit  Int       @default(1000)
+  lastUsedAt DateTime?
+  createdBy  Int?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
   @@index([companyId])
 }
 

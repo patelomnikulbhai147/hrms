@@ -13,6 +13,7 @@ router.use(require('../middleware/readOnlyMiddleware')); // archived company →
 
 router.get('/', ctrl.getAll);
 router.post('/', ctrl.create);
+router.post('/sync-external', ctrl.syncExternal);
 router.post('/:id/convert', ctrl.convertToContract); // Won tender → Contract
 router.put('/:id', ctrl.update);
 router.delete('/:id', ctrl.remove);

@@ -10,6 +10,7 @@ router.post('/preview', controller.preview);
 router.get('/:id', controller.getOne);
 router.put('/:id', controller.update);
 router.delete('/:id', controller.remove);
+router.post('/activate-default', controller.activateDefault);
 router.put('/:id/activate', controller.activate);
 router.post('/:id/duplicate', controller.duplicate);
 

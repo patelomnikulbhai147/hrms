@@ -4,6 +4,7 @@ import CanvasInvoiceDesigner from './CanvasInvoiceDesigner';
 import { TemplatePreviewModal } from './TemplatePreviewModal';
 import { TemplateMiniPreview } from './TemplateMiniPreview';
 import { GALLERY_TEMPLATES, GalleryTemplate } from './templateDefinitions';
+import { generateTemplateElements } from './canvasTemplates';
 import { 
   Plus, Copy as DocumentDuplicateIcon, CheckCircle2 as CheckCircleIcon, 
   Trash2 as TrashIcon, Edit as PencilIcon, Eye, Upload, LayoutTemplate, MonitorSmartphone
@@ -39,10 +40,22 @@ export const InvoiceTemplateDashboard: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [activeTemplate, setActiveTemplate] = useState<any>(null);
+
+  const fetchActiveTemplate = async () => {
+    try {
+      const active = await api.invoiceTemplates.active();
+      setActiveTemplate(active);
+    } catch (e) {}
+  };
+
   const fetchTemplates = async () => {
     try {
       setLoading(true);
-      const data = await api.invoiceTemplates.list();
+      const [data] = await Promise.all([
+        api.invoiceTemplates.list(),
+        fetchActiveTemplate()
+      ]);
       setTemplates(data);
     } catch (e) {
       toast.error('Failed to load templates');
@@ -55,19 +68,32 @@ export const InvoiceTemplateDashboard: React.FC = () => {
     fetchTemplates();
   }, []);
 
+  const isDefaultActive = !activeTemplate || activeTemplate.isDefault || activeTemplate.id === null;
+
   const handleActivate = async (id: number) => {
     try {
-      // In a real app, this might show a modal asking Company vs Branch.
-      // Since backend activate defaults to company/branch based on the template's current scope,
-      // we'll just activate it directly for simplicity, or we can add a prompt.
       const confirmActivation = window.confirm("Do you want to set this template as Active? It will be used for all future invoices.");
       if (!confirmActivation) return;
 
       await api.invoiceTemplates.activate(id);
       toast.success('Template activated');
+      window.dispatchEvent(new Event('hrms:invoice-templates-changed'));
       fetchTemplates();
     } catch (e) {
       toast.error('Failed to activate template');
+    }
+  };
+
+  const handleActivateDefault = async () => {
+    try {
+      await api.invoiceTemplates.activateDefault();
+      toast.success('Default Template activated successfully');
+      window.dispatchEvent(new Event('hrms:invoice-templates-changed'));
+      setIsPreviewOpen(false);
+      setPreviewTemplate(null);
+      fetchTemplates();
+    } catch (e) {
+      toast.error('Failed to activate Default Template');
     }
   };
 
@@ -128,9 +154,15 @@ export const InvoiceTemplateDashboard: React.FC = () => {
   };
 
   const handleUseGalleryTemplate = async (templateOverride?: any) => {
-    const tmpl = templateOverride || previewTemplate;
+    const isTemplateObj = templateOverride && typeof templateOverride === 'object' && ('id' in templateOverride || 'content' in templateOverride);
+    const tmpl = isTemplateObj ? templateOverride : previewTemplate;
     if (!tmpl) return;
     
+    if (tmpl.id === 'system-default' || tmpl.content === '__SYSTEM_DEFAULT__') {
+      await handleActivateDefault();
+      return;
+    }
+
     try {
       toast.loading('Applying template...', { id: 'apply' });
       // Create it
@@ -142,6 +174,7 @@ export const InvoiceTemplateDashboard: React.FC = () => {
         designType: 'CANVAS'
       });
       toast.success('Template applied successfully', { id: 'apply' });
+      window.dispatchEvent(new Event('hrms:invoice-templates-changed'));
       setIsPreviewOpen(false);
       setPreviewTemplate(null);
       setActiveTab('my_templates');
@@ -154,24 +187,50 @@ export const InvoiceTemplateDashboard: React.FC = () => {
   const handleCustomizeGalleryTemplate = () => {
     if (!previewTemplate) return;
     setIsPreviewOpen(false);
+
+    // Look for an existing saved template with the same name or ID
+    const existing = templates.find((t) => t.name === previewTemplate.name || String(t.id) === String(previewTemplate.id));
+
     handleOpenBuilder({
-      name: previewTemplate.name + ' (Custom)',
-      description: 'Customized from Gallery',
-      content: previewTemplate.content
+      id: existing ? existing.id : (typeof previewTemplate.id === 'number' ? previewTemplate.id : undefined),
+      name: previewTemplate.name,
+      description: previewTemplate.description || 'Customized template',
+      content: previewTemplate.content === '__SYSTEM_DEFAULT__' ? '' : previewTemplate.content
     });
     setPreviewTemplate(null);
   };
 
   if (isBuilderOpen) {
-    let parsedContent = { elements: [] };
-    try {
-      if (editingTemplate?.content) parsedContent = JSON.parse(editingTemplate.content);
-    } catch(e) {}
+    let parsedElements: any[] = [];
+    let parsedStyleRoles: any = undefined;
+
+    if (!editingTemplate?.content || editingTemplate.content === '__SYSTEM_DEFAULT__' || editingTemplate.id === 'system-default') {
+      parsedElements = generateTemplateElements('standard', {
+        bg: '#ffffff',
+        primary: '#1e293b',
+        secondary: '#475569',
+        text: '#1e293b',
+        tableHeaderBg: '#f8fafc'
+      });
+    } else {
+      try {
+        const raw = typeof editingTemplate.content === 'string' ? JSON.parse(editingTemplate.content) : editingTemplate.content;
+        if (Array.isArray(raw)) {
+          parsedElements = raw;
+        } else if (raw && typeof raw === 'object') {
+          parsedElements = raw.elements || raw.blocks || [];
+          parsedStyleRoles = raw.styleRoles;
+        }
+      } catch (e) {
+        console.error('[InvoiceTemplateDashboard] Parse error:', e);
+      }
+    }
     
     const seedLayout = { 
-       templateId: editingTemplate?.id, 
-       name: editingTemplate?.name,
-       ...parsedContent 
+       templateId: typeof editingTemplate?.id === 'number' ? editingTemplate.id : undefined, 
+       name: editingTemplate?.name || 'Invoice Template',
+       elements: parsedElements,
+       styleRoles: parsedStyleRoles
     };
 
     return (
@@ -182,17 +241,24 @@ export const InvoiceTemplateDashboard: React.FC = () => {
           seedLayout={seedLayout} 
           isGalleryMode={true}
           onSaveLayout={async (layoutData) => {
+            const templateName = layoutData.name || editingTemplate?.name || 'Untitled Template';
             const payload = {
-              name: layoutData.name,
-              content: JSON.stringify(layoutData.layout),
+              name: templateName,
+              content: JSON.stringify({
+                elements: layoutData.layout.blocks || layoutData.layout.elements || [],
+                styleRoles: layoutData.layout.styleRoles
+              }),
               designType: 'CANVAS',
-              status: layoutData.status || 'Draft'
+              status: layoutData.status || 'Active'
             };
-            if (editingTemplate?.id) {
+            if (editingTemplate?.id && typeof editingTemplate.id === 'number') {
                await api.invoiceTemplates.update(editingTemplate.id, payload);
+               toast.success(`Updated "${templateName}"`);
             } else {
                await api.invoiceTemplates.create(payload);
+               toast.success(`Saved "${templateName}"`);
             }
+            window.dispatchEvent(new Event('hrms:invoice-templates-changed'));
             handleCloseBuilder();
             fetchTemplates();
           }}
@@ -253,34 +319,51 @@ export const InvoiceTemplateDashboard: React.FC = () => {
             <div>
               <p className="text-gray-500 mb-6">Choose from our professionally designed templates. You can use them instantly or customize colors and layouts.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {GALLERY_TEMPLATES.map((tmpl) => (
-                  <div key={tmpl.id} className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-lg transition-shadow bg-white flex flex-col group">
-                    <div className="h-64 bg-gray-100 flex items-center justify-center border-b border-gray-200 relative overflow-hidden group-hover:bg-indigo-50 transition-colors">
-                      <div className="absolute inset-0 pointer-events-none">
-                        <TemplateMiniPreview content={tmpl.content} />
+                {GALLERY_TEMPLATES.map((tmpl) => {
+                  const isActive = tmpl.id === 'system-default' ? isDefaultActive : (activeTemplate?.id && String(activeTemplate.id) === String(tmpl.id));
+                  return (
+                    <div key={tmpl.id} className={`border rounded-xl overflow-hidden hover:shadow-lg transition-shadow bg-white flex flex-col group relative ${isActive ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-200'}`}>
+                      {tmpl.id === 'system-default' && (
+                        <span className="absolute top-2 left-2 z-20 inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white shadow-sm">
+                          ★ DEFAULT
+                        </span>
+                      )}
+                      {isActive && (
+                        <span className="absolute top-2 right-2 z-20 inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold uppercase text-white shadow-sm">
+                          ACTIVE
+                        </span>
+                      )}
+                      <div className="h-64 bg-gray-100 flex items-center justify-center border-b border-gray-200 relative overflow-hidden group-hover:bg-indigo-50 transition-colors">
+                        <div className="absolute inset-0 pointer-events-none">
+                          <TemplateMiniPreview content={tmpl.content} />
+                        </div>
+                        
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-10">
+                          <button 
+                            onClick={() => { setPreviewTemplate(tmpl); setIsPreviewOpen(true); }}
+                            className="px-4 py-2 bg-white text-gray-900 font-medium rounded-lg hover:bg-gray-100 transition-colors w-32 flex justify-center items-center gap-2 text-xs"
+                          >
+                            <Eye className="w-4 h-4" /> Preview
+                          </button>
+                          <button 
+                            onClick={() => { handleUseGalleryTemplate(tmpl); }}
+                            disabled={isActive}
+                            className={`px-4 py-2 text-white font-medium rounded-lg transition-colors w-32 flex justify-center items-center gap-2 text-xs ${isActive ? 'bg-emerald-600 cursor-default' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                          >
+                            <CheckCircleIcon className="w-4 h-4" /> {isActive ? 'Active' : 'Use'}
+                          </button>
+                        </div>
                       </div>
-                      
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3 backdrop-blur-sm z-10">
-                        <button 
-                          onClick={() => { setPreviewTemplate(tmpl); setIsPreviewOpen(true); }}
-                          className="px-4 py-2 bg-white text-gray-900 font-medium rounded-lg hover:bg-gray-100 transition-colors w-32 flex justify-center items-center gap-2"
-                        >
-                          <Eye className="w-4 h-4" /> Preview
-                        </button>
-                        <button 
-                          onClick={() => { handleUseGalleryTemplate(tmpl); }}
-                          className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors w-32 flex justify-center items-center gap-2"
-                        >
-                          <CheckCircleIcon className="w-4 h-4" /> Use
-                        </button>
+                      <div className="p-4 flex-1 flex flex-col">
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <h3 className="font-bold text-gray-900 text-sm">{tmpl.name}</h3>
+                          {tmpl.category && <span className="text-[9px] font-bold uppercase text-slate-400">{tmpl.category}</span>}
+                        </div>
+                        <p className="text-xs text-gray-500 flex-1">{tmpl.description}</p>
                       </div>
                     </div>
-                    <div className="p-4 flex-1 flex flex-col">
-                      <h3 className="font-bold text-gray-900 mb-1">{tmpl.name}</h3>
-                      <p className="text-xs text-gray-500 flex-1">{tmpl.description}</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

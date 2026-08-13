@@ -746,6 +746,15 @@ export const api = {
       }
       return res.blob();
     },
+    getHtml: async (invoiceId: number): Promise<string> => {
+      const res = await fetch(`${BASE_URL}/invoicing/invoices/${invoiceId}/html`, { headers: getHeaders() });
+      if (!res.ok) {
+        let msg = 'Could not download the invoice HTML.';
+        try { msg = (await res.json())?.error || msg; } catch { /* keep default */ }
+        throw new Error(msg);
+      }
+      return res.text();
+    },
     dashboard: async () => apiFetch(`${BASE_URL}/invoicing/dashboard`, { headers: getHeaders() }),
     // Customers
     listCustomers: async (params: Record<string, any> = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return apiFetch(`${BASE_URL}/invoicing/customers${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
@@ -797,9 +806,10 @@ export const api = {
     update: async (id: number, payload: any) => apiFetch(`${BASE_URL}/invoice-templates/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(payload) }),
     remove: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}`, { method: 'DELETE', headers: getHeaders() }),
     activate: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}/activate`, { method: 'PUT', headers: getHeaders() }),
+    activateDefault: async () => apiFetch(`${BASE_URL}/invoice-templates/activate-default`, { method: 'POST', headers: getHeaders() }),
     duplicate: async (id: number) => apiFetch(`${BASE_URL}/invoice-templates/${id}/duplicate`, { method: 'POST', headers: getHeaders() }),
-    preview: async (content: string) => { 
-      const res = await fetch(`${BASE_URL}/invoice-templates/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ content }) }); 
+    preview: async (payload: { content: string, invoice?: any, items?: any[] }) => { 
+      const res = await fetch(`${BASE_URL}/invoice-templates/preview`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(payload) }); 
       return res.text();
     }
   },
@@ -1025,6 +1035,7 @@ export const api = {
     update: async (id: any, data: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     remove: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}`, { method: 'DELETE', headers: getHeaders() }); },
     convert: async (id: any) => { return await apiFetch(`${BASE_URL}/tenders/${id}/convert`, { method: 'POST', headers: getHeaders() }); },
+    syncExternal: async () => { return await apiFetch(`${BASE_URL}/tenders/sync-external`, { method: 'POST', headers: getHeaders() }); },
   },
   contracts: {
     getAll: async () => { return await apiFetch(`${BASE_URL}/contracts`, { headers: getHeaders() }); },

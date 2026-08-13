@@ -17,7 +17,7 @@ import { InvoicePicker, type PickerOption } from './InvoicePicker';
 import {
   SERVICE_INVOICE_CSS, computeInvoice, resolveIssuer, amountInWords, inr,
   outstandingOf, blankServiceItem, r2, NOT_CONFIGURED, NO_SIGNATURE,
-  dispatchRows, destinationRows, hasLogistics, type ServiceItem,
+  dispatchRows, destinationRows, hasLogistics, type ServiceItem, type ServiceInvoiceDoc
 } from './serviceInvoice';
 
 // The editable Dispatch / Destination fields, in the order they appear.
@@ -88,25 +88,7 @@ const useServiceInvoiceCss = () => {
   }, []);
 };
 
-export interface ServiceInvoiceDoc {
-  transactionType?: string;
-  invoiceNumber?: string; invoiceDate?: string; dueDate?: string;
-  contractNo?: string; referenceNo?: string; poNumber?: string; billingPeriod?: string;
-  billToName?: string; billToAddress?: string; billToCity?: string; billToState?: string;
-  billToCountry?: string; billToGstin?: string; billToPan?: string; billToEmail?: string;
-  billToPhone?: string; billToContact?: string;
-  placeOfSupply?: string; paymentTerms?: string; paymentMode?: string;
-  notes?: string; termsConditions?: string; bankDetails?: string; upiId?: string;
-  amountPaid?: number;
-  // Dispatch & Destination. billToShipAddress doubles as the delivery address.
-  billToShipAddress?: string;
-  dispatchFrom?: string; dispatchAddress?: string; dispatchCity?: string;
-  dispatchState?: string; dispatchPincode?: string; dispatchDate?: string;
-  dispatchThrough?: string; vehicleNumber?: string; lrNumber?: string;
-  shipToName?: string; shipToCity?: string; shipToState?: string;
-  shipToPincode?: string; shipToCountry?: string;
-  items: ServiceItem[];
-}
+
 
 interface Props {
   doc: ServiceInvoiceDoc;

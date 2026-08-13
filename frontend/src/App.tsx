@@ -61,6 +61,9 @@ const KnowledgeBase = React.lazy(() => import('@/pages/KnowledgeBase').then(m =>
 const InternalCommunication = React.lazy(() => import('@/pages/InternalCommunication').then(m => ({ default: m.InternalCommunication })));
 const AIAssistant = React.lazy(() => import('@/pages/AIAssistant').then(m => ({ default: m.AIAssistant })));
 const RecruitmentCRM = React.lazy(() => import('@/pages/RecruitmentCRM').then(m => ({ default: m.RecruitmentCRM })));
+const PublicCareersJobView = React.lazy(() => import('@/components/recruitment/PublicCareersJobView').then(m => ({ default: m.PublicCareersJobView })));
+const PublicInterviewScheduleView = React.lazy(() => import('@/components/recruitment/PublicInterviewScheduleView').then(m => ({ default: m.PublicInterviewScheduleView })));
+const PublicOfferResponseView = React.lazy(() => import('@/components/recruitment/PublicOfferResponseView').then(m => ({ default: m.PublicOfferResponseView })));
 
 const WorkflowEngine = React.lazy(() => import('@/pages/WorkflowEngine').then(m => ({ default: m.WorkflowEngine })));
 const IntegrationHub = React.lazy(() => import('@/pages/IntegrationHub').then(m => ({ default: m.IntegrationHub })));
@@ -1450,15 +1453,23 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
     if (userHierarchy.length === 1) {
       const group = userHierarchy[0];
       const companyLevelAccess = accessibleIds.includes(String(group.companyId));
-      if (companyLevelAccess) {
-        // Company-level access → open the consolidated company workspace by default.
-        handleCompanyChange(group.companyId, 'company').catch(err => console.error(err));
-      } else if (group.cards.length === 1) {
-        // Branch-only access with exactly one authorized branch → open it directly.
-        handleCompanyChange(group.cards[0].id, 'branch').catch(err => console.error(err));
+      
+      // If the user has multiple branches, they must select which branch to work in,
+      // UNLESS they have no branch access and only company access.
+      const branchOptions = group.cards.length;
+      
+      if (branchOptions <= 1) {
+        // Only 1 company and at most 1 branch -> no meaningful choice to make
+        if (companyLevelAccess) {
+          handleCompanyChange(group.companyId, 'company').catch(err => console.error(err));
+        } else if (branchOptions === 1) {
+          handleCompanyChange(group.cards[0].id, group.isCompanyOnly ? 'company' : 'branch').catch(err => console.error(err));
+        }
+      } else {
+        // branchOptions > 1
+        // Even if they have companyLevelAccess, they have multiple branches,
+        // so we must show the workspace selector so they can choose a branch (or the company).
       }
-      // Branch-only with multiple branches → fall through to the SelectWorkspace
-      // picker so the user chooses one of their authorized branches.
     }
   }, [isAuthenticated, authProfile, activeCompanyId, isHydrating, permissionRole, userHierarchy]);
 
@@ -1539,6 +1550,37 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
       }
     }
   }, [resolvedRole, currentPage, authProfile]);
+
+  // ── Public Candidate Recruitment Routes (Careers, Self-Schedule, Offer Response) ──
+  const urlParams = new URLSearchParams(window.location.search);
+  const publicJobCode = urlParams.get('job') || (window.location.pathname.startsWith('/careers/') ? window.location.pathname.replace('/careers/', '').split('/')[0] : null);
+  const publicScheduleToken = urlParams.get('schedule') || (window.location.pathname.startsWith('/schedule/') ? window.location.pathname.replace('/schedule/', '').split('/')[0] : null);
+  const publicOfferToken = urlParams.get('offer') || (window.location.pathname.startsWith('/offer/') ? window.location.pathname.replace('/offer/', '').split('/')[0] : null);
+  const publicOfferAction = urlParams.get('action') as 'accept' | 'decline' | undefined;
+
+  if (publicJobCode) {
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
+        <PublicCareersJobView jobCode={publicJobCode} />
+      </React.Suspense>
+    );
+  }
+
+  if (publicScheduleToken) {
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
+        <PublicInterviewScheduleView token={publicScheduleToken} />
+      </React.Suspense>
+    );
+  }
+
+  if (publicOfferToken) {
+    return (
+      <React.Suspense fallback={<div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>}>
+        <PublicOfferResponseView token={publicOfferToken} initialAction={publicOfferAction} />
+      </React.Suspense>
+    );
+  }
 
   if (!isAuthenticated || !authProfile) {
     const authFallback = <div className="flex items-center justify-center h-screen bg-slate-50"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600"></div></div>;
@@ -2137,7 +2179,7 @@ const [storedAuthProfile, setStoredAuthProfile] = useState<UserAccount | null>((
         return <WorkflowEngine activeCompanyId={resolvedCompanyId} role={resolvedRole} />;
       case 'integration-hub':
         console.log("Current Page: integration-hub", "Component Rendered: IntegrationHub");
-        return <IntegrationHub />;
+        return <IntegrationHub activeCompanyId={resolvedCompanyId} />;
       case 'saas-admin-dashboard':
         return <SaaSAdminDashboard />;
       case 'security-center':

@@ -15,6 +15,19 @@ export default defineConfig({
       "@": path.resolve(__dirname, "frontend/src"),
     },
   },
+  server: {
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+      "/uploads": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+      },
+    },
+  },
   // Strip developer logging from PRODUCTION bundles only.
   //
   // 31 `console.log` calls were shipping to users — noise in their console, and
