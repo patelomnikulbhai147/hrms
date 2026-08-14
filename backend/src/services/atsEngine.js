@@ -580,29 +580,69 @@ function parseRequirement(requirement) {
 // ── Matching helpers ─────────────────────────────────────────────────────────
 
 /**
- * Where/how does the resume satisfy a required skill?
- * direct: skill/alias found with word boundaries in the resume text
- * implied: a detected resume skill semantically implies it (e.g. DRF ⇒ REST API)
+ * Normalize the candidate's structured "Candidate Skills" field (free text,
+ * comma/semicolon/newline separated) into canonical skill names.
+ * "react.js" → "react", "JS" → "javascript", unknown skills pass through as-is.
  */
-function matchSkill(reqSkill, resumeLower, parsedSkills) {
+function parseCandidateSkillList(raw) {
+  return [...new Set(
+    String(raw || '')
+      .split(/[,;\n|]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && s.length <= 60)
+      .map(canonicalizeSkill)
+      .filter(Boolean)
+  )];
+}
+
+/**
+ * Where does the evidence for a required skill come from?
+ * Sources checked, in order, then COMBINED (a skill in both the candidate's
+ * structured profile skills AND the resume reports source 'profile+resume'):
+ *   resume  — skill/alias found with word boundaries in the resume text
+ *   profile — canonical match against the candidate's structured skills field
+ *   implied — a known skill semantically implies it (e.g. DRF ⇒ REST API)
+ */
+function matchSkill(reqSkill, resumeLower, parsedSkills, profileSkills = []) {
   const canon = canonicalizeSkill(reqSkill);
+
+  // A. resume text (direct/alias, word-boundary)
+  let resumeHit = null;
   for (const variant of skillVariants(canon)) {
     if (termInText(variant, resumeLower)) {
-      return { matched: true, matchType: variant === canon ? 'direct' : 'alias', via: variant };
+      resumeHit = { matchType: variant === canon ? 'direct' : 'alias', via: variant };
+      break;
     }
   }
-  for (const have of parsedSkills) {
-    const implied = IMPLIES[canonicalizeSkill(have)] || [];
+
+  // B. structured candidate profile skills (already canonicalized)
+  const profileHit = profileSkills.includes(canon);
+
+  if (resumeHit && profileHit) {
+    return { matched: true, matchType: resumeHit.matchType, via: resumeHit.via, source: 'profile+resume' };
+  }
+  if (resumeHit) {
+    return { matched: true, matchType: resumeHit.matchType, via: resumeHit.via, source: 'resume' };
+  }
+  if (profileHit) {
+    return { matched: true, matchType: 'profile', via: canon, source: 'profile' };
+  }
+
+  // C. implied by any known skill (resume-parsed ∪ profile)
+  for (const have of [...parsedSkills, ...profileSkills]) {
+    const haveCanon = canonicalizeSkill(have);
+    const implied = IMPLIES[haveCanon] || [];
     if (implied.includes(canon)) {
-      return { matched: true, matchType: 'implied', via: have };
+      return { matched: true, matchType: 'implied', via: have, source: profileSkills.includes(haveCanon) && !parsedSkills.includes(haveCanon) ? 'profile' : 'resume' };
     }
   }
-  // multi-word requirement: accept if all significant words appear ("REST API Development")
+
+  // D. multi-word requirement: accept if all significant words appear ("REST API Development")
   const words = canon.split(/\s+/).filter(w => w.length > 2 && !['and', 'the', 'with', 'development'].includes(w));
   if (words.length >= 2 && words.every(w => termInText(w, resumeLower))) {
-    return { matched: true, matchType: 'partial-words', via: words.join(' + ') };
+    return { matched: true, matchType: 'partial-words', via: words.join(' + '), source: 'resume' };
   }
-  return { matched: false, matchType: null, via: null };
+  return { matched: false, matchType: null, via: null, source: null };
 }
 
 const STOPWORDS = new Set(['the', 'and', 'for', 'with', 'you', 'will', 'our', 'are', 'have', 'this', 'that', 'from', 'work', 'team', 'role', 'job', 'who', 'has', 'can', 'all', 'their', 'your', 'must', 'should', 'able', 'strong', 'good', 'skills', 'skill', 'experience', 'years', 'year', 'knowledge', 'ability', 'candidate', 'looking', 'required', 'requirements', 'responsibilities', 'including', 'well', 'plus', 'other', 'more', 'than', 'least', 'about', 'into', 'such', 'als', 'etc', 'per', 'within', 'across', 'using', 'used', 'use', 'also', 'preferred', 'develop', 'developing', 'development', 'developer', 'working', 'understanding', 'familiarity', 'proficiency', 'proficient', 'hands', 'building', 'build', 'design', 'maintain']);
@@ -654,13 +694,24 @@ function scoreCandidate(parsed, requirement, rawText) {
   const components = [];
   const warnings = [];
 
+  // Skill evidence comes from BOTH the candidate's structured profile skills
+  // and the resume content — the union is what gets matched.
+  const profileSkills = Array.isArray(parsed.profile_skills) ? parsed.profile_skills : [];
+  if (parsed._resumeUnreadable) {
+    warnings.push('Resume text could not be extracted — skills were matched from the candidate\'s profile skills only; experience, education and role relevance could not be verified from the resume.');
+  }
+
   // 1. Skills — 40
-  const requiredResults = spec.requiredSkills.map(skill => ({ skill, ...matchSkill(skill, resumeLower, parsed.skills) }));
+  const requiredResults = spec.requiredSkills.map(skill => ({ skill, ...matchSkill(skill, resumeLower, parsed.skills, profileSkills) }));
   const matchedReq = requiredResults.filter(r => r.matched);
   let skillsComp;
   if (spec.requiredSkills.length) {
     const score = Math.round(WEIGHTS.skills * matchedReq.length / spec.requiredSkills.length);
-    skillsComp = { key: 'skills', label: 'Skills Match', score, max: WEIGHTS.skills, na: false, detail: `${matchedReq.length} of ${spec.requiredSkills.length} required skills identified in resume` };
+    const fromProfileOnly = matchedReq.filter(r => r.source === 'profile').length;
+    skillsComp = {
+      key: 'skills', label: 'Skills Match', score, max: WEIGHTS.skills, na: false,
+      detail: `${matchedReq.length} of ${spec.requiredSkills.length} required skills identified (candidate profile + resume)${fromProfileOnly ? ` · ${fromProfileOnly} from profile skills` : ''}`
+    };
   } else {
     skillsComp = { key: 'skills', label: 'Skills Match', score: 0, max: WEIGHTS.skills, na: true, detail: 'No required skills defined on this requirement' };
   }
@@ -748,7 +799,7 @@ function scoreCandidate(parsed, requirement, rawText) {
   components.push(eduComp);
 
   // 5. Preferred skills — 5
-  const preferredResults = spec.preferredSkills.map(skill => ({ skill, ...matchSkill(skill, resumeLower, parsed.skills) }));
+  const preferredResults = spec.preferredSkills.map(skill => ({ skill, ...matchSkill(skill, resumeLower, parsed.skills, profileSkills) }));
   let prefComp;
   if (spec.preferredSkills.length) {
     const matchedPref = preferredResults.filter(r => r.matched);
@@ -800,14 +851,14 @@ function scoreCandidate(parsed, requirement, rawText) {
   if (total >= 75) summary = `Strong match for the ${spec.jobTitle || 'role'}.`;
   else if (total >= 50) summary = `Moderate match for the ${spec.jobTitle || 'role'}.`;
   else summary = `Weak match for the ${spec.jobTitle || 'role'}.`;
-  if (topMatched.length) summary += ` Candidate shows ${topMatched.join(', ')} in the resume`;
+  if (topMatched.length) summary += ` Candidate shows ${topMatched.join(', ')}`;
   if (spec.requiredYears > 0) {
     if (candYears === null) summary += topMatched.length ? ', but relevant experience could not be identified.' : ' Relevant experience could not be identified.';
     else if (relevanceFactor < 0.6) summary += `${topMatched.length ? '.' : ''} The resume shows ~${candYears} year(s) of experience, but it appears to be in a different domain than this role.`;
     else if (candYears >= spec.requiredYears) summary += `${topMatched.length ? ' and' : ''} meets the ${spec.experienceLabel || spec.requiredYears + '+ years'} experience requirement.`;
     else summary += `${topMatched.length ? ', with' : ' Shows'} ~${candYears} year(s) experience against a ${spec.experienceLabel || spec.requiredYears + '+ years'} requirement.`;
   } else if (topMatched.length) summary += '.';
-  if (topMissing.length) summary += ` ${topMissing.join(', ')} ${topMissing.length === 1 ? 'was' : 'were'} not identified in the resume.`;
+  if (topMissing.length) summary += ` ${topMissing.join(', ')} ${topMissing.length === 1 ? 'was' : 'were'} not identified in the candidate profile or resume.`;
   if (missingPref.length && total >= 50) summary += ` Preferred: ${missingPref.slice(0, 2).join(', ')} not identified.`;
 
   return {
@@ -844,6 +895,8 @@ function scoreCandidate(parsed, requirement, rawText) {
       other: { jdKeywords },
       candidate: {
         detectedSkills: parsed.skills,
+        profileSkills,
+        resumeUnreadable: !!parsed._resumeUnreadable,
         jobTitles: parsed.job_titles,
         certifications: parsed.certifications,
       },
@@ -868,9 +921,13 @@ function computeRequirementHash(requirement) {
   return crypto.createHash('sha256').update(key).digest('hex').slice(0, 24);
 }
 
-function computeAnalysisHash(resumePath, requirement) {
+function computeAnalysisHash(resumePath, requirement, candidateSkills) {
   const rh = computeResumeHash(resumePath);
-  return rh ? `${rh}:${computeRequirementHash(requirement)}` : null;
+  if (!rh) return null;
+  // Profile skills are a scoring input, so editing them must invalidate the
+  // cached score exactly like a resume or requirement change does.
+  const ph = crypto.createHash('sha256').update(String(candidateSkills || '')).digest('hex').slice(0, 8);
+  return `${rh}:${computeRequirementHash(requirement)}:${ph}`;
 }
 
 // ── Full pipeline ────────────────────────────────────────────────────────────
@@ -893,10 +950,13 @@ function failedResult(message) {
  * Full ATS matching pipeline for a candidate resume against a job requirement.
  * opts.cachedParsedResume: previously stored parse — reused (extraction and AI
  * parsing skipped) when its _resumeHash still matches the file on disk.
+ * opts.candidateSkills: the candidate's structured "Candidate Skills" field —
+ * a PRIMARY evidence source, matched in union with the resume content.
  */
 async function analyzeCandidateMatch(resumePath, requirement, opts = {}) {
   const resumeHash = computeResumeHash(resumePath);
-  const analysisHash = resumeHash ? `${resumeHash}:${computeRequirementHash(requirement)}` : null;
+  const analysisHash = computeAnalysisHash(resumePath, requirement, opts.candidateSkills);
+  const profileSkills = parseCandidateSkillList(opts.candidateSkills);
 
   let parsed = null;
   let rawText = '';
@@ -910,18 +970,33 @@ async function analyzeCandidateMatch(resumePath, requirement, opts = {}) {
     rawText = await extractTextFromFile(resumePath);
     const quality = assessTextQuality(rawText);
     if (!quality.readable) {
-      console.warn(`[ATS] Unreadable resume text (${quality.chars} chars, letterRatio ${quality.letterRatio})`);
-      return failedResult('Could not extract readable text from the uploaded resume. The file may be scanned images, corrupted, or an unsupported format — ATS scoring was not attempted to avoid a misleading percentage.');
+      if (!profileSkills.length) {
+        console.warn(`[ATS] Unreadable resume text (${quality.chars} chars, letterRatio ${quality.letterRatio})`);
+        return failedResult('Could not extract readable text from the uploaded resume. The file may be scanned images, corrupted, or an unsupported format — ATS scoring was not attempted to avoid a misleading percentage.');
+      }
+      // The resume is unreadable but the candidate DID provide structured
+      // profile skills — score from those (clearly flagged) rather than
+      // reporting skills the candidate declared as "missing".
+      console.warn(`[ATS] Unreadable resume text — scoring from candidate profile skills only (${profileSkills.length} skill(s)).`);
+      rawText = '';
+      parsed = parseResumeDeterministic('');
+      parsed._resumeHash = resumeHash;
+      parsed._rawTextSample = '';
+      parsed._resumeUnreadable = true;
+    } else {
+      parsed = parseResumeDeterministic(rawText);
+      const aiParsed = await parseResumeWithGemini(rawText);
+      parsed = mergeParsed(parsed, aiParsed);
+      parsed._resumeHash = resumeHash;
+      // keep a bounded text sample stored with the parse so requirement-only
+      // changes can re-score without re-reading/re-parsing the file
+      parsed._rawTextSample = rawText.slice(0, 30000);
     }
-
-    parsed = parseResumeDeterministic(rawText);
-    const aiParsed = await parseResumeWithGemini(rawText);
-    parsed = mergeParsed(parsed, aiParsed);
-    parsed._resumeHash = resumeHash;
-    // keep a bounded text sample stored with the parse so requirement-only
-    // changes can re-score without re-reading/re-parsing the file
-    parsed._rawTextSample = rawText.slice(0, 30000);
   }
+
+  // Structured profile skills ride on the parse (not cached — they can change
+  // independently of the file, and are re-supplied on every analysis).
+  parsed.profile_skills = profileSkills;
 
   const result = scoreCandidate(parsed, requirement, rawText || parsed._rawTextSample || '');
   result.parsed_data = parsed;
@@ -935,6 +1010,7 @@ module.exports = {
   extractTextFromFile,
   parseResumeDeterministic,
   parseResumeWithGemini,
+  parseCandidateSkillList,
   analyzeCandidateMatch,
   computeResumeHash,
   computeRequirementHash,

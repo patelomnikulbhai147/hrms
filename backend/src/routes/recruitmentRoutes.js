@@ -206,10 +206,10 @@ async function runAtsForApplication(appId, { force = false, trigger = 'Applicati
   if (!application || !application.resumePath) return;
 
   const resumeFullPath = path.join(UPLOAD_DIR, application.resumePath);
-  const currentHash = computeAnalysisHash(resumeFullPath, application.requirement);
+  const currentHash = computeAnalysisHash(resumeFullPath, application.requirement, application.candidateSkills);
 
   if (!force && currentHash && application.analysisHash === currentHash && application.analysisStatus === 'COMPLETED') {
-    console.log(`[ATS-Worker] App #${appId}: resume and requirement unchanged — skipping re-analysis.`);
+    console.log(`[ATS-Worker] App #${appId}: resume, requirement and profile skills unchanged — skipping re-analysis.`);
     return;
   }
 
@@ -220,7 +220,8 @@ async function runAtsForApplication(appId, { force = false, trigger = 'Applicati
 
   try {
     const atsResult = await analyzeCandidateMatch(resumeFullPath, application.requirement, {
-      cachedParsedResume: application.parsedResume || null
+      cachedParsedResume: application.parsedResume || null,
+      candidateSkills: application.candidateSkills || ''
     });
 
     await prisma.application.update({

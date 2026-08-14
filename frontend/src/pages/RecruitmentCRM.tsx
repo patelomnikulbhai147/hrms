@@ -1974,20 +1974,24 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
 
                           {/* Matched vs Missing Skills Chips */}
                           <div className="space-y-2">
-                            <p className="font-bold text-slate-800">Matched (found in resume):</p>
+                            <p className="font-bold text-slate-800">Matched (candidate profile + resume):</p>
                             <div className="flex flex-wrap gap-1.5">
                               {matched.length === 0 && (
-                                <span className="text-[11px] text-slate-400 font-semibold">No required skills were identified in the resume.</span>
+                                <span className="text-[11px] text-slate-400 font-semibold">No required skills were identified in the candidate profile or resume.</span>
                               )}
                               {matched.map((s: string, i: number) => {
                                 const detail = isV2 ? (mb.skills?.required || []).find((r: any) => r.skill === s) : null;
+                                const sourceTag = detail?.source === 'profile' ? 'profile'
+                                  : detail?.source === 'profile+resume' ? 'profile + resume'
+                                  : detail?.matchType === 'implied' ? `via ${detail.via}`
+                                  : null;
                                 return (
                                   <span
                                     key={i}
-                                    title={detail?.matchType === 'implied' ? `Identified via "${detail.via}"` : undefined}
+                                    title={detail?.source ? `Evidence: ${detail.source}${detail.matchType === 'implied' ? ` (via "${detail.via}")` : ''}` : undefined}
                                     className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md font-bold text-[11px]"
                                   >
-                                    ✓ {s}{detail?.matchType === 'implied' ? ` (via ${detail.via})` : ''}
+                                    ✓ {s}{sourceTag ? <span className="font-semibold text-emerald-600/80"> ({sourceTag})</span> : ''}
                                   </span>
                                 );
                               })}
