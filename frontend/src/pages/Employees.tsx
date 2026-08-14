@@ -2639,8 +2639,12 @@ export const Employees: React.FC<EmployeesProps> = ({
           Deliberately NOT 2-up on phones: three items in a 2-column grid drop the
           last card into a half-width row of its own, which is exactly the ragged
           gap this change was meant to remove. Full-width stacked reads cleanly. */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" />
+      {/* On the Active tab, Total Staff Strength duplicates Active Personnel, so
+          it is hidden there (grid drops to 2-up); other tabs keep all three. */}
+      <div className={`grid grid-cols-1 gap-3 ${activeMainTab === 'active' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+        {activeMainTab !== 'active' && (
+          <StatCard label="Total Staff Strength" value={countAudit.allStaff} icon={<Users size={16} className="text-brand-600" />} color="bg-brand-50" />
+        )}
         <StatCard label="Active Personnel" value={countAudit.active} icon={<UserCheck size={16} className="text-emerald-500" />} color="bg-emerald-50" />
         <StatCard label="Pending Exits" value={stats.pendingExits} icon={<LogOut size={16} className="text-amber-600" />} color="bg-amber-50" />
       </div>
