@@ -6,14 +6,28 @@ const multer = require('multer');
 const prisma = require('../config/prisma');
 const { protect } = require('../middleware/authMiddleware');
 const { generateRequirementCode, generateJobCode, generateApplicationId } = require('../utils/recruitmentCodes');
-const { analyzeCandidateMatch } = require('../services/atsEngine');
+const { analyzeCandidateMatch, computeAnalysisHash, computeRequirementHash } = require('../services/atsEngine');
 const {
   sendFixedInterviewEmail,
   sendCandidateScheduleInviteEmail,
+  sendInterviewBookingConfirmationEmail,
   sendOfferLetterEmail
 } = require('../services/recruitmentMailer');
+const { notify } = require('../services/notificationService');
+const slotEngine = require('../services/interviewSlots');
+const { targetCompanyId } = require('../utils/workspaceScope');
+const { requireModuleAccess } = require('../middleware/rbacMiddleware');
 
 const router = express.Router();
+
+// Role-default fallback for users whose permission matrix predates the
+// Recruitment module — mirrors NEW_MODULE_ROLE_DEFAULTS.recruitment in the
+// frontend PermissionContext so API and UI agree.
+const RECRUITMENT_ROLE_DEFAULTS = {
+  view: ['HR', 'Finance', 'Manager'],
+  edit: ['HR'],
+  export: ['HR'],
+};
 
 // ── Uploads configuration ────────────────────────────────────────────────────
 const UPLOAD_DIR = path.join(__dirname, '../../uploads/resumes');
@@ -46,18 +60,32 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Helper for tenant isolation
+/**
+ * Tenant resolution — the COMPANY the request operates on.
+ *
+ * Recruitment data belongs to the COMPANY/TENANT, never to the individual user
+ * who created it. This resolves through utils/workspaceScope (the standard
+ * tenant resolver), which:
+ *   • maps a BRANCH workspace/user to its PARENT COMPANY (User.companyId and
+ *     x-workspace-id may hold a branch id — Company and Branch share one id
+ *     sequence), so every authorized user of a company reads and writes the
+ *     same rows;
+ *   • validates any client-named workspace (?companyId= / x-workspace-id)
+ *     against the caller's grants — a spoofed id from React is refused, not
+ *     trusted;
+ *   • leaves Super Admin free to name any workspace.
+ *
+ * Returns the company id, or -1 when no authorized company can be determined
+ * (-1 matches no rows, and write endpoints reject it explicitly).
+ *
+ * The previous implementation returned `req.user.companyId` RAW — for a user
+ * attached to a branch this scoped all recruitment data to the branch id, so
+ * jobs became visible only to users sharing that exact id (in practice: only
+ * the creator). It also trusted client-supplied companyId as a fallback.
+ */
 function resolveCompanyId(req) {
-  if (req.user) {
-    if (req.query.companyId && req.user.role === 'Super Admin') {
-      return parseInt(req.query.companyId, 10);
-    }
-    if (req.body && req.body.companyId && req.user.role === 'Super Admin') {
-      return parseInt(req.body.companyId, 10);
-    }
-    return req.user.companyId || parseInt(req.query.companyId || req.body?.companyId || '1', 10);
-  }
-  return parseInt(req.query?.companyId || req.body?.companyId || '1', 10);
+  const c = targetCompanyId(req);
+  return Number.isFinite(c) && c > 0 ? c : -1;
 }
 
 /**
@@ -159,6 +187,116 @@ async function autoOnboardCandidateToEmployee(applicationId, companyId) {
     console.error('[Recruitment-Onboarding] Failed to auto-onboard candidate to employee:', error);
     return null;
   }
+}
+
+/**
+ * Runs (or re-runs) ATS analysis for one application in the background.
+ * The single ATS entry point for apply / retry / requirement-change triggers.
+ *
+ * - Reuses the cached structured resume parse when the file is unchanged, so a
+ *   requirement edit only re-SCORES (no re-extraction, no AI call).
+ * - Skips entirely when both resume and requirement are unchanged, unless
+ *   `force` is set (explicit "Retry ATS" button).
+ */
+async function runAtsForApplication(appId, { force = false, trigger = 'Application submitted' } = {}) {
+  const application = await prisma.application.findUnique({
+    where: { id: appId },
+    include: { requirement: true }
+  });
+  if (!application || !application.resumePath) return;
+
+  const resumeFullPath = path.join(UPLOAD_DIR, application.resumePath);
+  const currentHash = computeAnalysisHash(resumeFullPath, application.requirement);
+
+  if (!force && currentHash && application.analysisHash === currentHash && application.analysisStatus === 'COMPLETED') {
+    console.log(`[ATS-Worker] App #${appId}: resume and requirement unchanged — skipping re-analysis.`);
+    return;
+  }
+
+  await prisma.application.update({
+    where: { id: appId },
+    data: { analysisStatus: 'PROCESSING' }
+  }).catch(() => null);
+
+  try {
+    const atsResult = await analyzeCandidateMatch(resumeFullPath, application.requirement, {
+      cachedParsedResume: application.parsedResume || null
+    });
+
+    await prisma.application.update({
+      where: { id: appId },
+      data: {
+        analysisStatus: atsResult.status || 'COMPLETED',
+        atsMatchScore: atsResult.ats_match_score || 0,
+        skillsScore: atsResult.skills_score || 0,
+        experienceScore: atsResult.experience_score || 0,
+        educationScore: atsResult.education_score || 0,
+        projectsScore: atsResult.projects_score || 0,
+        jobDescriptionScore: atsResult.job_description_score || 0,
+        matchedSkills: atsResult.matched_skills || [],
+        missingSkills: atsResult.missing_skills || [],
+        warnings: atsResult.warnings || [],
+        aiSummary: atsResult.ai_summary || '',
+        matchBreakdown: atsResult.match_breakdown || {},
+        parsedResume: atsResult.parsed_data || undefined,
+        analysisHash: atsResult.analysis_hash || currentHash || null,
+        analyzedAt: new Date()
+      }
+    });
+
+    await prisma.applicationTimeline.create({
+      data: {
+        applicationId: appId,
+        action: 'ATS Analysis Complete',
+        description: `${trigger}: match calculated ${atsResult.ats_match_score}% (skills ${atsResult.skills_score}/40, experience ${atsResult.experience_score}/25, role ${atsResult.projects_score}/15).`
+      }
+    });
+
+    console.log(`[ATS-Worker] App #${appId}: analysis complete (${atsResult.ats_match_score}%).`);
+  } catch (err) {
+    console.error(`[ATS-Worker] App #${appId} failed:`, err);
+    await prisma.application.update({
+      where: { id: appId },
+      data: {
+        analysisStatus: 'FAILED',
+        aiSummary: `ATS analysis failed: ${err.message}`,
+        analyzedAt: new Date()
+      }
+    }).catch(() => null);
+  }
+}
+
+/** Re-run ATS for every application of a requirement (fired when the job's ATS-relevant fields change). */
+function reanalyzeRequirementApplications(requirementId, trigger) {
+  setImmediate(async () => {
+    try {
+      const apps = await prisma.application.findMany({
+        where: { requirementId },
+        select: { id: true }
+      });
+      console.log(`[ATS-Worker] Requirement #${requirementId} changed — re-scoring ${apps.length} application(s).`);
+      for (const a of apps) {
+        await runAtsForApplication(a.id, { trigger });
+      }
+    } catch (err) {
+      console.error(`[ATS-Worker] Requirement #${requirementId} re-analysis sweep failed:`, err);
+    }
+  });
+}
+
+/**
+ * A self-scheduling link stays valid for 48h after (re)issue, and never dies
+ * before the availability window it advertises has ended.
+ */
+function isScheduleInviteExpired(interview) {
+  const issuedAt = interview.tokenIssuedAt || interview.createdAt;
+  const elapsedHours = (Date.now() - new Date(issuedAt).getTime()) / (1000 * 60 * 60);
+  if (elapsedHours <= 48) return false;
+  if (interview.availableTo && slotEngine.isValidDateStr(interview.availableTo)) {
+    const { date: today } = slotEngine.nowInTimezone(interview.timezone || 'Asia/Kolkata');
+    if (today <= interview.availableTo) return false;
+  }
+  return true;
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -422,55 +560,8 @@ router.post('/public/apply', upload.single('resume'), async (req, res) => {
     });
 
     // Asynchronous background ATS parsing & scoring (does not block HTTP response)
-    const resumeFullPath = path.join(UPLOAD_DIR, resumeFilename);
-    const requirementObj = job.requirement;
     const appId = application.id;
-
-    setImmediate(async () => {
-      try {
-        console.log(`[ATS-Worker] Starting background ATS processing for Application #${appId}`);
-        const atsResult = await analyzeCandidateMatch(resumeFullPath, requirementObj);
-
-        await prisma.application.update({
-          where: { id: appId },
-          data: {
-            analysisStatus: atsResult.status || 'COMPLETED',
-            atsMatchScore: atsResult.ats_match_score || 0,
-            skillsScore: atsResult.skills_score || 0,
-            experienceScore: atsResult.experience_score || 0,
-            educationScore: atsResult.education_score || 0,
-            projectsScore: atsResult.projects_score || 0,
-            jobDescriptionScore: atsResult.job_description_score || 0,
-            matchedSkills: atsResult.matched_skills || [],
-            missingSkills: atsResult.missing_skills || [],
-            warnings: atsResult.warnings || [],
-            aiSummary: atsResult.ai_summary || '',
-            matchBreakdown: atsResult.match_breakdown || {},
-            analyzedAt: new Date()
-          }
-        });
-
-        await prisma.applicationTimeline.create({
-          data: {
-            applicationId: appId,
-            action: 'AI ATS Screening Complete',
-            description: `Automated match calculated: ${atsResult.ats_match_score}%. Skills: ${atsResult.skills_score}/40, Experience: ${atsResult.experience_score}/25.`
-          }
-        });
-
-        console.log(`[ATS-Worker] ATS Analysis completed successfully for Application #${appId}`);
-      } catch (err) {
-        console.error(`[ATS-Worker] Failed processing application #${appId}:`, err);
-        await prisma.application.update({
-          where: { id: appId },
-          data: {
-            analysisStatus: 'FAILED',
-            aiSummary: `AI Analysis failed: ${err.message}`,
-            analyzedAt: new Date()
-          }
-        }).catch(() => null);
-      }
-    });
+    setImmediate(() => runAtsForApplication(appId, { force: true, trigger: 'Resume screened on application' }));
 
     res.status(201).json({
       message: 'Application submitted successfully! Our recruitment team will review your profile.',
@@ -504,42 +595,43 @@ router.get('/public/interview-schedule/:token', async (req, res) => {
       return res.status(400).json({ error: 'This scheduling link is invalid or has already been used.' });
     }
 
-    const elapsedHours = (Date.now() - new Date(interview.createdAt).getTime()) / (1000 * 60 * 60);
-    if (elapsedHours > 48) {
+    if (isScheduleInviteExpired(interview)) {
       return res.status(400).json({ error: 'This scheduling invitation has expired. Please contact the hiring team.' });
     }
 
     const companyId = interview.application.companyId;
     const settings = await prisma.interviewScheduleSettings.findUnique({
       where: { companyId }
-    });
+    }).catch(() => null);
 
-    const bookedInterviews = await prisma.recruitmentInterview.findMany({
-      where: {
-        application: { companyId },
-        status: 'SCHEDULED',
-        scheduledDate: { not: null }
-      },
-      select: { scheduledDate: true, scheduledTime: true }
-    });
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true }
+    }).catch(() => null);
 
-    const bookedSlots = bookedInterviews.map(b => ({ date: b.scheduledDate, time: b.scheduledTime }));
+    // Server-computed availability: valid dates + per-date slots with
+    // availability flags. The candidate can only ever pick from this payload,
+    // and the booking POST re-derives the same grid for validation.
+    const { window, dates, slots } = await slotEngine.buildAvailability(prisma, interview, settings);
 
     res.json({
       candidateName: interview.application.fullName,
       jobTitle: interview.application.requirement?.jobTitle || 'Role',
-      duration: interview.duration || settings?.duration || 30,
-      timezone: interview.timezone || settings?.timezone || 'Asia/Kolkata',
-      settings: settings || {
-        availableFrom: new Date().toISOString().split('T')[0],
-        availableTo: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
-        workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-        startTime: '10:00',
-        endTime: '17:00',
-        duration: 30,
-        timezone: 'Asia/Kolkata'
+      companyName: company?.name || 'ZeniaHR Enterprise',
+      interviewer: interview.interviewer || null,
+      interviewMode: interview.interviewMode || null,
+      duration: window.duration,
+      timezone: window.timezone,
+      window: {
+        availableFrom: window.from,
+        availableTo: window.to,
+        workingDays: window.workingDays,
+        startTime: window.startTime,
+        endTime: window.endTime,
+        bufferMinutes: window.buffer
       },
-      bookedSlots
+      dates,
+      slots
     });
   } catch (error) {
     console.error('Interview schedule fetch error:', error);
@@ -562,50 +654,147 @@ router.post('/public/interview-schedule/:token', async (req, res) => {
 
     const interview = await prisma.recruitmentInterview.findUnique({
       where: { token },
-      include: { application: true }
+      include: {
+        application: {
+          include: { requirement: { select: { jobTitle: true } } }
+        }
+      }
     });
 
     if (!interview || interview.status !== 'PENDING') {
       return res.status(400).json({ error: 'This scheduling link is invalid or already confirmed.' });
     }
 
-    const existing = await prisma.recruitmentInterview.findFirst({
-      where: {
-        application: { companyId: interview.application.companyId },
-        scheduledDate: date,
-        scheduledTime: time,
-        status: 'SCHEDULED',
-        id: { not: interview.id }
-      }
-    });
-
-    if (existing) {
-      return res.status(409).json({ error: 'This time slot was just booked by another candidate. Please select another slot.' });
+    if (isScheduleInviteExpired(interview)) {
+      return res.status(400).json({ error: 'This scheduling invitation has expired. Please contact the hiring team.' });
     }
 
-    await prisma.recruitmentInterview.update({
-      where: { id: interview.id },
-      data: {
-        scheduledDate: date,
-        scheduledTime: time,
-        status: 'SCHEDULED'
+    const companyId = interview.application.companyId;
+    const settings = await prisma.interviewScheduleSettings.findUnique({
+      where: { companyId }
+    }).catch(() => null);
+
+    // Re-derive the offered grid server-side: date inside window, allowed
+    // weekday, slot aligned to the grid, not in the past. The client payload
+    // is never trusted.
+    const window = slotEngine.resolveWindow(interview, settings);
+    const validation = slotEngine.validateSlotSelection(window, date, String(time));
+    if (!validation.ok) {
+      return res.status(400).json({ error: validation.error });
+    }
+    const { start: slotStart, end: slotEnd } = validation.slot;
+
+    // Transactional booking (Serializable): conflict re-check + write commit
+    // atomically so two candidates confirming the same slot cannot both win.
+    try {
+      await prisma.$transaction(async (tx) => {
+        const fresh = await tx.recruitmentInterview.findUnique({ where: { id: interview.id } });
+        if (!fresh || fresh.status !== 'PENDING') {
+          throw Object.assign(new Error('This scheduling link is invalid or already confirmed.'), { httpStatus: 400 });
+        }
+
+        const sameDay = await tx.recruitmentInterview.findMany({
+          where: {
+            application: { companyId },
+            status: 'SCHEDULED',
+            scheduledDate: date,
+            scheduledTime: { not: null },
+            id: { not: interview.id }
+          },
+          select: { scheduledTime: true, scheduledEndTime: true, duration: true, interviewer: true }
+        });
+
+        const busy = sameDay.map(r => {
+          const start = slotEngine.toMinutes(r.scheduledTime);
+          let end = slotEngine.toMinutes(r.scheduledEndTime);
+          if (start === null) return null;
+          if (end === null || end <= start) end = start + (r.duration || 30);
+          return { start, end, interviewer: (r.interviewer || '').trim().toLowerCase() };
+        }).filter(Boolean);
+
+        if (slotEngine.slotBlockedBy(busy, slotEngine.toMinutes(slotStart), slotEngine.toMinutes(slotEnd), interview.interviewer)) {
+          throw Object.assign(new Error('This time slot has just been booked. Please select another available time.'), { httpStatus: 409 });
+        }
+
+        await tx.recruitmentInterview.update({
+          where: { id: interview.id },
+          data: {
+            scheduledDate: date,
+            scheduledTime: slotStart,
+            scheduledEndTime: slotEnd,
+            status: 'SCHEDULED',
+            schedulingSource: 'CANDIDATE',
+            bookedAt: new Date()
+          }
+        });
+
+        await tx.application.update({
+          where: { id: interview.applicationId },
+          data: { status: 'INTERVIEW' }
+        });
+
+        await tx.applicationTimeline.create({
+          data: {
+            applicationId: interview.applicationId,
+            action: 'Interview Confirmed by Candidate',
+            description: `Candidate self-scheduled the interview for ${date}, ${slotStart}–${slotEnd} (${window.timezone}).`
+          }
+        });
+      }, { isolationLevel: 'Serializable' });
+    } catch (txErr) {
+      if (txErr.httpStatus) {
+        return res.status(txErr.httpStatus).json({ error: txErr.message });
       }
-    });
-
-    await prisma.application.update({
-      where: { id: interview.applicationId },
-      data: { status: 'INTERVIEW' }
-    });
-
-    await prisma.applicationTimeline.create({
-      data: {
-        applicationId: interview.applicationId,
-        action: 'Interview Confirmed by Candidate',
-        description: `Candidate self-scheduled interview for ${date} at ${time}.`
+      // Serialization conflict (two simultaneous bookings) → treat as slot taken
+      if (txErr.code === 'P2034') {
+        return res.status(409).json({ error: 'This time slot has just been booked. Please select another available time.' });
       }
-    });
+      throw txErr;
+    }
 
-    res.json({ message: 'Interview scheduled successfully! We look forward to meeting with you.' });
+    const jobTitle = interview.application.requirement?.jobTitle || 'Role';
+
+    // In-app notification for the HR/recruitment team (existing bell infra)
+    notify({
+      companyId,
+      type: 'recruitment',
+      title: 'Interview slot booked by candidate',
+      message: `${interview.application.fullName} booked the ${jobTitle} interview on ${date}, ${slotStart}–${slotEnd}${interview.interviewer ? ` with ${interview.interviewer}` : ''}.`,
+      priority: 'high'
+    }).catch(() => null);
+
+    // Confirmation email to the candidate (guarded — mail failure never breaks the booking)
+    if (interview.application.email) {
+      const company = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { name: true }
+      }).catch(() => null);
+
+      sendInterviewBookingConfirmationEmail({
+        candidateEmail: interview.application.email,
+        candidateName: interview.application.fullName,
+        jobTitle,
+        companyName: company?.name,
+        date,
+        startTime: slotStart,
+        endTime: slotEnd,
+        timezone: window.timezone,
+        interviewer: interview.interviewer,
+        interviewMode: interview.interviewMode,
+        meetingLink: interview.meetingLink,
+        location: interview.location
+      }).catch(err => console.error('[Mailer] Booking confirmation email error:', err.message));
+    }
+
+    res.json({
+      message: 'Interview scheduled successfully! We look forward to meeting with you.',
+      scheduledDate: date,
+      scheduledTime: slotStart,
+      scheduledEndTime: slotEnd,
+      interviewMode: interview.interviewMode || null,
+      meetingLink: interview.meetingLink || null,
+      location: interview.location || null
+    });
   } catch (error) {
     console.error('Candidate schedule post error:', error);
     res.status(500).json({ error: error.message || 'Failed to confirm interview schedule.' });
@@ -757,26 +946,56 @@ router.post('/public/offer/:token', async (req, res) => {
   }
 });
 
-/**
- * GET /api/recruitment/public/resume/:filename
- * Securely stream uploaded resume document.
- */
-router.get('/public/resume/:filename', (req, res) => {
-  const safeFilename = path.basename(req.params.filename);
-  const filePath = path.join(UPLOAD_DIR, safeFilename);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('File not found');
-  }
-
-  res.sendFile(filePath);
-});
+// NOTE: the old GET /public/resume/:filename endpoint streamed ANY company's
+// resume to anyone holding a filename — removed. Resumes are candidate PII and
+// are now served only through the authenticated, company-scoped route below
+// (registered after protect + the recruitment RBAC gate).
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 2. AUTHENTICATED HR / ADMIN RECRUITMENT ENDPOINTS
 // ═════════════════════════════════════════════════════════════════════════════
 
 router.use(protect);
+
+// Existing RBAC matrix, module key 'recruitment': GET → view, everything else
+// (create/update/delete/dispatch) folds to edit per the canonical 3-action
+// model. Super Admin and Company Head always pass; other roles need a matrix
+// grant (or the role default when their matrix predates this module).
+router.use((req, res, next) =>
+  requireModuleAccess('recruitment', req.method === 'GET' ? 'view' : 'edit', {
+    label: 'Recruitment',
+    defaults: RECRUITMENT_ROLE_DEFAULTS,
+  })(req, res, next)
+);
+
+/**
+ * GET /api/recruitment/resume/:filename
+ * Stream an uploaded resume — only when an application in the caller's own
+ * company references that file.
+ */
+router.get('/resume/:filename', async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req);
+    const safeFilename = path.basename(req.params.filename);
+
+    const owned = await prisma.application.findFirst({
+      where: { resumePath: safeFilename, companyId },
+      select: { id: true }
+    });
+    if (!owned) {
+      return res.status(404).send('File not found');
+    }
+
+    const filePath = path.join(UPLOAD_DIR, safeFilename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('File not found');
+    }
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('Resume stream error:', error);
+    res.status(500).send('Failed to load resume');
+  }
+});
 
 /**
  * GET /api/recruitment/requirements/stats
@@ -966,6 +1185,9 @@ router.get('/requirements', async (req, res) => {
 router.post('/requirements', async (req, res) => {
   try {
     const companyId = resolveCompanyId(req);
+    if (companyId < 0) {
+      return res.status(403).json({ error: 'No authorized company workspace in context. Select a company workspace and try again.' });
+    }
     const {
       jobTitle,
       department,
@@ -1110,6 +1332,8 @@ router.put('/requirements/:id', async (req, res) => {
       return res.status(400).json({ error: 'Number of openings must be at least 1.' });
     }
 
+    const atsHashBefore = computeRequirementHash(existing);
+
     const updated = await prisma.requirement.update({
       where: { id },
       data: {
@@ -1211,6 +1435,12 @@ router.put('/requirements/:id', async (req, res) => {
       });
     }
 
+    // ATS-relevant fields changed (title/skills/JD/experience/qualification/…)
+    // → re-score every applicant of this requirement in the background.
+    if (computeRequirementHash(updated) !== atsHashBefore) {
+      reanalyzeRequirementApplications(id, 'Job requirement updated');
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Update requirement error:', error);
@@ -1303,8 +1533,17 @@ router.delete('/requirements/:id', async (req, res) => {
     const companyId = resolveCompanyId(req);
     const id = parseInt(req.params.id, 10);
 
+    // Ownership check FIRST — a requirement outside the caller's company must
+    // be indistinguishable from a missing one, and never deletable.
+    const requirement = await prisma.requirement.findFirst({
+      where: { id, companyId }
+    });
+    if (!requirement) {
+      return res.status(404).json({ error: 'Requirement not found.' });
+    }
+
     const appsCount = await prisma.application.count({
-      where: { requirementId: id, companyId }
+      where: { requirementId: id }
     });
 
     if (appsCount > 0) {
@@ -1515,6 +1754,11 @@ router.post('/applications/:id/screening', async (req, res) => {
     const id = parseInt(req.params.id, 10);
     const { notes, decision } = req.body;
 
+    const owned = await prisma.application.findFirst({ where: { id, companyId }, select: { id: true } });
+    if (!owned) {
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+
     const targetStatus = decision === 'REJECT' ? 'REJECTED' : (decision === 'SHORTLIST' ? 'SHORTLISTED' : 'SCREENING');
 
     const application = await prisma.application.update({
@@ -1555,6 +1799,8 @@ router.post('/applications/:id/interviews', async (req, res) => {
       scheduledTime,
       interviewer,
       location,
+      meetingLink,
+      interviewMode,
       notes,
       duration,
       sendEmail
@@ -1573,16 +1819,24 @@ router.post('/applications/:id/interviews', async (req, res) => {
       return res.status(404).json({ error: 'Application not found.' });
     }
 
+    const durationMin = duration ? parseInt(duration, 10) : 30;
+    const startMin = slotEngine.toMinutes(scheduledTime);
+    const scheduledEndTime = startMin !== null ? slotEngine.toHHMM(Math.min(startMin + durationMin, 24 * 60 - 1)) : null;
+
     const interview = await prisma.recruitmentInterview.create({
       data: {
         applicationId: id,
         interviewType: interviewType || 'Technical',
         scheduledDate,
         scheduledTime,
+        scheduledEndTime,
         interviewer: interviewer || req.user?.name || 'Talent Team',
         location: location || 'Google Meet / Zoom',
+        meetingLink: meetingLink || null,
+        interviewMode: interviewMode || null,
         notes: notes || '',
-        duration: duration ? parseInt(duration, 10) : 30,
+        duration: durationMin,
+        schedulingSource: 'HR',
         status: 'SCHEDULED'
       }
     });
@@ -1612,8 +1866,11 @@ router.post('/applications/:id/interviews', async (req, res) => {
         jobTitle: application.requirement?.jobTitle || 'Role',
         scheduledDate,
         scheduledTime,
+        scheduledEndTime,
         interviewer: interview.interviewer,
         location: interview.location,
+        meetingLink: interview.meetingLink,
+        interviewMode: interview.interviewMode,
         companyName: company?.name
       }).catch(err => console.error('[Mailer] Fixed interview email error:', err.message));
     }
@@ -1633,7 +1890,11 @@ router.post('/applications/:id/interview-invitation', async (req, res) => {
   try {
     const companyId = resolveCompanyId(req);
     const id = parseInt(req.params.id, 10);
-    const { scheduleOption, interviewer, duration, availableFrom, availableTo, workingDays, startTime, endTime } = req.body;
+    const {
+      scheduleOption, interviewer, interviewType, duration,
+      availableFrom, availableTo, workingDays, startTime, endTime,
+      bufferMinutes, interviewMode, meetingLink, location, notes
+    } = req.body;
 
     const application = await prisma.application.findFirst({
       where: { id, companyId },
@@ -1656,39 +1917,81 @@ router.post('/applications/:id/interview-invitation', async (req, res) => {
     const companyName = company?.name || 'ZeniaHR Enterprise';
 
     if (scheduleOption === 'CANDIDATE') {
-      const token = crypto.randomUUID();
-
-      if (availableFrom && availableTo) {
-        await prisma.interviewScheduleSettings.upsert({
-          where: { companyId },
-          create: {
-            companyId,
-            availableFrom,
-            availableTo,
-            workingDays: workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            startTime: startTime || '10:00',
-            endTime: endTime || '17:00',
-            duration: duration ? parseInt(duration, 10) : 30
-          },
-          update: {
-            availableFrom,
-            availableTo,
-            workingDays: workingDays || ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-            startTime: startTime || '10:00',
-            endTime: endTime || '17:00',
-            duration: duration ? parseInt(duration, 10) : 30
-          }
-        });
+      // ── Validate the availability window HR configured for THIS invitation ──
+      if (!availableFrom || !availableTo) {
+        return res.status(400).json({ error: 'Available From and Available Until dates are required.' });
+      }
+      if (!slotEngine.isValidDateStr(availableFrom) || !slotEngine.isValidDateStr(availableTo)) {
+        return res.status(400).json({ error: 'Availability dates must be valid dates (YYYY-MM-DD).' });
+      }
+      if (availableTo < availableFrom) {
+        return res.status(400).json({ error: 'Available Until date cannot be before Available From date.' });
+      }
+      const { date: today } = slotEngine.nowInTimezone('Asia/Kolkata');
+      if (availableTo < today) {
+        return res.status(400).json({ error: 'The availability window is entirely in the past.' });
       }
 
+      const days = Array.isArray(workingDays) && workingDays.length
+        ? workingDays.filter(d => slotEngine.DAY_NAMES.includes(d))
+        : slotEngine.DEFAULT_WORKING_DAYS;
+      if (!days.length) {
+        return res.status(400).json({ error: 'Select at least one available weekday.' });
+      }
+
+      const dayStart = startTime || '10:00';
+      const dayEnd = endTime || '17:00';
+      if (slotEngine.toMinutes(dayStart) === null || slotEngine.toMinutes(dayEnd) === null) {
+        return res.status(400).json({ error: 'Available times must be valid HH:MM values.' });
+      }
+      const durationMin = duration ? parseInt(duration, 10) : 30;
+      const bufferMin = bufferMinutes ? parseInt(bufferMinutes, 10) : 0;
+      if (!(durationMin > 0 && durationMin <= 240)) {
+        return res.status(400).json({ error: 'Interview duration must be between 5 and 240 minutes.' });
+      }
+      if (!(bufferMin >= 0 && bufferMin <= 120)) {
+        return res.status(400).json({ error: 'Buffer must be between 0 and 120 minutes.' });
+      }
+      if (slotEngine.toMinutes(dayStart) + durationMin > slotEngine.toMinutes(dayEnd)) {
+        return res.status(400).json({ error: 'The daily time window is shorter than one interview slot.' });
+      }
+
+      // Ensure the window actually yields at least one bookable slot
+      const probeWindow = {
+        from: availableFrom, to: availableTo, workingDays: days,
+        startTime: dayStart, endTime: dayEnd, duration: durationMin,
+        buffer: bufferMin, timezone: 'Asia/Kolkata'
+      };
+      const probeDates = slotEngine.generateDates(probeWindow);
+      if (!probeDates.length || !probeDates.some(d => slotEngine.generateSlotGrid(probeWindow, d.date).length)) {
+        return res.status(400).json({ error: 'This window produces no bookable slots. Widen the dates, days, or times.' });
+      }
+
+      const token = crypto.randomUUID();
+
+      // The window is stored ON the invitation itself — sending an invite no
+      // longer overwrites the company-wide scheduling defaults.
       const interview = await prisma.recruitmentInterview.create({
         data: {
           applicationId: id,
+          interviewType: interviewType || 'Technical',
           interviewer: interviewer || req.user?.name || 'Talent Team',
           token,
+          tokenIssuedAt: new Date(),
           status: 'PENDING',
-          duration: duration ? parseInt(duration, 10) : 30,
-          timezone: 'Asia/Kolkata'
+          duration: durationMin,
+          bufferMinutes: bufferMin,
+          timezone: 'Asia/Kolkata',
+          availableFrom,
+          availableTo,
+          workingDays: days,
+          dayStartTime: dayStart,
+          dayEndTime: dayEnd,
+          interviewMode: interviewMode || 'Online',
+          meetingLink: meetingLink || null,
+          location: location || null,
+          notes: notes || '',
+          schedulingSource: 'CANDIDATE'
         }
       });
 
@@ -1700,6 +2003,14 @@ router.post('/applications/:id/interview-invitation', async (req, res) => {
       const baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:5173';
       const scheduleUrl = `${baseUrl}/?schedule=${token}`;
 
+      await prisma.applicationTimeline.create({
+        data: {
+          applicationId: id,
+          action: 'Self-Scheduling Invitation Sent',
+          description: `Candidate invited to pick a slot between ${availableFrom} and ${availableTo} (${dayStart}–${dayEnd}, ${durationMin} min slots${bufferMin ? `, ${bufferMin} min buffer` : ''}).`
+        }
+      }).catch(() => null);
+
       try {
         await sendCandidateScheduleInviteEmail({
           candidateEmail: application.email,
@@ -1707,6 +2018,11 @@ router.post('/applications/:id/interview-invitation', async (req, res) => {
           jobTitle: application.requirement?.jobTitle || 'Role',
           token,
           duration: interview.duration,
+          availableFrom,
+          availableTo,
+          startTime: dayStart,
+          endTime: dayEnd,
+          interviewMode: interview.interviewMode,
           publicBaseUrl: baseUrl,
           companyName
         });
@@ -1735,8 +2051,18 @@ router.post('/applications/:id/interview-invitation', async (req, res) => {
  */
 router.put('/applications/:id/interviews/:intId', async (req, res) => {
   try {
+    const companyId = resolveCompanyId(req);
     const intId = parseInt(req.params.intId, 10);
     const appId = parseInt(req.params.id, 10);
+
+    const owned = await prisma.recruitmentInterview.findFirst({
+      where: { id: intId, applicationId: appId, application: { companyId } },
+      select: { id: true }
+    });
+    if (!owned) {
+      return res.status(404).json({ error: 'Interview not found.' });
+    }
+
     const {
       technicalSkills,
       communication,
@@ -1804,9 +2130,18 @@ router.put('/applications/:id/interviews/:intId', async (req, res) => {
  */
 router.patch('/applications/:id/interviews/:intId/status', async (req, res) => {
   try {
+    const companyId = resolveCompanyId(req);
     const intId = parseInt(req.params.intId, 10);
     const appId = parseInt(req.params.id, 10);
     const { status } = req.body;
+
+    const owned = await prisma.recruitmentInterview.findFirst({
+      where: { id: intId, applicationId: appId, application: { companyId } },
+      select: { id: true }
+    });
+    if (!owned) {
+      return res.status(404).json({ error: 'Interview not found.' });
+    }
 
     const interview = await prisma.recruitmentInterview.update({
       where: { id: intId },
@@ -1825,6 +2160,121 @@ router.patch('/applications/:id/interviews/:intId/status', async (req, res) => {
   } catch (error) {
     console.error('Update interview status error:', error);
     res.status(500).json({ error: 'Failed to update interview status.' });
+  }
+});
+
+/**
+ * POST /api/recruitment/applications/:id/interviews/:intId/reopen-scheduling
+ * HR reopens candidate self-scheduling (reschedule): the previous slot is
+ * released, a fresh secure token is issued and the invitation email re-sent.
+ * The previous slot is preserved in the timeline — nothing is silently
+ * overwritten.
+ */
+router.post('/applications/:id/interviews/:intId/reopen-scheduling', async (req, res) => {
+  try {
+    const companyId = resolveCompanyId(req);
+    const appId = parseInt(req.params.id, 10);
+    const intId = parseInt(req.params.intId, 10);
+    const { availableFrom, availableTo, workingDays, startTime, endTime, duration, bufferMinutes } = req.body || {};
+
+    const application = await prisma.application.findFirst({
+      where: { id: appId, companyId },
+      include: { requirement: true }
+    });
+    if (!application) {
+      return res.status(404).json({ error: 'Application not found.' });
+    }
+
+    const interview = await prisma.recruitmentInterview.findFirst({
+      where: { id: intId, applicationId: appId }
+    });
+    if (!interview) {
+      return res.status(404).json({ error: 'Interview not found.' });
+    }
+    if (interview.status === 'COMPLETED') {
+      return res.status(400).json({ error: 'A completed interview cannot be rescheduled. Schedule a new round instead.' });
+    }
+    if (!application.email) {
+      return res.status(400).json({ error: 'Candidate email address is required.' });
+    }
+
+    // Optional window override on reschedule; otherwise keep the invite's window
+    const newFrom = availableFrom || interview.availableFrom;
+    const newTo = availableTo || interview.availableTo;
+    if (newFrom && newTo && newTo < newFrom) {
+      return res.status(400).json({ error: 'Available Until date cannot be before Available From date.' });
+    }
+
+    const previousSlot = interview.scheduledDate
+      ? `${interview.scheduledDate} ${interview.scheduledTime || ''}${interview.scheduledEndTime ? `–${interview.scheduledEndTime}` : ''}`.trim()
+      : null;
+
+    const token = crypto.randomUUID();
+    const updated = await prisma.recruitmentInterview.update({
+      where: { id: intId },
+      data: {
+        token,
+        tokenIssuedAt: new Date(),
+        status: 'PENDING',
+        scheduledDate: null,
+        scheduledTime: null,
+        scheduledEndTime: null,
+        bookedAt: null,
+        schedulingSource: 'CANDIDATE',
+        ...(newFrom ? { availableFrom: newFrom } : {}),
+        ...(newTo ? { availableTo: newTo } : {}),
+        ...(Array.isArray(workingDays) && workingDays.length ? { workingDays: workingDays.filter(d => slotEngine.DAY_NAMES.includes(d)) } : {}),
+        ...(startTime ? { dayStartTime: startTime } : {}),
+        ...(endTime ? { dayEndTime: endTime } : {}),
+        ...(duration ? { duration: parseInt(duration, 10) } : {}),
+        ...(bufferMinutes !== undefined && bufferMinutes !== null ? { bufferMinutes: parseInt(bufferMinutes, 10) || 0 } : {})
+      }
+    });
+
+    await prisma.applicationTimeline.create({
+      data: {
+        applicationId: appId,
+        action: 'Interview Rescheduling Opened',
+        description: previousSlot
+          ? `Previous slot ${previousSlot} released by ${req.user?.name || 'HR'}; candidate invited to pick a new time.`
+          : `Self-scheduling link re-issued by ${req.user?.name || 'HR'}.`
+      }
+    });
+
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { name: true }
+    }).catch(() => null);
+
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'http://localhost:5173';
+    try {
+      await sendCandidateScheduleInviteEmail({
+        candidateEmail: application.email,
+        candidateName: application.fullName,
+        jobTitle: application.requirement?.jobTitle || 'Role',
+        token,
+        duration: updated.duration,
+        availableFrom: updated.availableFrom,
+        availableTo: updated.availableTo,
+        startTime: updated.dayStartTime,
+        endTime: updated.dayEndTime,
+        interviewMode: updated.interviewMode,
+        publicBaseUrl: baseUrl,
+        companyName: company?.name,
+        isReschedule: true
+      });
+    } catch (mailErr) {
+      console.error('[RecruitmentMailer] Reschedule invite email failed:', mailErr.message);
+    }
+
+    res.json({
+      message: 'Candidate scheduling reopened and a fresh invitation link was sent.',
+      scheduleUrl: `${baseUrl}/?schedule=${token}`,
+      interview: updated
+    });
+  } catch (error) {
+    console.error('Reopen scheduling error:', error);
+    res.status(500).json({ error: 'Failed to reopen candidate scheduling.' });
   }
 });
 
@@ -1931,52 +2381,7 @@ router.post('/applications/:id/retry-ats', async (req, res) => {
       data: { analysisStatus: 'PROCESSING' }
     });
 
-    const resumeFullPath = path.join(UPLOAD_DIR, application.resumePath);
-    const requirementObj = application.requirement;
-
-    setImmediate(async () => {
-      try {
-        console.log(`[ATS-Worker] Re-analyzing Application #${id}`);
-        const atsResult = await analyzeCandidateMatch(resumeFullPath, requirementObj);
-
-        await prisma.application.update({
-          where: { id },
-          data: {
-            analysisStatus: atsResult.status || 'COMPLETED',
-            atsMatchScore: atsResult.ats_match_score || 0,
-            skillsScore: atsResult.skills_score || 0,
-            experienceScore: atsResult.experience_score || 0,
-            educationScore: atsResult.education_score || 0,
-            projectsScore: atsResult.projects_score || 0,
-            jobDescriptionScore: atsResult.job_description_score || 0,
-            matchedSkills: atsResult.matched_skills || [],
-            missingSkills: atsResult.missing_skills || [],
-            warnings: atsResult.warnings || [],
-            aiSummary: atsResult.ai_summary || '',
-            matchBreakdown: atsResult.match_breakdown || {},
-            analyzedAt: new Date()
-          }
-        });
-
-        await prisma.applicationTimeline.create({
-          data: {
-            applicationId: id,
-            action: 'AI ATS Re-analysis Complete',
-            description: `Recalculated match score: ${atsResult.ats_match_score}%.`
-          }
-        });
-      } catch (err) {
-        console.error(`[ATS-Worker] Retry failed for application #${id}:`, err);
-        await prisma.application.update({
-          where: { id },
-          data: {
-            analysisStatus: 'FAILED',
-            aiSummary: `AI Analysis retry failed: ${err.message}`,
-            analyzedAt: new Date()
-          }
-        }).catch(() => null);
-      }
-    });
+    setImmediate(() => runAtsForApplication(id, { force: true, trigger: 'Manual ATS re-analysis' }));
 
     res.json({ message: 'ATS analysis re-triggered in background.' });
   } catch (error) {
@@ -1992,6 +2397,9 @@ router.post('/applications/:id/retry-ats', async (req, res) => {
 router.get('/settings/interview', async (req, res) => {
   try {
     const companyId = resolveCompanyId(req);
+    if (companyId < 0) {
+      return res.status(403).json({ error: 'No authorized company workspace in context.' });
+    }
     let settings = await prisma.interviewScheduleSettings.findUnique({
       where: { companyId }
     });
@@ -2025,6 +2433,9 @@ router.get('/settings/interview', async (req, res) => {
 router.post('/settings/interview', async (req, res) => {
   try {
     const companyId = resolveCompanyId(req);
+    if (companyId < 0) {
+      return res.status(403).json({ error: 'No authorized company workspace in context.' });
+    }
     const { availableFrom, availableTo, workingDays, startTime, endTime, duration, timezone } = req.body;
 
     const settings = await prisma.interviewScheduleSettings.upsert({

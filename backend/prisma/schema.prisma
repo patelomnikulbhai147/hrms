@@ -3984,6 +3984,8 @@ model Application {
   warnings              Json?
   aiSummary             String?   @db.LongText
   analyzedAt            DateTime?
+  parsedResume          Json?     // cached structured resume parse (ATS v2)
+  analysisHash          String?   // fingerprint of resume file + requirement inputs
   screeningNotes        String?   @db.Text
   screeningDecision     String?
   status                String    @default("NEW") // NEW, SCREENING, SHORTLISTED, INTERVIEW, SELECTED, OFFER_SENT, JOINED, REJECTED
@@ -4026,6 +4028,18 @@ model RecruitmentInterview {
   token             String?   @unique
   duration          Int       @default(30)
   timezone          String    @default("Asia/Kolkata")
+  interviewMode     String?   // Online, Offline, Phone
+  meetingLink       String?   @db.Text
+  availableFrom     String?   // per-invitation candidate scheduling window (YYYY-MM-DD)
+  availableTo       String?
+  workingDays       Json?     // ["Monday", ...] for this invitation
+  dayStartTime      String?   // e.g. "10:00"
+  dayEndTime        String?   // e.g. "17:00"
+  bufferMinutes     Int       @default(0)
+  scheduledEndTime  String?   // booked slot end, e.g. "11:30"
+  schedulingSource  String?   // HR | CANDIDATE
+  bookedAt          DateTime?
+  tokenIssuedAt     DateTime? // invite (re)issue time; expiry anchor for reschedules
   technicalSkills   Int?
   communication     Int?
   problemSolving    Int?

@@ -135,6 +135,44 @@ exports.requireCompanyModuleAccess = (moduleName, action, opts = {}) => (req, re
   });
 };
 
+/**
+ * requireModuleAccess(moduleName, action, opts)
+ *   opts = { label?: string, defaults?: { view?: string[], edit?: string[], export?: string[] } }
+ *
+ * Gate for company matrix modules that BOTH Super Admin and Company Head may
+ * enter (unlike requireCompanyModuleAccess, which rejects Super Admin):
+ *   • Super Admin / Company Head → always allowed.
+ *   • Other roles → the user's permission matrix row for moduleName is
+ *     authoritative when present; when the row is ABSENT (user created before
+ *     the module existed), fall back to `opts.defaults` keyed by canonical
+ *     action — mirroring the frontend's role-default behaviour so the module
+ *     isn't silently locked for existing users.
+ *
+ * Company-scoping is enforced separately in the controller. Must run AFTER
+ * `protect` (which populates req.user).
+ */
+exports.requireModuleAccess = (moduleName, action, opts = {}) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized: authentication required.' });
+  const role = req.user.role;
+  if (role === 'Super Admin' || role === 'Company Head') return next();
+
+  const parsedPerms = (req.user.permissions && req.user.permissions.permissions) || {};
+  const modulePerms = parsedPerms[moduleName];
+  let allowed;
+  if (modulePerms && Object.keys(modulePerms).length) {
+    allowed = hasModulePermission(modulePerms, action);
+  } else {
+    const canonical = ACTION_ALIASES[action] || action;
+    const roles = (opts.defaults && opts.defaults[canonical]) || [];
+    allowed = roles.includes(role);
+  }
+  if (allowed) return next();
+  return res.status(403).json({
+    error: `Access denied. You do not have permission to ${action} in ${opts.label || moduleName}.`,
+    yourRole: role || 'Unknown',
+  });
+};
+
 exports.requirePermission = (moduleName, action) => {
   return async (req, res, next) => {
     try {

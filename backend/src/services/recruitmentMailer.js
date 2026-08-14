@@ -37,10 +37,12 @@ function getTransporter() {
 /**
  * Sends fixed interview schedule confirmation email to the candidate.
  */
-async function sendFixedInterviewEmail({ candidateEmail, candidateName, jobTitle, scheduledDate, scheduledTime, interviewer, location, companyName }) {
+async function sendFixedInterviewEmail({ candidateEmail, candidateName, jobTitle, scheduledDate, scheduledTime, scheduledEndTime, interviewer, location, meetingLink, interviewMode, companyName }) {
   const brandName = companyName || 'ZeniaHR Enterprise';
   const senderEmail = process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@zeniahr.com';
-  const formattedTime = format12Hour(scheduledTime);
+  const formattedTime = scheduledEndTime
+    ? `${format12Hour(scheduledTime)} – ${format12Hour(scheduledEndTime)}`
+    : format12Hour(scheduledTime);
 
   const html = `
   <!DOCTYPE html>
@@ -70,8 +72,10 @@ async function sendFixedInterviewEmail({ candidateEmail, candidateName, jobTitle
       <div class="details-box">
         <div class="detail-row"><span class="detail-label">Date:</span> <strong>${scheduledDate}</strong></div>
         <div class="detail-row"><span class="detail-label">Time:</span> <strong>${formattedTime}</strong></div>
+        ${interviewMode ? `<div class="detail-row"><span class="detail-label">Mode:</span> ${interviewMode}</div>` : ''}
         ${interviewer ? `<div class="detail-row"><span class="detail-label">Interviewer:</span> ${interviewer}</div>` : ''}
-        ${location ? `<div class="detail-row"><span class="detail-label">Location / Link:</span> ${location}</div>` : ''}
+        ${meetingLink ? `<div class="detail-row"><span class="detail-label">Meeting Link:</span> <a href="${meetingLink}">${meetingLink}</a></div>` : ''}
+        ${location ? `<div class="detail-row"><span class="detail-label">Location:</span> ${location}</div>` : ''}
       </div>
 
       <p>Please ensure you are available 5 minutes prior to the scheduled time. If you require any adjustments or need to reschedule, please contact our talent team immediately.</p>
@@ -103,11 +107,15 @@ async function sendFixedInterviewEmail({ candidateEmail, candidateName, jobTitle
 /**
  * Sends candidate self-scheduling invitation email with secure token link.
  */
-async function sendCandidateScheduleInviteEmail({ candidateEmail, candidateName, jobTitle, token, duration, publicBaseUrl, companyName }) {
+async function sendCandidateScheduleInviteEmail({ candidateEmail, candidateName, jobTitle, token, duration, availableFrom, availableTo, startTime, endTime, interviewMode, publicBaseUrl, companyName, isReschedule }) {
   const brandName = companyName || 'ZeniaHR Enterprise';
   const senderEmail = process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@zeniahr.com';
   const baseUrl = publicBaseUrl || process.env.PUBLIC_BASE_URL || 'http://localhost:5173';
   const scheduleUrl = `${baseUrl}/?schedule=${token}`;
+  const windowLine = (availableFrom && availableTo)
+    ? `• Available window: <strong>${availableFrom}</strong> to <strong>${availableTo}</strong>${startTime && endTime ? `, ${format12Hour(startTime)} – ${format12Hour(endTime)}` : ''}<br>`
+    : '';
+  const modeLine = interviewMode ? `• Interview mode: <strong>${interviewMode}</strong><br>` : '';
 
   const html = `
   <!DOCTYPE html>
@@ -138,6 +146,8 @@ async function sendCandidateScheduleInviteEmail({ candidateEmail, candidateName,
       </div>
 
       <p style="font-size: 13px; color: #64748b;">
+        ${windowLine}
+        ${modeLine}
         • Expected duration: <strong>${duration || 30} minutes</strong><br>
         • This link is valid for 48 hours.
       </p>
@@ -163,7 +173,85 @@ async function sendCandidateScheduleInviteEmail({ candidateEmail, candidateName,
   return transporter.sendMail({
     from: `"${brandName} Careers" <${senderEmail}>`,
     to: candidateEmail,
-    subject: `Interview Invitation — Select Your Slot (${jobTitle})`,
+    subject: isReschedule
+      ? `Interview Rescheduling — Select a New Slot (${jobTitle})`
+      : `Interview Invitation — Select Your Slot (${jobTitle})`,
+    html
+  });
+}
+
+/**
+ * Sends the candidate a confirmation after they book a self-scheduled slot,
+ * including mode, meeting link / location and joining instructions.
+ */
+async function sendInterviewBookingConfirmationEmail({ candidateEmail, candidateName, jobTitle, companyName, date, startTime, endTime, timezone, interviewer, interviewMode, meetingLink, location }) {
+  const brandName = companyName || 'ZeniaHR Enterprise';
+  const senderEmail = process.env.MAIL_FROM || process.env.SMTP_USER || 'no-reply@zeniahr.com';
+  const timeRange = endTime ? `${format12Hour(startTime)} – ${format12Hour(endTime)}` : format12Hour(startTime);
+
+  const html = `
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1e293b; margin: 0; padding: 24px; background: #f8fafc; }
+      .card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; padding: 32px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+      .header { border-bottom: 2px solid #10b981; padding-bottom: 16px; margin-bottom: 20px; }
+      .title { color: #047857; font-size: 20px; font-weight: 700; margin: 0; }
+      .details-box { background: #f0fdf4; border-radius: 8px; padding: 18px; margin: 20px 0; border-left: 4px solid #10b981; }
+      .detail-row { margin: 8px 0; font-size: 14px; }
+      .detail-label { font-weight: 600; color: #475569; width: 130px; display: inline-block; }
+      .footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="header">
+        <h2 class="title">${brandName} — Interview Confirmed</h2>
+      </div>
+      <p>Dear <strong>${candidateName}</strong>,</p>
+      <p>Your interview for the position of <strong>${jobTitle}</strong> at <strong>${brandName}</strong> is confirmed. Here are your interview details:</p>
+
+      <div class="details-box">
+        <div class="detail-row"><span class="detail-label">Position:</span> <strong>${jobTitle}</strong></div>
+        <div class="detail-row"><span class="detail-label">Company:</span> <strong>${brandName}</strong></div>
+        <div class="detail-row"><span class="detail-label">Date:</span> <strong>${date}</strong></div>
+        <div class="detail-row"><span class="detail-label">Time:</span> <strong>${timeRange}</strong> ${timezone ? `(${timezone})` : ''}</div>
+        ${interviewMode ? `<div class="detail-row"><span class="detail-label">Mode:</span> ${interviewMode}</div>` : ''}
+        ${interviewer ? `<div class="detail-row"><span class="detail-label">Interviewer:</span> ${interviewer}</div>` : ''}
+        ${meetingLink ? `<div class="detail-row"><span class="detail-label">Meeting Link:</span> <a href="${meetingLink}">${meetingLink}</a></div>` : ''}
+        ${location ? `<div class="detail-row"><span class="detail-label">Location:</span> ${location}</div>` : ''}
+      </div>
+
+      <p style="font-size:13px; color:#475569;">
+        <strong>Instructions:</strong> Please join 5 minutes before the scheduled time and keep a copy of your resume handy.
+        ${interviewMode === 'Online' || meetingLink ? 'Ensure a stable internet connection and a quiet environment.' : ''}
+        ${interviewMode === 'Offline' ? 'Carry a government-issued photo ID for office entry.' : ''}
+        If you need to make changes, reply to this email and our talent team will assist you.
+      </p>
+
+      <p>We look forward to speaking with you!</p>
+      <p>Best regards,<br><strong>${brandName} Talent Acquisition Team</strong></p>
+
+      <div class="footer">
+        This is an automated recruitment communication from ${brandName}.
+      </div>
+    </div>
+  </body>
+  </html>
+  `;
+
+  const transporter = getTransporter();
+  if (!transporter) {
+    console.log(`[RecruitmentMailer] Mock booking confirmation to ${candidateEmail}: ${jobTitle} on ${date} ${timeRange}`);
+    return true;
+  }
+
+  return transporter.sendMail({
+    from: `"${brandName} Careers" <${senderEmail}>`,
+    to: candidateEmail,
+    subject: `Interview Confirmed — ${jobTitle} on ${date} (${timeRange})`,
     html
   });
 }
@@ -248,5 +336,6 @@ async function sendOfferLetterEmail({ candidateEmail, candidateName, jobTitle, o
 module.exports = {
   sendFixedInterviewEmail,
   sendCandidateScheduleInviteEmail,
+  sendInterviewBookingConfirmationEmail,
   sendOfferLetterEmail
 };

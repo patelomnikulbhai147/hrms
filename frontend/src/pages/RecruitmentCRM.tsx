@@ -105,10 +105,20 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
     scheduledDate: '',
     scheduledTime: '11:00',
     interviewer: '',
-    location: 'Google Meet / Zoom',
+    interviewMode: 'Online',
+    meetingLink: '',
+    location: '',
     notes: '',
-    duration: 30
+    duration: 30,
+    // Candidate self-scheduling availability window (per invitation)
+    availableFrom: '',
+    availableTo: '',
+    workingDays: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+    startTime: '10:00',
+    endTime: '17:00',
+    bufferMinutes: 0
   });
+  const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const [feedbackForm, setFeedbackForm] = useState({
     technicalSkills: 4,
     communication: 4,
@@ -131,6 +141,26 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
     terms: 'Standard probation of 3 months applies. Health insurance and standard company benefits included.'
   });
   const [previewResumeUrl, setPreviewResumeUrl] = useState<string | null>(null);
+
+  // Resumes are served through an authenticated, company-scoped endpoint, so
+  // the iframe gets a blob URL fetched with the caller's token + workspace.
+  const handlePreviewResume = async (resumePath: string) => {
+    try {
+      const token = localStorage.getItem('hrms_jwt_token');
+      const workspaceId = localStorage.getItem('hrms_active_company_id');
+      const res = await fetch(`/api/recruitment/resume/${encodeURIComponent(resumePath)}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(workspaceId ? { 'x-workspace-id': workspaceId } : {})
+        }
+      });
+      if (!res.ok) throw new Error('Resume could not be loaded');
+      const blob = await res.blob();
+      setPreviewResumeUrl(URL.createObjectURL(blob));
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to load resume');
+    }
+  };
   const [schedulingBusy, setSchedulingBusy] = useState(false);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
   const [activeFeedbackIntId, setActiveFeedbackIntId] = useState<number | null>(null);
@@ -464,15 +494,41 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
         });
         toast.success('Fixed interview scheduled and confirmation email sent');
       } else {
+        if (!interviewForm.availableFrom || !interviewForm.availableTo) {
+          toast.error('Please set the Available From and Available Until dates');
+          setSchedulingBusy(false);
+          return;
+        }
+        if (interviewForm.availableTo < interviewForm.availableFrom) {
+          toast.error('Available Until cannot be before Available From');
+          setSchedulingBusy(false);
+          return;
+        }
+        if (!interviewForm.workingDays.length) {
+          toast.error('Select at least one available weekday');
+          setSchedulingBusy(false);
+          return;
+        }
         const res: any = await api.post(`/api/recruitment/applications/${candidateId}/interview-invitation`, {
           scheduleOption: 'CANDIDATE',
           interviewer: interviewForm.interviewer || 'Talent Team',
-          duration: interviewForm.duration || 30
+          interviewType: interviewForm.interviewType,
+          duration: interviewForm.duration || 30,
+          availableFrom: interviewForm.availableFrom,
+          availableTo: interviewForm.availableTo,
+          workingDays: interviewForm.workingDays,
+          startTime: interviewForm.startTime,
+          endTime: interviewForm.endTime,
+          bufferMinutes: interviewForm.bufferMinutes || 0,
+          interviewMode: interviewForm.interviewMode,
+          meetingLink: interviewForm.meetingLink || null,
+          location: interviewForm.location || null,
+          notes: interviewForm.notes || ''
         });
         const scheduleUrl = res?.data?.scheduleUrl;
         if (scheduleUrl) {
           try { navigator.clipboard.writeText(scheduleUrl); } catch (_) { }
-          toast.success('Self-scheduling invitation created! Link copied to clipboard.');
+          toast.success('Scheduling invitation sent! Link copied to clipboard.');
         } else {
           toast.success('Self-scheduling invitation link generated and sent to candidate');
         }
@@ -530,6 +586,29 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
       }
     } catch (err: any) {
       toast.error(err?.message || 'Failed to update interview status');
+    }
+  };
+
+  // Reopen candidate self-scheduling (reschedule) — releases the booked slot
+  // and re-issues a fresh secure link; history is preserved in the timeline.
+  const handleReopenScheduling = async (intId: number) => {
+    const candidateId = selectedCandidate?.id || (selectedCandidate as any)?.data?.id;
+    if (!candidateId) return;
+    try {
+      const res: any = await api.post(`/api/recruitment/applications/${candidateId}/interviews/${intId}/reopen-scheduling`, {});
+      const scheduleUrl = res?.data?.scheduleUrl;
+      if (scheduleUrl) {
+        try { navigator.clipboard.writeText(scheduleUrl); } catch (_) { }
+      }
+      toast.success('Scheduling reopened — a fresh invitation was emailed to the candidate');
+      fetchPipeline();
+      const updated: any = await api.get(`/api/recruitment/applications/${candidateId}`);
+      const candData = updated?.data || updated;
+      if (candData && candData.id) {
+        setSelectedCandidate(candData);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to reopen candidate scheduling');
     }
   };
 
@@ -1579,7 +1658,7 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                         </div>
                         <button
                           type="button"
-                          onClick={() => setPreviewResumeUrl(`/api/recruitment/public/resume/${selectedCandidate.resumePath}`)}
+                          onClick={() => handlePreviewResume(selectedCandidate.resumePath)}
                           className="px-3 py-1.5 bg-[#C77E52] hover:bg-[#B36F46] text-white font-bold rounded-lg text-xs flex items-center gap-1 shadow-xs transition cursor-pointer"
                         >
                           <Eye size={13} /> View Resume
@@ -1792,109 +1871,178 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                   </div>
                 )}
 
-                {/* TAB B: AI ATS BREAKDOWN (4-Factor Scoring) */}
-                {candidateDrawerTab === 'ats' && (
-                  <div className="space-y-4">
-                    {/* Overall ATS Score Box */}
-                    <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl flex items-center justify-between">
-                      <div>
-                        <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Overall Match Rating</span>
-                        <div className="flex items-baseline gap-2 mt-1">
-                          <span className="text-3xl font-black text-emerald-400">{selectedCandidate.atsMatchScore || 0}%</span>
-                          <span className="text-xs text-slate-300 font-semibold">
-                            ({selectedCandidate.analysisStatus || 'COMPLETED'})
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleRetryATS}
-                        className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
-                      >
-                        <RefreshCw size={13} /> Retry ATS Analysis
-                      </button>
-                    </div>
+                {/* TAB B: ATS BREAKDOWN (explainable weighted scoring) */}
+                {candidateDrawerTab === 'ats' && (() => {
+                  const mb = selectedCandidate.matchBreakdown || {};
+                  const isV2 = mb.engineVersion >= 2 && Array.isArray(mb.components);
+                  const isFailed = selectedCandidate.analysisStatus === 'FAILED' || mb.failed;
+                  const isProcessing = selectedCandidate.analysisStatus === 'PROCESSING' || selectedCandidate.analysisStatus === 'PENDING';
+                  const barColors: Record<string, string> = {
+                    skills: 'bg-emerald-500', experience: 'bg-indigo-500', role: 'bg-amber-500',
+                    education: 'bg-teal-500', preferred: 'bg-violet-500', other: 'bg-sky-500'
+                  };
+                  // Legacy (pre-v2) analyses render from the stored int columns
+                  const legacyRows = [
+                    { key: 'skills', label: 'Skills Match', score: selectedCandidate.skillsScore || 0, max: 40 },
+                    { key: 'experience', label: 'Relevant Experience', score: selectedCandidate.experienceScore || 0, max: 25 },
+                    { key: 'role', label: 'Role & Project Relevance', score: selectedCandidate.projectsScore || 0, max: 15 },
+                    { key: 'education', label: 'Education', score: selectedCandidate.educationScore || 0, max: 10 },
+                    { key: 'other', label: 'Preferred & Other Requirements', score: selectedCandidate.jobDescriptionScore || 0, max: 10 }
+                  ];
+                  const rows = isV2 ? mb.components : legacyRows;
+                  const matched = Array.isArray(selectedCandidate.matchedSkills) ? selectedCandidate.matchedSkills : [];
+                  const missing = Array.isArray(selectedCandidate.missingSkills) ? selectedCandidate.missingSkills : [];
+                  const exp = mb.experience || {};
 
-                    {/* 4-Factor Weighted Breakdown Progress Bars */}
-                    <div className="space-y-2.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <p className="font-bold text-slate-800 mb-2">4-Factor ATS Scoring Weights:</p>
-
-                      <div>
-                        <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                          <span>Skills Alignment (40% Weight)</span>
-                          <span>{selectedCandidate.skillsScore || Math.round((selectedCandidate.atsMatchScore || 0) * 0.4)} / 40</span>
+                  return (
+                    <div className="space-y-4">
+                      {/* Overall ATS Score Box */}
+                      <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">Overall Match Rating</span>
+                          <div className="flex items-baseline gap-2 mt-1">
+                            <span className={`text-3xl font-black ${isFailed ? 'text-rose-400' : (selectedCandidate.atsMatchScore || 0) >= 75 ? 'text-emerald-400' : (selectedCandidate.atsMatchScore || 0) >= 50 ? 'text-amber-300' : 'text-rose-300'}`}>
+                              {isProcessing ? '…' : `${selectedCandidate.atsMatchScore || 0}%`}
+                            </span>
+                            <span className="text-xs text-slate-300 font-semibold">
+                              ({selectedCandidate.analysisStatus || 'COMPLETED'})
+                            </span>
+                          </div>
                         </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${Math.min(100, ((selectedCandidate.skillsScore || 38) / 40) * 100)}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                          <span>Experience Relevance (25% Weight)</span>
-                          <span>{selectedCandidate.experienceScore || Math.round((selectedCandidate.atsMatchScore || 0) * 0.25)} / 25</span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${Math.min(100, ((selectedCandidate.experienceScore || 23) / 25) * 100)}%` }} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                          <span>Education & Projects (20% Weight)</span>
-                          <span>{selectedCandidate.educationScore || Math.round((selectedCandidate.atsMatchScore || 0) * 0.20)} / 20</span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${Math.min(100, ((selectedCandidate.educationScore || 15) / 20) * 100)}%` }} />
-                        </div>
+                        <button
+                          onClick={handleRetryATS}
+                          className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                        >
+                          <RefreshCw size={13} /> Retry ATS Analysis
+                        </button>
                       </div>
 
-                      <div>
-                        <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
-                          <span>Job Description Semantic Match (15% Weight)</span>
-                          <span>{selectedCandidate.jobDescriptionScore || Math.round((selectedCandidate.atsMatchScore || 0) * 0.15)} / 15</span>
+                      {isProcessing && (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-semibold">
+                          Resume analysis is running in the background. Refresh in a few seconds.
                         </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div className="bg-teal-500 h-2 rounded-full" style={{ width: `${Math.min(100, ((selectedCandidate.jobDescriptionScore || 14) / 15) * 100)}%` }} />
+                      )}
+
+                      {isFailed && (
+                        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+                          <p className="font-bold mb-1">Resume could not be analyzed</p>
+                          <p>{selectedCandidate.aiSummary || 'Text could not be extracted from the uploaded file.'}</p>
                         </div>
-                      </div>
-                    </div>
+                      )}
 
-                    {/* Matched vs Missing Skills Chips */}
-                    <div className="space-y-2">
-                      <p className="font-bold text-slate-800">Matched Skills:</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(selectedCandidate.matchedSkills || ['Python', 'Django', 'React', 'Docker']).map((s: string, i: number) => (
-                          <span key={i} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md font-bold text-[11px]">
-                            ✓ {s}
-                          </span>
-                        ))}
-                      </div>
-
-                      {Array.isArray(selectedCandidate.missingSkills) && selectedCandidate.missingSkills.length > 0 && (
+                      {!isFailed && !isProcessing && (
                         <>
-                          <p className="font-bold text-slate-800 mt-3">Missing Skills:</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedCandidate.missingSkills.map((s: string, i: number) => (
-                              <span key={i} className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-md font-bold text-[11px]">
-                                ✗ {s}
-                              </span>
+                          {/* Weighted Breakdown Progress Bars */}
+                          <div className="space-y-2.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                            <p className="font-bold text-slate-800 mb-2">Weighted ATS Scoring:</p>
+                            {rows.map((c: any) => (
+                              <div key={c.key}>
+                                <div className="flex justify-between text-[11px] font-bold text-slate-700 mb-1">
+                                  <span>{c.label} {c.na ? '' : `(${c.max}%)`}</span>
+                                  <span>{c.na ? 'N/A — not defined on job' : `${c.score} / ${c.max}`}</span>
+                                </div>
+                                <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                                  <div
+                                    className={`${c.na ? 'bg-slate-300' : (barColors[c.key] || 'bg-slate-400')} h-2 rounded-full`}
+                                    style={{ width: c.na ? '0%' : `${Math.min(100, (c.score / c.max) * 100)}%` }}
+                                  />
+                                </div>
+                                {isV2 && c.detail && (
+                                  <p className="text-[10px] text-slate-500 mt-0.5">{c.detail}</p>
+                                )}
+                              </div>
                             ))}
                           </div>
+
+                          {/* Experience: required vs identified */}
+                          {isV2 && exp.requiredYears > 0 && (
+                            <div className="p-3 bg-white border border-slate-200 rounded-xl grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Required Experience</p>
+                                <p className="font-bold text-slate-800">{exp.requiredLabel || `${exp.requiredYears}+ years`}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Resume Analysis</p>
+                                <p className="font-bold text-slate-800">
+                                  {exp.candidateYears === null || exp.candidateYears === undefined
+                                    ? 'Not identified'
+                                    : `~${exp.candidateYears} year(s) relevant experience`}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Matched vs Missing Skills Chips */}
+                          <div className="space-y-2">
+                            <p className="font-bold text-slate-800">Matched (found in resume):</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {matched.length === 0 && (
+                                <span className="text-[11px] text-slate-400 font-semibold">No required skills were identified in the resume.</span>
+                              )}
+                              {matched.map((s: string, i: number) => {
+                                const detail = isV2 ? (mb.skills?.required || []).find((r: any) => r.skill === s) : null;
+                                return (
+                                  <span
+                                    key={i}
+                                    title={detail?.matchType === 'implied' ? `Identified via "${detail.via}"` : undefined}
+                                    className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md font-bold text-[11px]"
+                                  >
+                                    ✓ {s}{detail?.matchType === 'implied' ? ` (via ${detail.via})` : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+
+                            {missing.length > 0 && (
+                              <>
+                                <p className="font-bold text-slate-800 mt-3">Missing / Not identified:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {missing.map((s: string, i: number) => (
+                                    <span key={i} className="px-2 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-md font-bold text-[11px]">
+                                      ✕ {s}
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+
+                            {isV2 && (mb.skills?.preferred || []).length > 0 && (
+                              <>
+                                <p className="font-bold text-slate-800 mt-3">Preferred Skills:</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(mb.skills.preferred || []).map((p: any, i: number) => (
+                                    <span key={i} className={`px-2 py-0.5 rounded-md font-bold text-[11px] border ${p.matched ? 'bg-violet-50 text-violet-700 border-violet-200' : 'bg-slate-50 text-slate-400 border-slate-200'}`}>
+                                      {p.matched ? '✓' : '✕'} {p.skill}
+                                    </span>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Warnings */}
+                          {Array.isArray(selectedCandidate.warnings) && selectedCandidate.warnings.length > 0 && (
+                            <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
+                              {selectedCandidate.warnings.map((w: string, i: number) => (
+                                <p key={i} className="text-[11px] text-amber-800 font-semibold">⚠ {w}</p>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Analysis Summary */}
+                          {selectedCandidate.aiSummary && (
+                            <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl">
+                              <p className="font-bold text-indigo-900 mb-1 flex items-center gap-1.5">
+                                <Bot size={14} /> Analysis Summary
+                              </p>
+                              <p className="text-slate-700 text-xs leading-relaxed">{selectedCandidate.aiSummary}</p>
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
-
-                    {/* AI Summary */}
-                    {selectedCandidate.aiSummary && (
-                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl">
-                        <p className="font-bold text-indigo-900 mb-1 flex items-center gap-1.5">
-                          <Bot size={14} /> AI Evaluator Summary
-                        </p>
-                        <p className="text-slate-700 text-xs leading-relaxed">{selectedCandidate.aiSummary}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* TAB C: SCREENING */}
                 {candidateDrawerTab === 'screening' && (
@@ -2025,12 +2173,33 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Time & Duration</p>
                                       <p className="font-bold text-slate-800 text-xs sm:text-sm">
                                         {int.scheduledTime
-                                          ? `${int.scheduledTime} IST (${int.duration || 30} mins)`
+                                          ? `${int.scheduledTime}${int.scheduledEndTime ? ` – ${int.scheduledEndTime}` : ''} IST (${int.duration || 30} mins)`
                                           : `Duration: ${int.duration || 30} mins slot`}
                                       </p>
+                                      {int.schedulingSource === 'CANDIDATE' && int.scheduledTime && (
+                                        <span className="inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-violet-50 text-violet-700 border border-violet-200">
+                                          Selected by Candidate
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
+
+                                {/* Availability window / mode & link details */}
+                                {(int.availableFrom || int.interviewMode || int.meetingLink) && (
+                                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500 font-medium">
+                                    {!int.scheduledDate && int.availableFrom && int.availableTo && (
+                                      <span>Window: <strong className="text-slate-700">{int.availableFrom} → {int.availableTo}</strong> ({int.dayStartTime || '10:00'}–{int.dayEndTime || '17:00'})</span>
+                                    )}
+                                    {int.interviewMode && <span>Mode: <strong className="text-slate-700">{int.interviewMode}</strong></span>}
+                                    {int.meetingLink && (
+                                      <a href={int.meetingLink} target="_blank" rel="noreferrer" className="text-[#C77E52] font-bold hover:underline truncate max-w-[220px]">
+                                        Meeting Link
+                                      </a>
+                                    )}
+                                    {int.location && !int.meetingLink && <span>Location: <strong className="text-slate-700">{int.location}</strong></span>}
+                                  </div>
+                                )}
 
                                 {/* Interviewer Info & Card Actions */}
                                 <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-100 text-xs">
@@ -2053,6 +2222,17 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                                         className="px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 text-[#C77E52] rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer border border-orange-200"
                                       >
                                         <Copy size={12} /> Copy Invite Link
+                                      </button>
+                                    )}
+
+                                    {isConfirmed && int.token && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleReopenScheduling(int.id)}
+                                        className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-600 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer border border-slate-200"
+                                        title="Release this slot and let the candidate pick a new time"
+                                      >
+                                        <RefreshCw size={12} /> Reopen Scheduling
                                       </button>
                                     )}
 
@@ -2111,7 +2291,17 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                               type="radio"
                               name="schOpt"
                               checked={interviewForm.scheduleOption === 'CANDIDATE'}
-                              onChange={() => setInterviewForm({ ...interviewForm, scheduleOption: 'CANDIDATE' })}
+                              onChange={() => {
+                                const today = new Date();
+                                const plus2 = new Date(today.getTime() + 2 * 86400000);
+                                const plus7 = new Date(today.getTime() + 7 * 86400000);
+                                setInterviewForm({
+                                  ...interviewForm,
+                                  scheduleOption: 'CANDIDATE',
+                                  availableFrom: interviewForm.availableFrom || plus2.toISOString().split('T')[0],
+                                  availableTo: interviewForm.availableTo || plus7.toISOString().split('T')[0]
+                                });
+                              }}
                             />
                             Candidate Self-Scheduling Link
                           </label>
@@ -2129,7 +2319,7 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                               />
                             </div>
                             <div>
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">Time</label>
+                              <label className="block text-[11px] font-bold text-slate-600 mb-1">Start Time</label>
                               <input
                                 type="time"
                                 value={interviewForm.scheduledTime}
@@ -2139,10 +2329,154 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                             </div>
                           </div>
                         ) : (
-                          <p className="text-[11px] text-slate-500 bg-white p-2.5 rounded-lg border border-slate-200">
-                            A unique 48-hour self-scheduling portal link will be generated and dispatched to <strong>{selectedCandidate.email || (selectedCandidate as any).data?.email || 'the candidate'}</strong>.
-                          </p>
+                          <div className="space-y-3 bg-white p-3 rounded-lg border border-slate-200">
+                            <p className="text-[11px] text-slate-500">
+                              Define the window in which <strong>{selectedCandidate.email || (selectedCandidate as any).data?.email || 'the candidate'}</strong> can
+                              pick their own slot. A secure scheduling link is emailed automatically.
+                            </p>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Available From Date *</label>
+                                <input
+                                  type="date"
+                                  value={interviewForm.availableFrom}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, availableFrom: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Available Until Date *</label>
+                                <input
+                                  type="date"
+                                  value={interviewForm.availableTo}
+                                  min={interviewForm.availableFrom || undefined}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, availableTo: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-bold text-slate-600 mb-1.5">Available Days</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {WEEKDAYS.map(day => {
+                                  const checked = interviewForm.workingDays.includes(day);
+                                  return (
+                                    <button
+                                      key={day}
+                                      type="button"
+                                      onClick={() => setInterviewForm({
+                                        ...interviewForm,
+                                        workingDays: checked
+                                          ? interviewForm.workingDays.filter(d => d !== day)
+                                          : [...interviewForm.workingDays, day]
+                                      })}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                                        checked
+                                          ? 'bg-[#C77E52] text-white border-[#C77E52]'
+                                          : 'bg-white text-slate-500 border-slate-200 hover:border-[#C77E52]'
+                                      }`}
+                                    >
+                                      {day.slice(0, 3)}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">From Time</label>
+                                <input
+                                  type="time"
+                                  value={interviewForm.startTime}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, startTime: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Until Time</label>
+                                <input
+                                  type="time"
+                                  value={interviewForm.endTime}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, endTime: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Slot Duration</label>
+                                <select
+                                  value={interviewForm.duration}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, duration: parseInt(e.target.value, 10) })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                >
+                                  <option value={15}>15 minutes</option>
+                                  <option value={30}>30 minutes</option>
+                                  <option value={45}>45 minutes</option>
+                                  <option value={60}>60 minutes</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Buffer (Optional)</label>
+                                <select
+                                  value={interviewForm.bufferMinutes}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, bufferMinutes: parseInt(e.target.value, 10) })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                >
+                                  <option value={0}>No buffer</option>
+                                  <option value={5}>5 minutes</option>
+                                  <option value={10}>10 minutes</option>
+                                  <option value={15}>15 minutes</option>
+                                  <option value={30}>30 minutes</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
                         )}
+
+                        {/* Mode & meeting details — applies to both scheduling options */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-600 mb-1">Interview Mode</label>
+                            <select
+                              value={interviewForm.interviewMode}
+                              onChange={(e) => setInterviewForm({ ...interviewForm, interviewMode: e.target.value })}
+                              className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                            >
+                              <option value="Online">Online</option>
+                              <option value="Offline">Offline (In-Person)</option>
+                              <option value="Phone">Phone</option>
+                            </select>
+                          </div>
+                          <div>
+                            {interviewForm.interviewMode === 'Offline' ? (
+                              <>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">Location / Address</label>
+                                <input
+                                  type="text"
+                                  placeholder="Office address, floor, meeting room…"
+                                  value={interviewForm.location}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, location: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <label className="block text-[11px] font-bold text-slate-600 mb-1">
+                                  {interviewForm.interviewMode === 'Phone' ? 'Contact Number / Notes' : 'Meeting Link'}
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder={interviewForm.interviewMode === 'Phone' ? 'We will call the candidate' : 'https://meet.google.com/…'}
+                                  value={interviewForm.meetingLink}
+                                  onChange={(e) => setInterviewForm({ ...interviewForm, meetingLink: e.target.value })}
+                                  className="w-full p-2 border border-slate-200 rounded-lg text-xs bg-white"
+                                />
+                              </>
+                            )}
+                          </div>
+                        </div>
 
                         <div className="grid grid-cols-2 gap-3">
                           <div>
@@ -2183,7 +2517,7 @@ export const RecruitmentCRM: React.FC<RecruitmentCRMProps> = ({ activeCompanyId 
                               ? 'Generating Link...'
                               : interviewForm.scheduleOption === 'FIXED'
                                 ? 'Confirm & Send Fixed Invite'
-                                : 'Send Self-Schedule Link'}
+                                : 'Send Scheduling Invitation'}
                           </span>
                         </button>
                       </div>
