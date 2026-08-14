@@ -182,87 +182,6 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
           <Field label="Branch" value={view.branchName} />
         </div>
 
-        {/* ── Bank verification result — inside the verified card ────────── */}
-        <div className="px-5 lg:px-6 py-5 border-t border-hairline">
-          <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-5">
-            <Landmark className="w-4 h-4 text-ink-muted" /> Bank Verification Result
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5">
-            <Field label="Account Holder Name" value={view.accountHolderName} />
-            <Field label="Bank Name" value={view.bankName} />
-            <Field label="Branch Name" value={view.bankBranch} />
-            <Field label="Branch Address" value={view.branchAddress} />
-            <Field label="City" value={view.city} />
-            <Field label="District" value={view.district} />
-            <Field label="State" value={view.state} />
-            <Field label="IFSC" value={view.ifsc} mono />
-            <Field label="MICR Code" value={view.micr} mono />
-            <Field label="SWIFT Code" value={view.swift} mono />
-            <Field label="UTR" value={view.utr} mono />
-            <Field label="Account Status" value={view.accountStatus} />
-            <Field label="Account Status Code" value={view.accountStatusCode} mono />
-            <div className="col-span-2 md:col-span-3 xl:col-span-4">
-              <Field label="Verification Message" value={view.verificationMessage || view.errorMessage} />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Name match — bottom of the verified card ───────────────────── */}
-        <div className="px-5 lg:px-6 py-5 border-t border-hairline">
-          <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-1">
-            <ShieldCheck className="w-4 h-4 text-ink-muted" /> Name Match
-          </h4>
-          {(view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED') && (
-            <p className="text-[12px] text-ink-secondary font-medium leading-relaxed mb-4">
-              {view.nameMatchSource === 'PROVIDER'
-                ? 'Verdict supplied by the verification provider.'
-                : 'Compared by ZeniaHR — the provider returned no verdict.'}
-            </p>
-          )}
-          <div className={`flex flex-col lg:flex-row lg:items-stretch gap-4 ${view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED' ? '' : 'mt-4'}`}>
-            <div className="flex-1 flex flex-col sm:flex-row lg:flex-col items-stretch gap-3">
-              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-                <span className={`${LABEL} block mb-1.5`}>Employee Name (entered)</span>
-                <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
-              </div>
-              <div className="flex items-center justify-center shrink-0" aria-hidden="true">
-                <ArrowDown className="w-4 h-4 text-ink-muted -rotate-90 sm:rotate-0 lg:rotate-0" />
-              </div>
-              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-                <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
-                <p className={VALUE}>{orNA(view.accountHolderName)}</p>
-              </div>
-            </div>
-
-            <div className={`lg:w-72 shrink-0 rounded-xl border px-5 py-5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
-              <span className={`${LABEL} mb-2`}>Match Result</span>
-              <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
-
-              {view.nameMatchScore != null ? (
-                <>
-                  <p className={`text-[32px] font-extrabold leading-none mt-3.5 font-heading tabular-nums ${matchTone.text}`}>
-                    {view.nameMatchScore}%
-                  </p>
-                  <div
-                    className="w-full h-1.5 rounded-full bg-surface mt-3 overflow-hidden"
-                    role="progressbar"
-                    aria-valuenow={view.nameMatchScore}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-label="Name match percentage"
-                  >
-                    <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
-                  </div>
-                </>
-              ) : (
-                <p className="text-[12px] font-medium text-ink-secondary mt-3 leading-relaxed">
-                  No match percentage was returned for this verification.
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* ── 8. Actions ───────────────────────────────────────────────── */}
         <footer className="flex flex-wrap items-center gap-2 px-5 lg:px-6 py-4 border-t border-hairline bg-surface-muted">
           <Button variant="secondary" size="sm" onClick={handlePdf} loading={busy === 'pdf'} icon={<Download className="w-3.5 h-3.5" />}>
@@ -313,24 +232,108 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
         </footer>
       </section>
 
-      {/* ── 2. What HR entered ──────────────────────────────────────────── */}
-      <SectionCard
-        title="Employee Entered Details"
-        icon={<User className="w-4 h-4" />}
-        subtitle="Exactly as submitted — never overwritten by the bank response."
-      >
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
-          <Field label="Employee Name" value={view.entered.employeeName} />
-          <Field label="Employee ID" value={view.entered.employeeCode} mono />
-          <Field label="Account Number" value={maskAccount(view.entered.accountNumber)} mono />
-          <Field label="IFSC Code" value={view.entered.ifsc} mono />
-          <Field label="Phone Number" value={view.entered.phone} mono />
-          <Field label="Email" value={view.entered.email} />
-          <Field label="Branch" value={view.entered.branch} />
-          <Field label="Department" value={view.entered.department} />
-          <Field label="Designation" value={view.entered.designation} />
-        </div>
-      </SectionCard>
+      {/* ── Two vertical cards side by side: what HR entered (left) and what
+          the bank returned (right, with Name Match at its bottom). ─────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* ── 2. What HR entered — LEFT ─────────────────────────────────── */}
+        <SectionCard
+          title="Employee Entered Details"
+          icon={<User className="w-4 h-4" />}
+          subtitle="Exactly as submitted — never overwritten by the bank response."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+            <Field label="Employee Name" value={view.entered.employeeName} />
+            <Field label="Employee ID" value={view.entered.employeeCode} mono />
+            <Field label="Account Number" value={maskAccount(view.entered.accountNumber)} mono />
+            <Field label="IFSC Code" value={view.entered.ifsc} mono />
+            <Field label="Phone Number" value={view.entered.phone} mono />
+            <Field label="Email" value={view.entered.email} />
+            <Field label="Branch" value={view.entered.branch} />
+            <Field label="Department" value={view.entered.department} />
+            <Field label="Designation" value={view.entered.designation} />
+          </div>
+        </SectionCard>
+
+        {/* ── 3. What the bank returned — RIGHT (Name Match at bottom) ──── */}
+        <SectionCard
+          title="Bank Verification Result"
+          icon={<Landmark className="w-4 h-4" />}
+          subtitle="Every field returned by the verification provider."
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+            <Field label="Account Holder Name" value={view.accountHolderName} />
+            <Field label="Bank Name" value={view.bankName} />
+            <Field label="Branch Name" value={view.bankBranch} />
+            <Field label="Branch Address" value={view.branchAddress} />
+            <Field label="City" value={view.city} />
+            <Field label="District" value={view.district} />
+            <Field label="State" value={view.state} />
+            <Field label="IFSC" value={view.ifsc} mono />
+            <Field label="MICR Code" value={view.micr} mono />
+            <Field label="SWIFT Code" value={view.swift} mono />
+            <Field label="UTR" value={view.utr} mono />
+            <Field label="Account Status" value={view.accountStatus} />
+            <Field label="Account Status Code" value={view.accountStatusCode} mono />
+            <div className="sm:col-span-2">
+              <Field label="Verification Message" value={view.verificationMessage || view.errorMessage} />
+            </div>
+          </div>
+
+          {/* ── Name Match — bottom of this card ─────────────────────────── */}
+          <div className="mt-5 pt-5 border-t border-hairline">
+            <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-1">
+              <ShieldCheck className="w-4 h-4 text-ink-muted" /> Name Match
+            </h4>
+            {(view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED') && (
+              <p className="text-[12px] text-ink-secondary font-medium leading-relaxed">
+                {view.nameMatchSource === 'PROVIDER'
+                  ? 'Verdict supplied by the verification provider.'
+                  : 'Compared by ZeniaHR — the provider returned no verdict.'}
+              </p>
+            )}
+            <div className="mt-4 space-y-3">
+              <div className="rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
+                <span className={`${LABEL} block mb-1.5`}>Employee Name (entered)</span>
+                <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
+              </div>
+              <div className="flex items-center justify-center" aria-hidden="true">
+                <ArrowDown className="w-4 h-4 text-ink-muted" />
+              </div>
+              <div className="rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
+                <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
+                <p className={VALUE}>{orNA(view.accountHolderName)}</p>
+              </div>
+
+              <div className={`rounded-xl border px-5 py-5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
+                <span className={`${LABEL} mb-2`}>Match Result</span>
+                <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
+
+                {view.nameMatchScore != null ? (
+                  <>
+                    <p className={`text-[32px] font-extrabold leading-none mt-3.5 font-heading tabular-nums ${matchTone.text}`}>
+                      {view.nameMatchScore}%
+                    </p>
+                    <div
+                      className="w-full max-w-xs h-1.5 rounded-full bg-surface mt-3 overflow-hidden"
+                      role="progressbar"
+                      aria-valuenow={view.nameMatchScore}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label="Name match percentage"
+                    >
+                      <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[12px] font-medium text-ink-secondary mt-3 leading-relaxed">
+                    No match percentage was returned for this verification.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </SectionCard>
+      </div>
 
     </div>
   );
