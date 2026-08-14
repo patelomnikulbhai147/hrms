@@ -234,7 +234,8 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
 
       {/* ── Two vertical cards side by side: what HR entered (left) and what
           the bank returned (right, with Name Match at its bottom). ─────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+      {/* items stretch by default so both cards keep equal height side-by-side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* ── 2. What HR entered — LEFT ─────────────────────────────────── */}
         <SectionCard
           title="Employee Entered Details"
@@ -251,6 +252,58 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
             <Field label="Branch" value={view.entered.branch} />
             <Field label="Department" value={view.entered.department} />
             <Field label="Designation" value={view.entered.designation} />
+          </div>
+
+          {/* ── Name Match — bottom of the left card ─────────────────────── */}
+          <div className="mt-5 pt-5 border-t border-hairline">
+            <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading">
+              <ShieldCheck className="w-4 h-4 text-ink-muted" /> Name Match
+            </h4>
+            {(view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED') && (
+              <p className="text-[12px] text-ink-secondary font-medium leading-relaxed mt-0.5">
+                {view.nameMatchSource === 'PROVIDER'
+                  ? 'Verdict supplied by the verification provider.'
+                  : 'Compared by ZeniaHR — the provider returned no verdict.'}
+              </p>
+            )}
+            <div className="mt-4 flex flex-col md:flex-row md:items-stretch gap-3">
+              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5 min-w-0">
+                <span className={`${LABEL} block mb-1.5`}>Entered Name (Employee)</span>
+                <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
+              </div>
+              <div className="flex items-center justify-center shrink-0" aria-hidden="true">
+                <ArrowDown className="w-4 h-4 text-ink-muted md:-rotate-90" />
+              </div>
+              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5 min-w-0">
+                <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
+                <p className={VALUE}>{orNA(view.accountHolderName)}</p>
+              </div>
+              <div className={`md:w-44 shrink-0 rounded-xl border px-4 py-3.5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
+                <span className={`${LABEL} mb-1.5`}>Match Result</span>
+                <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
+                {view.nameMatchScore != null ? (
+                  <>
+                    <p className={`text-[24px] font-extrabold leading-none mt-2 font-heading tabular-nums ${matchTone.text}`}>
+                      {view.nameMatchScore}%
+                    </p>
+                    <div
+                      className="w-full h-1 rounded-full bg-surface mt-2 overflow-hidden"
+                      role="progressbar"
+                      aria-valuenow={view.nameMatchScore}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label="Name match percentage"
+                    >
+                      <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] font-medium text-ink-secondary mt-2 leading-snug">
+                    No match percentage returned.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
         </SectionCard>
 
@@ -279,59 +332,6 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
             </div>
           </div>
 
-          {/* ── Name Match — bottom of this card ─────────────────────────── */}
-          <div className="mt-5 pt-5 border-t border-hairline">
-            <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-1">
-              <ShieldCheck className="w-4 h-4 text-ink-muted" /> Name Match
-            </h4>
-            {(view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED') && (
-              <p className="text-[12px] text-ink-secondary font-medium leading-relaxed">
-                {view.nameMatchSource === 'PROVIDER'
-                  ? 'Verdict supplied by the verification provider.'
-                  : 'Compared by ZeniaHR — the provider returned no verdict.'}
-              </p>
-            )}
-            <div className="mt-4 space-y-3">
-              <div className="rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-                <span className={`${LABEL} block mb-1.5`}>Employee Name (entered)</span>
-                <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
-              </div>
-              <div className="flex items-center justify-center" aria-hidden="true">
-                <ArrowDown className="w-4 h-4 text-ink-muted" />
-              </div>
-              <div className="rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-                <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
-                <p className={VALUE}>{orNA(view.accountHolderName)}</p>
-              </div>
-
-              <div className={`rounded-xl border px-5 py-5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
-                <span className={`${LABEL} mb-2`}>Match Result</span>
-                <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
-
-                {view.nameMatchScore != null ? (
-                  <>
-                    <p className={`text-[32px] font-extrabold leading-none mt-3.5 font-heading tabular-nums ${matchTone.text}`}>
-                      {view.nameMatchScore}%
-                    </p>
-                    <div
-                      className="w-full max-w-xs h-1.5 rounded-full bg-surface mt-3 overflow-hidden"
-                      role="progressbar"
-                      aria-valuenow={view.nameMatchScore}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label="Name match percentage"
-                    >
-                      <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-[12px] font-medium text-ink-secondary mt-3 leading-relaxed">
-                    No match percentage was returned for this verification.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
         </SectionCard>
       </div>
 
