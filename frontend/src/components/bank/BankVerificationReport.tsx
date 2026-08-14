@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import {
-  ShieldCheck, CheckCircle2, XCircle, AlertTriangle, Clock, User,
-  Landmark, Copy, Download, Printer, FileJson, RefreshCw, ChevronDown,
-  Terminal, ArrowDown, Info,
+  ShieldCheck, XCircle, AlertTriangle, User,
+  Landmark, Copy, Download, Printer, FileJson, RefreshCw,
+  ArrowDown,
 } from 'lucide-react';
 import { ui } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatDateTime } from '@/utils/formatDate';
 import {
-  VerificationView, buildTimeline, maskAccount, nameMatchLabel, nameMatchTone,
+  VerificationView, maskAccount, nameMatchLabel, nameMatchTone,
   orNA, statusLabel, statusTone,
 } from './bankVerification';
 import { creditValue } from '@/components/verification/creditTerminology';
@@ -23,7 +23,8 @@ interface Props {
   /** Rendered as the Reverify action when supplied (§11). */
   onReverify?: () => void;
   reverifying?: boolean;
-  /** Hides the timeline + technical panel for tight embeds (e.g. a profile card). */
+  /** Kept for caller compatibility — the timeline/technical panels it used to
+      hide were removed from the UI entirely (data & exports untouched). */
   compact?: boolean;
 }
 
@@ -107,14 +108,11 @@ const SectionCard: React.FC<{
   </section>
 );
 
-export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onReverify, reverifying, compact }) => {
-  const [showRaw, setShowRaw] = useState<'request' | 'response' | null>(null);
-  const [technicalOpen, setTechnicalOpen] = useState(false);
+export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onReverify, reverifying }) => {
   const [busy, setBusy] = useState<'pdf' | null>(null);
 
   const tone = TONE[statusTone(view.status)];
   const matchTone = TONE[nameMatchTone(view.nameMatchResult)];
-  const timeline = buildTimeline(view);
 
   const StatusIcon = view.verified ? ShieldCheck : statusTone(view.status) === 'red' ? XCircle : AlertTriangle;
 
@@ -184,6 +182,87 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
           <Field label="Branch" value={view.branchName} />
         </div>
 
+        {/* ── Bank verification result — inside the verified card ────────── */}
+        <div className="px-5 lg:px-6 py-5 border-t border-hairline">
+          <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-5">
+            <Landmark className="w-4 h-4 text-ink-muted" /> Bank Verification Result
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5">
+            <Field label="Account Holder Name" value={view.accountHolderName} />
+            <Field label="Bank Name" value={view.bankName} />
+            <Field label="Branch Name" value={view.bankBranch} />
+            <Field label="Branch Address" value={view.branchAddress} />
+            <Field label="City" value={view.city} />
+            <Field label="District" value={view.district} />
+            <Field label="State" value={view.state} />
+            <Field label="IFSC" value={view.ifsc} mono />
+            <Field label="MICR Code" value={view.micr} mono />
+            <Field label="SWIFT Code" value={view.swift} mono />
+            <Field label="UTR" value={view.utr} mono />
+            <Field label="Account Status" value={view.accountStatus} />
+            <Field label="Account Status Code" value={view.accountStatusCode} mono />
+            <div className="col-span-2 md:col-span-3 xl:col-span-4">
+              <Field label="Verification Message" value={view.verificationMessage || view.errorMessage} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Name match — bottom of the verified card ───────────────────── */}
+        <div className="px-5 lg:px-6 py-5 border-t border-hairline">
+          <h4 className="flex items-center gap-2 text-[13px] font-bold text-ink tracking-tight font-heading mb-1">
+            <ShieldCheck className="w-4 h-4 text-ink-muted" /> Name Match
+          </h4>
+          {(view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED') && (
+            <p className="text-[12px] text-ink-secondary font-medium leading-relaxed mb-4">
+              {view.nameMatchSource === 'PROVIDER'
+                ? 'Verdict supplied by the verification provider.'
+                : 'Compared by ZeniaHR — the provider returned no verdict.'}
+            </p>
+          )}
+          <div className={`flex flex-col lg:flex-row lg:items-stretch gap-4 ${view.nameMatchSource === 'PROVIDER' || view.nameMatchSource === 'COMPUTED' ? '' : 'mt-4'}`}>
+            <div className="flex-1 flex flex-col sm:flex-row lg:flex-col items-stretch gap-3">
+              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
+                <span className={`${LABEL} block mb-1.5`}>Employee Name (entered)</span>
+                <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
+              </div>
+              <div className="flex items-center justify-center shrink-0" aria-hidden="true">
+                <ArrowDown className="w-4 h-4 text-ink-muted -rotate-90 sm:rotate-0 lg:rotate-0" />
+              </div>
+              <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
+                <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
+                <p className={VALUE}>{orNA(view.accountHolderName)}</p>
+              </div>
+            </div>
+
+            <div className={`lg:w-72 shrink-0 rounded-xl border px-5 py-5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
+              <span className={`${LABEL} mb-2`}>Match Result</span>
+              <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
+
+              {view.nameMatchScore != null ? (
+                <>
+                  <p className={`text-[32px] font-extrabold leading-none mt-3.5 font-heading tabular-nums ${matchTone.text}`}>
+                    {view.nameMatchScore}%
+                  </p>
+                  <div
+                    className="w-full h-1.5 rounded-full bg-surface mt-3 overflow-hidden"
+                    role="progressbar"
+                    aria-valuenow={view.nameMatchScore}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Name match percentage"
+                  >
+                    <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
+                  </div>
+                </>
+              ) : (
+                <p className="text-[12px] font-medium text-ink-secondary mt-3 leading-relaxed">
+                  No match percentage was returned for this verification.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* ── 8. Actions ───────────────────────────────────────────────── */}
         <footer className="flex flex-wrap items-center gap-2 px-5 lg:px-6 py-4 border-t border-hairline bg-surface-muted">
           <Button variant="secondary" size="sm" onClick={handlePdf} loading={busy === 'pdf'} icon={<Download className="w-3.5 h-3.5" />}>
@@ -234,233 +313,25 @@ export const BankVerificationReport: React.FC<Props> = ({ view, companyName, onR
         </footer>
       </section>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* ── 2. What HR entered ────────────────────────────────────────── */}
-        <SectionCard
-          title="Employee Entered Details"
-          icon={<User className="w-4 h-4" />}
-          subtitle="Exactly as submitted — never overwritten by the bank response."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-            <Field label="Employee Name" value={view.entered.employeeName} />
-            <Field label="Employee ID" value={view.entered.employeeCode} mono />
-            <Field label="Account Number" value={maskAccount(view.entered.accountNumber)} mono />
-            <Field label="IFSC Code" value={view.entered.ifsc} mono />
-            <Field label="Phone Number" value={view.entered.phone} mono />
-            <Field label="Email" value={view.entered.email} />
-            <Field label="Branch" value={view.entered.branch} />
-            <Field label="Department" value={view.entered.department} />
-            <Field label="Designation" value={view.entered.designation} />
-          </div>
-        </SectionCard>
-
-        {/* ── 3. What the bank returned ─────────────────────────────────── */}
-        <SectionCard
-          title="Bank Verification Result"
-          icon={<Landmark className="w-4 h-4" />}
-          subtitle="Every field returned by the verification provider."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
-            <Field label="Account Holder Name" value={view.accountHolderName} />
-            <Field label="Bank Name" value={view.bankName} />
-            <Field label="Branch Name" value={view.bankBranch} />
-            <Field label="Branch Address" value={view.branchAddress} />
-            <Field label="City" value={view.city} />
-            <Field label="District" value={view.district} />
-            <Field label="State" value={view.state} />
-            <Field label="IFSC" value={view.ifsc} mono />
-            <Field label="MICR Code" value={view.micr} mono />
-            <Field label="SWIFT Code" value={view.swift} mono />
-            <Field label="UTR" value={view.utr} mono />
-            <Field label="Account Status" value={view.accountStatus} />
-            <Field label="Account Status Code" value={view.accountStatusCode} mono />
-            <Field label="Verification Source" value={view.verificationSource} />
-            <div className="sm:col-span-2">
-              <Field label="Verification Message" value={view.verificationMessage || view.errorMessage} />
-            </div>
-          </div>
-        </SectionCard>
-      </div>
-
-      {/* ── 4. Name match ──────────────────────────────────────────────── */}
+      {/* ── 2. What HR entered ──────────────────────────────────────────── */}
       <SectionCard
-        title="Name Match"
-        icon={<ShieldCheck className="w-4 h-4" />}
-        subtitle={
-          view.nameMatchSource === 'PROVIDER'
-            ? 'Verdict supplied by the verification provider.'
-            : view.nameMatchSource === 'COMPUTED'
-            ? 'Compared by ZeniaHR — the provider returned no verdict.'
-            : undefined
-        }
+        title="Employee Entered Details"
+        icon={<User className="w-4 h-4" />}
+        subtitle="Exactly as submitted — never overwritten by the bank response."
       >
-        <div className="flex flex-col lg:flex-row lg:items-stretch gap-4">
-          <div className="flex-1 flex flex-col sm:flex-row lg:flex-col items-stretch gap-3">
-            <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-              <span className={`${LABEL} block mb-1.5`}>Employee Name (entered)</span>
-              <p className={VALUE}>{orNA(view.entered.employeeName)}</p>
-            </div>
-            <div className="flex items-center justify-center shrink-0" aria-hidden="true">
-              <ArrowDown className="w-4 h-4 text-ink-muted -rotate-90 sm:rotate-0 lg:rotate-0" />
-            </div>
-            <div className="flex-1 rounded-xl border border-hairline bg-surface-muted px-4 py-3.5">
-              <span className={`${LABEL} block mb-1.5`}>Bank Account Holder Name</span>
-              <p className={VALUE}>{orNA(view.accountHolderName)}</p>
-            </div>
-          </div>
-
-          <div className={`lg:w-72 shrink-0 rounded-xl border px-5 py-5 flex flex-col justify-center items-center text-center ${matchTone.panel}`}>
-            <span className={`${LABEL} mb-2`}>Match Result</span>
-            <Badge variant={matchTone.badge} dot>{nameMatchLabel(view.nameMatchResult)}</Badge>
-
-            {view.nameMatchScore != null ? (
-              <>
-                <p className={`text-[32px] font-extrabold leading-none mt-3.5 font-heading tabular-nums ${matchTone.text}`}>
-                  {view.nameMatchScore}%
-                </p>
-                <div
-                  className="w-full h-1.5 rounded-full bg-surface mt-3 overflow-hidden"
-                  role="progressbar"
-                  aria-valuenow={view.nameMatchScore}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label="Name match percentage"
-                >
-                  <div className={`h-full ${matchTone.dot} rounded-full transition-all`} style={{ width: `${Math.min(100, Math.max(0, view.nameMatchScore))}%` }} />
-                </div>
-              </>
-            ) : (
-              <p className="text-[12px] font-medium text-ink-secondary mt-3 leading-relaxed">
-                No match percentage was returned for this verification.
-              </p>
-            )}
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-5">
+          <Field label="Employee Name" value={view.entered.employeeName} />
+          <Field label="Employee ID" value={view.entered.employeeCode} mono />
+          <Field label="Account Number" value={maskAccount(view.entered.accountNumber)} mono />
+          <Field label="IFSC Code" value={view.entered.ifsc} mono />
+          <Field label="Phone Number" value={view.entered.phone} mono />
+          <Field label="Email" value={view.entered.email} />
+          <Field label="Branch" value={view.entered.branch} />
+          <Field label="Department" value={view.entered.department} />
+          <Field label="Designation" value={view.entered.designation} />
         </div>
       </SectionCard>
 
-      {!compact && (
-        <>
-          {/* ── 5. Timeline ────────────────────────────────────────────── */}
-          <SectionCard title="Verification Timeline" icon={<Clock className="w-4 h-4" />}>
-            <ol className="relative">
-              {timeline.map((step, index) => {
-                const stepTone = step.state === 'failed' ? TONE.red : TONE.green;
-                const isLast = index === timeline.length - 1;
-                return (
-                  <li key={step.key} className="relative flex gap-4 pb-5 last:pb-0">
-                    {!isLast && (
-                      <span className="absolute left-[11px] top-6 bottom-0 w-px bg-hairline" aria-hidden="true" />
-                    )}
-                    <span className={`relative z-[1] mt-0.5 w-[23px] h-[23px] rounded-full border flex items-center justify-center shrink-0 ${stepTone.tile}`}>
-                      {step.state === 'failed'
-                        ? <XCircle className="w-3.5 h-3.5" />
-                        : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    </span>
-                    <div className="min-w-0 flex-1 flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-x-4 gap-y-1">
-                      <div className="min-w-0">
-                        <p className="text-[13.5px] font-semibold text-ink">{step.label}</p>
-                        {step.detail && (
-                          <p className="text-[12px] font-medium text-ink-secondary mt-1 break-words">{step.detail}</p>
-                        )}
-                      </div>
-                      <span className="text-[12px] font-semibold text-ink-muted whitespace-nowrap shrink-0 tabular-nums">
-                        {step.timestamp ? formatDateTime(step.timestamp) : '—'}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          </SectionCard>
-
-          {/* ── 6. Technical details (privileged roles only) ───────────── */}
-          {view.permissions?.canSeeTechnical && (
-            <section className={CARD}>
-              <button
-                type="button"
-                onClick={() => setTechnicalOpen((v) => !v)}
-                aria-expanded={technicalOpen}
-                className="w-full flex items-center justify-between gap-3 p-5 lg:p-6 text-left rounded-card focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-brand-500/25 transition-colors hover:bg-surface-muted"
-              >
-                <span className="flex items-center gap-2.5 min-w-0">
-                  <Terminal className="w-4 h-4 text-ink-muted shrink-0" />
-                  <span className="min-w-0">
-                    <span className="block text-[13px] font-bold text-ink tracking-tight font-heading">Technical Details</span>
-                    <span className="block text-[12px] text-ink-secondary mt-0.5 font-medium">
-                      Administrator view — API credentials are never included.
-                    </span>
-                  </span>
-                </span>
-                <ChevronDown className={`w-4 h-4 text-ink-muted shrink-0 transition-transform duration-200 ${technicalOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {technicalOpen && (
-                <div className="px-5 lg:px-6 pb-5 lg:pb-6 space-y-5">
-                  <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-5 border-t border-hairline pt-5">
-                    <Field label="Provider" value={view.provider} />
-                    <Field label="Environment" value={view.environment} />
-                    <Field label="API Latency" value={view.responseTimeMs != null ? `${view.responseTimeMs} ms` : null} />
-                    <Field label="Response Code" value={view.httpStatus} mono />
-                    <Field label="Request ID" value={view.requestId} mono />
-                    <Field label="Reference ID" value={view.referenceId} mono />
-                    <Field label="Verification ID" value={view.verificationId} mono />
-                    <Field label="Retry Count" value={view.retryCount} />
-                    <Field label="Verification Credits Used" value={view.verificationCost != null ? creditValue(view.verificationCost) : null} />
-                    <Field label="Credits Before" value={view.walletBalanceBefore != null ? creditValue(view.walletBalanceBefore) : null} />
-                    <Field label="Credits After" value={view.walletBalanceAfter != null ? creditValue(view.walletBalanceAfter) : null} />
-                    <Field label="Request Sent" value={view.requestTimestamp ? formatDateTime(view.requestTimestamp) : null} />
-                    <Field label="Response Received" value={view.responseTimestamp ? formatDateTime(view.responseTimestamp) : null} />
-                  </div>
-
-                  {view.permissions?.canSeeRaw ? (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowRaw(showRaw === 'request' ? null : 'request')}
-                          icon={<Terminal className="w-3.5 h-3.5" />}
-                        >
-                          {showRaw === 'request' ? 'Hide' : 'View'} Raw Request
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setShowRaw(showRaw === 'response' ? null : 'response')}
-                          icon={<Terminal className="w-3.5 h-3.5" />}
-                        >
-                          {showRaw === 'response' ? 'Hide' : 'View'} Raw Response
-                        </Button>
-                      </div>
-
-                      {showRaw && (
-                        <div className="rounded-xl border border-hairline overflow-hidden">
-                          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-surface-muted border-b border-hairline">
-                            <span className="text-[11px] font-bold uppercase tracking-wide text-ink-secondary">
-                              {showRaw === 'request' ? 'Outbound Request' : 'Provider Response'}
-                            </span>
-                            <span className="text-[11px] font-semibold text-amber-700 inline-flex items-center gap-1.5">
-                              <Info className="w-3 h-3" /> Credentials redacted · account masked
-                            </span>
-                          </div>
-                          <pre className="p-4 text-[11.5px] leading-relaxed text-ink font-mono overflow-x-auto max-h-80 bg-canvas">
-{JSON.stringify(showRaw === 'request' ? view.rawRequest ?? null : view.rawResponse ?? null, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <p className="text-[12px] font-medium text-ink-secondary flex items-center gap-1.5">
-                      <Info className="w-3.5 h-3.5 shrink-0" />
-                      Raw request and response payloads are visible to Super Admin only.
-                    </p>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
-        </>
-      )}
     </div>
   );
 };
