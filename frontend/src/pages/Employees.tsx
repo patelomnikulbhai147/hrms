@@ -390,7 +390,8 @@ export const Employees: React.FC<EmployeesProps> = ({
   // Dynamic Leave History filtering for the currently viewed employee
 
   // Enterprise Lifecycle & Export
-  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous' | 'temporary' | 'approvals'>('all');
+  // Default view is ACTIVE (the working roster); All Staff is the last tab.
+  const [activeMainTab, setActiveMainTab] = useState<'all' | 'active' | 'previous' | 'temporary' | 'approvals'>('active');
 
   // ── Temporary Employees (Quick Registration) — additive, separate dataset ──
   const [temps, setTemps] = useState<any[]>([]);
@@ -2537,13 +2538,9 @@ export const Employees: React.FC<EmployeesProps> = ({
         </div>
         <div className="flex items-center gap-2 flex-wrap xl:flex-nowrap">
           {/* Counters */}
+          {/* Tab order: Active (default) → Previous → Temporary → Pending
+              Approvals → All Staff last. */}
           <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 shrink-0">
-            <button
-              onClick={() => setActiveMainTab('all')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              All Staff ({countAudit.allStaff})
-            </button>
             <button
               onClick={() => setActiveMainTab('active')}
               className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'active' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -2572,6 +2569,12 @@ export const Employees: React.FC<EmployeesProps> = ({
                 Pending Approvals ({countAudit.pendingApproval})
               </button>
             )}
+            <button
+              onClick={() => setActiveMainTab('all')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors whitespace-nowrap ${activeMainTab === 'all' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              All Staff ({countAudit.allStaff})
+            </button>
           </div>
 
           {/* ── Actions ▼ (Export / Imports / Template) — consolidates the
