@@ -181,6 +181,24 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [isConfirmingPayment, setIsConfirmingPayment] = useState(false);
   const [showPayrollModal, setShowPayrollModal] = useState(false);
   const [isPayrollGenerating, setIsPayrollGenerating] = useState(false);
+  // ── Payroll Wallet gate — mirror of the check the backend ENFORCES on
+  // generate. Shown ahead of the click so Generate is disabled with the reason
+  // (balance / required / shortfall) instead of failing after. A null gate
+  // (lookup failed) leaves the button enabled — the backend gate still blocks,
+  // this mirror is display-only and never the authority.
+  const [walletGate, setWalletGate] = useState<{
+    ok: boolean; walletBalance: number; requiredNow: number; shortfall: number; alreadyCharged: boolean;
+  } | null>(null);
+  const refreshWalletGate = async () => {
+    try {
+      const res: any = await api.wallet.getEstimate({ month: monthFilter, year: Number(yearFilter) });
+      setWalletGate(res?.data?.gate || null);
+    } catch { setWalletGate(null); }
+  };
+  useEffect(() => {
+    if (role !== 'Employee' && showPayrollModal) refreshWalletGate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showPayrollModal, monthFilter, yearFilter]);
   // ── Selective payroll generation: pick exactly which employees to run ──
   const [genSelectedIds, setGenSelectedIds] = useState<Set<string>>(new Set());
   const [genDept, setGenDept] = useState('All');
@@ -1087,7 +1105,27 @@ export const Payroll: React.FC<PayrollProps> = ({
 
     } catch (err: any) {
       console.error(err);
-      ui.toast.error(err.message || 'Error generating payroll');
+      const body = err?.data;
+      if (body?.code === 'INSUFFICIENT_WALLET_BALANCE') {
+        // Backend refused BEFORE creating any record. Refresh the mirror so the
+        // button disables, and explain the numbers.
+        refreshWalletGate();
+        const inr = (v: any) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+        await ui.alert({
+          title: 'Insufficient Payroll Wallet Balance',
+          variant: 'error',
+          message:
+            `Payroll generation was blocked — no records were created.\n\n` +
+            `Available balance: ${inr(body.walletBalance)}\n` +
+            `Required for this payroll: ${inr(body.requiredAmount)}\n` +
+            `Shortfall: ${inr(body.shortfall)}\n\n` +
+            `Recharge the Payroll Wallet and try again.`,
+        });
+      } else if (body?.code === 'WALLET_CHECK_FAILED') {
+        ui.toast.error('Payroll wallet could not be verified — generation is blocked. Please try again.');
+      } else {
+        ui.toast.error(err.message || 'Error generating payroll');
+      }
     } finally {
       setIsPayrollGenerating(false);
     }
@@ -1690,7 +1728,7 @@ export const Payroll: React.FC<PayrollProps> = ({
               Cancel
             </Button>
             <Button
-              disabled={isPayrollGenerating}
+              disabled={isPayrollGenerating || (walletGate ? !walletGate.ok : false)}
               onClick={() => handleGeneratePayroll()}
             >
               {isPayrollGenerating ? (
@@ -1698,6 +1736,8 @@ export const Payroll: React.FC<PayrollProps> = ({
                   <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2 inline-block align-middle" />
                   Processing...
                 </>
+              ) : walletGate && !walletGate.ok ? (
+                'Insufficient wallet balance'
               ) : (
                 genSelectedIds.size > 0 ? `Generate for ${genSelectedIds.size} selected` : 'Generate for all'
               )}
@@ -1728,6 +1768,29 @@ export const Payroll: React.FC<PayrollProps> = ({
                 <p className="text-[13px] text-slate-600 mb-3">
                   Period: <strong className="text-slate-900">{monthFilter} {yearFilter}</strong>. Select the employees to run payroll for — <strong>only the selected employees are generated</strong>. Salary uses attendance, leave &amp; overtime.
                 </p>
+                {walletGate && !walletGate.ok && (
+                  <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800">
+                    <p className="font-bold mb-1.5">Insufficient Payroll Wallet balance — generation is blocked.</p>
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Available</span><span className="font-bold">₹{Number(walletGate.walletBalance || 0).toLocaleString('en-IN')}</span></div>
+                      <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Required</span><span className="font-bold">₹{Number(walletGate.requiredNow || 0).toLocaleString('en-IN')}</span></div>
+                      <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Shortfall</span><span className="font-bold">₹{Number(walletGate.shortfall || 0).toLocaleString('en-IN')}</span></div>
+                    </div>
+                    {onNavigate && (
+                      <Button size="xs" onClick={() => onNavigate('payroll-wallet')}>Add Wallet Balance</Button>
+                    )}
+                  </div>
+                )}
+                {walletGate && walletGate.ok && walletGate.requiredNow > 0 && (
+                  <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-[12px] text-sky-800">
+                    Payroll Wallet: <strong>₹{Number(walletGate.walletBalance || 0).toLocaleString('en-IN')}</strong> available — this run charges <strong>₹{Number(walletGate.requiredNow).toLocaleString('en-IN')}</strong> (platform fee, once per period).
+                  </div>
+                )}
+                {walletGate && walletGate.ok && walletGate.alreadyCharged && (
+                  <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-800">
+                    Payroll Wallet: the fee for {monthFilter} {yearFilter} is already charged — regenerating this period is free.
+                  </div>
+                )}
                 {scopedRecords.length > 0 && (
                   <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
                     <span><strong>Payroll already exists for {monthFilter} {yearFilter}</strong> ({scopedRecords.length} record{scopedRecords.length === 1 ? '' : 's'}). Regenerating <strong>updates</strong> existing records — no duplicates are created.</span>

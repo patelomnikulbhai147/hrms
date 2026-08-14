@@ -730,6 +730,44 @@ exports.pushToPayroll = async (req, res) => {
       });
     }
 
+    // ── STEP: wallet gate (validate + charge, FAIL-CLOSED) ──────────────────
+    // Push-to-Payroll IS payroll generation, so it passes the same mandatory
+    // wallet gate as /payroll/generate — atomic per-period charge, no rows
+    // written on insufficient balance, and a broken wallet check blocks rather
+    // than bypasses.
+    {
+      const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
+      try {
+        const charge = await chargePayrollWallet({
+          companyId: batchCompanyId,
+          month,
+          year,
+          createdBy: req.user?.name || 'System',
+        });
+        if (charge.charged) {
+          await prisma.auditLog.create({
+            data: {
+              action: 'WALLET_DEDUCTION',
+              module: 'Wallet',
+              targetId: charge.assessment.reference,
+              details: `Deducted ₹${charge.assessment.requiredNow} for Payroll Generation via Attendance Push (${month} ${year}).`,
+              userId: req.user?.id || 1,
+            },
+          }).catch((e) => console.error('[pushToPayroll] wallet audit log failed:', e.message));
+        }
+      } catch (walletErr) {
+        if (walletErr.code === 'INSUFFICIENT_WALLET_BALANCE') {
+          return res.status(402).json(insufficientPayload(walletErr.assessment));
+        }
+        console.error('[pushToPayroll] wallet gate failed — push blocked:', walletErr.message);
+        return res.status(503).json({
+          success: false,
+          code: 'WALLET_CHECK_FAILED',
+          error: 'Payroll wallet could not be verified. Push to payroll is blocked — please try again.',
+        });
+      }
+    }
+
     // ── STEP: build the payroll writes with the EXACT reviewed values ───────
     const now = new Date();
     const generatedBy = req.user?.name || req.user?.email || `User#${req.user?.id || '?'}`;

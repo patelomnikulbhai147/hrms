@@ -804,33 +804,42 @@ exports.generate = async (req, res) => {
     }
 
 
-    // ── Wallet Balance Guard ──────────────────────────────────────────────────
-    // Before generating payroll, check if the company wallet has sufficient
-    // balance to cover the payroll credits (per pricing plan).
-    // This does NOT deduct the balance here — deduction happens post-approval.
-    let requiredWalletDeduction = 0;
+    // ── Wallet Gate (validate + charge, FAIL-CLOSED) ──────────────────────────
+    // The wallet is validated and charged BEFORE any payroll row is written, so
+    // an insufficient balance can never leave generated records behind. The
+    // charge is atomic (conditional decrement, re-validated at commit) and
+    // idempotent per period — regeneration never double-charges. A wallet-check
+    // failure BLOCKS generation: the gate is mandatory, not advisory.
     if (periodCompanyId) {
+      const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
       try {
-        const WalletService = require('../services/walletService');
-        const wallet = await WalletService.getWallet(periodCompanyId);
-        const estimate = await WalletService.estimatePayrollCost(periodCompanyId);
-        
-        if (estimate.totalCost > 0 && wallet.balance < estimate.totalCost) {
-          return res.status(402).json({
-            error: 'Insufficient wallet balance to generate payroll.',
-            code: 'INSUFFICIENT_WALLET_BALANCE',
-            walletBalance: wallet.balance,
-            requiredCredits: estimate.totalCost,
-            shortfall: estimate.totalCost - wallet.balance,
-            activeEmployees: estimate.activeEmployees,
-            costPerEmployee: estimate.costPerEmployee,
-          });
+        const charge = await chargePayrollWallet({
+          companyId: periodCompanyId,
+          month,
+          year,
+          createdBy: req.user?.name || 'System',
+        });
+        if (charge.charged) {
+          await prisma.auditLog.create({
+            data: {
+              action: 'WALLET_DEDUCTION',
+              module: 'Wallet',
+              targetId: charge.assessment.reference,
+              details: `Deducted ₹${charge.assessment.requiredNow} for Payroll Generation (${month} ${year}).`,
+              userId: req.user?.id || 1,
+            },
+          }).catch((e) => console.error('[payroll.generate] wallet audit log failed:', e.message));
         }
-        requiredWalletDeduction = estimate.totalCost;
       } catch (walletErr) {
-        // Log but do NOT block payroll if wallet check itself fails — wallet is
-        // an add-on; broken wallet must not halt salary processing.
-        console.error('[payroll.generate] wallet balance check failed (non-blocking):', walletErr.message);
+        if (walletErr.code === 'INSUFFICIENT_WALLET_BALANCE') {
+          return res.status(402).json(insufficientPayload(walletErr.assessment));
+        }
+        console.error('[payroll.generate] wallet gate failed — generation blocked:', walletErr.message);
+        return res.status(503).json({
+          success: false,
+          code: 'WALLET_CHECK_FAILED',
+          error: 'Payroll wallet could not be verified. Payroll generation is blocked — please try again.',
+        });
       }
     }
 
@@ -1029,32 +1038,6 @@ exports.generate = async (req, res) => {
       );
     }
 
-    if (requiredWalletDeduction > 0) {
-      try {
-        const WalletService = require('../services/walletService');
-        await WalletService.deductBalance(
-          periodCompanyId,
-          requiredWalletDeduction,
-          'Payroll',
-          `PR-${month}-${year}-${result.id}`,
-          req.user?.name || 'System',
-          result.id
-        );
-        // Create an audit log for the wallet deduction
-        await prisma.auditLog.create({
-          data: {
-            action: 'WALLET_DEDUCTION',
-            module: 'Wallet',
-            targetId: String(result.id),
-            details: `Deducted ₹${requiredWalletDeduction} for Payroll Generation (${month} ${year}).`,
-            userId: req.user?.id || 1
-          }
-        });
-      } catch (e) {
-        console.error('[payroll.generate] Wallet deduction failed:', e);
-      }
-    }
-
     res.status(201).json({
       message: parts.join(' '),
       data: result,
@@ -1163,10 +1146,30 @@ exports.removeBonus = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const { employeeId, month, year, companyId } = req.body;
-    
+
     // Validation
     if (!employeeId || !month || !year || !companyId) {
       return res.status(400).json({ error: 'Missing required payroll fields: employeeId, month, year, companyId' });
+    }
+
+    // Wallet gate — creating a payroll row IS generation, so the single-record
+    // path passes the same mandatory per-period charge as bulk generate (an
+    // already-charged period passes through without a second charge).
+    {
+      const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
+      try {
+        await chargePayrollWallet({ companyId, month, year, createdBy: req.user?.name || 'System' });
+      } catch (walletErr) {
+        if (walletErr.code === 'INSUFFICIENT_WALLET_BALANCE') {
+          return res.status(402).json(insufficientPayload(walletErr.assessment));
+        }
+        console.error('[payroll.create] wallet gate failed — create blocked:', walletErr.message);
+        return res.status(503).json({
+          success: false,
+          code: 'WALLET_CHECK_FAILED',
+          error: 'Payroll wallet could not be verified. Payroll creation is blocked — please try again.',
+        });
+      }
     }
 
     const payload = { ...req.body };

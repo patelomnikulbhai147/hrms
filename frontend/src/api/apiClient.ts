@@ -1646,7 +1646,10 @@ export const api = {
       ).toString() : '';
       return await apiFetch(`${BASE_URL}/wallet/transactions${qs}`, { headers: getHeaders() });
     },
-    getEstimate: async () => { return await apiFetch(`${BASE_URL}/wallet/estimate`, { headers: getHeaders() }); },
+    getEstimate: async (params?: { month?: string; year?: number }) => {
+      const qs = params?.month && params?.year ? `?month=${encodeURIComponent(params.month)}&year=${params.year}` : '';
+      return await apiFetch(`${BASE_URL}/wallet/estimate${qs}`, { headers: getHeaders() });
+    },
     createRechargeOrder: async (data: { amount: number; note?: string }) => {
       return await apiFetch(`${BASE_URL}/wallet/create-order`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
     },

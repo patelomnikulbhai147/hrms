@@ -50,14 +50,18 @@ class PricingService {
       orderBy: { minEmployees: 'asc' }
     });
 
-    for (const tier of tiers) {
-      if (tier.maxEmployees === null) {
-        if (employeeCount >= tier.minEmployees) return tier;
-      } else {
-        if (employeeCount >= tier.minEmployees && employeeCount <= tier.maxEmployees) {
-          return tier;
-        }
-      }
+    // A ₹0 tier must never shadow a priced tier covering the same employee
+    // count. (Live incident 2026-08-14: a seeded 'Free' 0–100 row sorted ahead
+    // of the paid 0–100 tier, priced every ≤100-employee company at ₹0 and
+    // silently disabled the payroll wallet gate.) Among all matching tiers the
+    // priced one wins; a ₹0 tier applies only when it is the sole match.
+    const matches = tiers.filter((tier) =>
+      tier.maxEmployees === null
+        ? employeeCount >= tier.minEmployees
+        : employeeCount >= tier.minEmployees && employeeCount <= tier.maxEmployees
+    );
+    if (matches.length) {
+      return matches.find((t) => (t.quarterlyPrice || 0) > 0) || matches[0];
     }
     return { tierName: 'Free', quarterlyPrice: 0, yearlyPrice: 0 };
   }

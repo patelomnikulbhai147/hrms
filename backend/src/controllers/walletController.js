@@ -72,6 +72,30 @@ class WalletController {
       const companyId = resolveCompanyId(req);
       if (!companyId) return res.status(400).json({ success: false, message: 'Company ID required' });
       const estimate = await WalletService.estimatePayrollCost(companyId);
+
+      // With ?month=&year= the response also carries the period gate the
+      // backend will enforce on generate — balance, what THIS period still
+      // requires (0 if already charged), and the shortfall — so the UI can
+      // disable Generate for the same reason the API would reject it.
+      const { month, year } = req.query;
+      if (month && year) {
+        const { assessPayrollWallet } = require('../services/payrollWalletGuard');
+        const a = await assessPayrollWallet(companyId, String(month), Number(year));
+        return res.json({
+          success: true,
+          data: {
+            ...estimate,
+            gate: {
+              ok: a.ok,
+              walletBalance: a.balance,
+              requiredNow: a.requiredNow,
+              shortfall: a.shortfall,
+              alreadyCharged: a.alreadyCharged,
+            },
+          },
+        });
+      }
+
       res.json({ success: true, data: estimate });
     } catch (error) {
       console.error('[WalletController] getEstimate error:', error);

@@ -431,8 +431,21 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
         onNavigate('payroll');
       }
     } catch (e: any) {
+      // Wallet gate refused BEFORE any payroll row was written.
+      if (e?.data?.code === 'INSUFFICIENT_WALLET_BALANCE') {
+        const inr = (v: any) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+        await ui.alert({
+          title: 'Insufficient Payroll Wallet Balance',
+          variant: 'danger',
+          message:
+            `Push to payroll was blocked — no payroll records were created.\n\n` +
+            `Available balance: ${inr(e.data.walletBalance)}\n` +
+            `Required for this payroll: ${inr(e.data.requiredAmount)}\n` +
+            `Shortfall: ${inr(e.data.shortfall)}\n\n` +
+            `Recharge the Payroll Wallet (Dashboard → Payroll Wallet) and try again.`,
+        });
       // Duplicate payroll for the period → offer to replace the existing batch.
-      if (e?.status === 409 || e?.data?.error === 'PAYROLL_EXISTS') {
+      } else if (e?.status === 409 || e?.data?.error === 'PAYROLL_EXISTS') {
         const ok = await ui.confirm({
           title: 'Payroll already generated',
           message: `${e?.data?.message || `Payroll already generated for ${monthLabel}.`}\n\nDo you want to REPLACE the existing payroll for ${monthLabel} with the current attendance calculation? Existing draft payroll for this period will be overwritten (no duplicates are created).`,
