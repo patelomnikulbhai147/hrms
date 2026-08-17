@@ -219,9 +219,11 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
   // yardstick for the completeness Status. Future months → 0; past → all; current →
   // up to today. Purely calendar-derived (no hardcoded values).
   const expectedWorkingElapsed = useMemo(() => {
-    const isFuture = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
-    const isPast = year < now.getFullYear() || (year === now.getFullYear() && month < now.getMonth() + 1);
-    const elapsed = isFuture ? 0 : isPast ? daysInThisMonth : Math.min(now.getDate(), daysInThisMonth);
+    // IST "today" — consistent with the period guard above (`cur` is IST-anchored).
+    const todayIst = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', day: '2-digit' }).format(new Date()));
+    const isFuture = year > cur.year || (year === cur.year && month > cur.month);
+    const isPast = year < cur.year || (year === cur.year && month < cur.month);
+    const elapsed = isFuture ? 0 : isPast ? daysInThisMonth : Math.min(todayIst, daysInThisMonth);
     let working = 0;
     for (let d = 1; d <= elapsed; d++) if (new Date(year, month - 1, d).getDay() !== 0) working++;
     return working;
