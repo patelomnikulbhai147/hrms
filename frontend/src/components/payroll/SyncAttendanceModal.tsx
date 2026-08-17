@@ -38,6 +38,13 @@ interface Props {
   onClose: () => void;
   /** Optional: open the full-page detailed attendance report. */
   onViewDetailedReport?: () => void;
+  /** Live server-side progress (employees processed / total), when available. */
+  progress?: { processed: number; total: number } | null;
+  /** Cancel the in-flight run — the server stops dispatching new employees. */
+  onCancel?: () => void;
+  cancelling?: boolean;
+  /** Set when the server confirmed the run was cancelled. */
+  cancelled?: { attempted: number; total: number } | null;
 }
 
 // The visible steps of the combined operation. The single backend call performs
@@ -57,16 +64,24 @@ const num1 = (n: number) => (Number(n) || 0).toFixed(1);
 
 export const SyncAttendanceModal: React.FC<Props> = ({
   open, phase, result, error, monthLabel, onClose, onViewDetailedReport,
+  progress, onCancel, cancelling, cancelled,
 }) => {
   const [showFailures, setShowFailures] = useState(false);
   const done = !!result;
-  const running = !done && !error;
+  const running = !done && !error && !cancelled;
   const partial = !!result && result.failed > 0;
 
   const footer = running ? (
-    <div className="flex items-center gap-2 text-[12px] font-semibold text-ink-secondary">
-      <Loader2 size={14} className="animate-spin text-brand-600" />
-      Please wait — do not close this window.
+    <div className="flex w-full items-center justify-between gap-2">
+      <span className="flex items-center gap-2 text-[12px] font-semibold text-ink-secondary">
+        <Loader2 size={14} className="animate-spin text-brand-600" />
+        {cancelling ? 'Cancelling — finishing the current employee…' : 'Synchronization in progress.'}
+      </span>
+      {onCancel && (
+        <Button size="sm" variant="outline" onClick={onCancel} disabled={!!cancelling}>
+          {cancelling ? 'Cancelling…' : 'Cancel'}
+        </Button>
+      )}
     </div>
   ) : (
     <div className="flex w-full items-center justify-between gap-2">
@@ -85,7 +100,9 @@ export const SyncAttendanceModal: React.FC<Props> = ({
   return (
     <Modal
       open={open}
-      onClose={running ? () => {} : onClose}
+      // While running, X routes to Cancel (a real server-side cancel) instead of
+      // silently hiding a still-running job; once finished/cancelled it closes.
+      onClose={running ? (onCancel || (() => {})) : onClose}
       title="Synchronize Attendance to Payroll"
       size="md"
       footer={footer}
@@ -119,6 +136,38 @@ export const SyncAttendanceModal: React.FC<Props> = ({
                 );
               })}
             </ul>
+            {progress && progress.total > 0 && (
+              <div className="mt-3">
+                <p className="text-[12px] font-bold text-ink tabular-nums">
+                  Employees processed: {progress.processed.toLocaleString('en-IN')} / {progress.total.toLocaleString('en-IN')}
+                </p>
+                <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-brand-600 transition-all"
+                    style={{ width: `${Math.min(100, Math.round((progress.processed / progress.total) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Cancelled ────────────────────────────────────────────────── */}
+        {cancelled && !result && (
+          <div className="rounded-card border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle size={22} className="text-amber-500 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[14px] font-bold text-amber-800">Synchronization cancelled.</p>
+                <p className="mt-1 text-[13px] text-amber-700">
+                  {cancelled.attempted} of {cancelled.total} employee(s) were synchronized before cancellation.
+                  Each employee is written atomically, so no payroll record was corrupted.
+                </p>
+                <p className="mt-2 text-[12px] text-amber-600">
+                  Run Synchronize Attendance again to complete the remaining employees — re-running updates, never duplicates.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

@@ -328,6 +328,20 @@ export const Payroll: React.FC<PayrollProps> = ({
   const [syncPhase, setSyncPhase] = useState(-1);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  // Real cancellation: the run id is sent to the backend, Cancel flips the DB job
+  // row, and the worker loop stops dispatching new employees (in-flight atomic
+  // per-employee work finishes — nothing is corrupted).
+  const syncRunIdRef = React.useRef<string | null>(null);
+  const [syncProgress, setSyncProgress] = useState<{ processed: number; total: number } | null>(null);
+  const [syncCancelling, setSyncCancelling] = useState(false);
+  const [syncCancelled, setSyncCancelled] = useState<{ attempted: number; total: number } | null>(null);
+  const handleCancelSync = async () => {
+    const runId = syncRunIdRef.current;
+    if (!runId || syncCancelling) return;
+    setSyncCancelling(true);
+    try { await api.attendance.syncPayrollCancel(runId); }
+    catch { /* the main call's response still reports the final state */ }
+  };
   useEffect(() => {
     try { const raw = localStorage.getItem(attRecalcKey(activeCompanyId, monthFilter)); setAttRecalc(raw ? JSON.parse(raw) : null); }
     catch { setAttRecalc(null); }
@@ -848,9 +862,20 @@ export const Payroll: React.FC<PayrollProps> = ({
     if (!monthNum) { ui.toast.error('Invalid payroll month.'); return; }
 
     // Open the modal in progress mode and start advancing the compute phases.
-    setSyncResult(null); setSyncError(null); setSyncPhase(0); setSyncOpen(true); setSyncBusy(true);
+    setSyncResult(null); setSyncError(null); setSyncCancelled(null); setSyncCancelling(false);
+    setSyncProgress(null); setSyncPhase(0); setSyncOpen(true); setSyncBusy(true);
+    const runId = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    syncRunIdRef.current = runId;
     let ph = 0;
     const timer = setInterval(() => { ph = Math.min(4, ph + 1); setSyncPhase(ph); }, 550);
+    // Live progress: poll the run row so the modal shows "processed X / Y" and
+    // the Cancel button has a responsive counterpart on the server.
+    const progressTimer = setInterval(async () => {
+      try {
+        const st: any = await api.attendance.syncPayrollStatus(runId);
+        if (st && st.total > 0) setSyncProgress({ processed: Number(st.processed) || 0, total: Number(st.total) || 0 });
+      } catch { /* progress is best-effort */ }
+    }, 1500);
 
     try {
       const isSuper = role === 'Super Admin';
@@ -858,9 +883,20 @@ export const Payroll: React.FC<PayrollProps> = ({
       // this ONE call. Scoped to the active workspace; server enforces isolation.
       const res: any = await api.attendance.syncPayroll({
         companyId: activeCompanyId ? String(activeCompanyId) : undefined,
-        month: monthNum, year: yearFilter, dryRun: false,
+        month: monthNum, year: yearFilter, dryRun: false, clientRunId: runId,
       });
       clearInterval(timer);
+      clearInterval(progressTimer);
+
+      // Cancelled on the server: some employees may have completed (atomic each) —
+      // refresh once so the table is truthful, but do NOT mark the month as
+      // synchronized and do NOT show the success summary.
+      if (res?.cancelled) {
+        await refreshPayroll();
+        setSyncCancelled({ attempted: Number(res.attempted) || 0, total: Number(res.processed) || 0 });
+        saveAuditLog('attendance-sync', `${roleAudit} (${role}) CANCELLED attendance synchronization for ${monthFilter} ${yearFilter} after ${res.attempted}/${res.processed} employee(s).`);
+        return;
+      }
 
       // Step 8/9 — writing done → refresh the payroll table + the summary cache the
       // worksheet/draft rows read (so every screen shows the one snapshot).
@@ -901,10 +937,14 @@ export const Payroll: React.FC<PayrollProps> = ({
       saveAuditLog('attendance-sync', `${roleAudit} (${role}) synchronized attendance → payroll for ${monthFilter} ${yearFilter} — ${synced}/${processed} employee(s) synced, ${failed} failed.`);
     } catch (e: any) {
       clearInterval(timer);
+      clearInterval(progressTimer);
       console.error('Attendance synchronization failed:', e);
       setSyncError(getApiErrorMessage(e, 'Failed to synchronize attendance.'));
     } finally {
+      clearInterval(progressTimer);
+      syncRunIdRef.current = null;
       setSyncBusy(false);
+      setSyncCancelling(false);
     }
   };
 
@@ -1451,6 +1491,10 @@ export const Payroll: React.FC<PayrollProps> = ({
         result={syncResult}
         error={syncError}
         monthLabel={`${monthFilter} ${yearFilter}`}
+        progress={syncProgress}
+        cancelling={syncCancelling}
+        cancelled={syncCancelled}
+        onCancel={syncBusy ? handleCancelSync : undefined}
         onClose={() => { if (!syncBusy) setSyncOpen(false); }}
         onViewDetailedReport={onNavigate ? () => { setSyncOpen(false); onNavigate('attendance-sync'); } : undefined}
       />

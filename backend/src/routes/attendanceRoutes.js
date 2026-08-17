@@ -16,6 +16,8 @@ router.get('/analytics', requirePermission('attendance', 'view'), controller.get
 router.get('/workforce-report', requirePermission('attendance', 'view'), controller.workforceReport);
 router.get('/department-report', requirePermission('attendance', 'view'), controller.departmentReport);
 router.post('/sync-payroll', requirePermission('attendance', 'edit'), controller.syncPayroll);
+router.post('/sync-payroll/cancel', requirePermission('attendance', 'edit'), controller.syncPayrollCancel);
+router.get('/sync-payroll/status', requirePermission('attendance', 'view'), controller.syncPayrollStatus);
 // Push to Payroll Engine — transfer the finalized attendance calculation into the
 // Payroll module (creates payroll records from the snapshot; NO recalculation).
 // Gated on payroll edit since it writes payroll records.

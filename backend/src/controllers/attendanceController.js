@@ -390,6 +390,10 @@ exports.syncPayroll = async (req, res) => {
   // "Refresh Calculation" sends false — it recomputes & persists the calculation
   // from the latest attendance WITHOUT declaring the month officially pushed.
   const { month, year, dryRun = true, snapshotOnly = false, markSynced = true } = body;
+  // `clientRunId` (optional): lets the client cancel this run and poll progress.
+  // The run is recorded in AttendanceSyncLog (source 'PayrollSync') — DB-backed so
+  // cancel/status work across PM2 cluster workers, no schema change needed.
+  const clientRunId = body.clientRunId != null ? String(body.clientRunId).slice(0, 191) : null;
   const companyId = toIntId(body.companyId);
   const scopeIds = Array.isArray(body.scopeIds) ? body.scopeIds.map(toIntId).filter(v => v !== undefined) : [];
   let allowedIds = null;
@@ -566,22 +570,35 @@ exports.syncPayroll = async (req, res) => {
     let updated = 0, created = 0, synced = 0;
     const failures = [];
     const eligible = rows.filter((r) => r.salary && r.salary > 0);
-    for (const r of eligible) {
+
+    // ── Cancellable job record (DB-backed, cluster-safe) ─────────────────────
+    const startedAt = Date.now();
+    let run = null;
+    if (clientRunId) {
+      run = await prisma.attendanceSyncLog.create({
+        data: {
+          companyId: companyId ?? (employees[0]?.companyId ?? 0),
+          source: 'PayrollSync', trigger: 'manual', status: 'RUNNING',
+          windowFrom: clientRunId, windowTo: `${monthName} ${y}`,
+          fetched: eligible.length,
+        },
+      }).catch(() => null);
+    }
+
+    // The per-employee unit of work — UNCHANGED calculation path: the exact same
+    // recompute (attendance snapshot) + recalcForEmployeeMonth (ONE payroll
+    // engine) calls as before, per employee, atomic per employee.
+    const processOne = async (r) => {
       try {
         if (snapshotOnly) {
           // ── PHASE 1 — Attendance snapshot ONLY ──────────────────────────────
-          // Persist the finalized attendance figures (present / absent / weekly-off
-          // / holiday / leave / half / OT / PAYABLE DAYS) into the AttendanceSummary
-          // snapshot — the single source of truth Payroll reads. NO payroll row is
-          // created, and NO salary / PF / ESIC / PT / net is computed here; that is
-          // Phase 2 (payroll generation), deliberately left untouched.
+          // Persist the finalized attendance figures into the AttendanceSummary
+          // snapshot. NO payroll row is created and NO salary math runs here.
           await attSvc.recompute(r.employeeId, monthName, y, { markSynced });
           synced++;
-          continue;
+          return;
         }
-
-        // ── Full sync (existing behaviour) ──────────────────────────────────────
-        // Ensure a payroll row exists for this employee/month so recalc can fill it.
+        // ── Full sync (existing behaviour) ────────────────────────────────────
         const existing = await prisma.payroll.findFirst({
           where: { employeeId: r.employeeId, year: y, companyId: r.companyId, month: { in: [monthName, String(month), monthPrefix] } },
         });
@@ -598,9 +615,7 @@ exports.syncPayroll = async (req, res) => {
           });
           created++;
         }
-
-        // 1) Persist the verified attendance snapshot (the worksheet's source of truth).
-        //    markSynced stamps syncedAt → this month is officially synchronized.
+        // 1) Persist the verified attendance snapshot (worksheet's source of truth).
         await attSvc.recompute(r.employeeId, monthName, y, { markSynced });
         // 2) Recalc payroll from that snapshot with attendance proration (one engine).
         await payrollCtrl.recalcForEmployeeMonth(r.employeeId, monthName, y);
@@ -614,11 +629,60 @@ exports.syncPayroll = async (req, res) => {
           reason: (e && e.message) || 'Unknown error',
         });
       }
+    };
+
+    // ── Bounded-concurrency runner with cooperative cancellation ─────────────
+    // Employees are independent (each touches only its own summary/payroll rows),
+    // so N run in parallel — the run was latency-bound on thousands of SEQUENTIAL
+    // round-trips, not CPU. The math per employee is byte-identical. Every
+    // POLL_EVERY completions the run row is re-read: a CANCEL_REQUESTED status
+    // stops NEW work immediately while in-flight employees finish atomically —
+    // no partial per-employee writes, no corrupted rows.
+    const CONCURRENCY = 8;
+    const POLL_EVERY = 16;
+    let cancelled = false;
+    let dispatched = 0;
+    let completed = 0;
+    const pollRun = async () => {
+      if (!run) return;
+      const rowNow = await prisma.attendanceSyncLog.findUnique({
+        where: { id: run.id }, select: { status: true },
+      }).catch(() => null);
+      if (rowNow && rowNow.status === 'CANCEL_REQUESTED') cancelled = true;
+      await prisma.attendanceSyncLog.update({
+        where: { id: run.id },
+        data: { imported: synced, updated, failed: failures.length, skipped: completed },
+      }).catch(() => {});
+    };
+    const workers = Array.from({ length: Math.min(CONCURRENCY, eligible.length) }, async () => {
+      for (;;) {
+        if (cancelled) return;
+        const idx = dispatched++;
+        if (idx >= eligible.length) return;
+        await processOne(eligible[idx]);
+        completed++;
+        if (run && completed % POLL_EVERY === 0) await pollRun();
+      }
+    });
+    await Promise.all(workers);
+
+    if (run) {
+      await prisma.attendanceSyncLog.update({
+        where: { id: run.id },
+        data: {
+          status: cancelled ? 'CANCELLED' : (failures.length ? 'PARTIAL' : 'SUCCESS'),
+          imported: synced, updated, failed: failures.length, skipped: completed,
+          endedAt: new Date(), durationMs: Date.now() - startedAt,
+        },
+      }).catch(() => {});
     }
 
     return res.json({
       month, year, dryRun: false, snapshotOnly, count: rows.length,
-      processed: eligible.length, synced, failed: failures.length, failures,
+      processed: eligible.length, attempted: completed, synced,
+      failed: failures.length, failures, cancelled,
+      remaining: Math.max(0, eligible.length - completed),
+      durationMs: Date.now() - startedAt,
       updated, created, totals, rows,
     });
   } catch (error) {
@@ -638,6 +702,49 @@ exports.syncPayroll = async (req, res) => {
       role: req.user?.role,
     });
     res.status(500).json({ error: error.message || 'Server error during payroll sync', code: error.code });
+  }
+};
+
+// POST /sync-payroll/cancel { clientRunId } — request cancellation of a running
+// payroll sync. Cluster-safe: flips the DB run row to CANCEL_REQUESTED; the
+// worker loop (any PM2 worker) sees it on its next poll, stops dispatching new
+// employees, and lets in-flight atomic per-employee work finish cleanly.
+exports.syncPayrollCancel = async (req, res) => {
+  try {
+    const clientRunId = req.body?.clientRunId != null ? String(req.body.clientRunId).slice(0, 191) : '';
+    if (!clientRunId) return res.status(400).json({ error: 'clientRunId is required.' });
+    const upd = await prisma.attendanceSyncLog.updateMany({
+      where: { source: 'PayrollSync', windowFrom: clientRunId, status: 'RUNNING' },
+      data: { status: 'CANCEL_REQUESTED' },
+    });
+    return res.json({ ok: true, requested: upd.count > 0 });
+  } catch (e) {
+    console.error('[syncPayrollCancel]', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+};
+
+// GET /sync-payroll/status?runId= — progress for the modal (processed / total).
+exports.syncPayrollStatus = async (req, res) => {
+  try {
+    const runId = req.query?.runId != null ? String(req.query.runId).slice(0, 191) : '';
+    if (!runId) return res.status(400).json({ error: 'runId is required.' });
+    const row = await prisma.attendanceSyncLog.findFirst({
+      where: { source: 'PayrollSync', windowFrom: runId },
+      orderBy: { id: 'desc' },
+      select: { status: true, fetched: true, imported: true, updated: true, failed: true, skipped: true },
+    });
+    if (!row) return res.json({ status: 'UNKNOWN', processed: 0, total: 0 });
+    return res.json({
+      status: row.status,
+      processed: row.skipped || 0, // `skipped` carries completed-count during the run
+      synced: row.imported || 0,
+      failed: row.failed || 0,
+      total: row.fetched || 0,
+    });
+  } catch (e) {
+    console.error('[syncPayrollStatus]', e);
+    res.status(500).json({ error: e.message || 'Server error' });
   }
 };
 

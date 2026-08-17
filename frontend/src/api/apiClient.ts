@@ -1592,8 +1592,14 @@ export const api = {
     create: async (data: any) => { return await apiFetch(`${BASE_URL}/attendance`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     update: async (id: string, data: any) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) }); },
     delete: async (id: string) => { return await apiFetch(`${BASE_URL}/attendance/${id}`, { method: 'DELETE', headers: getHeaders() }); },
-    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean; snapshotOnly?: boolean; markSynced?: boolean }) => {
+    syncPayroll: async (data: { companyId?: string; month: number; year: number; scopeIds?: string[]; dryRun?: boolean; snapshotOnly?: boolean; markSynced?: boolean; clientRunId?: string }) => {
       return await apiFetch(`${BASE_URL}/attendance/sync-payroll`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) });
+    },
+    syncPayrollCancel: async (clientRunId: string) => {
+      return await apiFetch(`${BASE_URL}/attendance/sync-payroll/cancel`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ clientRunId }) });
+    },
+    syncPayrollStatus: async (runId: string) => {
+      return await apiFetch(`${BASE_URL}/attendance/sync-payroll/status?runId=${encodeURIComponent(runId)}`, { headers: getHeaders() });
     },
     // Push to Payroll Engine — transfer the finalized attendance calculation into
     // the Payroll module (creates payroll records verbatim; NO recalculation).
