@@ -155,10 +155,13 @@ async function processAttendanceRows(prisma, { companyId, companyIds, rows, opti
   // "loose" key — uppercased with all spaces / hyphens / underscores / dots removed,
   // so EMP-001, EMP_001, "emp 001" and EMP001 all collapse to the same key.
   const loose = (v) => up(v).replace(/[\s\-_.]/g, '');
-  // "numeric" key — for all-digit ids, strip leading zeros so a file value that lost
-  // them (0113 read by Excel as 113) still matches the stored "0113". Ambiguous keys
-  // (two ids collapsing to the same number) are disabled to avoid a wrong match.
-  const numOf = (v) => { const d = up(v).replace(/\D/g, ''); return d ? String(Number(d)) : ''; };
+  // "numeric" key — ONLY for all-digit ids: strip leading zeros so a file value
+  // that lost them (0113 read by Excel as 113) still matches the stored "0113".
+  // Strictly all-digit on BOTH sides: extracting digits out of an alphanumeric
+  // key ("NOPE-404" → 404) silently matched the WRONG employee — an unknown id
+  // must surface as unmatched, never guess. Ambiguous keys (two ids collapsing
+  // to the same number) are disabled to avoid a wrong match.
+  const numOf = (v) => { const s = up(v); return /^\d+$/.test(s) ? String(Number(s)) : ''; };
   const byBiometric = new Map();
   const byCode = new Map();
   const byLegacy = new Map();

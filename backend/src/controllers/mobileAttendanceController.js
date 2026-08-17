@@ -11,11 +11,17 @@ const respond = (res, statusCode, success, message, data = null) => {
   });
 };
 
-const getLocalTodayString = () => {
-  const today = new Date();
-  const tzOffset = today.getTimezoneOffset() * 60000;
-  return new Date(today - tzOffset).toISOString().slice(0, 10);
-};
+// Attendance date and punch time are anchored to the COMPANY timezone (IST),
+// never the server's — the live EC2 box runs UTC, so `new Date().toTimeString()`
+// there is 5½ hours behind the employee's real punch and flips the attendance
+// date around midnight IST. en-CA gives YYYY-MM-DD; en-GB + hour12:false gives HH:mm.
+const ATTENDANCE_TZ = process.env.ATTENDANCE_TZ || 'Asia/Kolkata';
+const getLocalTodayString = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: ATTENDANCE_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const getLocalTimeString = (d = new Date()) =>
+  new Intl.DateTimeFormat('en-GB', { timeZone: ATTENDANCE_TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+// Exported for the attendance-accuracy test suite only.
+exports._tzHelpers = { getLocalTodayString, getLocalTimeString, ATTENDANCE_TZ };
 
 exports.getTodayAttendance = async (req, res) => {
   try {
@@ -183,8 +189,7 @@ exports.checkIn = async (req, res) => {
       return respond(res, 400, false, 'Already checked in today.');
     }
 
-    const now = new Date();
-    const timeString = now.toTimeString().slice(0, 5); // HH:MM
+    const timeString = getLocalTimeString(); // HH:MM in the company timezone (IST)
 
     let record;
     if (existing) {
@@ -241,9 +246,8 @@ exports.checkOut = async (req, res) => {
         return respond(res, 400, false, 'Already checked out today.');
     }
 
-    const now = new Date();
-    const timeString = now.toTimeString().slice(0, 5); // HH:MM
-    
+    const timeString = getLocalTimeString(); // HH:MM in the company timezone (IST)
+
     // Simple hours worked calculation
     const clockInDate = new Date(`${todayStr}T${existing.clockIn}:00`);
     const clockOutDate = new Date(`${todayStr}T${timeString}:00`);

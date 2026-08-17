@@ -18,7 +18,10 @@ const { resolvePunch, STATUS, QUEUEABLE } = require('../attendanceMatcher');
 const client = require('./etimeClient');
 const settings = require('./etimeSettingsService');
 
-const HHMM = /^(\d{1,2}):(\d{2})$/;
+// Accepts "H:mm", "HH:mm" and "HH:mm:ss" — seconds are tolerated (capture groups
+// keep hour/minute only) so a provider that starts sending seconds can never
+// silently blank out a real punch time.
+const HHMM = /^(\d{1,2}):(\d{2})(?::\d{2})?$/;
 
 // "dd/MM/yyyy" → "yyyy-MM-dd" (the format the attendance table stores). Returns
 // null for anything that isn't a real dd/MM/yyyy so a bad row is skipped safely.
@@ -28,10 +31,12 @@ function toIsoDate(dateStr) {
   return `${m[3]}-${m[2]}-${m[1]}`;
 }
 
-// A device time ("12:06") passes through; the "--:--" placeholder becomes ''.
+// A device time ("12:06", "9:06", "12:06:44") normalises to zero-padded "HH:mm";
+// the "--:--" placeholder (or anything unparseable) becomes '' — never a fake time.
 function cleanTime(t) {
-  const s = String(t == null ? '' : t).trim();
-  return HHMM.test(s) ? s : '';
+  const m = HHMM.exec(String(t == null ? '' : t).trim());
+  if (!m) return '';
+  return `${m[1].padStart(2, '0')}:${m[2]}`;
 }
 
 // "HH:mm" work-time → decimal hours (e.g. "08:30" → 8.5). Non-times → 0.
