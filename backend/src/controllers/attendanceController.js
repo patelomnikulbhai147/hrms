@@ -403,6 +403,12 @@ exports.syncPayroll = async (req, res) => {
       return res.status(400).json({ error: 'month and year are required.' });
     }
 
+    // Future periods are never synchronized — nothing is calculated or written.
+    {
+      const { isFuturePeriod, FUTURE_PERIOD_ERROR } = require('../utils/payrollPeriod');
+      if (isFuturePeriod(month, year)) return res.status(400).json(FUTURE_PERIOD_ERROR);
+    }
+
     // Resolve the scope to a set of companyIds the requester may touch (coerced to Int).
     if (req.user && req.user.role !== 'Super Admin') {
       allowedIds = [req.user.companyId, ...(req.user.accessibleCompanyIds || [])].map(toIntId).filter(v => v !== undefined);
@@ -786,6 +792,12 @@ exports.pushToPayroll = async (req, res) => {
     let month = String(body.month);
     if (/^\d+$/.test(month)) month = MONTH_NAMES[Number(month) - 1];
     if (!MONTH_NAMES.includes(month)) return res.status(400).json({ error: 'Invalid payroll month.' });
+
+    // Future periods are never pushed to payroll — reject before any calculation.
+    {
+      const { isFuturePeriod, FUTURE_PERIOD_ERROR } = require('../utils/payrollPeriod');
+      if (isFuturePeriod(month, year)) return res.status(400).json(FUTURE_PERIOD_ERROR);
+    }
 
     // ── STEP: resolve the pushed employees + verify they are IN SCOPE ───────
     // (Company Head / Branch Head / HR may only push their own company/branch.)

@@ -120,9 +120,23 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
     try { pushReturnRef.current = sessionStorage.getItem('hrms_push_return'); sessionStorage.removeItem('hrms_push_return'); } catch { /* ignore */ }
   }, []);
 
-  const now = new Date();
-  const [month, setMonth] = useState<number>(now.getMonth() + 1);
-  const [year, setYear] = useState<number>(now.getFullYear());
+  // Current payroll period anchored to the COMPANY timezone (IST) — not the
+  // browser/UTC clock, so the allowed period never flips early/late around a
+  // month boundary. FUTURE periods can never be selected: the dropdowns disable
+  // them and an effect clamps any stale/invalid state back to the current month
+  // (the backend independently rejects future periods with FUTURE_PAYROLL_PERIOD).
+  const istPeriod = () => {
+    const s = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit' }).format(new Date());
+    const [y, m] = s.split('-').map(Number);
+    return { year: y, month: m };
+  };
+  const cur = istPeriod();
+  const [month, setMonth] = useState<number>(cur.month);
+  const [year, setYear] = useState<number>(cur.year);
+  useEffect(() => {
+    const c = istPeriod();
+    if (year > c.year || (year === c.year && month > c.month)) { setYear(c.year); setMonth(c.month); }
+  }, [month, year]);
 
   const [filterBranch, setFilterBranch] = useState('');
   const [filterDept, setFilterDept] = useState('');
@@ -615,12 +629,18 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
         {/* Top-right controls */}
         <div className="flex flex-wrap items-end gap-2.5 xl:justify-end">
           <div className="w-[130px]">
+            {/* Future months are DISABLED (not hidden) so it is clear they exist
+                but are unavailable. Only applies within the current year. */}
             <Select label="Month" value={String(month)} onChange={e => setMonth(Number(e.target.value))}
-              options={MONTH_NAMES.map((m, i) => ({ value: String(i + 1), label: m }))} className="h-9 text-[13px]" />
+              options={MONTH_NAMES.map((m, i) => ({
+                value: String(i + 1), label: m,
+                disabled: year === cur.year && i + 1 > cur.month,
+              }))} className="h-9 text-[13px]" />
           </div>
           <div className="w-[92px]">
+            {/* Anchored to the CURRENT year — no future years are offered. */}
             <Select label="Year" value={String(year)} onChange={e => setYear(Number(e.target.value))}
-              options={[year - 1, year, year + 1].map(y => ({ value: String(y), label: String(y) }))} className="h-9 text-[13px]" />
+              options={[cur.year - 2, cur.year - 1, cur.year].map(y => ({ value: String(y), label: String(y) }))} className="h-9 text-[13px]" />
           </div>
           <div className="w-[150px]">
             <Select label="Branch" value={filterBranch} onChange={e => setFilterBranch(e.target.value)}
