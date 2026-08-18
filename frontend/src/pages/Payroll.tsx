@@ -770,10 +770,18 @@ export const Payroll: React.FC<PayrollProps> = ({
     ids = ids.filter(id => !isPendingPayrollId(id));
     if (!ids.length) { ui.toast.warning('No generated payroll to approve. Generate payroll first.'); return; }
     try {
-      await api.payroll.approve(ids);
-      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'approved', approvedAt: new Date().toISOString() } as any : r));
-      saveAuditLog('bulk', `Approved ${ids.length} payroll record(s).`);
-      ui.toast.success(`Approved ${ids.length} payroll record(s).`);
+      const res: any = await api.payroll.approve(ids);
+      const approved = res?.approved ?? ids.length;
+      // Outdated rows (attendance changed after generation) are refused by the
+      // backend — reflect only the rows that actually advanced.
+      if (res?.skippedOutdated > 0) {
+        try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep local */ }
+        ui.toast.warning(res.message || `${res.skippedOutdated} record(s) skipped — attendance changed after generation; recalculate payroll first.`);
+      } else {
+        onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, payrollStatus: 'approved', approvedAt: new Date().toISOString() } as any : r));
+      }
+      saveAuditLog('bulk', `Approved ${approved} payroll record(s).`);
+      if (approved > 0) ui.toast.success(`Approved ${approved} payroll record(s).`);
     } catch (e: any) {
       console.error('Approve failed:', e);
       ui.toast.error(`Failed to approve payroll: ${e?.message || 'Unknown error'}`);
@@ -803,6 +811,9 @@ export const Payroll: React.FC<PayrollProps> = ({
       try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); }
       catch { onUpdatePayroll(payroll.map(r => paidIds.includes(r.id) ? { ...r, payrollStatus: 'locked', lockedAt: new Date().toISOString() } as any : r)); }
       saveAuditLog('bulk', `Locked ${res?.locked ?? paidIds.length} paid payroll record(s).`);
+      if (res?.skippedOutdated > 0) {
+        ui.toast.warning(res.message || `${res.skippedOutdated} record(s) not locked — attendance changed after generation; recalculate payroll first.`);
+      }
       ui.toast.success(`Payroll month locked successfully (${res?.locked ?? paidIds.length} record(s))${res?.skippedUnpaid ? ` — ${res.skippedUnpaid} unpaid skipped` : ''}.`);
     } catch (e: any) {
       console.error('Lock failed:', e);
@@ -1020,11 +1031,18 @@ export const Payroll: React.FC<PayrollProps> = ({
     if (!ids.length) { ui.toast.warning('No generated payroll selected. Generate payroll first.'); return; }
     if (!(await ui.confirm({ message: `Mark ${ids.length} employee salar${ids.length === 1 ? 'y' : 'ies'} as Paid?` }))) return;
     try {
-      await api.payroll.markPaid(ids);
+      const res: any = await api.payroll.markPaid(ids);
+      const paidCount = res?.paid ?? ids.length;
       const now = new Date().toISOString();
-      onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: now } as any : r));
-      saveAuditLog('bulk', `${roleAudit} marked ${ids.length} salary payment(s) as Paid.`);
-      ui.toast.success(`Marked ${ids.length} salaries as Paid.`);
+      // Outdated rows are refused server-side — never show them as Paid locally.
+      if (res?.skippedOutdated > 0) {
+        try { const fresh = await api.payroll.getAll(); onUpdatePayroll(fresh); } catch { /* keep local */ }
+        ui.toast.warning(res.message || `${res.skippedOutdated} record(s) skipped — attendance changed after generation; recalculate payroll first.`);
+      } else {
+        onUpdatePayroll(payroll.map(r => ids.includes(r.id) ? { ...r, paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: now } as any : r));
+      }
+      saveAuditLog('bulk', `${roleAudit} marked ${paidCount} salary payment(s) as Paid.`);
+      if (paidCount > 0) ui.toast.success(`Marked ${paidCount} salaries as Paid.`);
     } catch (e: any) {
       console.error('Mark paid failed:', e);
       ui.toast.error(`Failed to mark salaries paid: ${e?.message || 'Unknown error'}`);

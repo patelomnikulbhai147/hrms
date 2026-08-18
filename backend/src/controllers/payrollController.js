@@ -1271,6 +1271,20 @@ exports.update = async (req, res) => {
       return res.status(400).json({ error: 'Payroll already paid.' });
     }
 
+    // A stale snapshot (attendance changed after generation) may be EDITED —
+    // that's how it gets corrected — but never advanced to a final state.
+    const advancing =
+      payload.paymentStatus === 'paid' ||
+      payload.payrollStatus === 'approved' ||
+      payload.payrollStatus === 'paid' ||
+      payload.payrollStatus === 'locked';
+    if (advancing && existingRecord.isOutdated && payload.isOutdated !== false) {
+      return res.status(409).json({
+        error: 'Attendance changed after this payroll was generated — recalculate payroll before approving, paying or locking it.',
+        code: 'PAYROLL_OUTDATED',
+      });
+    }
+
     // ── Revision history (replaces the old hard "lock") ──────────────────────
     // Authorized users may edit payroll at any stage; every amount change is
     // captured as a traceable revision: original → modified, by whom, when, why.
@@ -1376,16 +1390,28 @@ exports.slipEvent = async (req, res) => {
 };
 
 // POST /api/payroll/approve  { ids: string[] }  → approve payroll record(s)
+// An OUTDATED row is a stale snapshot: attendance changed after it was computed,
+// so its figures are not final. It must be regenerated (recalculated) before it
+// can move forward in the lifecycle — approving/paying/locking a stale snapshot
+// finalizes numbers that no longer derive from the attendance record.
+const OUTDATED_MESSAGE =
+  'Attendance changed after these payroll record(s) were generated — recalculate payroll before this action.';
+
 exports.approve = async (req, res) => {
   try {
     const ids = Array.isArray(req.body.ids) ? req.body.ids : (req.params.id ? [req.params.id] : []);
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
     const approvedBy = req.user?.name || req.user?.email || 'Admin';
     const result = await prisma.payroll.updateMany({
-      where: { id: { in: ids }, ...payrollTenantWhere(req) },
+      where: { id: { in: ids }, isOutdated: false, ...payrollTenantWhere(req) },
       data: { payrollStatus: 'approved', approvedAt: new Date(), approvedBy },
     });
-    res.json({ approved: result.count });
+    const skippedOutdated = ids.length - result.count;
+    res.json({
+      approved: result.count,
+      skippedOutdated,
+      ...(skippedOutdated > 0 ? { message: `${skippedOutdated} record(s) not approved: ${OUTDATED_MESSAGE}` } : {}),
+    });
   } catch (error) {
     console.error('Error approving payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -1399,10 +1425,15 @@ exports.markPaid = async (req, res) => {
     if (!ids.length) return res.status(400).json({ error: 'No payroll ids provided.' });
     const paidBy = req.user?.name || req.user?.email || 'Admin';
     const result = await prisma.payroll.updateMany({
-      where: { id: { in: ids }, ...payrollTenantWhere(req) },
+      where: { id: { in: ids }, isOutdated: false, ...payrollTenantWhere(req) },
       data: { paymentStatus: 'paid', payrollStatus: 'paid', paymentDate: new Date().toISOString(), paymentMethod: 'Bank Transfer', paidBy },
     });
-    res.json({ paid: result.count });
+    const skippedOutdated = ids.length - result.count;
+    res.json({
+      paid: result.count,
+      skippedOutdated,
+      ...(skippedOutdated > 0 ? { message: `${skippedOutdated} record(s) not marked paid: ${OUTDATED_MESSAGE}` } : {}),
+    });
   } catch (error) {
     console.error('Error marking paid', error);
     res.status(500).json({ error: error.message || 'Server error' });
@@ -1436,12 +1467,21 @@ exports.lock = async (req, res) => {
 
     const targets = await prisma.payroll.findMany({
       where: { id: { in: ids } },
-      select: { id: true, paymentStatus: true },
+      select: { id: true, paymentStatus: true, isOutdated: true },
     });
-    const paidIds = targets.filter(p => String(p.paymentStatus || '').toLowerCase() === 'paid').map(p => p.id);
-    const skippedUnpaid = targets.length - paidIds.length;
+    // Outdated snapshots must be regenerated before they can be finalized —
+    // locking freezes the figures, so stale figures are refused here.
+    const skippedOutdated = targets.filter(p => p.isOutdated).length;
+    const paidIds = targets
+      .filter(p => !p.isOutdated && String(p.paymentStatus || '').toLowerCase() === 'paid')
+      .map(p => p.id);
+    const skippedUnpaid = targets.length - paidIds.length - skippedOutdated;
     if (!paidIds.length) {
-      return res.status(400).json({ error: 'Only fully Paid payroll can be locked. None of the selected records are Paid.' });
+      return res.status(400).json({
+        error: skippedOutdated
+          ? `Cannot lock: ${OUTDATED_MESSAGE}`
+          : 'Only fully Paid payroll can be locked. None of the selected records are Paid.',
+      });
     }
 
     // Atomic: if the attendance flip fails, the payroll rows must not stay locked.
@@ -1463,12 +1503,17 @@ exports.lock = async (req, res) => {
           targetId: paidIds.join(','),
           details: JSON.stringify({
             by: req.user.name || req.user.email, role: req.user.role,
-            reason: reason || '(none)', locked: result.count, skippedUnpaid,
+            reason: reason || '(none)', locked: result.count, skippedUnpaid, skippedOutdated,
           }).slice(0, 1500),
         },
       }).catch(() => {});
     }
-    res.json({ locked: result.count, skippedUnpaid });
+    res.json({
+      locked: result.count,
+      skippedUnpaid,
+      skippedOutdated,
+      ...(skippedOutdated > 0 ? { message: `${skippedOutdated} record(s) not locked: ${OUTDATED_MESSAGE}` } : {}),
+    });
   } catch (error) {
     console.error('Error locking payroll', error);
     res.status(500).json({ error: error.message || 'Server error' });
