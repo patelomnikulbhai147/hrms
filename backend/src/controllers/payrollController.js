@@ -689,6 +689,17 @@ exports.generate = async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters.' });
     }
 
+    // A companyId/branchId in the body is a REQUEST, not a permission. Without
+    // this guard any payroll:create user could bulk-generate (and wallet-charge)
+    // ANOTHER tenant's payroll simply by naming its workspace id.
+    if (!isSuperAdmin(req)) {
+      for (const ws of [companyId, branchId]) {
+        if (ws && !canEnterWorkspace(req, ws)) {
+          return res.status(403).json({ error: 'You do not have access to this workspace.' });
+        }
+      }
+    }
+
     const isBranch = !!branchId && role !== 'Company Head';
 
     // ── Branch-only generation ───────────────────────────────────────────────
@@ -1156,6 +1167,25 @@ exports.create = async (req, res) => {
       return res.status(400).json({ error: 'Missing required payroll fields: employeeId, month, year, companyId' });
     }
 
+    // Tenant guard — BEFORE the wallet gate, so a foreign workspace id can
+    // neither create a row nor trigger a charge in another tenant's wallet.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You do not have access to this workspace.' });
+    }
+    // The employee must actually live in the workspace the row is filed under
+    // (their company or their branch — both are legal workspace keys). Without
+    // this, a payroll row lands in one tenant while its employee belongs to
+    // another, breaking the Payroll↔Employee isolation invariant.
+    const empOwner = await prisma.employee.findUnique({
+      where: { id: Number(employeeId) },
+      select: { companyId: true, branchId: true },
+    });
+    if (!empOwner) return res.status(404).json({ error: 'Employee not found.' });
+    const empWorkspaces = [empOwner.companyId, empOwner.branchId].filter(Boolean).map(Number);
+    if (!empWorkspaces.includes(Number(companyId))) {
+      return res.status(400).json({ error: 'Employee does not belong to this workspace.', code: 'EMPLOYEE_COMPANY_MISMATCH' });
+    }
+
     // Wallet gate — creating a payroll row IS generation, so the single-record
     // path passes the same mandatory gate as bulk generate. Delta billing:
     // ONLY this employee is assessed — already billed for the period (or an
@@ -1401,7 +1431,14 @@ exports.slipEvent = async (req, res) => {
     else if (event === 'downloaded') { data.downloadedAt = now; data.downloadCount = { increment: 1 }; }
     else if (event === 'emailed') { data.emailSentAt = now; }
     else return res.status(400).json({ error: 'Unknown slip event.' });
-    const updated = await prisma.payroll.update({ where: { id: idParam(id) }, data });
+    // Tenant guard: stamping slip metadata is still a WRITE — a foreign row is
+    // reported as not-found (existing convention) rather than updated.
+    const target = await prisma.payroll.findFirst({
+      where: { id: idParam(id), ...payrollTenantWhere(req) },
+      select: { id: true },
+    });
+    if (!target) return res.status(404).json({ error: 'Payroll record not found.' });
+    const updated = await prisma.payroll.update({ where: { id: target.id }, data });
     res.json(updated);
   } catch (error) {
     console.error('Error stamping slip event', error);
@@ -1486,7 +1523,9 @@ exports.lock = async (req, res) => {
     const reason = (req.body.reason || '').toString();
 
     const targets = await prisma.payroll.findMany({
-      where: { id: { in: ids } },
+      // Tenant guard: ids outside the caller's companies are simply not matched,
+      // so a foreign row can never be locked by naming its id.
+      where: { id: { in: ids }, ...payrollTenantWhere(req) },
       select: { id: true, paymentStatus: true, isOutdated: true },
     });
     // Outdated snapshots must be regenerated before they can be finalized —
@@ -1557,12 +1596,15 @@ exports.unlock = async (req, res) => {
     // either all land or none do.
     const { result, payslipsInvalidated, paidCount } = await prisma.$transaction(async (tx) => {
       const targets = await tx.payroll.findMany({
-        where: { id: { in: ids } },
+        // Tenant guard: foreign ids never match, so the updateMany below (which
+        // flips payrollStatus) can only ever touch the caller's own rows.
+        where: { id: { in: ids }, ...payrollTenantWhere(req) },
         select: { id: true, payslipGenerated: true, paymentStatus: true },
       });
+      const scopedIds = targets.map(t => t.id);
 
       const r = await tx.payroll.updateMany({
-        where: { id: { in: ids } },
+        where: { id: { in: scopedIds } },
         // The record was Paid before it was locked, so 'paid' is the state it
         // returns to. payslipGenerated is cleared: any slip produced before the
         // unlock is stale the moment payroll can be recalculated.
@@ -1571,7 +1613,7 @@ exports.unlock = async (req, res) => {
         data: { payrollStatus: 'paid', lockedAt: null, payslipGenerated: false },
       });
 
-      await setSummaryLock(tx, ids, false);
+      await setSummaryLock(tx, scopedIds, false);
 
       return {
         result: r,
@@ -1612,6 +1654,12 @@ exports.emailSlip = async (req, res) => {
     const { pdfBase64, fileName, to } = req.body;
     const record = await prisma.payroll.findUnique({ where: { id: idParam(id) }, include: { employee: true, company: true } });
     if (!record) return res.status(404).json({ error: 'Payroll record not found.' });
+    // Tenant guard: a foreign payroll id answers 404 (never reveal existence) —
+    // otherwise any payroll:view user could read another tenant's employee
+    // name/email and trigger salary-slip emails for them.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, record.companyId)) {
+      return res.status(404).json({ error: 'Payroll record not found.' });
+    }
 
     const recipient = to || record.employee?.email;
     if (!recipient) return res.status(400).json({ error: 'Employee has no email address on file.' });
