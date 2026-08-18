@@ -27,6 +27,16 @@ const prisma = require('../src/config/prisma');
 
 const APPLY = process.argv.includes('--apply');
 const INCLUDE_LOCKED = process.argv.includes('--include-locked');
+// --exclude-company=22[,23…] leaves whole companies untouched. Needed on live:
+// a tenant that never records attendance can hold UNPRORATED-fingerprint rows
+// whose money is the documented full-month fallback (only workingDays = 0 is
+// wrong) — repairing them would fabricate an all-absent summary and slash the
+// drafts, so the operator excludes them and they self-heal on regeneration.
+const EXCLUDE_COMPANIES = process.argv
+  .filter((a) => a.startsWith('--exclude-company='))
+  .flatMap((a) => a.split('=')[1].split(','))
+  .map(Number)
+  .filter((n) => Number.isFinite(n));
 
 const round2 = (n) => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 const expectedNet = (r) =>
@@ -54,10 +64,15 @@ const isUnprorated = (r) =>
   for (const [k, n] of Object.entries(groups)) console.log(`  ${n.toString().padStart(4)} × ${k}`);
   if (!bad.length) { console.log('Nothing to repair.'); await prisma.$disconnect(); return; }
 
-  const locked = bad.filter((r) => r.payrollStatus === 'locked');
-  const targets = INCLUDE_LOCKED ? bad : bad.filter((r) => r.payrollStatus !== 'locked');
+  const inScope = EXCLUDE_COMPANIES.length
+    ? bad.filter((r) => !EXCLUDE_COMPANIES.includes(r.companyId))
+    : bad;
+  const excludedCount = bad.length - inScope.length;
+  const locked = inScope.filter((r) => r.payrollStatus === 'locked');
+  const targets = INCLUDE_LOCKED ? inScope : inScope.filter((r) => r.payrollStatus !== 'locked');
   if (!APPLY) {
     console.log(`\nDRY RUN — no changes. ${targets.length} row(s) would be repaired` +
+      (excludedCount ? ` (${excludedCount} row(s) in excluded companies [${EXCLUDE_COMPANIES.join(',')}] skipped)` : '') +
       (INCLUDE_LOCKED ? ' (including locked)' : ` (${locked.length} locked row(s) EXCLUDED — add --include-locked)`) +
       '. Run with --apply to repair.');
     await prisma.$disconnect();
