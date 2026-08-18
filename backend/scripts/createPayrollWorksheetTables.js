@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS payroll_worksheet (
   loanRecovery         DECIMAL(12,2) NOT NULL DEFAULT 0,
   insurance            DECIMAL(12,2) NOT NULL DEFAULT 0,
   otherDeductions      DECIMAL(12,2) NOT NULL DEFAULT 0,
+  -- Component-Builder era: full deduction line items as JSON (see
+  -- addWorksheetDeductionsJson.js; included here so fresh creates have it)
+  deductionsJson       TEXT NULL,
   -- Employer contributions (informational, drive CTC impact)
   employerPf           DECIMAL(12,2) NOT NULL DEFAULT 0,
   employerEsi          DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -83,15 +86,34 @@ CREATE TABLE IF NOT EXISTS payroll_worksheet_audit_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 `;
 
-(async () => {
+/**
+ * Idempotent ensure — usable both from this CLI and from the worksheet
+ * controller (which self-heals a database where this script never ran, so the
+ * worksheet can never dead-end on "Table payroll_worksheet doesn't exist").
+ */
+async function ensureWorksheetTables(client) {
+  await client.$executeRawUnsafe(WORKSHEET);
+  await client.$executeRawUnsafe(AUDIT);
+  // Older databases created before deductionsJson existed: add it in place.
   try {
-    await prisma.$executeRawUnsafe(WORKSHEET);
-    await prisma.$executeRawUnsafe(AUDIT);
-    console.log('✅ payroll_worksheet and payroll_worksheet_audit_logs are ready.');
+    await client.$executeRawUnsafe('ALTER TABLE payroll_worksheet ADD COLUMN deductionsJson TEXT NULL');
   } catch (e) {
-    console.error('FAILED:', e);
-    process.exitCode = 1;
-  } finally {
-    await prisma.$disconnect();
+    if (!/duplicate column/i.test(e?.message || '')) throw e;
   }
-})();
+}
+
+module.exports = { ensureWorksheetTables };
+
+if (require.main === module) {
+  (async () => {
+    try {
+      await ensureWorksheetTables(prisma);
+      console.log('✅ payroll_worksheet and payroll_worksheet_audit_logs are ready.');
+    } catch (e) {
+      console.error('FAILED:', e);
+      process.exitCode = 1;
+    } finally {
+      await prisma.$disconnect();
+    }
+  })();
+}

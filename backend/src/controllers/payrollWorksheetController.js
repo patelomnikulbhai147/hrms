@@ -17,6 +17,24 @@ const attendanceSvc = require('../services/attendanceSummaryService');
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+// The worksheet lives in raw (non-Prisma-schema) tables created by
+// scripts/createPayrollWorksheetTables.js. On a database where that script
+// never ran, every open used to 500 with "Table payroll_worksheet doesn't
+// exist" — so the Salary Worksheet appeared to open in some months (draft
+// placeholders, no API call) but not in others (real payroll rows). Self-heal:
+// ensure the tables once per process before the first raw query.
+let worksheetTablesReady = null;
+function ensureWorksheetTablesOnce() {
+  if (!worksheetTablesReady) {
+    const { ensureWorksheetTables } = require('../../scripts/createPayrollWorksheetTables');
+    worksheetTablesReady = ensureWorksheetTables(prisma).catch((e) => {
+      worksheetTablesReady = null; // retry on the next request
+      throw e;
+    });
+  }
+  return worksheetTablesReady;
+}
+
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0; };
 
 // Maximum allowed value for any single payroll component (₹10,00,00,000 = 10 crore).
@@ -263,6 +281,7 @@ function employeeBlock(payroll, employee) {
 // GET /api/payroll/:id/worksheet
 exports.get = async (req, res) => {
   try {
+    await ensureWorksheetTablesOnce();
     const ctx = await loadContext(req);
     if (ctx.error) return res.status(ctx.error.code).json({ error: ctx.error.msg });
     const { payroll, employee, company, summary, computed, hasAttendance } = ctx;
@@ -332,6 +351,7 @@ exports.get = async (req, res) => {
 // PUT /api/payroll/:id/worksheet
 exports.save = async (req, res) => {
   try {
+    await ensureWorksheetTablesOnce();
     const ctx = await loadContext(req);
     if (ctx.error) return res.status(ctx.error.code).json({ error: ctx.error.msg });
     const { payroll, company } = ctx;
@@ -465,6 +485,7 @@ exports.deductionComponents = async (req, res) => {
 // GET /api/payroll/:id/worksheet/audit
 exports.audit = async (req, res) => {
   try {
+    await ensureWorksheetTablesOnce();
     const ctx = await loadContext(req);
     if (ctx.error) return res.status(ctx.error.code).json({ error: ctx.error.msg });
     const logs = await prisma.$queryRawUnsafe('SELECT id, action, performedBy, performedById, createdAt FROM payroll_worksheet_audit_logs WHERE payrollId = ? ORDER BY id DESC LIMIT 100', ctx.payroll.id);
