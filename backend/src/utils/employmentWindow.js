@@ -46,11 +46,15 @@ function toDayString(value) {
  * Returns:
  *   monthStart / monthEnd  'YYYY-MM-DD' bounds of the payroll month
  *   lastDay                days in the payroll month
+ *   windowStart            'YYYY-MM-DD' — the first PAYABLE day (≥ monthStart)
  *   windowEnd              'YYYY-MM-DD' — the last PAYABLE day (≤ monthEnd)
+ *   startDay               day-of-month of windowStart (lastDay+1 = joins later)
  *   cutoffDay              day-of-month of windowEnd; 0 when already left
- *   exitDay                the employee's exit date, or null
- *   truncated              true when the exit date cuts this month short
- *   employed               false when the employee left BEFORE this month began
+ *   joinDay / exitDay      the employee's dates, or null
+ *   truncatedStart         true when the JOIN date cuts this month's start
+ *   truncated              true when the EXIT date cuts this month short
+ *   employed               false when the employment does not touch this month
+ *                          (left before it began, or joins only after it ends)
  */
 function employmentWindow(emp, month, year) {
   const mi = monthIndexOf(month);
@@ -59,6 +63,16 @@ function employmentWindow(emp, month, year) {
   const monthStart = `${y}-${pad(mi + 1)}-01`;
   const monthEnd = `${y}-${pad(mi + 1)}-${pad(lastDay)}`;
   const exitDay = toDayString(emp?.exitDate);
+  // ── Joining cut-off (symmetric to the exit cut-off) ───────────────────────
+  // Nothing dated BEFORE the join day may be paid: not a weekly off, not a
+  // holiday, not leave. A mid-month joiner used to receive paid weekly-off
+  // credit for Sundays before they were employed. The join day is INCLUSIVE.
+  const joinDay = toDayString(emp?.joinDate);
+  const truncatedStart = !!joinDay && joinDay > monthStart;
+  const windowStart = truncatedStart ? (joinDay <= monthEnd ? joinDay : monthEnd) : monthStart;
+  const startDay = !truncatedStart ? 1
+    : joinDay > monthEnd ? lastDay + 1 // joins only after this month → no payable days
+      : Number(joinDay.slice(8, 10));
 
   // No exit date, or an exit on/after the month's last day → the full month.
   const truncated = !!exitDay && exitDay < monthEnd;
@@ -69,7 +83,12 @@ function employmentWindow(emp, month, year) {
     : exitDay < monthStart ? 0
       : Number(exitDay.slice(8, 10));
 
-  return { monthStart, monthEnd, lastDay, windowEnd, cutoffDay, exitDay, truncated, employed: cutoffDay > 0 };
+  return {
+    monthStart, monthEnd, lastDay,
+    windowStart, windowEnd, startDay, cutoffDay,
+    joinDay, exitDay, truncatedStart, truncated,
+    employed: cutoffDay >= startDay && cutoffDay > 0,
+  };
 }
 
 /**
@@ -93,9 +112,13 @@ function isPayrollEligible(emp, month, year) {
  * Combine with AND — it contains its own OR.
  */
 function payrollEligibilityWhere(month, year) {
-  const { monthStart } = employmentWindow(null, month, year);
+  const { monthStart, monthEnd } = employmentWindow(null, month, year);
   const startedAt = new Date(`${monthStart}T00:00:00.000Z`);
+  const endedAt = new Date(`${monthEnd}T23:59:59.999Z`);
   return {
+    // Employment must have STARTED by the month's end — an employee joining in
+    // a later month has zero payable days here and must not enter the roster.
+    joinDate: { lte: endedAt },
     OR: [
       // On the active roster and no exit on file.
       { status: { notIn: OFFBOARDED_STATUSES }, exitDate: null },

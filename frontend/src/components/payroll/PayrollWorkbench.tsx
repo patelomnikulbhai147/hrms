@@ -143,6 +143,22 @@ export const PayrollWorkbench: React.FC<Props> = ({
       workingDays,
       present: Number((r as any).presentDays) || 0,
       payable: Number((r as any).payableDays) || 0,
+      // §Payable breakdown — every payable figure must be EXPLAINABLE. Built from
+      // the same stored per-category columns the engine mirrored from the
+      // attendance snapshot (present + paid leave + weekly off + holiday +
+      // half-days), shown on hover so "Present 0 / Payable 5" is never a mystery.
+      payableBreakdown: (() => {
+        const n = (v: any) => Number(v) || 0;
+        const parts: string[] = [
+          `Present: ${n((r as any).presentDays)}`,
+          `Paid Leave (CL/PL/SL): ${n((r as any).clDays) + n((r as any).plDays) + n((r as any).slDays)}`,
+          `Paid Weekly Off: ${n((r as any).weeklyOffDays)}`,
+          `Paid Holiday: ${n((r as any).holidayDays)}`,
+          `Half Days: ${n((r as any).halfDays)}${n((r as any).halfDays) ? ' (paid per policy fraction)' : ''}`,
+          `LOP / Unpaid: ${n((r as any).lwpDays)}`,
+        ];
+        return `PAYABLE DAYS: ${n((r as any).payableDays)} of ${n((r as any).workingDays)} working\n${parts.join('\n')}`;
+      })(),
       // Daily salary is a display derivation of stored values (monthly ÷ working),
       // matching the Attendance page — it does NOT re-derive payable/net salary.
       daily: workingDays > 0 ? monthly / workingDays : 0,
@@ -723,7 +739,11 @@ export const PayrollWorkbench: React.FC<Props> = ({
                     <td className="px-2 py-2 text-right text-slate-700">{pending ? '—' : inr(x.monthly)}</td>
                     <td className="px-2 py-2 text-center tabular-nums text-slate-700">{pending ? '—' : x.workingDays}</td>
                     <td className="px-2 py-2 text-center tabular-nums text-emerald-600 font-semibold">{pending ? '—' : x.present}</td>
-                    <td className="px-2 py-2 text-center tabular-nums font-bold text-slate-900">{pending ? '—' : x.payable}</td>
+                    <td className="px-2 py-2 text-center tabular-nums font-bold text-slate-900">
+                      {pending ? '—' : (
+                        <span title={x.payableBreakdown} className="cursor-help underline decoration-dotted decoration-slate-300 underline-offset-2">{x.payable}</span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-right text-slate-600">{pending ? '—' : inr(x.daily)}</td>
                     <td className="px-2 py-2 text-right text-slate-700">{pending ? '—' : inr(x.gross)}</td>
                     <td className="px-2 py-2 text-right text-brand-600">{pending ? '—' : (x.overtime ? inr(x.overtime) : '—')}</td>

@@ -46,23 +46,25 @@ async function compute(employeeId, month, year) {
 
   const emp = await prisma.employee.findUnique({
     where: { id: eid },
-    // exitDate/status drive the offboarding cut-off below.
-    select: { companyId: true, branchId: true, exitDate: true, status: true },
+    // joinDate/exitDate/status drive the employment cut-offs below.
+    select: { companyId: true, branchId: true, joinDate: true, exitDate: true, status: true },
   });
 
-  // ── Offboarding cut-off ────────────────────────────────────────────────────
-  // The payable window ends at MIN(last day of month, exit date). Attendance is
-  // still READ for the whole month, because the proration DENOMINATOR is the
-  // standard month — but nothing dated after `windowEnd` may be paid for.
+  // ── Employment cut-offs ────────────────────────────────────────────────────
+  // The payable window runs MAX(1st of month, join date) … MIN(last day of
+  // month, exit date). Attendance is still READ for the whole month, because
+  // the proration DENOMINATOR is the standard month — but nothing dated before
+  // `windowStart` or after `windowEnd` may be paid for (a mid-month joiner
+  // used to receive paid weekly-off credit for pre-employment Sundays).
   const win = employmentWindow(emp, month, year);
-  const { windowEnd, cutoffDay, truncated } = win;
-  const inWindow = (date) => String(date) <= windowEnd;
+  const { windowStart, windowEnd, startDay, cutoffDay, truncated, truncatedStart } = win;
+  const inWindow = (date) => String(date) >= windowStart && String(date) <= windowEnd;
 
   const [attendance, leaves, overtime] = await Promise.all([
     prisma.attendance.findMany({ where: { employeeId: eid, date: { gte: monthStart, lte: monthEnd } } }),
     prisma.leaveRequest.findMany({ where: { employeeId: eid, status: 'Approved' } }),
-    // Overtime after the exit date is not payable, so it is never even loaded.
-    prisma.overtime.findMany({ where: { employeeId: eid, status: 'Approved', date: { gte: monthStart, lte: windowEnd } } }),
+    // Overtime outside the employment window is not payable, so never loaded.
+    prisma.overtime.findMany({ where: { employeeId: eid, status: 'Approved', date: { gte: windowStart, lte: windowEnd } } }),
   ]);
 
   // `c` = days INSIDE the employment window (what the employee is paid for).
@@ -70,25 +72,51 @@ async function compute(employeeId, month, year) {
   // proration denominator, which must stay a standard month.
   const c = { present: 0, absent: 0, half: 0, wfh: 0, holiday: 0, weeklyOff: 0 };
   const full = { holiday: 0, weeklyOff: 0 };
+  // Days that already carry a NON-leave attendance record. A day the employee
+  // demonstrably attended (or was marked absent/holiday/off) must never ALSO
+  // earn leave credit — one calendar day counts exactly once.
+  const recordedNonLeaveDates = new Set();
   for (const a of attendance) {
     const b = bucketOf(a.status);
     if (b === 'leave') continue; // leave days come from LeaveRequests below
+    recordedNonLeaveDates.add(a.date);
     if (b === 'holiday' || b === 'weeklyOff') full[b] += 1;
-    if (!inWindow(a.date)) continue;              // after the exit date → ignored
+    if (!inWindow(a.date)) continue;              // outside the employment window → ignored
     c[b] = (c[b] || 0) + 1;
   }
 
-  // Leave days per category, clamped to the month window.
+  // Leave days per category, clamped to the EMPLOYMENT window (leave granted
+  // before the join date or past the exit date is not leave the company owes
+  // anyone), and EXCLUDING days that already have a non-leave attendance row —
+  // a day marked Present cannot simultaneously be a paid leave day.
   const leaveDays = { CL: 0, PL: 0, SL: 0, LWP: 0, OTHER: 0 };
+  const eachDate = (from, to, fn) => {
+    for (let t = new Date(`${from}T00:00:00.000Z`); ; t.setUTCDate(t.getUTCDate() + 1)) {
+      const date = t.toISOString().slice(0, 10);
+      if (date > to) break;
+      fn(date);
+    }
+  };
   for (const l of leaves) {
-    const from = l.fromDate > monthStart ? l.fromDate : monthStart;
-    // Clamped to the EMPLOYMENT window, not the month: leave granted past the
-    // exit date is not leave the company owes anyone.
+    const from = l.fromDate > windowStart ? l.fromDate : windowStart;
     const to = l.toDate < windowEnd ? l.toDate : windowEnd;
-    if (from > to) continue; // no overlap with this month
-    const overlap = Math.max(0, (new Date(to) - new Date(from)) / 86400000 + 1);
+    if (from > to) continue; // no overlap with this month/window
+    // Days of this leave that actually need leave credit here: inside the
+    // employment window and NOT already carrying a non-leave attendance row.
+    let overlap = 0;
+    eachDate(from, to, (date) => { if (!recordedNonLeaveDates.has(date)) overlap += 1; });
+    if (overlap <= 0) continue;
+    // paidDays/lwpDays were granted for the leave's uncovered days (the leave
+    // engine already excludes rest days it does not owe), so the apportioning
+    // base is the span MINUS days this month shows as separately recorded —
+    // otherwise a Weekly-Off row inside the span would shrink the credit twice.
     const span = Math.max(1, (new Date(l.toDate) - new Date(l.fromDate)) / 86400000 + 1);
-    const frac = Math.min(1, overlap / span);
+    let recordedInSpan = 0;
+    const mFrom = l.fromDate > monthStart ? l.fromDate : monthStart;
+    const mTo = l.toDate < monthEnd ? l.toDate : monthEnd;
+    if (mFrom <= mTo) eachDate(mFrom, mTo, (date) => { if (recordedNonLeaveDates.has(date)) recordedInSpan += 1; });
+    const effectiveSpan = Math.max(1, span - recordedInSpan);
+    const frac = Math.min(1, overlap / effectiveSpan);
     const cat = categoryOf(l.leaveType);
     const paid = (l.paidDays || 0) * frac;
     const lwp = (l.lwpDays || 0) * frac;
@@ -109,9 +137,10 @@ async function compute(employeeId, month, year) {
   for (let day = 1; day <= lastDay; day++) {
     const date = `${year}-${pad(mi + 1)}-${pad(day)}`;
     const isSunday = new Date(date).getDay() === 0;
-    // The denominator counts the whole month's rest days regardless of the exit.
+    // The denominator counts the whole month's rest days regardless of the
+    // join/exit dates — the proration base stays the standard month.
     if (!attDates.has(date) && isSunday && !leaves.some(l => date >= l.fromDate && date <= l.toDate)) full.weeklyOff += 1;
-    if (day > cutoffDay) continue;                                     // after the exit date → ignored
+    if (day < startDay || day > cutoffDay) continue;                   // outside the employment window → ignored
     if (attDates.has(date)) continue;                                  // already counted from a row
     if (leaves.some(l => date >= l.fromDate && date <= l.toDate)) continue; // counted as leave below
     if (isSunday) c.weeklyOff += 1;                                    // Sunday → Weekly Off (matches Sync)
@@ -142,16 +171,16 @@ async function compute(employeeId, month, year) {
   const dayType = new Array(cutoffDay + 1).fill(null);
   for (const a of attendance) {
     const d = Number(String(a.date).slice(8, 10));
-    if (d >= 1 && d <= cutoffDay) { const b = bucketOf(a.status); if (b !== 'leave') dayType[d] = b; }
+    if (d >= startDay && d <= cutoffDay) { const b = bucketOf(a.status); if (b !== 'leave') dayType[d] = b; }
   }
   for (const l of leaves) {
     const isLwp = categoryOf(l.leaveType) === 'LWP';
-    for (let d = 1; d <= cutoffDay; d++) {
+    for (let d = startDay; d <= cutoffDay; d++) {
       const date = `${year}-${pad(mi + 1)}-${pad(d)}`;
       if (dayType[d] == null && date >= l.fromDate && date <= l.toDate) dayType[d] = isLwp ? 'lwp' : 'leave';
     }
   }
-  for (let d = 1; d <= cutoffDay; d++) {
+  for (let d = startDay; d <= cutoffDay; d++) {
     if (dayType[d] == null) {
       const date = `${year}-${pad(mi + 1)}-${pad(d)}`;
       dayType[d] = new Date(date).getDay() === 0 ? 'weeklyOff' : 'absent';
@@ -160,11 +189,11 @@ async function compute(employeeId, month, year) {
   const isRest = (t) => t === 'weeklyOff' || t === 'holiday';
   const isUnpaidGap = (t) => t === 'absent' || t === 'lwp';
   let sandwichWeeklyOff = 0, sandwichHoliday = 0;
-  for (let d = 1; d <= cutoffDay; d++) {
+  for (let d = startDay; d <= cutoffDay; d++) {
     if (!isRest(dayType[d])) continue;
-    let l = d - 1; while (l >= 1 && isRest(dayType[l])) l--;
+    let l = d - 1; while (l >= startDay && isRest(dayType[l])) l--;
     let r = d + 1; while (r <= cutoffDay && isRest(dayType[r])) r++;
-    if (l >= 1 && isUnpaidGap(dayType[l]) && r <= cutoffDay && isUnpaidGap(dayType[r])) {
+    if (l >= startDay && isUnpaidGap(dayType[l]) && r <= cutoffDay && isUnpaidGap(dayType[r])) {
       if (dayType[d] === 'weeklyOff') sandwichWeeklyOff++; else sandwichHoliday++;
     }
   }
@@ -193,7 +222,8 @@ async function compute(employeeId, month, year) {
   // and paid 15/27 (₹16,667) for what is 13/27 of the month (₹14,444).
   // The 'calendar' and 'fixed30' bases DO include rest days, so they keep theirs.
   const restIncludedBasis = policy.lopBasis === 'calendar' || policy.lopBasis === 'fixed30';
-  const payableCounts = (truncated && !restIncludedBasis)
+  const partialMonth = truncated || truncatedStart; // join or exit inside the month
+  const payableCounts = (partialMonth && !restIncludedBasis)
     ? { ...counts, weeklyOff: 0, holiday: 0, sandwichPaidDays: 0 }
     : counts;
   const money = policyService.computeMoneyDays(policy, payableCounts, lastDay, denomCounts);
@@ -202,10 +232,10 @@ async function compute(employeeId, month, year) {
   // Recorded-vs-expected coverage → Complete / Partial / Missing. Rows after the
   // exit date are not part of this employment, so they neither count as coverage
   // nor is the employee expected to cover the days they were no longer employed.
-  const windowRows = truncated ? attendance.filter((a) => inWindow(a.date)) : attendance;
+  const windowRows = partialMonth ? attendance.filter((a) => inWindow(a.date)) : attendance;
   const recordedDays = windowRows.length;
-  const expectedDays = truncated
-    ? round(Math.max(0, cutoffDay - c.weeklyOff - c.holiday))
+  const expectedDays = partialMonth
+    ? round(Math.max(0, cutoffDay - startDay + 1 - c.weeklyOff - c.holiday))
     : workingDays;
   const attendanceStatus = recordedDays === 0 ? 'Missing' : recordedDays >= expectedDays ? 'Complete' : 'Partial';
   // Where the punches came from — most common non-empty source on the raw rows.

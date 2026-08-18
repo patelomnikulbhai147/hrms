@@ -292,12 +292,12 @@ async function recalcOne(payroll, summary, emp, company) {
     : Math.max(0, dim - weeklyOff - holiday) || dim;
   // No summary at all → treat as fully payable (ratio 1) so a manually created
   // row without attendance is not silently zeroed; the sync gate blocks actions.
-  // EXCEPT when an exit date truncates the month: "assume a full month" would pay
-  // a leaver for days they were not employed, so the fallback is capped at the
-  // days they actually worked. A real summary always wins over this estimate.
+  // EXCEPT when a join or exit date truncates the month: "assume a full month"
+  // would pay for days the person was not employed, so the fallback is capped
+  // at the employment window. A real summary always wins over this estimate.
   const win = employmentWindow(emp, payroll.month, payroll.year);
-  const fallbackPayable = win.truncated
-    ? Math.max(0, Math.min(workingDays, win.cutoffDay - (summary?.weeklyOffDays || 0)))
+  const fallbackPayable = (win.truncated || win.truncatedStart)
+    ? Math.max(0, Math.min(workingDays, win.cutoffDay - win.startDay + 1 - (summary?.weeklyOffDays || 0)))
     : workingDays;
   const payableDays = summary ? (summary.payableDays || 0) : fallbackPayable;
 
