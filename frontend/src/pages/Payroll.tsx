@@ -144,15 +144,32 @@ export const Payroll: React.FC<PayrollProps> = ({
   // working on — never silently replaced by the current month), then 2) the
   // period this page persisted in-session (so refresh stays put), then 3) the
   // current month, so freshly pushed/generated payroll is visible immediately.
-  const [monthFilter, setMonthFilter] = useState(
-    () => readHandoffPeriod()?.month || MONTH_LIST[new Date().getMonth()]
-  );
+  // A FUTURE period is never accepted (mirrors Attendance Synchronization).
+  const initialPayrollPeriod = () => {
+    const now = new Date();
+    const cur = { month: MONTH_LIST[now.getMonth()], year: now.getFullYear() };
+    const p = readHandoffPeriod();
+    if (!p) return cur;
+    if (p.year > cur.year || (p.year === cur.year && MONTH_LIST.indexOf(p.month) > now.getMonth())) return cur;
+    return p;
+  };
+  const [monthFilter, setMonthFilter] = useState(() => initialPayrollPeriod().month);
   // A payroll cycle is month + YEAR. Scoping by month name alone made the same
   // month across two years collapse into one view (e.g. July 2025 + July 2026),
   // which double-counted the employee roster (64 → 113) once multi-year payroll
   // existed. Every roster/record scope below is anchored to this year so a cycle
   // is unambiguous. Defaults to the current year (the module already targets it).
-  const [yearFilter] = useState(() => readHandoffPeriod()?.year ?? new Date().getFullYear());
+  const [yearFilter, setYearFilter] = useState(() => initialPayrollPeriod().year);
+  // Switching to the CURRENT year while a now-future month is selected clamps
+  // the month back to the current one — a future payroll period can never be
+  // selected (future months stay visible but disabled, like Attendance Sync).
+  const handleYearChange = (y: number) => {
+    setYearFilter(y);
+    const now = new Date();
+    if (y >= now.getFullYear() && MONTH_LIST.indexOf(monthFilter) > now.getMonth()) {
+      setMonthFilter(MONTH_LIST[now.getMonth()]);
+    }
+  };
   // Keep the handoff key current so a refresh (or a return to this page) stays
   // on the period being worked on instead of snapping back to the current month.
   useEffect(() => {
@@ -1444,10 +1461,28 @@ export const Payroll: React.FC<PayrollProps> = ({
             <p className="text-sm text-slate-500 mt-1">Secure payroll workflow for <strong>{currentCompany.name}</strong> with verification, payment confirmation, and payslip distribution.</p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
+            {/* Future months are DISABLED (not hidden) — a future payroll
+                period can never be opened. Only applies within the current
+                year; past years offer all 12 months. */}
             <Select
               value={monthFilter}
               onChange={e => setMonthFilter(e.target.value)}
-              options={MONTH_LIST.map(m => ({ value: m, label: `${m} ${yearFilter}` }))}
+              options={MONTH_LIST.map((m, i) => ({
+                value: m,
+                label: m,
+                disabled: yearFilter >= new Date().getFullYear() && i > new Date().getMonth(),
+              }))}
+            />
+            {/* Anchored to the CURRENT year — no future years are offered.
+                An older handed-off year stays selectable so its view keeps
+                working. */}
+            <Select
+              value={String(yearFilter)}
+              onChange={e => handleYearChange(Number(e.target.value))}
+              options={[...new Set([new Date().getFullYear() - 2, new Date().getFullYear() - 1, new Date().getFullYear(), yearFilter])]
+                .filter(y => y <= new Date().getFullYear())
+                .sort((a, b) => a - b)
+                .map(y => ({ value: String(y), label: String(y) }))}
             />
             {canEdit && (
               <Button variant="outline" icon={<Gift size={14} />} onClick={() => setShowBonusModal(true)}>
