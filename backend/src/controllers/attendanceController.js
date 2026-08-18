@@ -834,11 +834,16 @@ exports.pushToPayroll = async (req, res) => {
       if (!inScope(e)) return res.status(403).json({ error: 'One or more employees are outside your workspace scope.' });
     }
 
-    const batchCompanyId = companyId !== undefined ? companyId : (employees[0]?.companyId || 1);
+    // The wallet/duplicate checks key on the employees' REAL company — the
+    // client-named workspace id is routinely a BRANCH id (Company.id and
+    // Branch.id share one sequence), and payroll rows are written per
+    // e.companyId, so a branch id here missed existing rows AND broke the
+    // wallet lookup ("Company 3 not found").
+    const batchCompanyId = employees[0]?.companyId || 1;
 
-    // ── STEP: prevent duplicate payroll for company + month + year ──────────
+    // ── STEP: prevent duplicate payroll for the pushed employees ────────────
     const existing = await prisma.payroll.findMany({
-      where: { month, year, companyId: batchCompanyId },
+      where: { month, year, employeeId: { in: empIds } },
       select: { id: true },
     });
     if (existing.length > 0 && !replace) {
@@ -851,9 +856,11 @@ exports.pushToPayroll = async (req, res) => {
 
     // ── STEP: wallet gate (validate + charge, FAIL-CLOSED) ──────────────────
     // Push-to-Payroll IS payroll generation, so it passes the same mandatory
-    // wallet gate as /payroll/generate — atomic per-period charge, no rows
-    // written on insufficient balance, and a broken wallet check blocks rather
-    // than bypasses.
+    // wallet gate as /payroll/generate. Delta billing: only pushed employees
+    // NEVER billed for this period are charged — re-pushes, replaces and
+    // recalcs of already-billed employees are ₹0 and always allowed, even on a
+    // ₹0 wallet. A broken wallet check still blocks rather than bypasses.
+    let walletBilling = { charged: false, billedEmployees: 0, amount: 0 };
     {
       const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
       try {
@@ -861,15 +868,23 @@ exports.pushToPayroll = async (req, res) => {
           companyId: batchCompanyId,
           month,
           year,
+          employeeIds: empIds,
           createdBy: req.user?.name || 'System',
         });
+        walletBilling = {
+          charged: !!charge.charged,
+          billedEmployees: charge.billedEmployees || 0,
+          amount: charge.amount || 0,
+          newEmployees: charge.assessment?.newEmployees ?? 0,
+          alreadyBilled: charge.assessment?.alreadyBilled ?? 0,
+        };
         if (charge.charged) {
           await prisma.auditLog.create({
             data: {
               action: 'WALLET_DEDUCTION',
               module: 'Wallet',
               targetId: charge.assessment.reference,
-              details: `Deducted ₹${charge.assessment.requiredNow} for Payroll Generation via Attendance Push (${month} ${year}).`,
+              details: `Deducted ₹${charge.amount} for ${charge.billedEmployees} new employee(s) — Payroll Generation via Attendance Push (${month} ${year}).`,
               userId: req.user?.id || 1,
             },
           }).catch((e) => console.error('[pushToPayroll] wallet audit log failed:', e.message));
@@ -882,7 +897,8 @@ exports.pushToPayroll = async (req, res) => {
         return res.status(503).json({
           success: false,
           code: 'WALLET_CHECK_FAILED',
-          error: 'Payroll wallet could not be verified. Push to payroll is blocked — please try again.',
+          error: 'Wallet verification service is temporarily unavailable. Push to payroll was blocked — no changes were made.',
+          detail: walletErr.message,
         });
       }
     }
@@ -1004,6 +1020,8 @@ exports.pushToPayroll = async (req, res) => {
       // Post-engine figures — what payroll actually holds now.
       computed, netTotal, overtimeTotal, otHoursTotal,
       failed: engineFailures.length, engineFailures,
+      // What the wallet gate actually did — ₹0 for re-pushes of billed employees.
+      billing: walletBilling,
       generatedBy, generatedAt: now.toISOString(),
     });
   } catch (error) {

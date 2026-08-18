@@ -83,6 +83,7 @@ class WalletController {
         const a = await assessPayrollWallet(companyId, String(month), Number(year));
         return res.json({
           success: true,
+          verified: true,
           data: {
             ...estimate,
             gate: {
@@ -91,6 +92,17 @@ class WalletController {
               requiredNow: a.requiredNow,
               shortfall: a.shortfall,
               alreadyCharged: a.alreadyCharged,
+              // Delta billing: only NEW (never-billed) employees are charged.
+              totalEmployees: a.totalEmployees,
+              alreadyBilled: a.alreadyBilled,
+              newEmployees: a.newEmployees,
+              billableEmployees: a.newEmployees,
+              chargeAmount: a.requiredNow,
+              costPerEmployee: a.costPerEmployee,
+              walletRequired: a.walletRequired,
+              message: a.walletRequired
+                ? `${a.newEmployees} new employee(s) to bill for ${month} ${year} — ₹${a.requiredNow} will be deducted.`
+                : 'No new employees detected. No wallet deduction required.',
             },
           },
         });

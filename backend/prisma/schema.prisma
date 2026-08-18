@@ -3523,6 +3523,27 @@ model PricingMaster {
   updatedAt      DateTime @updatedAt
 }
 
+// Per-employee payroll platform-fee ledger. One row = this employee's platform
+// fee for this period has been collected (or grandfathered) — the wallet gate
+// charges ONLY employees with no row here and no existing payroll row for the
+// period, so re-syncs/recalcs/replaces are always ₹0. The unique key is the
+// idempotency guard: two concurrent charges can never bill one employee twice.
+model PayrollEmployeeBilling {
+  id         Int      @id @default(autoincrement())
+  companyId  Int // wallet (parent) company id — branch workspaces resolve up
+  employeeId Int
+  month      String
+  year       Int
+  amount     Float    @default(0)
+  reference  String?
+  createdBy  String?
+  createdAt  DateTime @default(now())
+
+  @@unique([companyId, employeeId, month, year])
+  @@index([companyId, month, year])
+  @@map("payroll_employee_billing")
+}
+
 model TemplateVersion {
   id              Int      @id @default(autoincrement())
   templateId      Int

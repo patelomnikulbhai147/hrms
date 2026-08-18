@@ -404,7 +404,7 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
 
     const already = allRows.filter(r => r.payrollStatus !== 'not_generated' && r.payrollStatus !== 'locked').length;
     if (already > 0)
-      warnings.push(`Payroll already exists for ${already} employee(s) this month — re-pushing recomputes their attendance snapshot (no duplicate records are created).`);
+      warnings.push(`Payroll already exists for ${already} employee(s) this month — re-pushing recomputes their attendance snapshot (no duplicate records are created and already-billed employees are NOT charged again).`);
 
     const incomplete = allRows.filter(r => r.attendanceStatus !== 'Ready').length;
     if (incomplete > 0)
@@ -438,6 +438,14 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
         month: monthName, year, rows: buildPushRows(), replace,
       });
       setDone(res);
+      // Say what the wallet actually did — re-pushes of already-billed
+      // employees are always ₹0, only genuinely NEW employees are charged.
+      const billing = (res as any)?.billing;
+      if (billing?.charged) {
+        ui.toast.success(`₹${Number(billing.amount || 0).toLocaleString('en-IN')} deducted for ${billing.billedEmployees} new employee(s). Existing employees were not billed again.`);
+      } else if (billing) {
+        ui.toast.info('No new employees detected — no wallet deduction was made.');
+      }
       onRefresh?.();
       // When opened from the Payroll Workflow's "Push to Payroll" button, return
       // there automatically so the payroll counts/list/summary/progress refresh.
@@ -447,18 +455,32 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
         onNavigate('payroll');
       }
     } catch (e: any) {
-      // Wallet gate refused BEFORE any payroll row was written.
+      // Wallet gate refused BEFORE any payroll row was written — only NEW
+      // (never-billed) employees need balance; existing ones are never re-billed.
       if (e?.data?.code === 'INSUFFICIENT_WALLET_BALANCE') {
         const inr = (v: any) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+        const n = Number(e.data.newEmployees || 0);
         await ui.alert({
           title: 'Insufficient Payroll Wallet Balance',
           variant: 'danger',
           message:
             `Push to payroll was blocked — no payroll records were created.\n\n` +
+            (n ? `Newly added employee(s) to bill: ${n}\n` : '') +
             `Available balance: ${inr(e.data.walletBalance)}\n` +
-            `Required for this payroll: ${inr(e.data.requiredAmount)}\n` +
+            `Required (new employees only): ${inr(e.data.requiredAmount)}\n` +
             `Shortfall: ${inr(e.data.shortfall)}\n\n` +
-            `Recharge the Payroll Wallet (Dashboard → Payroll Wallet) and try again.`,
+            `Existing employees are NOT billed again. Recharge the Payroll Wallet (Dashboard → Payroll Wallet) and try again.`,
+        });
+      // Wallet service genuinely unavailable — a technical fault, NOT an
+      // insufficient balance. Surface the real reason instead of a generic line.
+      } else if (e?.data?.code === 'WALLET_CHECK_FAILED') {
+        await ui.alert({
+          title: 'Wallet Verification Unavailable',
+          variant: 'danger',
+          message:
+            `${e?.data?.error || 'Wallet verification service is temporarily unavailable.'}` +
+            (e?.data?.detail ? `\n\nDetails: ${e.data.detail}` : '') +
+            `\n\nNo payroll records were changed. Please try again; if this persists, contact support.`,
         });
       // Duplicate payroll for the period → offer to replace the existing batch.
       } else if (e?.status === 409 || e?.data?.error === 'PAYROLL_EXISTS') {
@@ -489,11 +511,25 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
       });
       return;
     }
+    // Pre-flight wallet check: say EXACTLY what (if anything) will be billed —
+    // only never-billed NEW employees are charged; re-pushes are ₹0. Display
+    // only: the backend gate is the authority and re-validates on push.
+    let billingLine = '';
+    try {
+      const est: any = await api.wallet.getEstimate({ month: monthName, year });
+      const gate = est?.data?.gate;
+      if (gate) {
+        billingLine = gate.walletRequired
+          ? `Wallet billing: ${gate.newEmployees} NEW employee(s) to bill — ₹${Number(gate.chargeAmount || 0).toLocaleString('en-IN')} will be deducted (${gate.alreadyBilled} already-billed employee(s) are free).\n\n`
+          : `Wallet billing: no new employees to bill — ₹0 will be deducted.\n\n`;
+      }
+    } catch { /* preview only — the backend still enforces the gate */ }
     const proceed = await ui.confirm({
       title: 'Push to Payroll Engine',
       message:
         `Generate payroll for ${totals.employees} employee(s) for ${monthLabel} using the reviewed attendance calculation?\n\n`
         + (warnings.length ? '⚠ ' + warnings.join('\n⚠ ') + '\n\n' : '')
+        + billingLine
         + `Estimated Payroll: ${inr(totals.payableSalary)}. The exact payable days and estimated salary shown here are transferred to Payroll as-is — Payroll does NOT recalculate.`,
       variant: warnings.length ? 'warning' : 'info',
       confirmText: 'Push to Payroll Engine',

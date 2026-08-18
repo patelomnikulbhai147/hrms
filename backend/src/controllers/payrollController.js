@@ -806,10 +806,12 @@ exports.generate = async (req, res) => {
 
     // ── Wallet Gate (validate + charge, FAIL-CLOSED) ──────────────────────────
     // The wallet is validated and charged BEFORE any payroll row is written, so
-    // an insufficient balance can never leave generated records behind. The
-    // charge is atomic (conditional decrement, re-validated at commit) and
-    // idempotent per period — regeneration never double-charges. A wallet-check
-    // failure BLOCKS generation: the gate is mandatory, not advisory.
+    // an insufficient balance can never leave generated records behind. Delta
+    // billing: only employees in THIS generation scope never billed for the
+    // period are charged (atomic, idempotent per employee+period) — regenerating
+    // already-billed employees is ₹0 and passes even on a ₹0 wallet. A
+    // wallet-check failure BLOCKS generation: the gate is mandatory, not
+    // advisory.
     if (periodCompanyId) {
       const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
       try {
@@ -817,6 +819,7 @@ exports.generate = async (req, res) => {
           companyId: periodCompanyId,
           month,
           year,
+          employeeIds: employees.map((e) => e.id),
           createdBy: req.user?.name || 'System',
         });
         if (charge.charged) {
@@ -825,7 +828,7 @@ exports.generate = async (req, res) => {
               action: 'WALLET_DEDUCTION',
               module: 'Wallet',
               targetId: charge.assessment.reference,
-              details: `Deducted ₹${charge.assessment.requiredNow} for Payroll Generation (${month} ${year}).`,
+              details: `Deducted ₹${charge.amount} for ${charge.billedEmployees} new employee(s) — Payroll Generation (${month} ${year}).`,
               userId: req.user?.id || 1,
             },
           }).catch((e) => console.error('[payroll.generate] wallet audit log failed:', e.message));
@@ -838,7 +841,8 @@ exports.generate = async (req, res) => {
         return res.status(503).json({
           success: false,
           code: 'WALLET_CHECK_FAILED',
-          error: 'Payroll wallet could not be verified. Payroll generation is blocked — please try again.',
+          error: 'Wallet verification service is temporarily unavailable. Payroll generation was blocked — no records were created.',
+          detail: walletErr.message,
         });
       }
     }
@@ -1153,12 +1157,19 @@ exports.create = async (req, res) => {
     }
 
     // Wallet gate — creating a payroll row IS generation, so the single-record
-    // path passes the same mandatory per-period charge as bulk generate (an
-    // already-charged period passes through without a second charge).
+    // path passes the same mandatory gate as bulk generate. Delta billing:
+    // ONLY this employee is assessed — already billed for the period (or an
+    // existing payroll row) means ₹0 and the create passes.
     {
       const { chargePayrollWallet, insufficientPayload } = require('../services/payrollWalletGuard');
       try {
-        await chargePayrollWallet({ companyId, month, year, createdBy: req.user?.name || 'System' });
+        await chargePayrollWallet({
+          companyId,
+          month,
+          year,
+          employeeIds: [Number(employeeId)],
+          createdBy: req.user?.name || 'System',
+        });
       } catch (walletErr) {
         if (walletErr.code === 'INSUFFICIENT_WALLET_BALANCE') {
           return res.status(402).json(insufficientPayload(walletErr.assessment));
@@ -1167,7 +1178,8 @@ exports.create = async (req, res) => {
         return res.status(503).json({
           success: false,
           code: 'WALLET_CHECK_FAILED',
-          error: 'Payroll wallet could not be verified. Payroll creation is blocked — please try again.',
+          error: 'Wallet verification service is temporarily unavailable. Payroll creation was blocked — no record was created.',
+          detail: walletErr.message,
         });
       }
     }

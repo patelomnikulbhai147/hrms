@@ -188,6 +188,7 @@ export const Payroll: React.FC<PayrollProps> = ({
   // this mirror is display-only and never the authority.
   const [walletGate, setWalletGate] = useState<{
     ok: boolean; walletBalance: number; requiredNow: number; shortfall: number; alreadyCharged: boolean;
+    totalEmployees?: number; alreadyBilled?: number; newEmployees?: number; costPerEmployee?: number; walletRequired?: boolean;
   } | null>(null);
   const refreshWalletGate = async () => {
     try {
@@ -1151,18 +1152,28 @@ export const Payroll: React.FC<PayrollProps> = ({
         // button disables, and explain the numbers.
         refreshWalletGate();
         const inr = (v: any) => `₹${Number(v || 0).toLocaleString('en-IN')}`;
+        const n = Number(body.newEmployees || 0);
         await ui.alert({
           title: 'Insufficient Payroll Wallet Balance',
           variant: 'error',
           message:
             `Payroll generation was blocked — no records were created.\n\n` +
+            (n ? `Newly added employee(s) to bill: ${n}\n` : '') +
             `Available balance: ${inr(body.walletBalance)}\n` +
-            `Required for this payroll: ${inr(body.requiredAmount)}\n` +
+            `Required (new employees only): ${inr(body.requiredAmount)}\n` +
             `Shortfall: ${inr(body.shortfall)}\n\n` +
-            `Recharge the Payroll Wallet and try again.`,
+            `Existing employees are NOT billed again. Recharge the Payroll Wallet and try again.`,
         });
       } else if (body?.code === 'WALLET_CHECK_FAILED') {
-        ui.toast.error('Payroll wallet could not be verified — generation is blocked. Please try again.');
+        // Technical fault in the wallet service — NOT an insufficient balance.
+        await ui.alert({
+          title: 'Wallet Verification Unavailable',
+          variant: 'error',
+          message:
+            `${body?.error || 'Wallet verification service is temporarily unavailable.'}` +
+            (body?.detail ? `\n\nDetails: ${body.detail}` : '') +
+            `\n\nNo payroll records were changed. Please try again; if this persists, contact support.`,
+        });
       } else {
         ui.toast.error(err.message || 'Error generating payroll');
       }
@@ -1814,10 +1825,10 @@ export const Payroll: React.FC<PayrollProps> = ({
                 </p>
                 {walletGate && !walletGate.ok && (
                   <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-800">
-                    <p className="font-bold mb-1.5">Insufficient Payroll Wallet balance — generation is blocked.</p>
+                    <p className="font-bold mb-1.5">Insufficient Payroll Wallet balance for {walletGate.newEmployees || 'the new'} newly added employee(s) — generation is blocked. Existing employees are not billed again.</p>
                     <div className="grid grid-cols-3 gap-2 mb-2">
                       <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Available</span><span className="font-bold">₹{Number(walletGate.walletBalance || 0).toLocaleString('en-IN')}</span></div>
-                      <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Required</span><span className="font-bold">₹{Number(walletGate.requiredNow || 0).toLocaleString('en-IN')}</span></div>
+                      <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Required (new only)</span><span className="font-bold">₹{Number(walletGate.requiredNow || 0).toLocaleString('en-IN')}</span></div>
                       <div><span className="block text-[11px] uppercase tracking-wide text-rose-500 font-semibold">Shortfall</span><span className="font-bold">₹{Number(walletGate.shortfall || 0).toLocaleString('en-IN')}</span></div>
                     </div>
                     {onNavigate && (
@@ -1827,12 +1838,12 @@ export const Payroll: React.FC<PayrollProps> = ({
                 )}
                 {walletGate && walletGate.ok && walletGate.requiredNow > 0 && (
                   <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-[12px] text-sky-800">
-                    Payroll Wallet: <strong>₹{Number(walletGate.walletBalance || 0).toLocaleString('en-IN')}</strong> available — this run charges <strong>₹{Number(walletGate.requiredNow).toLocaleString('en-IN')}</strong> (platform fee, once per period).
+                    Payroll Wallet: <strong>₹{Number(walletGate.walletBalance || 0).toLocaleString('en-IN')}</strong> available — this run charges <strong>₹{Number(walletGate.requiredNow).toLocaleString('en-IN')}</strong> for <strong>{walletGate.newEmployees ?? ''} new employee(s)</strong> (platform fee, once per employee per period; already-billed employees are free).
                   </div>
                 )}
                 {walletGate && walletGate.ok && walletGate.alreadyCharged && (
                   <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-800">
-                    Payroll Wallet: the fee for {monthFilter} {yearFilter} is already charged — regenerating this period is free.
+                    Payroll Wallet: no new employees to bill for {monthFilter} {yearFilter} — regenerating this period is free (₹0, no deduction).
                   </div>
                 )}
                 {scopedRecords.length > 0 && (
