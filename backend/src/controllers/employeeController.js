@@ -333,7 +333,7 @@ exports.createEmployee = async (req, res) => {
     delete data.codeMode;
 
     if (codeMode === 'custom' || (customCode && codeMode !== 'auto')) {
-      const v = await validateCustomCode(customCode);
+      const v = await validateCustomCode(customCode, null, data.companyId);
       if (!v.ok) return res.status(400).json({ error: v.error });
       data.employeeId = v.code;
     } else {
@@ -414,21 +414,57 @@ exports.bulkCreate = async (req, res) => {
       return res.status(400).json({ error: 'Expected an array of employees' });
     }
 
-    // Load every existing employee ONCE and index them, so each incoming row can
-    // be matched (by code / company+branch+name / mobile / email) against both
-    // the database AND the rows already processed in THIS batch. A match routes
-    // to update; only genuinely new people are inserted — imports can never
-    // create a duplicate.
+    // ── Tenant guard (BEFORE any read or write) ──────────────────────────────
+    // Row companyId is a client-supplied REQUEST, not a permission: every
+    // distinct target workspace must be one the caller may enter, or the whole
+    // import is refused — an import must never write into (or match against)
+    // another tenant. Branch workspace ids are resolved to their parent company
+    // below, matching how branch staff are stored (companyId=parent, branchId).
+    const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
+    const targetIds = [...new Set(employees.map((e) => toPositiveInt(e && e.companyId)).filter(Boolean))];
+    if (!isSuperAdmin(req)) {
+      for (const ws of targetIds) {
+        if (!canEnterWorkspace(req, ws)) {
+          return res.status(403).json({ error: `You do not have access to workspace ${ws}. No rows were imported.` });
+        }
+      }
+    }
+    // Branch-id → parent-company normalisation (same convention the rest of the
+    // system stores: branch staff carry companyId=parent + branchId=branch).
+    const branchRows = targetIds.length
+      ? await prisma.branch.findMany({ where: { id: { in: targetIds } }, select: { id: true, companyId: true } })
+      : [];
+    const branchParent = new Map(branchRows.map((b) => [b.id, b.companyId]));
+    for (const row of employees) {
+      if (!row) continue;
+      const cid = toPositiveInt(row.companyId);
+      if (cid && branchParent.has(cid)) {
+        row.companyId = branchParent.get(cid);
+        if (row.branchId == null || row.branchId === '') row.branchId = cid;
+      } else if (cid) {
+        row.companyId = cid;
+      }
+    }
+
+    // Load the TARGET companies' rosters ONCE and index them, so each incoming
+    // row can be matched (by code / company+branch+name / mobile / email)
+    // against both the database AND the rows already processed in THIS batch.
+    // A match routes to update; only genuinely new people are inserted — imports
+    // can never create a duplicate. The index keys are company-scoped
+    // (employeeDedup), so the same code/phone/email in ANOTHER tenant can never
+    // match — matching it is how imports used to re-parent employees cross-tenant.
+    const resolvedCompanyIds = [...new Set(employees.map((e) => toPositiveInt(e && e.companyId)).filter(Boolean))];
     const existing = await prisma.employee.findMany({
+      where: resolvedCompanyIds.length ? { companyId: { in: resolvedCompanyIds } } : undefined,
       select: { id: true, employeeId: true, companyId: true, branchId: true, name: true, phone: true, email: true },
     });
     const index = buildIndex(existing);
     const addToIndex = (e) => {
-      const { norm, normPhone, normEmail, nameKey } = require('../utils/employeeDedup');
-      if (e.employeeId) index.byCode.set(norm(e.employeeId), e);
+      const { norm, normPhone, normEmail, nameKey, scopedKey } = require('../utils/employeeDedup');
+      if (e.employeeId) index.byCode.set(scopedKey(e.companyId, norm(e.employeeId)), e);
       if (norm(e.name) && norm(e.name) !== '-') index.byName.set(nameKey(e.companyId, e.branchId, e.name), e);
-      const ph = normPhone(e.phone); if (ph) index.byPhone.set(ph, e);
-      const em = normEmail(e.email); if (em) index.byEmail.set(em, e);
+      const ph = normPhone(e.phone); if (ph) index.byPhone.set(scopedKey(e.companyId, ph), e);
+      const em = normEmail(e.email); if (em) index.byEmail.set(scopedKey(e.companyId, em), e);
     };
 
     // ── PRE-FLIGHT plan-capacity check (whole file, BEFORE any write) ────────
@@ -559,9 +595,13 @@ exports.bulkCreate = async (req, res) => {
           merged.push({ employeeId: result.employeeId, name: result.name, matchedOn: dup.field });
           results.push({ row: rowNum, name: result.name, employeeId: result.employeeId, status: 'updated', reason: `Matched an existing employee on ${dup.field} — record updated (not duplicated)` });
         } else if (data.employeeId) {
-          // Has an explicit code → upsert on the unique code. A code NOT already on
-          // file is a new insert → it must consume a seat; an existing code updates.
-          const isNewInsert = !index.byCode.has(norm(data.employeeId));
+          // Has an explicit code → upsert on the COMPANY-SCOPED code. The code
+          // is unique per company, never globally: the same code in another
+          // tenant is a different person, so the compound key can only ever
+          // find-or-create inside the target company — a cross-tenant employee
+          // can never be matched, updated, or re-parented from an import.
+          const { scopedKey } = require('../utils/employeeDedup');
+          const isNewInsert = !index.byCode.has(scopedKey(data.companyId, norm(data.employeeId)));
           if (isNewInsert && !(await takeSeat(data.companyId))) {
             skipped.push({ name: data.name, employeeId: data.employeeId, reason: 'EMPLOYEE_LIMIT_REACHED' });
             results.push({ row: rowNum, name: rowLabel, employeeId: data.employeeId, status: 'skipped', reason: 'Plan employee limit reached — upgrade the subscription to add more' });
@@ -570,7 +610,7 @@ exports.bulkCreate = async (req, res) => {
           const clean = prepareEmployeeWriteData(data);
           clean.employeeId = data.employeeId;
           result = await prisma.employee.upsert({
-            where: { employeeId: data.employeeId },
+            where: { companyId_employeeId: { companyId: Number(data.companyId), employeeId: String(data.employeeId) } },
             update: clean,
             create: applyCreateDefaults(clean),
           });
@@ -837,9 +877,9 @@ exports.updateEmployee = async (req, res) => {
 
     // If the employee code is being changed, validate format + uniqueness.
     if (data.hasOwnProperty('employeeId')) {
-      const current = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { employeeId: true } });
+      const current = await prisma.employee.findUnique({ where: { id: idParam(id) }, select: { employeeId: true, companyId: true } });
       if (current && data.employeeId !== current.employeeId) {
-        const v = await validateCustomCode(data.employeeId, id);
+        const v = await validateCustomCode(data.employeeId, idParam(id), data.companyId || current.companyId);
         if (!v.ok) return reject(400, { error: v.error });
         data.employeeId = v.code;
       }
@@ -912,7 +952,14 @@ exports.nextCode = async (req, res) => {
 // Validates a custom employee code (format + uniqueness) without saving.
 exports.validateCode = async (req, res) => {
   try {
-    const v = await validateCustomCode(req.body.code, req.body.excludeId);
+    // Codes are unique per company — validate inside the caller's target
+    // company (body override honoured only for workspaces they can enter).
+    const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
+    let companyId = toPositiveInt(req.body.companyId) || req.user?.companyId || null;
+    if (companyId && !isSuperAdmin(req) && !canEnterWorkspace(req, companyId)) {
+      return res.status(403).json({ error: 'You do not have access to this workspace.' });
+    }
+    const v = await validateCustomCode(req.body.code, idParam(req.body.excludeId), companyId);
     res.json(v);
   } catch (error) {
     return respondError(res, error);

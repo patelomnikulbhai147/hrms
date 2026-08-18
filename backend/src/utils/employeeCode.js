@@ -92,12 +92,14 @@ async function currentMaxSeq(prefix, branchCode, branchId) {
 async function generateEmployeeCode(branchId, companyIdFallback) {
   const { prefix, branchCode } = await resolveCodeParts(branchId, companyIdFallback);
   let seq = (await currentMaxSeq(prefix, branchCode, branchId)) + 1;
-  // ensure global uniqueness on employeeId
-  // (branch scoping already isolates sequences; this is a safety net)
+  // Safety net against collisions. Codes are unique PER COMPANY (the compound
+  // @@unique([companyId, employeeId])), but generated codes keep avoiding any
+  // company's identical code: the prefix already namespaces them, so a hit here
+  // only means this branch's own sequence has a gap-filler — keep incrementing.
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const code = buildCode(prefix, branchCode, seq);
-    const exists = await prisma.employee.findUnique({ where: { employeeId: code } });
+    const exists = await prisma.employee.findFirst({ where: { employeeId: code }, select: { id: true } });
     if (!exists) return code;
     seq++;
   }
@@ -128,18 +130,27 @@ async function generateTempCode(companyId) {
 }
 
 /**
- * Validate a user-supplied custom code: non-empty, reasonable charset, unique.
+ * Validate a user-supplied custom code: non-empty, reasonable charset, and
+ * unique WITHIN the company (codes are tenant-scoped — Company A's EMP0001 and
+ * Company B's EMP0001 are different employees, so another company's identical
+ * code is never a conflict). Pass `companyId` whenever it is known; without it
+ * the check falls back to a global sweep (stricter, never wrong — just refuses
+ * a code another tenant holds).
  * Returns { ok, code, error }.
  */
-async function validateCustomCode(rawCode, excludeEmployeeId) {
+async function validateCustomCode(rawCode, excludeEmployeeId, companyId) {
   const code = String(rawCode || '').trim().toUpperCase();
   if (!code) return { ok: false, error: 'Custom employee code cannot be empty.' };
   if (!/^[A-Z0-9][A-Z0-9-]{1,29}$/.test(code)) {
     return { ok: false, error: 'Code must be 2–30 chars: letters, digits and hyphens only.' };
   }
-  const existing = await prisma.employee.findUnique({ where: { employeeId: code } });
+  const cid = Number(companyId);
+  const existing = await prisma.employee.findFirst({
+    where: Number.isFinite(cid) && cid > 0 ? { employeeId: code, companyId: cid } : { employeeId: code },
+    select: { id: true },
+  });
   if (existing && existing.id !== excludeEmployeeId) {
-    return { ok: false, error: `Employee code "${code}" already exists.` };
+    return { ok: false, error: `Employee code "${code}" already exists in this company.` };
   }
   return { ok: true, code };
 }

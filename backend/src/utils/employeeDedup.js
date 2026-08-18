@@ -2,11 +2,18 @@
  * Employee duplicate detection — the single source of truth for "is this the
  * same person already on file".
  *
- * A duplicate is any existing employee that matches the incoming record on:
- *   - employeeId (the unique code)                     — hard DB constraint too
+ * A duplicate is any existing employee IN THE SAME COMPANY that matches the
+ * incoming record on:
+ *   - employeeId (the code — unique per company, NOT globally: Company A's
+ *     EMP0001 and Company B's EMP0001 are two different people)
  *   - same Company + Branch + normalized Name
  *   - same Email (real address, not a placeholder)
  *   - same Mobile number — but ONLY when the name tokens also match (see below)
+ *
+ * TENANT ISOLATION: every index key is prefixed with the employee's companyId.
+ * A cross-tenant code/phone/email coincidence must NEVER match — matching (and
+ * then updating) another company's employee is exactly the import hijack that
+ * re-parented employees between tenants on 2026-08-05.
  *
  * Why mobile is corroborating-only: this roster contains different employees
  * who legitimately share a contact number (e.g. spouses/siblings — PATANI VISHAL
@@ -51,18 +58,22 @@ const sameTokenSet = (a, b) => {
  * Build fast lookup indexes from a list of existing employees. Pass this to
  * matchAgainstIndex() to avoid re-querying per row during a bulk import.
  */
+// Company-scoped key: `<companyId>|<value>`. companyId is the COMPANY the row
+// is stored under (branch staff already carry the parent company here).
+const scopedKey = (companyId, value) => `${companyId ?? ''}|${value}`;
+
 function buildIndex(employees) {
   const byCode = new Map();
   const byName = new Map();
   const byPhone = new Map();
   const byEmail = new Map();
   for (const e of employees) {
-    if (e.employeeId) byCode.set(norm(e.employeeId), e);
+    if (e.employeeId) byCode.set(scopedKey(e.companyId, norm(e.employeeId)), e);
     if (norm(e.name) && norm(e.name) !== '-') byName.set(nameKey(e.companyId, e.branchId, e.name), e);
     const ph = normPhone(e.phone);
-    if (ph) byPhone.set(ph, e);
+    if (ph) byPhone.set(scopedKey(e.companyId, ph), e);
     const em = normEmail(e.email);
-    if (em) byEmail.set(em, e);
+    if (em) byEmail.set(scopedKey(e.companyId, em), e);
   }
   return { byCode, byName, byPhone, byEmail };
 }
@@ -78,7 +89,7 @@ function matchAgainstIndex(data, index, excludeId = null) {
 
   const code = norm(data.employeeId);
   if (code && code !== norm('[ Auto Generated ]')) {
-    const r = tryHit(index.byCode.get(code), 'employeeCode');
+    const r = tryHit(index.byCode.get(scopedKey(data.companyId, code)), 'employeeCode');
     if (r) return r;
   }
   if (norm(data.name) && norm(data.name) !== '-') {
@@ -87,7 +98,7 @@ function matchAgainstIndex(data, index, excludeId = null) {
   }
   const ph = normPhone(data.phone);
   if (ph) {
-    const hit = index.byPhone.get(ph);
+    const hit = index.byPhone.get(scopedKey(data.companyId, ph));
     // Corroborating-only: a phone match is a duplicate solely when the names are
     // the same set of words (guards against shared family numbers).
     if (hit && hit.id !== excludeId && sameTokenSet(hit.name, data.name)) {
@@ -96,7 +107,7 @@ function matchAgainstIndex(data, index, excludeId = null) {
   }
   const em = normEmail(data.email);
   if (em) {
-    const r = tryHit(index.byEmail.get(em), 'email');
+    const r = tryHit(index.byEmail.get(scopedKey(data.companyId, em)), 'email');
     if (r) return r;
   }
   return null;
@@ -107,10 +118,13 @@ function matchAgainstIndex(data, index, excludeId = null) {
  * createEmployee). Returns { match, field } or null.
  */
 async function findDuplicate(prisma, data, excludeId = null) {
+  // Only the target company's roster can contain a duplicate — the scoped index
+  // keys make cross-tenant hits impossible anyway; the WHERE keeps it cheap.
   const all = await prisma.employee.findMany({
+    where: data?.companyId ? { companyId: Number(data.companyId) } : undefined,
     select: { id: true, employeeId: true, companyId: true, branchId: true, name: true, phone: true, email: true },
   });
   return matchAgainstIndex(data, buildIndex(all), excludeId);
 }
 
-module.exports = { norm, normPhone, normEmail, nameKey, buildIndex, matchAgainstIndex, findDuplicate };
+module.exports = { norm, normPhone, normEmail, nameKey, scopedKey, buildIndex, matchAgainstIndex, findDuplicate };

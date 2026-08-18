@@ -72,7 +72,7 @@ async function ensureEmployeeProfileForUser(user, opts = {}) {
   const preferredCode = String(profile.employeeCode || '').trim();
   let code = null;
   if (preferredCode) {
-    const v = await validateCustomCode(preferredCode);
+    const v = await validateCustomCode(preferredCode, null, user.companyId);
     if (v.ok) code = v.code; // taken/invalid → fall through to auto-generation
   }
   if (!code) code = await generateEmployeeCode(user.branchId || null, user.companyId);

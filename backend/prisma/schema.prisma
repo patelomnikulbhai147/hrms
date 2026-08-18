@@ -723,7 +723,12 @@ model DevicePushLog {
 
 model Employee {
   id                          Int                 @id @default(autoincrement())
-  employeeId                  String              @unique
+  // The employee CODE (EMP0001…). Unique PER COMPANY, not globally — Company
+  // A's EMP0001 and Company B's EMP0001 are different people. The old global
+  // @unique let an import from one tenant match (and re-parent) another
+  // tenant's employee by code; the compound key below is the tenant boundary.
+  // Migration: scripts/migrateEmployeeCodeTenantScope.js (never db push).
+  employeeId                  String
   legacyEmployeeId            String?
   companyId                   Int
   branchId                    Int?
@@ -829,6 +834,7 @@ model Employee {
   deployments                 Deployment[]
 
   @@unique([companyId, phone])
+  @@unique([companyId, employeeId])
 }
 
 // â”€â”€ Temporary Employee (Quick Registration) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
