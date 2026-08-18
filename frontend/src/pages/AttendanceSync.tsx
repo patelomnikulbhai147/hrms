@@ -156,6 +156,15 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
   const monthPrefix = `${year}-${pad2(month)}`;
   const monthLabel = `${monthName} ${year}`;
 
+  // Navigating to Payroll must PRESERVE the period being worked on here — the
+  // Payroll page reads this handoff (the same sessionStorage pattern as
+  // hrms_push_return) instead of defaulting to the current month, so
+  // "July 2026 → Go to Payroll" opens July 2026, not August.
+  const goToPayroll = () => {
+    try { sessionStorage.setItem('hrms_payroll_period', JSON.stringify({ month: monthName, year })); } catch { /* ignore */ }
+    onNavigate?.('payroll');
+  };
+
   const currentCompany = resolveActiveWorkspace(companies as any[], activeCompanyId)
     || companies.find(c => String(c.id) === String(activeCompanyId));
   const activeIsBranch = !!(currentCompany as any)?.parentCompanyId && !(currentCompany as any)?.isHeadOffice;
@@ -452,7 +461,7 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
       if (pushReturnRef.current === 'payroll' && onNavigate) {
         pushReturnRef.current = null;
         ui.toast.success('Attendance successfully pushed to Payroll. Payroll records have been generated.');
-        onNavigate('payroll');
+        goToPayroll();
       }
     } catch (e: any) {
       // Wallet gate refused BEFORE any payroll row was written — only NEW
@@ -746,7 +755,7 @@ export const AttendanceSync: React.FC<AttendanceSyncProps> = ({
                 )}
               </ul>
               <div className="flex flex-wrap gap-2 mt-3">
-                <Button size="sm" onClick={() => onNavigate?.('payroll')}>
+                <Button size="sm" onClick={goToPayroll}>
                   Go to Payroll <ArrowRight size={14} />
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => { setDone(null); loadPreview(); }}>

@@ -110,6 +110,21 @@ const PAYROLL_EXPORT_COLUMNS: ExportColumn[] = [
 
 const MONTH_LIST = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
+// Period handed to this page (the app's sessionStorage handoff pattern, like
+// hrms_push_return): Attendance Synchronization's "Go to Payroll" writes the
+// period it was working on, and this page keeps the key updated so a browser
+// refresh stays on the same period. Absent/invalid → null (current-month
+// default applies — a fresh session behaves exactly as before).
+const readHandoffPeriod = (): { month: string; year: number } | null => {
+  try {
+    const p = JSON.parse(sessionStorage.getItem('hrms_payroll_period') || 'null');
+    const m = typeof p?.month === 'number' ? MONTH_LIST[p.month - 1] : String(p?.month || '');
+    const y = Number(p?.year);
+    if (MONTH_LIST.includes(m) && Number.isInteger(y) && y >= 2000 && y <= 2100) return { month: m, year: y };
+  } catch { /* ignore */ }
+  return null;
+};
+
 export const Payroll: React.FC<PayrollProps> = ({
   role,
   activeCompanyId,
@@ -124,18 +139,25 @@ export const Payroll: React.FC<PayrollProps> = ({
 }) => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  // Default to the CURRENT month so freshly pushed/generated payroll (e.g. from
-  // Attendance Synchronization → Push to Payroll Engine) is visible immediately,
-  // instead of landing on a stale past month with zero-value rows.
+  // Period priority: 1) the period handed off by the previous page (Attendance
+  // Synchronization's "Go to Payroll" must land on the SAME month/year it was
+  // working on — never silently replaced by the current month), then 2) the
+  // period this page persisted in-session (so refresh stays put), then 3) the
+  // current month, so freshly pushed/generated payroll is visible immediately.
   const [monthFilter, setMonthFilter] = useState(
-    () => MONTH_LIST[new Date().getMonth()]
+    () => readHandoffPeriod()?.month || MONTH_LIST[new Date().getMonth()]
   );
   // A payroll cycle is month + YEAR. Scoping by month name alone made the same
   // month across two years collapse into one view (e.g. July 2025 + July 2026),
   // which double-counted the employee roster (64 → 113) once multi-year payroll
   // existed. Every roster/record scope below is anchored to this year so a cycle
   // is unambiguous. Defaults to the current year (the module already targets it).
-  const [yearFilter] = useState(() => new Date().getFullYear());
+  const [yearFilter] = useState(() => readHandoffPeriod()?.year ?? new Date().getFullYear());
+  // Keep the handoff key current so a refresh (or a return to this page) stays
+  // on the period being worked on instead of snapping back to the current month.
+  useEffect(() => {
+    try { sessionStorage.setItem('hrms_payroll_period', JSON.stringify({ month: monthFilter, year: yearFilter })); } catch { /* ignore */ }
+  }, [monthFilter, yearFilter]);
   // Drives the Lock/Unlock Month button's loading state.
   const [lockBusy, setLockBusy] = useState<'lock' | 'unlock' | null>(null);
   // §12 — whether this workspace requires a VERIFIED bank account before salary
@@ -1097,9 +1119,11 @@ export const Payroll: React.FC<PayrollProps> = ({
     try {
       const now = new Date();
       const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-      // Generate for the SELECTED payroll month (period-based), not just "now".
+      // Generate for the SELECTED payroll period (month + year), not just "now" —
+      // after "Go to Payroll" hands July 2026 to this page, every action here
+      // must target July 2026 too.
       const currentMonth = monthFilter || monthNames[now.getMonth()];
-      const currentYear = now.getFullYear();
+      const currentYear = yearFilter || now.getFullYear();
 
       // Selective generation: run ONLY for the chosen employees. If none are
       // explicitly selected, fall back to every employee in the workspace.
