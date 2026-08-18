@@ -1218,7 +1218,27 @@ exports.create = async (req, res) => {
       update: payload,
       create: payload
     });
-    res.status(201).json(data);
+
+    // ── SINGLE ENGINE: the client payload only establishes the row ──────────
+    // The money it carried is immediately recomputed by the ONE payroll engine
+    // (attendance recompute → recalcOne), exactly like bulk generate — so a
+    // directly created row can never hold a gross that no payroll component
+    // explains (the retired client formula wrote full-month basic + 40% HRA +
+    // 10% special = 1.5 × salary against zero attendance). Manual amount
+    // overrides belong to PUT /payroll/:id, which keeps a revision trail.
+    let engineRow = data;
+    try {
+      const attSvcCreate = require('../services/attendanceSummaryService');
+      await attSvcCreate.recompute(Number(employeeId), month, Number(year)).catch(() => {});
+      await recalcForEmployeeMonth(Number(employeeId), month, Number(year));
+      engineRow = await prisma.payroll.findUnique({ where: { id: data.id } }) || data;
+    } catch (e) {
+      // Fail-visible: the row exists but was NOT engine-computed. Flag it so it
+      // cannot be silently treated as final payroll.
+      console.error('[payroll.create] engine recalc failed — row flagged outdated:', e.message);
+      engineRow = await prisma.payroll.update({ where: { id: data.id }, data: { isOutdated: true } }).catch(() => data);
+    }
+    res.status(201).json(engineRow);
   } catch (error) {
     console.error('Error creating', error);
     res.status(500).json({ error: error.message || 'Server error' });

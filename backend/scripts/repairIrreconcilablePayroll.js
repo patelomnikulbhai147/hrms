@@ -31,17 +31,26 @@ const INCLUDE_LOCKED = process.argv.includes('--include-locked');
 const round2 = (n) => Math.round(((Number(n) || 0) + Number.EPSILON) * 100) / 100;
 const expectedNet = (r) =>
   Math.max(0, (r.basicSalary || 0) + (r.allowances || 0) + (r.bonus || 0) - (r.deductions || 0) - (r.loanDeduction || 0));
+// Second corruption class: UN-PRORATED rows. The engine always writes
+// workingDays > 0 (a real summary, or the days-in-month fallback), so a row
+// holding money with workingDays = 0 was never computed by the engine — it is
+// the old full-month formula (basic = full salary, HRA 40%, special 10%,
+// ESI wrongly at the 3.25% employer rate) with a gross no component of the
+// attendance record can explain (e.g. ₹27,000 against payableDays 0).
+const isUnprorated = (r) =>
+  (r.workingDays || 0) <= 0 && ((r.basicSalary || 0) + (r.allowances || 0)) > 0;
 
 (async () => {
   const rows = await prisma.payroll.findMany();
-  const bad = rows.filter((r) => Math.abs(expectedNet(r) - (r.netSalary || 0)) > 1);
+  const bad = rows.filter((r) => Math.abs(expectedNet(r) - (r.netSalary || 0)) > 1 || isUnprorated(r));
 
   const groups = {};
   for (const r of bad) {
-    const k = `${r.month} ${r.year} C${r.companyId} [${r.payrollStatus}/${r.paymentStatus}${r.isOutdated ? ' OUTDATED' : ''}]`;
+    const cls = isUnprorated(r) ? 'UNPRORATED' : 'IRRECONCILABLE';
+    const k = `${cls} ${r.month} ${r.year} C${r.companyId} [${r.payrollStatus}/${r.paymentStatus}${r.isOutdated ? ' OUTDATED' : ''}]`;
     groups[k] = (groups[k] || 0) + 1;
   }
-  console.log(`Scanned ${rows.length} payroll rows — irreconcilable: ${bad.length}`);
+  console.log(`Scanned ${rows.length} payroll rows — needing repair (irreconcilable or un-prorated): ${bad.length}`);
   for (const [k, n] of Object.entries(groups)) console.log(`  ${n.toString().padStart(4)} × ${k}`);
   if (!bad.length) { console.log('Nothing to repair.'); await prisma.$disconnect(); return; }
 
@@ -103,7 +112,7 @@ const expectedNet = (r) =>
       }
 
       const after = await prisma.payroll.findUnique({ where: { id: r.id } });
-      if (Math.abs(expectedNet(after) - (after.netSalary || 0)) > 1) stillBad++;
+      if (Math.abs(expectedNet(after) - (after.netSalary || 0)) > 1 || isUnprorated(after)) stillBad++;
       repaired++;
     } catch (e) {
       failures++;
