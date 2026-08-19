@@ -3,6 +3,28 @@ const { nextEntityId, nextBranchNo } = require('../utils/sequentialNo');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
 const AuditService = require('../services/auditService');
+const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
+
+// Tenant guard for branch WRITE handlers. A branch id from the client is a
+// request, not a permission: without this a leader of company A could update,
+// archive, reactivate, delete or offboard (mass-archiving the workforce of)
+// company B's branch by naming its id. Loads the branch once, 404s if missing,
+// and 403s (existing convention) when the branch's parent company is outside
+// the caller's scope. Super Admin is unrestricted. Uses the existing
+// workspaceScope helper — no new tenant resolver. Returns the branch on success.
+async function authorizeBranchWrite(req, res) {
+  const branchId = idParam(req.params.id);
+  const branch = await prisma.branch.findUnique({ where: { id: branchId } });
+  if (!branch) {
+    res.status(404).json({ success: false, message: 'Branch not found.' });
+    return null;
+  }
+  if (!isSuperAdmin(req) && !canEnterWorkspace(req, branch.companyId)) {
+    res.status(403).json({ success: false, message: 'You do not have access to this branch.' });
+    return null;
+  }
+  return branch;
+}
 
 exports.getBranches = async (req, res) => {
   try {
@@ -186,6 +208,9 @@ exports.updateBranch = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // Tenant guard: only a branch inside the caller's company scope may be edited.
+    if (!(await authorizeBranchWrite(req, res))) return;
+
     // Accept `name` as an alias for branchName (the frontend sends either).
     const body = { ...req.body };
     if (body.name && !body.branchName) body.branchName = body.name;
@@ -280,6 +305,11 @@ exports.offboardBranch = async (req, res) => {
 
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) return res.status(404).json({ success: false, message: 'Branch not found.' });
+    // Tenant guard: offboarding mass-archives/transfers this branch's workforce,
+    // so a foreign branch must be refused BEFORE any employee is touched.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, branch.companyId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this branch.' });
+    }
     if (branch.isArchived || String(branch.status).toLowerCase() === 'offboarded') {
       return res.status(409).json({
         success: false, code: 'ALREADY_OFFBOARDED',
@@ -413,6 +443,8 @@ exports.offboardBranch = async (req, res) => {
 exports.deleteBranch = async (req, res) => {
   try {
     const { id } = req.params;
+    // Tenant guard: only a branch inside the caller's company scope may be deleted.
+    if (!(await authorizeBranchWrite(req, res))) return;
     await prisma.branch.delete({
       where: { id: idParam(id) }
     });
@@ -430,6 +462,11 @@ exports.reactivateBranch = async (req, res) => {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) {
       return res.status(404).json({ success: false, message: 'Branch not found.' });
+    }
+    // Tenant guard: reactivation restores the branch's employees, so a foreign
+    // branch must be refused before any employee row is swept.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, branch.companyId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this branch.' });
     }
 
     const previousStatus = branch.status;
@@ -525,6 +562,10 @@ exports.archiveBranch = async (req, res) => {
     const branch = await prisma.branch.findUnique({ where: { id: branchId } });
     if (!branch) {
       return res.status(404).json({ success: false, message: 'Branch not found.' });
+    }
+    // Tenant guard: only a branch inside the caller's company scope may be archived.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, branch.companyId)) {
+      return res.status(403).json({ success: false, message: 'You do not have access to this branch.' });
     }
 
     const previousStatus = branch.status;

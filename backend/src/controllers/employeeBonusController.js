@@ -2,8 +2,19 @@ const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
 const respondError = require('../utils/respondError');
 const AuditService = require('../services/auditService');
+const { canEnterWorkspace, isSuperAdmin } = require('../utils/workspaceScope');
 
 const MODULE = 'EmployeeBonus';
+
+// Tenant `where` fragment for reads/writes keyed by bonus id. A raw
+// `{ id }` filter would let any payroll:edit user touch another company's
+// bonus by naming its id, so every id lookup is additionally constrained to
+// the caller's company scope. Super Admin is unrestricted ({}). Mirrors
+// payrollController.payrollTenantWhere.
+function bonusTenantWhere(req) {
+  const scope = companyScope(req);
+  return scope ? { companyId: { in: scope.length ? scope : [-1] } } : {};
+}
 
 // Resolve a one-time bonus amount from the calc method against the employee's
 // monthly salary. Percentage bonuses are stored with both percent + resolved
@@ -62,9 +73,19 @@ exports.create = async (req, res) => {
 
     const emp = await prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { id: true, companyId: true, salary: true, name: true },
+      select: { id: true, companyId: true, branchId: true, salary: true, name: true },
     });
     if (!emp) return res.status(404).json({ error: 'Employee not found.' });
+
+    // Tenant guard: the target employee must be in the caller's workspace scope.
+    // Without this, any payroll:edit user could issue a bonus against ANOTHER
+    // tenant's employee (filed under that tenant's company). The bonus is always
+    // stored under the EMPLOYEE's resolved company — never a client-supplied
+    // companyId — so it can never be mis-filed either.
+    if (!isSuperAdmin(req) && !canEnterWorkspace(req, emp.companyId) &&
+        !(emp.branchId && canEnterWorkspace(req, emp.branchId))) {
+      return res.status(403).json({ error: 'You do not have access to this employee.' });
+    }
 
     // `Employee.salary` is already the MONTHLY gross (see payrollController's
     // recalcOne). Dividing by 12 made a percentage bonus here one twelfth of the
@@ -109,7 +130,9 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     const id = idParam(req.params.id);
-    const existing = await prisma.employeeBonus.findUnique({ where: { id } });
+    // Tenant guard: a bonus outside the caller's company scope simply is not
+    // found (404 — never reveal another tenant's record exists).
+    const existing = await prisma.employeeBonus.findFirst({ where: { id, ...bonusTenantWhere(req) } });
     if (!existing) return res.status(404).json({ error: 'Bonus record not found.' });
 
     const b = req.body || {};
@@ -153,7 +176,8 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     const id = idParam(req.params.id);
-    const existing = await prisma.employeeBonus.findUnique({ where: { id } });
+    // Tenant guard: a foreign bonus id is reported as not found, never touched.
+    const existing = await prisma.employeeBonus.findFirst({ where: { id, ...bonusTenantWhere(req) } });
     if (!existing) return res.status(404).json({ error: 'Bonus record not found.' });
 
     if (['1', 'true', 'yes'].includes(String(req.query.hard || '').toLowerCase())) {
