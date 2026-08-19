@@ -45,7 +45,17 @@ function resolveScope(req) {
   const reqCompany = idParam(b.companyId || req.headers['x-workspace-id']);
   let companyIds, primaryCompanyId;
   if (isSuperAdmin(req)) { companyIds = reqCompany ? [reqCompany] : []; primaryCompanyId = reqCompany; }
-  else { const scope = companyScopeFor(req); companyIds = (reqCompany && scope.includes(reqCompany)) ? [reqCompany] : scope; primaryCompanyId = reqCompany || companyIds[0]; }
+  else {
+    const scope = companyScopeFor(req);
+    const inScope = reqCompany && scope.includes(reqCompany);
+    companyIds = inScope ? [reqCompany] : scope;
+    // primaryCompanyId drives the branded report HEADER (companyMeta → bank account,
+    // IFSC, PAN, GST, owner/signatory). It must never be a company outside the
+    // caller's scope: trusting reqCompany verbatim let a non-SA user render their
+    // OWN scoped row data under ANOTHER tenant's letterhead + statutory identifiers.
+    // Constrained to the same includes() test that already gates companyIds.
+    primaryCompanyId = inScope ? reqCompany : companyIds[0];
+  }
   // ── Branch-level data scope (critical access control) ────────────────────────
   // A BRANCH user — assigned specific branch(es) with NO company-wide ownership —
   // must only ever see employees of those branches. The auth middleware already

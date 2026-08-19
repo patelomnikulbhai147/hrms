@@ -2,7 +2,7 @@
 // set of enterprise defaults per company; admins can add unlimited custom types.
 const prisma = require('../config/prisma');
 const idParam = require('../utils/idParam');
-const { canView, canEdit, canManage, actorOf, readCompanyId, scopedWhere } = require('../utils/loanScope');
+const { canView, canEdit, canManage, actorOf, readCompanyId, scopedWhere, canAccessCompany } = require('../utils/loanScope');
 
 // Enterprise default loan categories (seeded once per company).
 const SYSTEM_TYPES = [
@@ -80,10 +80,12 @@ exports.update = async (req, res) => {
     const id = idParam(req.params.id);
     const existing = await prisma.loanType.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Loan type not found.' });
-    // Validate ownership against the company being viewed (workspace-scoped),
-    // consistent with how the list + create resolve the company.
-    const cid = readCompanyId(req);
-    if (cid && existing.companyId !== cid) return res.status(403).json({ error: 'Not your company.' });
+    // Tenant guard: authorise against the ROW's own company, not a client-supplied
+    // workspace id. readCompanyId(req) returns null for an unreachable spoofed
+    // x-workspace-id, and the old `cid && …` compare then SKIPPED the check — so a
+    // caller passing another tenant's workspace header could edit its loan types.
+    // canAccessCompany checks existing.companyId against real grants (SA → always).
+    if (!canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: 'Not your company.' });
     const data = {};
     for (const f of ['name', 'code', 'description', 'defaultInterestType']) if (req.body[f] !== undefined) data[f] = req.body[f];
     for (const f of ['defaultInterestRate', 'maxAmount', 'maxTenureMonths']) if (req.body[f] !== undefined) data[f] = Number(req.body[f]) || 0;
@@ -104,6 +106,11 @@ exports.remove = async (req, res) => {
     const id = idParam(req.params.id);
     const existing = await prisma.loanType.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'Loan type not found.' });
+    // Tenant guard: authorise against the ROW's own company (spoof-proof), so a
+    // Company Head can neither delete another tenant's loan type by id NOR by
+    // passing that tenant's x-workspace-id header. canAccessCompany → SA always,
+    // else canEnterWorkspace(existing.companyId) against the caller's real grants.
+    if (!canAccessCompany(req, existing.companyId)) return res.status(403).json({ error: 'Not your company.' });
     // In-use protection — archive instead of hard-delete when loans reference it.
     const inUse = await prisma.loan.count({ where: { loanTypeId: id } });
     if (inUse > 0) {

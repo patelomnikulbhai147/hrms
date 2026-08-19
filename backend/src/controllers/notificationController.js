@@ -15,7 +15,7 @@ const idParam = require('../utils/idParam');
 // Numbers. accessibleCompanyIds holds STRINGS, so the old inline spread produced
 // [1, "1", "2", "11"]: `includes(2)` was false and Prisma `in` filters compared
 // strings to an Int column. See utils/companyScope.js.
-const { grantedCompanyIds } = require('../utils/companyScope');
+const { grantedCompanyIds, canReachCompany } = require('../utils/companyScope');
 const { ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const allowedIdsFor = (req) => grantedCompanyIds(req);
 
@@ -75,11 +75,50 @@ exports.getAll = async (req, res) => {
 exports.create = async (req, res) => {
   try {
     const b = req.body || {};
+    const companyId = idParam(b.companyId) ?? null;
+    const branchId = idParam(b.branchId) ?? null;
+    const userId = idParam(b.userId) ?? null;
+
+    // Tenant guard. Legitimate internal notifications are created through
+    // services/notificationService.js (notify/notifyMany), never this HTTP handler,
+    // which spread the body verbatim and so let ANY authenticated caller inject
+    // into another tenant's bell by posting a foreign companyId/branchId/userId.
+    // Super Admin (canReachCompany returns true) is unaffected.
+    if (!req.user || req.user.role !== 'Super Admin') {
+      // A company/branch-addressed row must land in a workspace the caller reaches.
+      if (companyId != null && !canReachCompany(req, companyId)) {
+        return res.status(403).json({ error: 'You do not have access to this workspace.' });
+      }
+      if (branchId != null && !canReachCompany(req, branchId)) {
+        return res.status(403).json({ error: 'You do not have access to this workspace.' });
+      }
+      // A user-addressed row is delivered by userId regardless of companyId, so the
+      // recipient MUST belong to a workspace the caller can reach — otherwise the
+      // notification surfaces in a foreign user's bell.
+      if (userId != null) {
+        const target = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { companyId: true, branchId: true },
+        });
+        const reachable = target && (
+          (target.companyId != null && canReachCompany(req, target.companyId)) ||
+          (target.branchId != null && canReachCompany(req, target.branchId))
+        );
+        if (!reachable) return res.status(403).json({ error: 'You do not have access to this recipient.' });
+      }
+      // A row with no company, no branch AND no user is a platform-wide broadcast
+      // (scopeWhere delivers company-less/branch-less/user-less rows to everyone).
+      // Only Super Admin may post one.
+      if (companyId == null && branchId == null && userId == null) {
+        return res.status(403).json({ error: 'Only a platform administrator can post a global notification.' });
+      }
+    }
+
     const data = await prisma.notification.create({
       data: {
-        companyId: idParam(b.companyId) ?? null,
-        userId: idParam(b.userId) ?? null,
-        branchId: idParam(b.branchId) ?? null,
+        companyId,
+        userId,
+        branchId,
         type: b.type || 'system',
         title: b.title || null,
         message: b.message || '',
