@@ -16,6 +16,23 @@ const allowedIdsFor = (req) =>
 // create, edit, convert or delete. HR is view-only on tenders & contracts.
 const canManageTenders = (req) => ['Super Admin', 'Company Head'].includes(req.user?.role);
 
+// Load a tender and verify it belongs to the caller's workspace BEFORE any
+// update/delete. Without this a Company Head of company A could edit or delete
+// company B's tender (commercial value) by naming its id. Returns the tender, or
+// sends the response (404) and returns null. Mirrors create's allowedIdsFor check.
+async function loadOwnedTender(req, res) {
+  const id = idParam(req.params.id);
+  const tender = await prisma.tender.findUnique({ where: { id } });
+  if (!tender) { res.status(404).json({ error: 'Tender not found.' }); return null; }
+  if (req.user?.role !== 'Super Admin') {
+    const allowed = allowedIdsFor(req);
+    const ok = (tender.companyId != null && allowed.includes(tender.companyId)) ||
+               (tender.branchId != null && allowed.includes(tender.branchId));
+    if (!ok) { res.status(404).json({ error: 'Tender not found.' }); return null; }
+  }
+  return tender;
+}
+
 exports.getAll = async (req, res) => {
   try {
     const companyId = req.query.all === 'true' ? null : idParam(req.query.companyId || req.headers['x-workspace-id']);
@@ -82,6 +99,7 @@ exports.create = async (req, res) => {
 exports.update = async (req, res) => {
   try {
     if (!canManageTenders(req)) return res.status(403).json({ error: 'You do not have permission to manage tenders.' });
+    if (!(await loadOwnedTender(req, res))) return;
     const id = idParam(req.params.id);
     const fields = [
       'tenderNumber', 'tenderName', 'department', 'publishDate', 'closingDate', 'status',
@@ -131,6 +149,7 @@ exports.update = async (req, res) => {
 exports.remove = async (req, res) => {
   try {
     if (!canManageTenders(req)) return res.status(403).json({ error: 'You do not have permission to manage tenders.' });
+    if (!(await loadOwnedTender(req, res))) return;
     const id = idParam(req.params.id);
     await prisma.tender.delete({ where: { id } });
     res.json({ message: 'Deleted' });

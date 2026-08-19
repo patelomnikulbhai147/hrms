@@ -158,6 +158,11 @@ exports.create = async (req, res) => {
     if (!data.companyId) {
       return res.status(400).json({ error: 'companyId is required to file a document.' });
     }
+    // Tenant guard: a document may only be filed into a workspace the caller can
+    // reach — companyId from the body is a request, not a permission.
+    const reachable = canReachCompany(req, data.companyId)
+      || (data.branchId != null && canReachCompany(req, data.branchId));
+    if (!reachable) return res.status(403).json({ error: 'You do not have access to this workspace.' });
     if (!data.name) {
       return res.status(400).json({ error: 'A document name is required.' });
     }
@@ -187,6 +192,14 @@ exports.update = async (req, res) => {
 
     const current = await prisma.document.findUnique({ where: { id: idParam(id) } });
     if (!current) return res.status(404).json({ error: 'Document not found.' });
+
+    // Tenant guard: mirror getFile — a document outside the caller's workspace is
+    // reported as not found (never edit/re-point another tenant's document by id).
+    const reachable = canReachCompany(req, current.companyId)
+      || (current.branchId != null && canReachCompany(req, current.branchId));
+    if (!reachable) return res.status(404).json({ error: 'Document not found.' });
+    // A tenant edit may not move the document into another company/branch.
+    delete data.companyId;
 
     // Checked against BOTH the current owner and any employee the document is
     // being re-pointed at, so a locked record can neither be edited nor become
@@ -226,7 +239,11 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await prisma.document.findUnique({ where: { id: idParam(id) } });
+    // Tenant guard: never delete another tenant's document by id.
     if (existing) {
+      const reachable = canReachCompany(req, existing.companyId)
+        || (existing.branchId != null && canReachCompany(req, existing.branchId));
+      if (!reachable) return res.status(404).json({ error: 'Document not found.' });
       const locked = await employeeLockCheck(existing.employeeId, req.user);
       if (locked) return res.status(403).json(locked);
     }

@@ -79,6 +79,22 @@ function leaveScopeWhere(req) {
   };
 }
 
+// Ownership check for a single leave record accessed BY ID (update/delete/etc).
+// Mirrors leaveScopeWhere's OR exactly: the caller must be able to reach the
+// row's own companyId, or the employee's branch/parent company. Without this a
+// user could approve/edit/delete ANOTHER tenant's leave by naming its id.
+async function canReachLeave(req, leave) {
+  if (req.user?.role === 'Super Admin') return true;
+  if (leave.companyId != null && canReachCompany(req, leave.companyId)) return true;
+  const emp = leave.employee ||
+    (leave.employeeId
+      ? await prisma.employee.findUnique({ where: { id: leave.employeeId }, select: { companyId: true, branchId: true } })
+      : null);
+  if (!emp) return false;
+  return (emp.companyId != null && canReachCompany(req, emp.companyId)) ||
+         (emp.branchId != null && canReachCompany(req, emp.branchId));
+}
+
 exports.getAll = async (req, res) => {
   try {
     const scoped = leaveScopeWhere(req);
@@ -227,6 +243,20 @@ exports.create = async (req, res) => {
     const employeeId = Number(body.employeeId);
     const days = Number(body.days) || 0;
     const year = yearOf(body.fromDate);
+
+    // Tenant guard: the leave must be filed against an employee in the caller's
+    // workspace, and companyId is DERIVED from that employee — never trusted from
+    // the client body (which could name another tenant). Foreign/unknown → 404.
+    const owner = Number.isFinite(employeeId)
+      ? await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true, branchId: true, name: true, department: true } })
+      : null;
+    if (!owner) return res.status(404).json({ error: 'Employee not found.' });
+    if (!(await canReachLeave(req, { companyId: owner.companyId, employee: owner }))) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+    body.companyId = owner.companyId;
+    if (!body.employeeName) body.employeeName = owner.name;
+    if (!body.department) body.department = owner.department;
     // appliedOn is a required column with no DB default; default it to today so a
     // client that omits it can't 500 the request.
     if (!body.appliedOn) body.appliedOn = new Date().toISOString().slice(0, 10);
@@ -287,6 +317,9 @@ exports.update = async (req, res) => {
     if (!Number.isFinite(leaveId)) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
     const existing = await prisma.leaveRequest.findUnique({ where: { id: leaveId } });
     if (!existing) return res.status(404).json({ error: 'Leave request not found' });
+    // Tenant guard: a leave request outside the caller's workspace is reported
+    // as not found (never approve/reject/edit another tenant's leave by id).
+    if (!(await canReachLeave(req, existing))) return res.status(404).json({ error: 'Leave request not found' });
 
     const month = monthNameOf(existing.fromDate);
     const year = yearOf(existing.fromDate);
@@ -376,6 +409,9 @@ exports.delete = async (req, res) => {
     const leaveId = idParam(id);
     if (!Number.isFinite(leaveId)) return res.status(400).json({ success: false, error: 'A valid leave request id is required.', message: 'A valid leave request id is required.' });
     const existing = await prisma.leaveRequest.findUnique({ where: { id: leaveId } });
+    // Tenant guard: refuse to delete (and silently restore the balance of)
+    // another tenant's leave. Foreign id → not found.
+    if (existing && !(await canReachLeave(req, existing))) return res.status(404).json({ error: 'Leave request not found' });
     // Restore balance if a still-approved leave is deleted.
     if (existing && existing.status === 'Approved' && existing.paidDays > 0) {
       await leaveService.restore(existing.employeeId, existing.leaveType, existing.paidDays, yearOf(existing.fromDate));

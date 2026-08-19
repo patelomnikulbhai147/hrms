@@ -13,6 +13,30 @@ const leaveService = require('../services/leaveService');
 const AuditService = require('../services/auditService');
 const { OFFBOARDED_STATUSES, ACTIVE_EMPLOYEE_WHERE } = require('../utils/employeeStatus');
 const { scopeWhere } = require('./leaveAdministrationController');
+const { canReachCompany } = require('../utils/companyScope');
+
+// Tenant guard for the per-employee balance operations (grant/deduct/reset/
+// transfer). Returns the employee row when the caller may reach it, `null` when
+// the employee does not exist, or `false` when it belongs to another tenant.
+// Without this a leave admin could credit/debit/reset/move ANOTHER company's
+// employee's balance by naming their id.
+async function reachableEmployee(req, employeeId) {
+  const eid = Number(employeeId);
+  if (!Number.isFinite(eid)) return null;
+  const emp = await prisma.employee.findUnique({ where: { id: eid }, select: { id: true, companyId: true, branchId: true } });
+  if (!emp) return null;
+  if (req.user?.role === 'Super Admin') return emp;
+  const ok = (emp.companyId != null && canReachCompany(req, emp.companyId)) ||
+             (emp.branchId != null && canReachCompany(req, emp.branchId));
+  return ok ? emp : false;
+}
+// Standard responder for the guard result. Returns true if the caller should
+// STOP (a response was already sent), false if it's safe to proceed.
+function denyIfUnreachable(res, emp, label = 'Employee') {
+  if (emp === null) { res.status(404).json({ error: `${label} not found.` }); return true; }
+  if (emp === false) { res.status(403).json({ error: `You do not have access to this ${label.toLowerCase()}.` }); return true; }
+  return false;
+}
 
 const round = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const DEFAULT_YEAR = leaveService.DEFAULT_YEAR;
@@ -43,6 +67,7 @@ exports.grant = async (req, res) => {
     if (!employeeId || !cat || days <= 0) {
       return res.status(400).json({ error: 'employeeId, a valid category (CL/PL/SL) and positive days are required.' });
     }
+    if (denyIfUnreachable(res, await reachableEmployee(req, employeeId))) return;
     const bal = await leaveService.getOrCreateBalance(employeeId, year);
     const f = leaveService.FIELDS[cat];
     const previousBalance = round(bal[f.bal]);
@@ -193,6 +218,7 @@ exports.deduct = async (req, res) => {
     if (!employeeId || !cat || days <= 0) {
       return res.status(400).json({ error: 'employeeId, a valid category (CL/PL/SL) and positive days are required.' });
     }
+    if (denyIfUnreachable(res, await reachableEmployee(req, employeeId))) return;
     const bal = await leaveService.getOrCreateBalance(employeeId, year);
     const f = leaveService.FIELDS[cat];
     const previousBalance = round(bal[f.bal]);
@@ -220,6 +246,7 @@ exports.reset = async (req, res) => {
     const employeeId = idParam(req.body.employeeId);
     const year = Number(req.body.year) || DEFAULT_YEAR;
     if (!employeeId) return res.status(400).json({ error: 'employeeId is required.' });
+    if (denyIfUnreachable(res, await reachableEmployee(req, employeeId))) return;
     const bal = await leaveService.getOrCreateBalance(employeeId, year);
     const cf = req.body.keepCarryForward ? round(bal.carryForward) : 0;
     const updated = await prisma.leaveBalance.update({
@@ -250,6 +277,10 @@ exports.transfer = async (req, res) => {
     if (!fromId || !toId || fromId === toId || !cat || days <= 0) {
       return res.status(400).json({ error: 'Distinct from/to employees, a valid category and positive days are required.' });
     }
+    // BOTH employees must be in the caller's workspace — otherwise days could be
+    // pulled from (or pushed into) another tenant's employee.
+    if (denyIfUnreachable(res, await reachableEmployee(req, fromId), 'Source employee')) return;
+    if (denyIfUnreachable(res, await reachableEmployee(req, toId), 'Destination employee')) return;
     const f = leaveService.FIELDS[cat];
     const fromBal = await leaveService.getOrCreateBalance(fromId, year);
     if (round(fromBal[f.bal]) < days) {
@@ -283,6 +314,9 @@ exports.carryForward = async (req, res) => {
 
     let targetEmployeeIds = [];
     if (req.body.employeeId) {
+      // Single-employee carry-forward: the bulk branch below is already scoped,
+      // but a named employeeId must be verified against the caller's workspace.
+      if (denyIfUnreachable(res, await reachableEmployee(req, req.body.employeeId))) return;
       targetEmployeeIds = [idParam(req.body.employeeId)];
     } else {
       // Offboarded employees are excluded from leave carry-forward.

@@ -172,6 +172,10 @@ exports.get = async (req, res) => {
     if (isEmployee(req) && !canView(req)) {
       const emp = await prisma.employee.findFirst({ where: { email: req.user?.email }, select: { id: true } }).catch(() => null);
       if (!emp || emp.id !== loan.employeeId) return res.status(403).json({ error: 'Not your loan.' });
+    } else if (!canAccessCompany(req, loan.companyId)) {
+      // Tenant guard: a staff (canView) caller may only read a loan in their own
+      // workspace — otherwise employee PII + financial ledger would leak. 404.
+      return res.status(404).json({ error: 'Loan not found.' });
     }
     const [installments, audit] = await Promise.all([
       prisma.loanInstallment.findMany({ where: { loanId: id }, orderBy: { seq: 'asc' } }),
@@ -278,6 +282,8 @@ exports.update = async (req, res) => {
     const id = idParam(req.params.id);
     const loan = await prisma.loan.findUnique({ where: { id } });
     if (!loan) return res.status(404).json({ error: 'Loan not found.' });
+    // Tenant guard: never edit another company's loan terms by id.
+    if (!canAccessCompany(req, loan.companyId)) return res.status(404).json({ error: 'Loan not found.' });
     if (!['Draft', 'Pending Approval'].includes(loan.status)) {
       return res.status(409).json({ error: `A ${loan.status} loan's terms can no longer be edited.` });
     }
@@ -350,6 +356,9 @@ exports.setStatus = async (req, res) => {
     const action = String(req.body.action || '').toLowerCase();
     const loan = await prisma.loan.findUnique({ where: { id } });
     if (!loan) return res.status(404).json({ error: 'Loan not found.' });
+    // Tenant guard: never approve/reject/disburse/close another company's loan
+    // (approval generates that company's installment ledger → payroll deduction).
+    if (!canAccessCompany(req, loan.companyId)) return res.status(404).json({ error: 'Loan not found.' });
 
     const guard = (ok) => { if (!ok) { const e = new Error('Not authorised for this action.'); e.code = 403; throw e; } };
     let next, needSchedule = false;
@@ -427,6 +436,8 @@ exports.remove = async (req, res) => {
     const id = idParam(req.params.id);
     const loan = await prisma.loan.findUnique({ where: { id } });
     if (!loan) return res.status(404).json({ error: 'Loan not found.' });
+    // Tenant guard: never delete another company's loan by id.
+    if (!canAccessCompany(req, loan.companyId)) return res.status(404).json({ error: 'Loan not found.' });
     // ONLY a Draft may be deleted. Every other status (Pending Approval, Approved,
     // Rejected, Disbursed, Running, Completed, Closed) is a permanent company
     // record retained for audit & compliance. Enforced here so a direct API call

@@ -5,6 +5,27 @@ const { deriveOvertimeHours } = require('../utils/overtimeDerivation');
 const { OFFBOARDED_STATUSES, isOffboarded } = require('../utils/employeeStatus');
 const { canEnterWorkspace, companyScopeFor, isSuperAdmin } = require('../utils/workspaceScope');
 
+// Tenant guard for a single attendance row / employee accessed BY ID (manual
+// create/update/delete). The bulk paths (syncPayroll/pushToPayroll) already
+// fence by companyScopeFor; these manual handlers previously did not, so a user
+// could mark/edit/delete another tenant's attendance by naming the id. Resolves
+// the employee's real company/branch (row.companyId can be a default/stale
+// value) and checks it against the caller's branch-aware scope.
+async function attendanceEmployeeInScope(req, employeeId, rowCompanyId) {
+  if (isSuperAdmin(req)) return true;
+  const scope = companyScopeFor(req); // reachable company ids, branch-resolved
+  const emp = Number.isFinite(Number(employeeId))
+    ? await prisma.employee.findUnique({ where: { id: Number(employeeId) }, select: { companyId: true, branchId: true } })
+    : null;
+  if (emp) {
+    if (emp.companyId != null && scope.includes(Number(emp.companyId))) return true;
+    if (emp.branchId != null && canEnterWorkspace(req, emp.branchId)) return true;
+    return false;
+  }
+  // No employee resolved: fall back to the row's own companyId when present.
+  return rowCompanyId != null && scope.includes(Number(rowCompanyId));
+}
+
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -1041,6 +1062,16 @@ exports.create = async (req, res) => {
     if (body.companyId !== undefined) { const n = Number(body.companyId); if (Number.isFinite(n)) body.companyId = n; }
     if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
 
+    // Tenant guard: the employee must be in the caller's workspace, and the row's
+    // companyId is pinned to that employee's company (never trusted from body).
+    if (body.employeeId) {
+      if (!(await attendanceEmployeeInScope(req, body.employeeId, body.companyId))) {
+        return res.status(404).json({ error: 'Employee not found.' });
+      }
+      const owner = await prisma.employee.findUnique({ where: { id: Number(body.employeeId) }, select: { companyId: true } });
+      if (owner?.companyId != null) body.companyId = owner.companyId;
+    }
+
     // Future-date policy: reject any date after today (bounded allowance aside).
     if (isFutureAttendanceDate(body.date, allowFutureDays)) {
       return res.status(403).json({ code: 'FUTURE_DATE', error: 'Attendance cannot be marked for future dates.' });
@@ -1113,6 +1144,14 @@ exports.update = async (req, res) => {
     if (body.employeeId !== undefined) { const n = Number(body.employeeId); if (Number.isFinite(n)) body.employeeId = n; }
 
     const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    // Tenant guard: never edit (or reassign the company/employee of) another
+    // tenant's attendance row. Foreign/unknown id → not found.
+    if (!existing || !(await attendanceEmployeeInScope(req, existing.employeeId, existing.companyId))) {
+      return res.status(404).json({ error: 'Attendance record not found.' });
+    }
+    // Reassigning a row to another company/employee is never a valid edit.
+    delete body.companyId;
+    delete body.employeeId;
     // Future-date policy: reject moving/marking a record onto a future date.
     if (isFutureAttendanceDate(body.date || existing?.date, allowFutureDays)) {
       return res.status(403).json({ code: 'FUTURE_DATE', error: 'Attendance cannot be marked for future dates.' });
@@ -1138,6 +1177,10 @@ exports.delete = async (req, res) => {
   try {
     const { id } = req.params;
     const existing = await prisma.attendance.findUnique({ where: { id: idParam(id) } });
+    // Tenant guard: never delete another tenant's attendance row.
+    if (!existing || !(await attendanceEmployeeInScope(req, existing.employeeId, existing.companyId))) {
+      return res.status(404).json({ error: 'Attendance record not found.' });
+    }
     await prisma.attendance.delete({ where: { id: idParam(id) } });
     // Removing a record also changes the month's totals → payroll is now stale.
     if (existing) await flagPayrollOutdated(existing.employeeId, existing.date);
