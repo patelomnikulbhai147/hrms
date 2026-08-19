@@ -60,6 +60,10 @@ const withPerms = (base) => {
   const created = [];
 
   const cleanup = async () => {
+    // notify() fires bell notifications as a SIDE EFFECT of the own-leave create/
+    // approve probes (companyId = A or B). Remove them first, or each run leaves
+    // orphaned notification rows once the QA companies are deleted below.
+    await prisma.notification.deleteMany({ where: { companyId: { in: [A.id, B.id] } } }).catch(() => {});
     for (const id of created) await prisma.leaveRequest.deleteMany({ where: { id } }).catch(() => {});
     await prisma.loanInstallment.deleteMany({ where: { loanId: loanB?.id } }).catch(() => {});
     await prisma.loanAudit.deleteMany({ where: { loanId: loanB?.id } }).catch(() => {});
