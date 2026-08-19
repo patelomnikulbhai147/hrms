@@ -41,7 +41,19 @@ const H = (t, ws) => ({ Authorization: `Bearer ${t}`, 'Content-Type': 'applicati
   const empB = await prisma.employee.create({ data: { employeeId: 'TI-B-1', companyId: B.id, name: 'Bob B', email: 'bob.qati@test.local', phone: '9622200002', ...empBase } });
   const bonusB = await prisma.employeeBonus.create({ data: { companyId: B.id, employeeId: empB.id, bonusType: 'Festival', calcMethod: 'Fixed Amount', amount: 5000, status: 'Active' } });
   const bonusA = await prisma.employeeBonus.create({ data: { companyId: A.id, employeeId: empA.id, bonusType: 'Festival', calcMethod: 'Fixed Amount', amount: 4000, status: 'Active' } });
-  const mkUser = async (tag, companyId) => prisma.user.create({ data: { name: `QA TI ${tag}`, username: `qa-ti-${tag.toLowerCase()}-20260818`, email: `qa-ti-${tag.toLowerCase()}@test.local`, password: PW, passwordHash: await bcrypt.hash(PW, 10), role: 'Company Head', companyId, permissions: donor.permissions } });
+  // Clone the donor's permission matrix but GUARANTEE the modules these tests
+  // exercise are granted — a real donor may lack `companies` (branch writes are
+  // gated on companies:edit) or `payroll` (bonus writes), which would 403 the
+  // legitimate ALLOW cases at the RBAC layer before the tenant guard is reached.
+  const withPerms = (base) => {
+    const p = base ? (typeof base === 'string' ? JSON.parse(base) : JSON.parse(JSON.stringify(base))) : {};
+    p.permissions = p.permissions || {};
+    p.permissions.companies = { view: true, edit: true, create: true, delete: true, export: true };
+    p.permissions.payroll = { view: true, edit: true, create: true, delete: true, export: true };
+    p.permissions.employees = { view: true, edit: true, create: true, delete: true, export: true };
+    return p;
+  };
+  const mkUser = async (tag, companyId) => prisma.user.create({ data: { name: `QA TI ${tag}`, username: `qa-ti-${tag.toLowerCase()}-20260818`, email: `qa-ti-${tag.toLowerCase()}@test.local`, password: PW, passwordHash: await bcrypt.hash(PW, 10), role: 'Company Head', companyId, permissions: withPerms(donor.permissions) } });
   const uA = await mkUser('A', A.id);
   const uB = await mkUser('B', B.id);
   const createdBonusIds = [];
