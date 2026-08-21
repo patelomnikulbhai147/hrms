@@ -136,8 +136,33 @@ async function importOne(prismaClient, companyId, employee, rec, details = null)
   const data = buildAttendanceData(companyId, employee, rec, d);
   const existing = await prismaClient.attendance.findUnique({
     where: { employeeId_date: { employeeId: employee.id, date: isoDate } },
-    select: { id: true },
+    select: { id: true, status: true, clockIn: true, clockOut: true, flags: true },
   });
+
+  // ── PERSISTENCE GUARD: never let a punch-less sync flip a saved record to Absent ──
+  // The device's IN/OUT feed returns EVERY employee for EVERY day in the window,
+  // marking days with no punch as Absent. The scheduler re-syncs a rolling window,
+  // so a past day whose punch has aged out (or is momentarily missing) would
+  // otherwise OVERWRITE a previously-saved Present → Absent. "No data from the
+  // biometric API" is NOT proof of absence: if a meaningful record already exists
+  // we KEEP it. This also makes re-syncing the same date idempotent.
+  if (existing) {
+    const incomingAbsentNoPunch =
+      String(data.status || '').toLowerCase().startsWith('absent') && !data.clockIn && !data.clockOut;
+    const existingIsMeaningful =
+      !String(existing.status || '').toLowerCase().startsWith('absent') || !!existing.clockIn || !!existing.clockOut;
+    // A human-entered row (Daily/Weekly manual entry, mobile check-in) is authoritative.
+    const existingSource =
+      existing.flags && typeof existing.flags === 'object' ? String(existing.flags.source || '') : '';
+    const existingIsManual = !!existingSource && existingSource !== 'E-TimeOffice';
+
+    // 1) Punch-less Absent must never replace an existing meaningful record.
+    if (incomingAbsentNoPunch && existingIsMeaningful) return 'skipped';
+    // 2) A biometric sync must never overwrite a human-entered record with a
+    //    punch-less Absent (manual entries win over "device had nothing today").
+    if (incomingAbsentNoPunch && existingIsManual) return 'skipped';
+  }
+
   await prismaClient.attendance.upsert({
     where: { employeeId_date: { employeeId: employee.id, date: isoDate } },
     create: { employeeId: employee.id, date: isoDate, ...data },
