@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check, Pencil, Archive, Trash2 } from 'lucide-react';
+import { Search, CheckCircle2, XCircle, Clock, Filter, Upload, Download, Settings, Users, Calendar, Table as TableIcon, FileText, Database, AlertCircle, Save, ChevronDown, ChevronLeft, ChevronRight, Activity, Building2, BarChart3 as BarChart3Icon, Send, Printer, X, Loader2, Check, Pencil, Archive, Trash2, RotateCw } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord, type LeaveRequest, type Role, type Company, isCompanyIdMatch, buildScopedEmployeeIdSet, isRecordInWorkspace } from '@/types';
 import { Badge } from '@/components/ui/Badge';
@@ -160,6 +160,16 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
   const isFutureLocked = (date: string) => !!date && date > maxEditableDate;
   // Allowance echoed to the server so it applies the identical rule (0 = none).
   const futureDaysParam = futurePolicy.allow ? futurePolicy.maxDays : 0;
+
+  // Manual refresh — re-pulls employees + attendance from the server so newly
+  // synced biometric punches (which the background E-TimeOffice sync writes) show
+  // here without switching workspace or reloading the whole app.
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await Promise.resolve(onRefresh?.()); } finally { setTimeout(() => setRefreshing(false), 400); }
+  };
 
   // Export modal
   const [exportOpen, setExportOpen] = useState(false);
@@ -1503,6 +1513,9 @@ export const Attendance: React.FC<AttendanceCenterProps> = ({
           <p className="text-xs text-slate-500 mt-1">Fully integrated with Payroll Engine, Leave Balances, and Overtime Processing.</p>
         </div>
         <div className="flex gap-2">
+           <Button variant="secondary" size="sm" onClick={handleRefresh} disabled={refreshing} title="Reload the latest attendance (including newly synced biometric punches)">
+             <RotateCw size={14} className={refreshing ? 'animate-spin' : ''} /> {refreshing ? 'Refreshing…' : 'Refresh'}
+           </Button>
            <Button variant="secondary" size="sm" onClick={() => { setExportMode(periodMode === 'daily' ? 'monthly' : periodMode); setExportOpen(true); }}>
              <Download size={14}/> Export
            </Button>

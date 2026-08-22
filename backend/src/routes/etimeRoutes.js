@@ -16,6 +16,12 @@ router.post('/connection/test', ctrl.testConnection);
 router.post('/sync', ctrl.syncNow);
 router.get('/sync-logs', ctrl.getSyncLogs);
 router.get('/dashboard', ctrl.getDashboard);
+// Live device connectivity + raw punch viewer (read-only diagnostics). View = SA/CH/HR.
+router.get('/device-status', ctrl.deviceStatus);
+router.get('/raw-punches', ctrl.rawPunches);
+// Integration-console data: paginated attendance list + Overview analytics series.
+router.get('/attendance', ctrl.attendanceList);
+router.get('/analytics', ctrl.analytics);
 
 // Unmatched Queue + biometric mapping (map a device code → employee, then replay
 // all historical punches for that code). View = SA/CH/HR; resolve/ignore = SA/CH.

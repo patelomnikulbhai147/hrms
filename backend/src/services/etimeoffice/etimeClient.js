@@ -214,6 +214,43 @@ async function downloadPunchData(creds, { empCode = 'ALL', fromDate, toDate } = 
 }
 
 /**
+ * DeviceStatus — the biometric devices registered for this account and their live
+ * connectivity. Read-only; returns the raw device rows for the caller to map onto
+ * a grid. `Device_data[]` carries MachineNo / Location / SRNO / con_status / con_date.
+ * @returns { ok, status, message?, devices: [], httpStatus, durationMs }
+ */
+async function deviceStatus(creds) {
+  const base = normalizeBase(creds.apiBaseUrl);
+  const url = `${base}DeviceStatus`;
+  const headers = { Authorization: buildAuthHeader(creds), 'Content-Type': 'application/json' };
+  const out = classify(await call(url, headers, { endpoint: 'DeviceStatus' }));
+  const devices = out.ok && out.body && Array.isArray(out.body.Device_data) ? out.body.Device_data : [];
+  return { ...out, devices };
+}
+
+/**
+ * DownloadPunchDataMCID — the RAW per-punch stream (with machine id) for a window.
+ * Read-only: powers the Raw Punches viewer only; it is NEVER persisted as
+ * attendance (the IN/OUT summary endpoint is the single attendance source).
+ * @returns { ok, status, message?, punches: [], httpStatus, durationMs }
+ */
+async function downloadPunchDataMCID(creds, { empCode = 'ALL', fromDate, toDate } = {}) {
+  const base = normalizeBase(creds.apiBaseUrl);
+  // MCID requires the "dd/MM/yyyy_HH:mm" form (verified live: a bare "dd/MM/yyyy"
+  // returns Error:true "String was not recognized as a valid DateTime"). We span
+  // the full day 00:00 → 23:59 for the requested range.
+  const toDmy = (v) => (v instanceof Date ? fmtDate(v) : String(v)).split('_')[0];
+  const from = `${toDmy(fromDate)}_00:00`;
+  const to = `${toDmy(toDate)}_23:59`;
+  const url = `${base}DownloadPunchDataMCID?Empcode=${encodeURIComponent(empCode)}&FromDate=${encodeURIComponent(from)}&ToDate=${encodeURIComponent(to)}`;
+  const headers = { Authorization: buildAuthHeader(creds), 'Content-Type': 'application/json' };
+  const out = classify(await call(url, headers, { endpoint: 'DownloadPunchDataMCID' }));
+  const punches = out.ok && out.body && Array.isArray(out.body.PunchData) ? out.body.PunchData
+    : (out.ok && Array.isArray(out.body) ? out.body : []);
+  return { ...out, punches, window: { from, to } };
+}
+
+/**
  * testConnection — a cheap, read-only probe: request today's IN/OUT window. A
  * 2xx with Error=false proves the base URL + credentials are valid.
  */
@@ -233,5 +270,7 @@ module.exports = {
   downloadInOutPunchData,
   downloadLastPunchData,
   downloadPunchData,
+  downloadPunchDataMCID,
+  deviceStatus,
   testConnection,
 };

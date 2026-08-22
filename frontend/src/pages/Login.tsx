@@ -95,7 +95,9 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   const [submitting, setSubmitting] = useState(false);
 
   // Security CAPTCHA & Lockout States
-  const [captchaInfo, setCaptchaInfo] = useState<any>(null);
+  // Default to showing internal CAPTCHA immediately — backend call will update this.
+  // This ensures CAPTCHA is always visible even if the backend API is slow/down.
+  const [captchaInfo, setCaptchaInfo] = useState<any>({ captchaRequired: true, captchaType: 'internal', lockedOut: false, failedCount: 0, timeRemaining: 0 });
   const [captchaAnswer, setCaptchaAnswer] = useState('');
   const [captchaId, setCaptchaId] = useState('');
   const [captchaSvg, setCaptchaSvg] = useState('');
@@ -232,8 +234,12 @@ export const Login: React.FC<LoginProps> = ({ userAccounts: _userAccounts, compa
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'light');
     localStorage.setItem('hrms_theme', 'light');
-    // Query default captcha status on mount (alwaysEnabled check)
-    checkCaptchaStatus('');
+    // Load CAPTCHA image immediately on mount (default state already shows captcha)
+    loadInternalCaptcha();
+    // Also query backend to get accurate captcha config (may update type to google, etc)
+    checkCaptchaStatus('').catch(() => {
+      // If backend is unreachable, keep showing internal CAPTCHA (already loaded above)
+    });
   }, []);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {

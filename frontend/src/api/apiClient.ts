@@ -715,6 +715,14 @@ export const api = {
     syncNow: async (data: any = {}) => { return await apiFetch(`${BASE_URL}/etimeoffice/sync`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) }); },
     syncLogs: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/sync-logs${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
     dashboard: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/dashboard${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    // Live biometric device connectivity grid (read-only diagnostics).
+    deviceStatus: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/device-status${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
+    // Raw per-punch stream for a date range (read-only viewer; never persisted).
+    rawPunches: async (params: { fromDate?: string; toDate?: string; machineId?: any; companyId?: any } = {}) => { const p = new URLSearchParams(); if (params.fromDate) p.set('fromDate', params.fromDate); if (params.toDate) p.set('toDate', params.toDate); if (params.machineId != null) p.set('machineId', String(params.machineId)); if (params.companyId) p.set('companyId', String(params.companyId)); const qs = p.toString(); return await apiFetch(`${BASE_URL}/etimeoffice/raw-punches${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    // Paginated attendance list for the integration console.
+    attendanceList: async (params: { search?: string; status?: string; fromDate?: string; toDate?: string; page?: number; pageSize?: number; companyId?: any } = {}) => { const p = new URLSearchParams(); Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') p.set(k, String(v)); }); const qs = p.toString(); return await apiFetch(`${BASE_URL}/etimeoffice/attendance${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },
+    // 30-day Present/Late/Absent/Leave series for the Overview charts.
+    analytics: async (days = 30, companyId?: any) => { const p = new URLSearchParams(); p.set('days', String(days)); if (companyId) p.set('companyId', String(companyId)); return await apiFetch(`${BASE_URL}/etimeoffice/analytics?${p.toString()}`, { headers: getHeaders() }); },
     // Unmatched Queue + biometric mapping
     unmatched: async (companyId?: any) => { return await apiFetch(`${BASE_URL}/etimeoffice/unmatched${companyId ? `?companyId=${companyId}` : ''}`, { headers: getHeaders() }); },
     mappingEmployees: async (q = '', companyId?: any) => { const p = new URLSearchParams(); if (q) p.set('q', q); if (companyId) p.set('companyId', String(companyId)); const qs = p.toString(); return await apiFetch(`${BASE_URL}/etimeoffice/employees${qs ? `?${qs}` : ''}`, { headers: getHeaders() }); },

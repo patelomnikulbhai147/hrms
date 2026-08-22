@@ -22,7 +22,7 @@ import { Card, StatCard } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { ActionConfirmationModal } from '@/components/ui/ActionConfirmationModal';
-import { Input, Select } from '@/components/ui/Input';
+import { Input, Select, DateField } from '@/components/ui/Input';
 import { SearchSelect } from '@/components/ui/SearchSelect';
 import { useFormGate, type GateFields } from '@/hooks/useFormGate';
 import {
@@ -4194,14 +4194,17 @@ export const Employees: React.FC<EmployeesProps> = ({
                 </div>
                 <Input id="field-aadhaarName" label="Aadhaar Full Name *" placeholder="e.g. NAGARADE PRITI VIJAYBHAI" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} error={addErrors.aadhaarName || addErrors.name} />
               </div>
+              {/* Order: Surname → First → Middle, matching how the Aadhaar full name
+                  reads (e.g. "PATEL OM NIKULBHAI"). Fields are optional + independent —
+                  they are NOT forced to match the Aadhaar Full Name above. */}
               <div className="grid grid-cols-3 gap-3">
+                <Input id="field-lastName" label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
                 <Input id="field-firstName" label="First Name" value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
                 <Input id="field-middleName" label="Middle Name" value={form.middleName} onChange={e => setForm({ ...form, middleName: e.target.value })} />
-                <Input id="field-lastName" label="Surname / Last Name" value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <Select id="field-gender" label="Gender *" value={form.gender} onChange={e => setForm({ ...form, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={addErrors.gender} />
-                <Input id="field-dob" label="Date of Birth *" type="date" value={form.dob} onChange={e => setForm({ ...form, dob: e.target.value })} error={addErrors.dob} />
+                <DateField id="field-dob" label="Date of Birth *" value={form.dob} onChange={v => setForm({ ...form, dob: v })} error={addErrors.dob} max={new Date().toISOString().slice(0, 10)} />
                 <Select id="field-maritalStatus" label="Marital Status *" value={form.maritalStatus} onChange={e => setForm({ ...form, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={addErrors.maritalStatus} />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -4434,10 +4437,11 @@ export const Employees: React.FC<EmployeesProps> = ({
                   <Input label="Employee Code *" value={editEmp.employeeId} disabled />
                   <Input id="field-aadhaarName" label="Aadhaar Full Name *" value={editEmp.name} onChange={e => setEditEmp({ ...editEmp, name: e.target.value })} error={errors.aadhaarName || errors.name} />
                 </div>
+                {/* Order matches the Add form: Surname → First → Middle. */}
                 <div className="grid grid-cols-3 gap-3">
+                  <Input id="field-lastName" label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
                   <Input id="field-firstName" label="First Name" value={editEmp.firstName || ''} onChange={e => setEditEmp({ ...editEmp, firstName: e.target.value })} />
                   <Input id="field-middleName" label="Middle Name" value={editEmp.middleName || ''} onChange={e => setEditEmp({ ...editEmp, middleName: e.target.value })} />
-                  <Input id="field-lastName" label="Surname / Last Name" value={editEmp.lastName || ''} onChange={e => setEditEmp({ ...editEmp, lastName: e.target.value })} />
                 </div>
                 {/* Real-time Aadhaar-name check: First + Middle (optional) + Surname
                     vs the Aadhaar Full Name, normalized (trim / collapse spaces /
@@ -4455,7 +4459,7 @@ export const Employees: React.FC<EmployeesProps> = ({
                 })()}
                 <div className="grid grid-cols-3 gap-3">
                   <Select id="field-gender" label="Gender *" value={editEmp.gender || 'Female'} onChange={e => setEditEmp({ ...editEmp, gender: e.target.value })} options={[{ value: 'Female', label: 'Female' }, { value: 'Male', label: 'Male' }]} error={errors.gender} />
-                  <Input id="field-dob" label="Date of Birth *" type="date" value={(editEmp.dob || '').slice(0, 10)} onChange={e => setEditEmp({ ...editEmp, dob: e.target.value })} error={errors.dob} />
+                  <DateField id="field-dob" label="Date of Birth *" value={(editEmp.dob || '').slice(0, 10)} onChange={v => setEditEmp({ ...editEmp, dob: v })} error={errors.dob} max={new Date().toISOString().slice(0, 10)} />
                   <Select id="field-maritalStatus" label="Marital Status *" value={editEmp.maritalStatus || 'UNMARRIED'} onChange={e => setEditEmp({ ...editEmp, maritalStatus: e.target.value })} options={[{ value: 'UNMARRIED', label: 'UNMARRIED' }, { value: 'MARRIED', label: 'MARRIED' }]} error={errors.maritalStatus} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
