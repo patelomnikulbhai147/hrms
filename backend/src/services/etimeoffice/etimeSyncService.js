@@ -324,6 +324,28 @@ async function runSync(companyId, { trigger = 'manual', dryRun = false, fromDate
     return { ok: false, error: 'E-TimeOffice credentials are incomplete (Corporate ID, Username and Password are required).' };
   }
 
+  // ── Single-owner guard (cross-tenant contamination protection) ─────────────
+  // A biometric machine account (Corporate ID + Username) enrols people who each
+  // belong to ONE company. The vendor API, however, returns the SAME punch stream
+  // to every company that configures the same account, and each company then
+  // matches those device numbers against its OWN roster — so a second company
+  // reinterprets another company's punches as its own employees (wrong data).
+  // Therefore a given machine account may be actively synced by only ONE company:
+  // the one whose connection is ENABLED. If another company already owns
+  // (enabled) the same account, refuse this sync instead of contaminating it.
+  const cid = Number(companyId);
+  const corp = creds._row.corporateId;
+  const user = creds._row.apiUsername;
+  if (corp && user) {
+    const owner = await prisma.etimeConnection.findFirst({
+      where: { companyId: { not: cid }, enabled: true, corporateId: corp, apiUsername: user },
+      select: { companyId: true },
+    }).catch(() => null);
+    if (owner) {
+      return { ok: false, error: `This E-TimeOffice machine account is already connected to another company (#${owner.companyId}). A biometric account can be synced by only one company — disable it there first if you want to move it here.` };
+    }
+  }
+
   // Resolve the window: explicit From/To (validated) or the rolling IST window.
   const win = resolveWindow(creds, { fromDate, toDate });
   if (win.error) return { ok: false, error: win.error };
