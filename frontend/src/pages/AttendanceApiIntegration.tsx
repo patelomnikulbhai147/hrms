@@ -141,15 +141,22 @@ export const AttendanceApiIntegration: React.FC<Props> = ({ role }) => {
 
   const isConnected = data?.connection_status === 'connected';
 
+  // Re-entrancy guard: the button's `disabled` state updates asynchronously, so a
+  // rapid double-click could fire syncNow twice before React re-renders. This ref
+  // blocks a second call synchronously, so one action = exactly one sync request
+  // (and, with toast de-duplication, one notification).
+  const syncInFlight = useRef(false);
   const handleSyncNow = async () => {
     if (!canManage || !isConnected) return;
+    if (syncInFlight.current) return;
+    syncInFlight.current = true;
     setSyncing(true);
     try {
       const res = await api.etimeoffice.syncNow({});
       if (res?.ok) ui.toast.success('Sync complete.'); else ui.toast.error(res?.error || 'Sync failed.');
       await fetchDashboard();
     } catch (e) { ui.toast.error(getApiErrorMessage(e, 'Failed to synchronize attendance data.')); }
-    finally { setSyncing(false); }
+    finally { setSyncing(false); syncInFlight.current = false; }
   };
 
   const onCardClick = (status: string) => {

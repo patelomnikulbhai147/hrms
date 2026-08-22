@@ -107,14 +107,46 @@ export const DialogHost: React.FC = () => {
   const [inputVal, setInputVal] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // ── Toast de-duplication ────────────────────────────────────────────────────
+  // The same error can be emitted many times at once (parallel API calls, React
+  // re-renders, retries, several device/config requests). We collapse identical
+  // toasts to a single notification keyed on (type + message). `activeKeys` is the
+  // source of truth and is updated SYNCHRONOUSLY, so even a same-tick burst before
+  // React re-renders resolves to exactly one toast. A repeated identical error
+  // just refreshes the visible toast's dismiss timer instead of stacking. Once a
+  // toast is dismissed (auto or by the user) its key is freed, so the same error
+  // occurring later can appear again. Different messages are never merged.
+  const activeKeys = useRef<Map<string, number>>(new Map());
+  const timers = useRef<Record<number, number>>({});
+  const keyOf = (type: ToastType, message: string) => `${type} ${message}`;
+
+  const dismissToast = (id: number) => {
+    setToasts(list => list.filter(x => x.id !== id));
+    if (timers.current[id]) { window.clearTimeout(timers.current[id]); delete timers.current[id]; }
+    for (const [k, v] of activeKeys.current) { if (v === id) { activeKeys.current.delete(k); break; } }
+  };
+
   useEffect(() => {
     pushDialog = (d) => setQueue(q => [...q, d]);
     pushToast = (t) => {
-      setToasts(list => [...list, t]);
+      const k = keyOf(t.type, t.message);
       const ms = t.duration ?? 3800;
-      window.setTimeout(() => setToasts(list => list.filter(x => x.id !== t.id)), ms);
+      const existingId = activeKeys.current.get(k);
+      if (existingId != null) {
+        // Identical toast already visible — refresh its timer, add no duplicate.
+        if (timers.current[existingId]) window.clearTimeout(timers.current[existingId]);
+        timers.current[existingId] = window.setTimeout(() => dismissToast(existingId), ms);
+        return;
+      }
+      activeKeys.current.set(k, t.id);
+      setToasts(list => [...list, t]);
+      timers.current[t.id] = window.setTimeout(() => dismissToast(t.id), ms);
     };
-    return () => { pushDialog = null; pushToast = null; };
+    return () => {
+      pushDialog = null; pushToast = null;
+      Object.values(timers.current).forEach(id => window.clearTimeout(id));
+      timers.current = {}; activeKeys.current.clear();
+    };
   }, []);
 
   const current = queue[0];
@@ -200,7 +232,7 @@ export const DialogHost: React.FC = () => {
               className={`pointer-events-auto flex items-start gap-2.5 rounded-xl border px-3.5 py-2.5 shadow-lg ${TOAST_CFG[t.type].cls}`}>
               <span className="shrink-0 mt-0.5">{TOAST_CFG[t.type].icon}</span>
               <p className="text-[13px] font-semibold leading-snug flex-1 whitespace-pre-line break-words">{t.message}</p>
-              <button onClick={() => setToasts(list => list.filter(x => x.id !== t.id))} className="shrink-0 opacity-50 hover:opacity-100"><X size={14} /></button>
+              <button onClick={() => dismissToast(t.id)} className="shrink-0 opacity-50 hover:opacity-100"><X size={14} /></button>
             </motion.div>
           ))}
         </AnimatePresence>
